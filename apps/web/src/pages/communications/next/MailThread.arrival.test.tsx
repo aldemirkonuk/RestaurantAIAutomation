@@ -39,13 +39,14 @@ let observers: Array<{ el: Element | null; cb: (e: Array<{ isIntersecting: boole
 let qc: QueryClient;
 const scrolls: Array<unknown> = [];
 
-function mount(reduced = false) {
+function mount(reduced = false, pager = false) {
   window.matchMedia = ((q: string) => ({ matches: reduced && q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} })) as never;
-  api.get.mockImplementation(async (url: string) =>
-    url === '/mail/thread'
-      ? { data: { key: 'gm:t1', subject: 'Friday', person: { key: 'vendor:p1', kind: 'vendor', name: 'Bodega' }, order: null, messages, before: null, waiting: true } }
-      : { data: {} },
-  );
+  api.get.mockImplementation(async (url: string, cfg?: { params?: { before?: string } }) => {
+    if (url !== '/mail/thread') return { data: {} };
+    const base = { key: 'gm:t1', subject: 'Friday', person: { key: 'vendor:p1', kind: 'vendor', name: 'Bodega' }, order: null, waiting: true };
+    if (cfg?.params?.before) return { data: { ...base, messages: [L(0, { id: 'm0', receivedAt: '2026-10-01T09:00:00Z', createdAt: '2026-10-01T09:00:00Z' })], before: null } };
+    return { data: { ...base, messages, before: pager ? 'B1' : null } };
+  });
   api.post.mockResolvedValue({ data: {} });
   qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
@@ -126,6 +127,14 @@ describe('a new letter below', () => {
     await screen.findAllByTestId('mail-letter');
     await arrive([L(1), L(2), L(3, { direction: 'outbound', status: 'SENT', sentAt: '2026-11-03T09:00:00Z', receivedAt: null, door: 'from_house' })]);
     await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(3));
+    expect(screen.queryByTestId('new-letter-below')).toBeNull();
+  });
+
+  it('an earlier page read by "Show earlier letters" is not an arrival', async () => {
+    mount(false, true);
+    await screen.findAllByTestId('mail-letter');
+    fireEvent.click(await screen.findByRole('button', { name: 'Show earlier letters' }));
+    await waitFor(() => expect(document.querySelector('[data-letter-id="m0"]')).not.toBeNull());
     expect(screen.queryByTestId('new-letter-below')).toBeNull();
   });
 
