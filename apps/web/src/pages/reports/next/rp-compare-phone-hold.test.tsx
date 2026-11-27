@@ -98,6 +98,67 @@ describe('the phone till card holds the compare answer', () => {
   });
 });
 
+describe('the phone till card grows to the content its body would clip (r108 walk P1)', () => {
+  /** The till's body reports 259 of content in 235 of room, as the 375 walk measured it with compare off. */
+  function bodyOverflow(scroll: number, client: number) {
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const saved = ['scrollHeight', 'clientHeight'].map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)] as const);
+    const mock = (k: string, v: number) =>
+      Object.defineProperty(proto, k, {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.classList.contains('rp-cut__body') ? v : 0;
+        },
+      });
+    mock('scrollHeight', scroll);
+    mock('clientHeight', client);
+    return () => saved.forEach(([k, d]) => (d ? Object.defineProperty(proto, k, d) : delete proto[k]));
+  }
+  const withBody = (holdPx: number) =>
+    render(
+      <Sheet
+        arranging={false}
+        onMove={() => {}}
+        cuttings={[
+          { id: 'till' as AnalysisId, slot: SLOT, holdPx, body: <div data-cut="till"><div className="rp-cut__body" /></div> },
+        ] as never}
+      />,
+    );
+
+  it('[REVERT-FAILS] with compare off the card stands taller by what its body overflows, and not before', () => {
+    phone();
+    const restore = bodyOverflow(259, 235);
+    try {
+      const { container } = withBody(0);
+      expect(item(container).style.height).toBe(`${slotHeightPx(SLOT.h) + 24}px`);
+    } finally {
+      restore();
+    }
+  });
+
+  it('[REVERT-FAILS] the same growth sits on top of the compare answer when compare is drawn', () => {
+    phone();
+    const restore = bodyOverflow(259, 235);
+    try {
+      const { container } = withBody(COMPARE_ANSWER_PX);
+      expect(item(container).style.height).toBe(`${slotHeightPx(SLOT.h) + COMPARE_ANSWER_PX + 24}px`);
+    } finally {
+      restore();
+    }
+  });
+
+  it('a body that fits leaves the card exactly at its held height', () => {
+    phone();
+    const restore = bodyOverflow(235, 235);
+    try {
+      const { container } = withBody(0);
+      expect(item(container).style.height).toBe(`${slotHeightPx(SLOT.h)}px`);
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('the 1440 till card holds the compare answer in rows', () => {
   const wide = () => {
     Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
