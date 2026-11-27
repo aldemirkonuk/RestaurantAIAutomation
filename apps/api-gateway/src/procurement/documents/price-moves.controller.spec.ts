@@ -12,11 +12,14 @@ const LN = "procurement_document_lines.";
 const hit = (r: Row, op: string, col: string, v: any) => {
   const x = r[col];
   return op === "eq" ? x === v : op === "neq" ? x !== v : op === "in" ? v.includes(x) : op === "gt" ? Number(x) > Number(v)
-    : op === "ilike" ? String(x).toLowerCase() === String(v).toLowerCase() : op === "notin" ? !v.includes(x) : true;
+    : op === "ilike" ? String(x).toLowerCase() === String(v).toLowerCase() : op === "notin" ? !v.includes(x)
+    : op === "lt" ? String(x) < String(v)
+    // `or("doc_date.is.null,doc_date.lte.X")`: an undated paper stays, a dated one must not be later.
+    : op === "or" ? (() => { const lte = /lte\.(.+)$/.exec(String(v))?.[1]; return x == null || (lte !== undefined && String(x) <= lte); })() : true;
 };
-function applyPapers(papers: SimPaper[], f: [string, string, any][], limit: number) {
+function applyPapers(papers: SimPaper[], f: [string, string, any][], limit: number, orders: string[]) {
   return papers
-    .filter((p) => f.every(([op, c, v]) => c.startsWith(LN) || hit(p, op, c, v)))
+    .filter((p) => f.every(([op, c, v]) => c.startsWith(LN) || hit(p, op, op === "or" ? "doc_date" : c, v)))
     .map((p) => ({
       ...p,
       procurement_document_lines: p.procurement_document_lines.filter((l) =>
@@ -24,7 +27,9 @@ function applyPapers(papers: SimPaper[], f: [string, string, any][], limit: numb
       ),
     }))
     .filter((p) => p.procurement_document_lines.length > 0)
-    .sort((a, b) => b.verified_at.localeCompare(a.verified_at))
+    // doc_date desc (undated last), then verified_at desc: the controller's own order.
+    // Honours the order the controller asked for, never one of its own.
+    .sort((a, b) => (orders.includes("doc_date") ? (b.doc_date ?? "").localeCompare(a.doc_date ?? "") : 0) || b.verified_at.localeCompare(a.verified_at))
     .slice(0, limit);
 }
 
@@ -36,10 +41,11 @@ function controllerWith(results: Sim) {
       from: (table: string) => {
         const f: [string, string, any][] = [];
         let limit = Infinity;
+        const orders: string[] = [];
         const b: any = {};
         b.select = () => b;
-        b.order = () => b;
-        for (const op of ["eq", "neq", "ilike", "in", "gt"]) b[op] = (c: string, v: unknown) => (f.push([op, c, v]), b);
+        b.order = (c: string) => (orders.push(c), b);
+        for (const op of ["eq", "neq", "ilike", "in", "gt", "lt", "or"]) b[op] = (c: string, v?: unknown) => (f.push(op === "or" ? [op, "", c] : [op, c, v]), b);
         b.not = (c: string, op: string, v: string) => (f.push(["not" + op, c, v.replace(/[()]/g, "").split(",")]), b);
         b.limit = (n: number) => ((limit = n), b);
         b.maybeSingle = () => Promise.resolve((results as any)[table]);
@@ -49,7 +55,7 @@ function controllerWith(results: Sim) {
             table === "procurement_documents"
               ? results.papersError
                 ? { data: null, error: results.papersError }
-                : { data: applyPapers(results.papers ?? [], f, limit), error: null }
+                : { data: applyPapers(results.papers ?? [], f, limit, orders), error: null }
               : (results as any)[table];
           return Promise.resolve(out).then(res, rej);
         };
@@ -102,6 +108,42 @@ describe("DocumentsController.priceMoves — a price that jumped with no PO to c
     expect(out.lines[0]).toMatchObject({ compared: true, moved: true, sentence: "was 10.00, now 11.80, up 18 percent" });
   });
 
+  it("opening an OLD verified paper never compares it with a later one (history is not reversed)", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: { id: "d1", currency: "USD", status: "verified", doc_date: "2026-11-01", verified_at: "2026-11-01T10:00:00Z" }, error: null },
+      procurement_document_lines: { data: [line({ price: 5 })], error: null },
+      papers: [earlier(7, "2026-11-20T10:00:00Z", "g1", { doc_date: "2026-11-20" })],
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toEqual(expect.objectContaining({ compared: false, reason: "no_previous" }));
+  });
+
+  it("compares a verified paper with the one verified BEFORE it, not the newest of all", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: { id: "d1", currency: "USD", status: "verified", doc_date: "2026-11-10", verified_at: "2026-11-10T10:00:00Z" }, error: null },
+      procurement_document_lines: { data: [line({ price: 12 })], error: null },
+      papers: [
+        earlier(10, "2026-11-01T10:00:00Z", "g1", { doc_date: "2026-11-01" }),
+        earlier(99, "2026-11-20T10:00:00Z", "g1", { doc_date: "2026-11-20" }),
+      ],
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toMatchObject({ compared: true, sentence: "was 10.00, now 12.00, up 20 percent" });
+  });
+
+  it("orders by the date on the paper, so a paper verified late for an old delivery is not 'the last'", async () => {
+    const c = controllerWith({
+      procurement_documents: { data: { id: "d1", currency: "USD", status: "draft", doc_date: "2026-11-25", verified_at: null }, error: null },
+      procurement_document_lines: { data: [line({ price: 12 })], error: null },
+      papers: [
+        earlier(10, "2026-11-22T10:00:00Z", "g1", { doc_date: "2026-11-20" }),
+        earlier(3, "2026-11-24T10:00:00Z", "g1", { doc_date: "2026-10-01" }), // verified last, delivered long ago
+      ],
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toMatchObject({ compared: true, sentence: "was 10.00, now 12.00, up 20 percent" });
+  });
+
   it("has no sentence when the good has no previous cost", async () => {
     const c = controllerWith({
       procurement_document_lines: { data: [line({})], error: null },
@@ -123,6 +165,15 @@ describe("DocumentsController.priceMoves — a price that jumped with no PO to c
   it("does not compare a line it cannot count in bottles (a keg)", async () => {
     const c = controllerWith({
       procurement_document_lines: { data: [line({ uom: "keg", qty_bottles: 0 })], error: null },
+      papers: [earlier(10, "2026-11-01")],
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toEqual(expect.objectContaining({ compared: false, reason: "unit_differs" }));
+  });
+
+  it("does not compare a case with no pack size as if it were one bottle", async () => {
+    const c = controllerWith({
+      procurement_document_lines: { data: [line({ uom: "case", price: 120, qty: 1, qty_bottles: 0, pack_size: null })], error: null },
       papers: [earlier(10, "2026-11-01")],
     });
     const out = await c.priceMoves("d1", user);
