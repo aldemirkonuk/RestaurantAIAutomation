@@ -376,7 +376,6 @@ export const documentsApi = {
     } catch (error) {
       return rethrowSpoken(error)
     }
-    }
   },
 
   /**
