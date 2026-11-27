@@ -174,3 +174,80 @@ describe("ProspectsService.promote", () => {
     );
   });
 });
+
+/**
+ * QA round 25, item 6: both provider lookups in `promote` (the dedupe read
+ * and the re-read after a lost insert race) carried the round-24 escaping
+ * with no test that fails without it. Here they run over a store that does
+ * ILIKE as PostgREST does, so a raw `_____@bigdist.com` would link the
+ * house's `sales@bigdist.com`.
+ */
+describe("ProspectsService.promote matches a vendor exactly (QA round 25)", () => {
+  const VENDOR = {
+    id: "prov-sales",
+    restaurant_id: HOUSE,
+    contact_email: "sales@bigdist.com",
+    deleted_at: null,
+  };
+  const prospectFrom = (sender: string) => ({
+    id: PROSPECT,
+    restaurant_id: HOUSE,
+    domain: "bigdist.com",
+    sender_email: sender,
+    sender_name: null,
+    status: "new",
+  });
+
+  it("the dedupe read does not take a pattern-shaped sender for another vendor", async () => {
+    const { memoryDb } =
+      await import("../../communications/testing/mail-store");
+    const db = memoryDb({
+      email_prospects: [prospectFrom("_____@bigdist.com")],
+      providers: [VENDOR],
+    });
+    const out = await service(db).promote(HOUSE, PROSPECT);
+    expect(out).toMatchObject({ promoted: true, reused: false });
+    expect(out.providerId).not.toBe("prov-sales");
+    expect(db.inserts.map((i) => i.row.contact_email)).toEqual([
+      "_____@bigdist.com",
+    ]);
+  });
+
+  it("the dedupe read still reuses the same address in another case", async () => {
+    const { memoryDb } =
+      await import("../../communications/testing/mail-store");
+    const db = memoryDb({
+      email_prospects: [prospectFrom("Sales@BigDist.com")],
+      providers: [VENDOR],
+    });
+    expect(await service(db).promote(HOUSE, PROSPECT)).toMatchObject({
+      promoted: true,
+      reused: true,
+      providerId: "prov-sales",
+    });
+    expect(db.inserts).toEqual([]);
+  });
+
+  it("the re-read after a refused insert does not link a pattern-shaped sender to another vendor", async () => {
+    const { memoryDb } =
+      await import("../../communications/testing/mail-store");
+    // The dedupe read misses (the vendor is not there yet), the insert is
+    // refused, and the vendor is there by the re-read: the race the re-read
+    // exists for, with the house's real vendor as the row a pattern catches.
+    const tables: any = {
+      email_prospects: [prospectFrom("%@bigdist.com")],
+      providers: [],
+    };
+    const db = memoryDb(tables, [], ["providers"]);
+    const from = db.supabase.from;
+    db.supabase.from = (t: string) => {
+      const q = from(t);
+      const insert = q.insert;
+      q.insert = (p: any) => (tables.providers.push(VENDOR), insert(p));
+      return q;
+    };
+    expect(await service(db).promote(HOUSE, PROSPECT)).toEqual({
+      promoted: false,
+    });
+  });
+});

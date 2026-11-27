@@ -258,6 +258,112 @@ describe("MembersService.addMember — a manager adds a manager or staff, never 
 });
 
 /**
+ * QA round 25, item 4: the user lookup ran the typed address as a raw ilike
+ * value over every house's people. `@IsEmail()` accepts `_` and `%` in a
+ * local part, so a manager adding `_____@gmail.com` reached another house's
+ * `alice@gmail.com` and made her a member here. The stub's ilike is a plain
+ * case-insensitive equality, so this block swaps in ILIKE as PostgREST runs
+ * it (`*` read as `%`, `%` any run, `_` one character, `\` escapes).
+ */
+describe("MembersService.addMember matches the address exactly (QA round 25)", () => {
+  const ACTOR = "user-actor";
+  const ALICE = "user-alice-other-house";
+
+  function pgIlike(pattern: string): RegExp {
+    const pg = pattern.replace(/\*/g, "%");
+    let out = "";
+    for (let i = 0; i < pg.length; i++) {
+      const ch = pg[i];
+      if (ch === "\\" && i + 1 < pg.length)
+        out += pg[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      else if (ch === "%") out += ".*";
+      else if (ch === "_") out += ".";
+      else out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    return new RegExp(`^${out}$`, "is");
+  }
+
+  function seedOtherHouse(): StubDb {
+    const db = makeStubDb({
+      user_restaurant_access: [
+        {
+          id: "a1",
+          user_id: ACTOR,
+          restaurant_id: RID,
+          role: "owner",
+          is_active: true,
+        },
+        {
+          id: "a2",
+          user_id: ALICE,
+          restaurant_id: "other-house",
+          role: "manager",
+          is_active: true,
+        },
+      ],
+      users: [
+        {
+          user_id: ACTOR,
+          restaurant_id: RID,
+          role: "owner",
+          email: "actor@example.test",
+        },
+        {
+          user_id: ALICE,
+          restaurant_id: "other-house",
+          role: "manager",
+          email: "alice@gmail.com",
+        },
+      ],
+      restaurants: [{ id: RID, organization_id: null }],
+      organization_members: [],
+    });
+    const proto = Object.getPrototypeOf(
+      asDatabaseService(db).supabase.from("users"),
+    );
+    jest.spyOn(proto, "ilike").mockImplementation(function (
+      this: any,
+      column: string,
+      value: string,
+    ) {
+      const re = pgIlike(value);
+      const hits = (this.db.tables[this.table] ?? [])
+        .filter((r: any) => re.test(String(r[column] ?? "")))
+        .map((r: any) => r[column]);
+      this.filters.push({ kind: "in", column, value: hits });
+      return this;
+    });
+    return db;
+  }
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(["_____@gmail.com", "%@gmail.com", "a%@gmail.com", "*@gmail.com"])(
+    "%s reaches nobody in another house, and nobody is added",
+    async (typed) => {
+      const db = seedOtherHouse();
+      await expect(
+        service(db).addMember(ACTOR, RID, typed, "staff"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(
+        db.tables.user_restaurant_access.filter(
+          (r) => r.user_id === ALICE && r.restaurant_id === RID,
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("the person's own address, in any case, still adds them", async () => {
+    const db = seedOtherHouse();
+    await service(db).addMember(ACTOR, RID, " Alice@Gmail.com ", "staff");
+    expect(
+      db.tables.user_restaurant_access
+        .filter((r) => r.user_id === ALICE && r.restaurant_id === RID)
+        .map((r) => r.role),
+    ).toEqual(["staff"]);
+  });
+});
+
+/**
  * Owners manage owners. The founder, 2026-09-18 (ADR 0162, dated addendum):
  * "an owner can degrade or give its status to someonelse". A manager may
  * remove a manager or staff, never an owner. Until then `removeMember` let any

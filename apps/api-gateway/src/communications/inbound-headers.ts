@@ -303,8 +303,16 @@ const BARE_DOMAIN = /^[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
 /**
  * A sender address as a PostgREST `ilike` value that matches that address
  * and nothing else (QA round 24: a From of `%@%` was read as a pattern and
- * filed against another house's vendor). `\\`, `%`, `_` and `*` are escaped;
- * PostgREST turns `*` into `%`, so an escaped `*` can only miss, never widen.
+ * filed against another house's vendor). `\\`, `%`, `_` and `*` are escaped.
+ *
+ * `*` is not quite exact (QA round 25, measured on PostgREST v14 + Postgres
+ * 15): PostgREST rewrites every `*` in an ilike value to `%` before Postgres
+ * sees it, escaped or not, so `\\*` arrives as `\\%`, a literal percent sign.
+ * An address with a `*` in its local part therefore matches a stored `%` in
+ * the same place and misses a stored `*`. It never becomes a wildcard: the
+ * worst case is one wrong vendor of the same house whose address differs
+ * only by `*` versus `%`, and a lookup scoped to one house cannot cross to
+ * another. (This comment used to promise an escaped `*` could only miss.)
  *
  * Why ilike and not `eq`: `providers.contact_email` keeps the case a manager
  * typed and is unique on `lower(contact_email)`, so `eq` on the folded
