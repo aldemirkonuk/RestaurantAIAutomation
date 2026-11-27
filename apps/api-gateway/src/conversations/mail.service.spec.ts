@@ -485,7 +485,11 @@ describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
   it("names the mailbox's address for an owner, read in this house only, with the sender check", async () => {
     resolve = details(
       [mirrored, letter(1)],
-      [{ id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed }],
+      [
+        { id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed },
+        // Even if a row of the house's own letter carried these, it says nothing of the kind.
+        { id: letter(1).id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed },
+      ],
       [{ id: GRANT, account_email: "orders@house.example" }],
     );
     const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
@@ -525,7 +529,9 @@ describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
     const a = letter(0);
     const b = { ...letter(2), id: "d0000000-0000-4000-8000-000000000777" };
     const c = { ...letter(4), id: "d0000000-0000-4000-8000-000000000778", channel: "whatsapp" };
-    resolve = details([a, b, c], [
+    const d = { ...letter(6), id: "d0000000-0000-4000-8000-000000000779" };
+    resolve = details([a, b, c, d], [
+      { id: d.id, kind: "vendor", auth: { spf: false, dkim: false, dmarc: true, signedBy: null } },
       { id: a.id, kind: "vendor", auth: { spf: true, dkim: false, dmarc: null, signedBy: null } },
       { id: b.id, kind: "vendor", auth: null },
       { id: c.id, kind: "vendor", auth: { spf: null, dkim: true, dmarc: null, signedBy: "x" } },
@@ -535,6 +541,8 @@ describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
     expect(by(a.id)).toMatchObject({ senderCheck: "failed", signedBy: null, mailbox: null });
     expect(by(b.id).senderCheck).toBeNull();
     expect(by(c.id).senderCheck).toBeNull();
+    // DMARC alone is enough; with no signer named, none is said.
+    expect(by(d.id)).toMatchObject({ senderCheck: "passed", signedBy: null });
     expect(queries.find((q) => q.name === "procurement_conversations")?.calls).toContainEqual({
       method: "eq",
       args: ["restaurant_id", HOUSE],

@@ -108,13 +108,13 @@ const CONNECTED_MAILBOX = "a connected mailbox";
 export function letterDetailsOf(
   m: { direction?: string | null; channel?: string | null; mirrored_by_grant_id?: string | null },
   who: { grant: string | null; auth: unknown } | undefined,
-  mailboxes: Map<string, string> | null,
+  mailboxes: Map<string, string>,
 ): Pick<MailMessage, "mailbox" | "senderCheck" | "signedBy"> {
   const none = { mailbox: null, senderCheck: null, signedBy: null };
   if (direction(m.direction) !== "inbound") return none;
   const grant = who?.grant ?? m.mirrored_by_grant_id ?? null;
   const mailbox = grant
-    ? ((mailboxes && mailboxes.get(grant)) ?? CONNECTED_MAILBOX)
+    ? (mailboxes.get(grant) ?? CONNECTED_MAILBOX)
     : null;
   const auth = who?.auth;
   if (
@@ -706,11 +706,7 @@ export class MailService {
                 ? m.no_reply_marked_at
                 : null,
             attachments: files?.get(m.id) ?? [],
-            ...letterDetailsOf(
-              m,
-              who.get(m.id),
-              withhold ? null : mailboxes,
-            ),
+            ...letterDetailsOf(m, who.get(m.id), mailboxes),
           }),
         ),
       before:
