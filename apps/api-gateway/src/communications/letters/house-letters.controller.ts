@@ -221,6 +221,24 @@ export class HouseLettersController {
     return this.letters.withdrawRequest({ restaurantId, userId, requestId: id });
   }
 
+  /**
+   * "See it as it leaves": the header block and body the send would write, for the letter the
+   * composer holds. Same guards as `queue`; queues nothing and writes nothing (r109 mail-gap g6).
+   */
+  @Post("preview")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Show the letter as it would leave: headers and body. Queues nothing, writes nothing." })
+  @ApiResponse({ status: 200, description: "The header block and the body, as the send would write them." })
+  @ApiResponse({ status: 422, description: "A header the send would refuse, or a guardrail: the body carries the sentence." })
+  async preview(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: QueueLetterDto,
+    @CurrentUser("role") role?: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.preview({ restaurantId, userId, dto, role });
+  }
+
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

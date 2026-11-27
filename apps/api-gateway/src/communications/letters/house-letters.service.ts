@@ -82,6 +82,8 @@ import {
   base64Body,
   threadingHeader,
   unstructuredHeader,
+  buildLetterHeaders,
+  MimeHeaderError,
 } from "../mime-headers";
 import { plainLetterWithFiles, type OutboundAttachment } from "../mime-attachments";
 import type {
@@ -611,6 +613,93 @@ export class HouseLettersService {
   // Queue
   // ==========================================================================
 
+  /**
+   * "See it as it leaves" (r109 mail-gap g6): the letter the composer holds, shown as the header
+   * block and body the send would write. The same steps as `queue` up to the mailbox (WHO may send,
+   * the person gate, the letter it answers, the book, the guardrails, the sending identity) and the
+   * same builder (`buildLetterHeaders`) for the header lines. It queues nothing, redeems no seal,
+   * claims no request and writes no row: it reads, and it says. A header the builder refuses gets
+   * the sentence the send would.
+   */
+  async preview(params: {
+    restaurantId: string;
+    userId: string;
+    dto: QueueLetterDto;
+    role?: string | null;
+  }): Promise<{
+    from: { name: string | null; address: string | null };
+    to: string;
+    replyTo: string | null;
+    subject: string;
+    inReplyTo: string | null;
+    answersAt: string | null;
+    body: string;
+  }> {
+    const { restaurantId, dto } = params;
+    const userId = assertNamedActor(params.userId, "previewed and nothing was sent");
+    const gates = this.requireGates();
+    await gates.authority.assertMaySend(userId, restaurantId, "send this letter", { canAsk: true });
+    const person = !dto.providerId;
+    if (person) {
+      if (!isOwnerOrManager(params.role)) {
+        throw new ForbiddenException(
+          "Only the house's owner or a manager can write to a team member or a guest. Nothing was queued and nothing was sent.",
+        );
+      }
+      if (!dto.answers) {
+        throw new UnprocessableEntityException(
+          "A letter with no vendor can only answer a letter the house received. Nothing was queued and nothing was sent.",
+        );
+      }
+    }
+    let answered: Awaited<ReturnType<HouseLettersService["readAnswered"]>> | null = null;
+    let to: string;
+    if (person) {
+      answered = await this.readAnswered(restaurantId, null, dto.answers as string, dto.to);
+      await this.checkWords(dto);
+      to = answered.address ?? dto.to;
+    } else {
+      const checked = await this.checkLetter(restaurantId, dto);
+      to = checked.match.email;
+      answered = dto.answers
+        ? await this.readAnswered(restaurantId, dto.providerId as string, dto.answers)
+        : null;
+    }
+    const identity = await this.sender.resolve(restaurantId, userId);
+    if (!identity.sendable) {
+      throw new ConflictException(`${identity.words} Nothing was queued and nothing was sent.`);
+    }
+    const address = identity.address ?? identity.grant?.accountEmail ?? "";
+    let lines: string[];
+    try {
+      lines = buildLetterHeaders({
+        from: address,
+        to,
+        subject: dto.subject,
+        ...(answered?.inReplyTo ? { inReplyTo: answered.inReplyTo } : {}),
+        ...(answered?.references ? { references: answered.references } : {}),
+      });
+    } catch (err) {
+      if (err instanceof MimeHeaderError) {
+        throw new UnprocessableEntityException(`${err.message} Nothing was queued and nothing was sent.`);
+      }
+      throw err;
+    }
+    const valueOf = (name: string): string | null => {
+      const line = lines.find((l) => l.toLowerCase().startsWith(`${name.toLowerCase()}:`));
+      return line ? line.slice(name.length + 1).trim() : null;
+    };
+    return {
+      from: { name: null, address: address || null },
+      to: valueOf("To") ?? to,
+      replyTo: valueOf("Reply-To"),
+      subject: dto.subject,
+      inReplyTo: valueOf("In-Reply-To"),
+      answersAt: answered?.at ?? null,
+      body: dto.body,
+    };
+  }
+
   async queue(params: {
     restaurantId: string;
     userId: string;
@@ -1113,11 +1202,12 @@ export class HouseLettersService {
     threadKey: string | null;
     inReplyTo: string | null;
     references: string | null;
+    at: string | null;
   }> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select(
-        "id, restaurant_id, provider_id, kind, from_address, direction, channel, sent_at, message_id, thread_key, email_headers",
+        "id, restaurant_id, provider_id, kind, from_address, direction, channel, sent_at, received_at, message_id, thread_key, email_headers",
       )
       .eq("id", id)
       .eq("restaurant_id", restaurantId)
@@ -1204,6 +1294,10 @@ export class HouseLettersService {
           : null,
       inReplyTo: own,
       references: chain.length ? chain.join(" ") : null,
+      at:
+        typeof (row.received_at ?? row.sent_at) === "string"
+          ? String(row.received_at ?? row.sent_at)
+          : null,
     };
   }
 
@@ -2228,24 +2322,12 @@ export async function sendThroughGrant(params: {
   // The person door's cc/bcc/reply-to and threading go through the same
   // encoder (see the doc comment above); a threading value with no usable
   // <msg-id> writes no header, and the reply is still sent.
-  const from = params.from.trim();
-  const to = Array.isArray(params.to) ? params.to : [params.to];
-  const inReplyTo = threadingHeader("In-Reply-To", params.inReplyTo);
-  const references = threadingHeader("References", params.references);
   const letter = params.attachments?.length
     ? plainLetterWithFiles(params.text, params.attachments)
     : null;
+  // The header block is built by the one builder "See it as it leaves" also calls (r109 mail-gap g6).
   const mime = [
-    ...(from ? [addressListHeader("From", [from])] : []),
-    addressListHeader("To", to),
-    ...(params.cc?.length ? [addressListHeader("Cc", params.cc)] : []),
-    ...(params.bcc?.length ? [addressListHeader("Bcc", params.bcc)] : []),
-    unstructuredHeader("Subject", params.subject),
-    ...(params.replyTo
-      ? [addressListHeader("Reply-To", [params.replyTo])]
-      : []),
-    ...(inReplyTo ? [inReplyTo] : []),
-    ...(references ? [references] : []),
+    ...buildLetterHeaders(params),
     "MIME-Version: 1.0",
     ...(letter
       ? [letter.contentTypeHeader, "", letter.body]
