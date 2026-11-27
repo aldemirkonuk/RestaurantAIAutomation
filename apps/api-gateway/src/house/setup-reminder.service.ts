@@ -27,6 +27,8 @@ export const SETUP_REMINDER_AFTER_MS = 24 * HOUR_MS;
 export const SETUP_REMINDER_UNTIL_MS = 72 * HOUR_MS;
 /** Under the 1000-row cap; leftovers wait an hour (48 sweeps per window). */
 export const SETUP_REMINDER_BATCH = 200;
+/** The menu-versions read is capped; a full page means "unknown", never "none". */
+export const SETUP_REMINDER_MENU_PAGE = 1000;
 
 export interface SetupReminderTally {
   candidates: number;
@@ -118,16 +120,31 @@ export class SetupReminderService {
 
     const userIds = [...new Set(rows.map((r) => r.user_id))];
     const houseIds = [...new Set(rows.map((r) => r.restaurant_id))];
-    const [people, access, houses] = await Promise.all([
+    const [people, access, houses, menus] = await Promise.all([
       client.from("users").select("user_id, email, name, email_verified").in("user_id", userIds),
       client
         .from("user_restaurant_access")
         .select("user_id, restaurant_id, role, is_active, valid_until")
         .in("user_id", userIds),
       client.from("restaurants").select("id, name").in("id", houseIds),
+      // menu_uploaded goes stale (markMenuUploaded swallows an update error; an
+      // import path may not mark it). A house with any menu version is not told
+      // its menu is unread, and its flag is healed.
+      client
+        .from("restaurant_menus")
+        .select("restaurant_id")
+        .in("restaurant_id", houseIds)
+        .limit(SETUP_REMINDER_MENU_PAGE),
     ]);
-    const failed = [people, access, houses].find((r) => r.error);
+    const failed = [people, access, houses, menus].find((r) => r.error);
     if (failed?.error) throw new Error(`a recipient read failed: ${failed.error.message}`);
+    const menuRows = (menus.data ?? []) as Array<Record<string, any>>;
+    if (menuRows.length >= SETUP_REMINDER_MENU_PAGE) {
+      this.logger.warn("SETUP_REMINDER_MENU_PAGE_FULL — menus unknown for this sweep; nothing claimed or sent.");
+      tally.skipped = rows.length;
+      return tally;
+    }
+    const hasMenu = new Set(menuRows.map((m) => m.restaurant_id));
     const person = new Map(
       ((people.data ?? []) as Array<Record<string, any>>).map((p) => [p.user_id, p]),
     );
@@ -146,6 +163,14 @@ export class SetupReminderService {
     );
 
     for (const row of rows) {
+      if (hasMenu.has(row.restaurant_id)) {
+        tally.skipped++;
+        const heal = await client.from(TABLE).update({ menu_uploaded: true }).eq("id", row.id);
+        if (heal.error) {
+          this.logger.warn(`SETUP_REMINDER_HEAL_FAILED row=${row.id} — ${heal.error.message}`);
+        }
+        continue;
+      }
       const p = person.get(row.user_id);
       const email = typeof p?.email === "string" ? p.email.trim() : "";
       if (!owns.has(`${row.user_id}:${row.restaurant_id}`) || p?.email_verified !== true || !email) {
