@@ -557,7 +557,9 @@ function sniffMime(bytes: Buffer): { mime: string; ext: string } {
  *   - only digits and the two marks may remain, so a minus or a letter is
  *     refused (`readMenuPrice` finds the digits in "-5" and would read 5);
  *   - "1.250" / "1,250" read two ways and are refused with both readings
- *     named: a price is never guessed.
+ *     named: a price is never guessed;
+ *   - a space inside the number ("1 250") is refused in those words: the r21
+ *     reader took it as 1250, the one reader does not read it (DD-r108-16).
  */
 function typedMenuPrice(raw: string): { value: number } | { refused: string } {
   const typed = String(raw ?? "");
@@ -571,7 +573,7 @@ function typedMenuPrice(raw: string): { value: number } | { refused: string } {
   if (!/^\d[\d.,\s]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
   // A space inside a price is not read (the r21 reader took "1 250" as 1250; the one reader names two readings,
   // which is not what a space is). Refuse with what is true, never guess.
-  if (/\d\s+\d/.test(s)) return { refused: `"${typed}" is not read: a space inside a price is not read; write 1250 or 1,250.00. Nothing was changed.` };
+  if (/\d\s+\d/.test(s)) return not("a space inside a price is not read; write 1250 or 1,250.00");
   const read = readMenuPrice(s);
   // Money has at most two decimals: "1.250,505" is not a price, whatever the file reader would make of it.
   if (read.amount !== null) return /\.\d{3,}/.test(String(read.amount)) ? not("a price has at most two decimals") : { value: read.amount };

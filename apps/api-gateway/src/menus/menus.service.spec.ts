@@ -827,12 +827,12 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     it("reads a dot or a comma decimal, thousands groups and a currency mark", async () => {
       const want: Array<[string, number]> = [
         ["70", 70], ["45.50", 45.5], ["45,5", 45.5], ["$70", 70], ["45 TL", 45], ["62,50", 62.5],
-        ["1.250,00", 1250], ["1,250.75", 1250.75], ["1.250.000", 1250000], ["0", 0],
+        ["1.250,00", 1250], ["1,250.00", 1250], ["45,50", 45.5], ["1,250.75", 1250.75], ["1.250.000", 1250000], ["0", 0],
       ];
       for (const [raw, value] of want) expect((await typeIt(raw)).value).toBe(value);
     });
     it("refuses a minus, letters, two decimals and a tail it cannot place, and says so", async () => {
-      for (const raw of ["-5", "abc", "", "12.5.1", "1,2.50", "1.250,505", ".5", "12 / 45", "₺ 1 250"]) {
+      for (const raw of ["-5", "45.505", "abc", "", "12.5.1", "1,2.50", "1.250,505", ".5", "12 / 45", "₺ 1 250"]) {
         const r = await typeIt(raw);
         expect(r.value).toBeNull();
         expect(r.error).toMatch(/Nothing was changed/);
