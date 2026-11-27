@@ -22,6 +22,7 @@ import { HouseLettersService } from "../letters/house-letters.service";
 import { HouseSenderService } from "../letters/house-sender.service";
 import { HouseInboxService, GMAIL_READ_SCOPE } from "./house-inbox.service";
 import { deliveryMark, parseNotice, replacesMark } from "./house-inbox.dsn";
+import { INTEGRATION_DEFINITIONS } from "../../integrations/integrations-oauth.constants";
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
@@ -133,11 +134,23 @@ function gmail(messages: Row[], endless = false) {
 
 const LETTER = { id: "L1", restaurant_id: HOUSE, direction: "outbound", message_id: OUR_ID, sent_at: new Date(CURSOR + 60_000).toISOString(), email_headers: { subject: "Friday order" } };
 
-function rows(letters: Row[]) {
+const PERSON = "dddddddd-0000-4000-8000-dddddddddddd";
+const SEAL = "ffffffff-0000-4000-8000-ffffffffffff";
+/** The words this grant's person sealed: today's gmail_read definition, which names the notices. */
+const RECEIPT: Row = {
+  seal_id: SEAL,
+  user_id: PERSON,
+  restaurant_id: HOUSE,
+  integration_id: "gmail_read",
+  disclosure_snapshot: { version: 1, integration: { ...INTEGRATION_DEFINITIONS.gmail_read, mirrorsMail: true, available: true } },
+};
+
+function rows(letters: Row[], receipts: Row[] | { error: { message: string } } = [RECEIPT], receiptId: string | null = SEAL) {
   return {
     integration_oauth_connections: [
-      { id: GRANT, user_id: "dddddddd-0000-4000-8000-dddddddddddd", restaurant_id: HOUSE, integration_id: "gmail_read", provider: "google", scopes: [GMAIL_READ_SCOPE], revoked_at: null },
+      { id: GRANT, user_id: PERSON, restaurant_id: HOUSE, integration_id: "gmail_read", provider: "google", scopes: [GMAIL_READ_SCOPE], revoked_at: null, consent_receipt_id: receiptId },
     ],
+    integration_consent_receipts: receipts,
     restaurant_feature_flags: [{ enable_house_inbox_read: true }],
     providers: [{ id: "cccccccc-0000-4000-8000-cccccccccccc", name: "Bodega", contact_email: "orders@bodega.example", primary_contact: null }],
     provider_contacts: [],
@@ -146,8 +159,8 @@ function rows(letters: Row[]) {
   };
 }
 
-async function run(letters: Row[], messages: Row[], failWrite = false, endless = false) {
-  const t = build(rows(letters), failWrite);
+async function run(letters: Row[], messages: Row[], failWrite = false, endless = false, table = rows(letters)) {
+  const t = build(table, failWrite);
   const publish = jest.fn().mockResolvedValue(undefined);
   const oauth = { getAccessToken: jest.fn().mockResolvedValue("ya29.token") } as unknown as IntegrationsOauthService;
   const letterSvc = new HouseLettersService(t.db, new HouseSenderService(t.db, { get: () => undefined } as never), oauth);
@@ -258,5 +271,55 @@ describe("the cursor", () => {
     const r = await run([], [notice()]);
     expect(r.marks).toHaveLength(0);
     expect(r.cursor).toEqual([AT]);
+  });
+});
+
+describe("the notice query runs only for a grant whose recorded consent names it (r110 item 4)", () => {
+  const listed = (urls: string[]) => urls.filter((u) => u.includes("/messages?")).map((u) => new URL(u).searchParams.get("q") ?? "");
+  const OLD_WORDS: Row = {
+    ...RECEIPT,
+    disclosure_snapshot: {
+      version: 1,
+      integration: { ...INTEGRATION_DEFINITIONS.gmail_read, dataHandling: { ...INTEGRATION_DEFINITIONS.gmail_read.dataHandling, notices: undefined } },
+    },
+  };
+
+  it("a grant sealed on the new words asks Gmail twice: the vendor book, then the notices", async () => {
+    const r = await run([LETTER], [notice()]);
+    const q = listed(r.urls);
+    expect(q).toHaveLength(2);
+    expect(q.filter((x) => x.startsWith("from:(mailer-daemon"))).toHaveLength(1);
+    expect(r.marks).toHaveLength(1);
+  });
+
+  it("a grant sealed before the notices sentence asks exactly once, for the vendor book, and keeps nothing", async () => {
+    const r = await run([LETTER], [notice()], false, false, rows([LETTER], [OLD_WORDS]));
+    const q = listed(r.urls);
+    expect(q).toHaveLength(1);
+    expect(q[0]).toMatch(/^from:\(orders@bodega\.example\)/);
+    expect(r.urls.some((u) => /\/messages\/n1/.test(u))).toBe(false);
+    expect(r.marks).toHaveLength(0);
+    expect(r.reads).not.toContain("procurement_conversations");
+  });
+
+  it("no receipt, another person's or house's receipt, or another integration's words: one query each", async () => {
+    const cases = [
+      rows([LETTER], [RECEIPT], null),
+      rows([LETTER], [{ ...RECEIPT, user_id: "99999999-0000-4000-8000-999999999999" }]),
+      rows([LETTER], [{ ...RECEIPT, restaurant_id: OTHER }]),
+      rows([LETTER], [{ ...RECEIPT, integration_id: "gmail_read_all" }]),
+      rows([LETTER], [{ ...RECEIPT, disclosure_snapshot: { version: 1, integration: { ...INTEGRATION_DEFINITIONS.gmail_read_all } } }]),
+    ];
+    for (const table of cases) {
+      const r = await run([LETTER], [notice()], false, false, table);
+      expect(listed(r.urls)).toHaveLength(1);
+      expect(r.marks).toHaveLength(0);
+    }
+  });
+
+  it("a consent that cannot be read is not named: one query, and the vendor read still runs", async () => {
+    const r = await run([LETTER], [notice()], false, false, rows([LETTER], { error: { message: "timeout" } }));
+    expect(listed(r.urls)).toEqual([expect.stringMatching(/^from:\(orders@bodega\.example\)/)]);
+    expect(r.out.outcomes[0].outcome).toBe("read");
   });
 });
