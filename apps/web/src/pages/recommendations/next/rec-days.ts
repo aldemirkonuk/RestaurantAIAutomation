@@ -66,6 +66,8 @@ export interface PosWindowVM {
   to: string;
   /** date → revenue booked. ONLY days that carried a record appear. */
   byDay: Record<string, number>;
+  /** True when the gateway kept the till from this reader (staff): the records exist, they are just not stated. */
+  withheld?: boolean;
 }
 
 /** undefined = not asked yet · null = the read failed · a window = read. */
@@ -198,7 +200,7 @@ export function buildDays(input: BuildDaysInput): DayCell[] {
     let records: RecordState;
     let revenue: number | null = null;
     if (isFuture) records = 'future';
-    else if (!input.pos || !input.pos.connected) records = 'unknown';
+    else if (!input.pos || !input.pos.connected || input.pos.withheld) records = 'unknown';
     else if (date < input.pos.from || date > input.pos.to) records = 'unknown';
     else if (Object.prototype.hasOwnProperty.call(input.pos.byDay, date)) {
       records = 'yes';

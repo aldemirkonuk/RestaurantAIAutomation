@@ -355,6 +355,23 @@ describe('useRecommendationsNextData — goals', () => {
     expect(Object.keys(result.current.pos?.byDay ?? {})).toEqual(['2026-08-14']);
   });
 
+  it('a withheld till (staff) is carried as withheld, not read as a window with no records', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/pos-revenue/'))
+        return {
+          data: { from: null, to: null, days: 31, posConnected: true, salesWithheld: true, revenue: null, checkCount: null, dailySeries: null },
+        };
+      if (url.includes('/analytics/goals/')) return { data: [] };
+      if (url.includes('/digest')) return { data: null };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.pos).toBeTruthy());
+    expect(result.current.pos?.withheld).toBe(true);
+  });
+
   it('an unreadable till window is null with the reason, never an empty one', async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url.includes('/pos-revenue/'))
