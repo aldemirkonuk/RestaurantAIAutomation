@@ -35,3 +35,11 @@
     animation: none;
   }
 }
+
+/* The room the current menu's table will take, held while it is read: desktop
+   only, where the walk measured the +287 px jump (r103 menu-7, F2). */
+@media (min-width: 900px) {
+  .mdv-reserve {
+    min-height: var(--mdv-reserve, 0px);
+  }
+}

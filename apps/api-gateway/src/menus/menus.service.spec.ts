@@ -1145,25 +1145,28 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
     });
 
-    it("a menu with no live line is refused in words and the house's menu stays current (r102 menu-func-3)", async () => {
+    it("an empty scan is a FAILED read, so it is refused as one, and the house's menu stays current (r103 menu-2)", async () => {
       const { tables, service, read } = await readThenChoose([]);
-      await expect(choose(service, read.menuId)).rejects.toThrow(/no lines left.*Nothing was changed/);
+      expect(tables.restaurant_menus.find((m) => m.id === read.menuId)!.read_state).toBe("failed");
+      await expect(choose(service, read.menuId)).rejects.toThrow(/This read failed, so it has no lines to make current/);
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
       expect(tables.restaurant_menus.find((m) => m.id === read.menuId)!.status).toBe("draft");
     });
 
-    it("a menu whose every line was discarded is refused too (r102 menu-func-3)", async () => {
+    it("a menu whose every line was discarded is refused in words, and the house's menu stays current (r102 menu-func-3)", async () => {
       const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
       for (const l of tables.menu_items) l.status = "discarded";
-      await expect(choose(service, read.menuId)).rejects.toBeInstanceOf(BadRequestException);
+      const e: any = await service.makeCurrent("rest-1", read.menuId, "user-2", fp).catch((x: unknown) => x);
+      expect(e).toBeInstanceOf(BadRequestException);
+      expect(String(e.message)).toMatch(/no lines left.*Nothing was changed/);
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
     });
 
-    it("choosing a current menu again finishes a carry that was cut off, and only for lines still to carry (r102 menu-func-2)", async () => {
+    it("choosing a current menu again finishes a carry that was cut off, and only for lines still to carry (r102 menu-func-2, restored r103)", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15 }]);
       await choose(service, read.menuId);
       const first = calls.filter(([fn]) => fn === "set_house_menu_price").length;
-      // The house still shows 60: the first call timed out before it was carried.
       const again = await choose(service, read.menuId);
       expect(again.outcome).toBe("already_current");
       expect(again.lines).toBe(1);
@@ -1171,7 +1174,6 @@ describe("MenusService — every menu read is kept as its own version", () => {
       const prices = calls.filter(([fn]) => fn === "set_house_menu_price");
       expect(prices).toHaveLength(first + 1);
       expect(prices[first][1]).toMatchObject({ p_bottle_price: 64, p_effective_from: "2026-09-21T12:00:00Z" });
-      // Once the house holds the menu's prices, choosing again moves nothing.
       Object.assign(tables.restaurant_inventory[0], { menu_price_current: 64, menu_price_glass: 15 });
       const settled = await choose(service, read.menuId);
       expect(settled).toMatchObject({ outcome: "already_current", lines: 0, priceSync: {} });
@@ -1188,12 +1190,13 @@ describe("MenusService — every menu read is kept as its own version", () => {
         wineSubmissions,
         rpcCalls: calls,
         rpc: makeCurrentRpc(tables),
-        scanParser: { parse: async () => [{ name: "Opus One", bottle_price: 64 }] },
+        scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 64 }], warnings: [] }) },
       });
       const read = await service.importMenu(
         { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
         "user-1",
       );
+      await service.whenRead(read.menuId);
       expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
       await choose(service, read.menuId);
       expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);

@@ -35,6 +35,7 @@ import {
   type MenuImportResult,
   type MenuReadWarning,
   type MenuVersion,
+  type MenuVersions as MenuVersionsReply,
   type PlanLine,
 } from '../../../services/api/menus';
 import { oneNounFor, type KindNoun } from './menu-line-kind';
@@ -682,16 +683,32 @@ export function detailOf(err: unknown): string {
  * sentence is plain; the cause folds under "Details" and Retry is a 48 px button
  * (r72, critic round 3, item 10).
  */
-function MenusUnread({ error, retrying, onRetry }: { error: unknown; retrying: boolean; onRetry: () => void }) {
+function MenusUnread({
+  error,
+  retrying,
+  onRetry,
+  retryAbove,
+}: {
+  error: unknown;
+  retrying: boolean;
+  onRetry: () => void;
+  /** The page's own Retry above already reads these menus again: one Retry on the page, not two (r103 menu-3). */
+  retryAbove?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  // A dropped connection is said as that (r103 menu-3): the gateway's own words
+  // for a refusal are its sentence, never the transport's "Network Error".
+  const unreached = (error as { code?: unknown; response?: unknown } | null)?.code === 'ERR_NETWORK' && !(error as { response?: unknown }).response;
   return (
     <div style={{ marginTop: 12 }} data-testid="menu-versions-error">
       <p className="cl-said" role="alert">
-        The menus could not be read just now. Try again.
+        {unreached ? 'The menus could not be read: Mudavym could not be reached just now. Try again.' : 'The menus could not be read just now. Try again.'}
       </p>
-      <button type="button" className="cl-btn mdv-retry" disabled={retrying} onClick={onRetry} data-testid="menu-versions-retry">
-        {retrying ? 'Trying again…' : 'Retry'}
-      </button>
+      {retryAbove ? null : (
+        <button type="button" className="cl-btn mdv-retry" disabled={retrying} onClick={onRetry} data-testid="menu-versions-retry">
+          {retrying ? 'Trying again…' : 'Retry'}
+        </button>
+      )}
       <div className="mdv-fold">
         <button
           type="button"
@@ -716,7 +733,34 @@ function MenusUnread({ error, retrying, onRetry }: { error: unknown; retrying: b
   );
 }
 
-export function MenuVersions({ canManage }: { canManage: boolean }) {
+/** The id of the row held for a read that has just been sent. */
+export const READING_NOW = 'reading-now';
+function readingNow(): MenuVersion {
+  const now = new Date().toISOString();
+  return {
+    menuId: READING_NOW,
+    name: null,
+    status: 'draft',
+    current: false,
+    cadence: null,
+    menuDate: null,
+    menuDatePrecision: null,
+    sourceMethod: 'scan',
+    source: { kept: false, mime: null, bytes: null, failure: null },
+    linesExtracted: null,
+    readState: 'reading',
+    readFailure: null,
+    extractedAt: now,
+    extractedBy: null,
+    madeCurrentAt: null,
+    madeCurrentBy: null,
+    retiredAt: null,
+    retiredBy: null,
+    createdAt: now,
+  };
+}
+
+export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; retryAbove?: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [planFor, setPlanFor] = useState<string | null>(null);
@@ -745,6 +789,17 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         onRead={refresh}
         currentMenuId={q.data ? (q.data.current?.menuId ?? null) : undefined}
         zone={zone}
+        // The row for a read is held in the list from the click (inside the
+        // 500 ms that a person's own input is allowed to move the page), so it
+        // does not arrive on its own seconds later and push the page down
+        // (r103 menu-7, walk F1). The next read of the list replaces it.
+        onReadStart={() =>
+          queryClient.setQueryData<MenuVersionsReply>(['menu', 'versions', house], (old) =>
+            old && !old.versions.some((v) => v.menuId === READING_NOW)
+              ? { ...old, versions: [readingNow(), ...old.versions] }
+              : old,
+          )
+        }
         onChosen={() => {
           // The list's own sentence was about an earlier choice.
           setSaid(null);
@@ -757,10 +812,10 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         </p>
       ) : q.isError ? (
         <>
-          <MenusUnread error={q.error} retrying={q.isFetching} onRetry={() => void q.refetch()} />
+          <MenusUnread error={q.error} retrying={q.isFetching} onRetry={() => void q.refetch()} retryAbove={retryAbove} />
           {/* A choice made just before the list failed to read again is still said. */}
           {said ? (
-            <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
+            <p role="status" className="cl-said mdv-settle" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
               {said}
             </p>
           ) : null}
@@ -834,7 +889,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 menu in this list, so it stands where its plan stood, and it
                 names the menu. */}
             {said ? (
-              <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
+              <p role="status" className="cl-said mdv-settle" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
                 {said}
               </p>
             ) : null}

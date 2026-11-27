@@ -2096,14 +2096,17 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
-    // A menu with no live line would retire the house's real menu and put nothing
-    // in its place (r102 menu-func-3). Said in words; nothing is changed.
+    // A read still going on, or one that failed (an empty scan is kept as a
+    // failed read), is refused in its own words first (r103 menu-2).
+    assertReadFinished(version);
+    // A finished menu with no live line (every one discarded, or a sheet
+    // emptied) would retire the house's real menu and put nothing in its place
+    // (r102 menu-func-3). Said in words; nothing is changed.
     if (lines.length === 0 && version.status !== "active") {
       throw new BadRequestException(
         "This menu has no lines left, so it cannot become the current menu: that would retire the menu the house has and put nothing in its place. Nothing was changed.",
       );
     }
-    assertReadFinished(version);
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
