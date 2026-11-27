@@ -238,6 +238,31 @@ describe('the loose-lines queue (r108 drinks-g9)', () => {
     expect(slid.some((s) => s.row === 'campari')).toBe(false);
   });
 
+  it('the link buttons stay off until the queue is read again, so a second click never sends a stale version (r108 fix)', async () => {
+    await openSheet();
+    // Sweet vermouth (Negroni only) is given a good, so its button would be live but for the busy hold.
+    fireEvent.click(screen.getByTestId('loose-group-sweet vermouth').querySelector('button')!);
+    let release: (v: unknown) => void = () => {};
+    const held = new Promise((r) => (release = r));
+    h.get.mockReset().mockImplementation(async (url: string) => {
+      if (url === looseUrl) {
+        await held;
+        return { data: afterCampari() };
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    await act(linkCampari);
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    const vermouth = () => screen.getByTestId('loose-group-sweet vermouth').querySelector('[data-testid="loose-link"]') as HTMLButtonElement;
+    expect(vermouth()).toBeDisabled();
+    const puts = h.put.mock.calls.length;
+    fireEvent.click(vermouth());
+    expect(h.put.mock.calls.length).toBe(puts);
+    await act(async () => release(null));
+    await waitFor(() => expect(screen.queryByTestId('loose-group-campari')).toBeNull());
+    await waitFor(() => expect(vermouth()).not.toBeDisabled());
+  });
+
   it('reduced motion: the groups that stay move with no animation at all', async () => {
     reduced = true;
     await openSheet();

@@ -98,15 +98,20 @@ function LooseSheet({ data, onClose }: { data: Answer; onClose: () => void }) {
       const drink = shown.drinks.find((d) => d.cocktailId === cocktailId);
       return drink ? [{ drink, body: linkBody(drink, indices, item.id) }] : [];
     });
-    const out = await saveEach(activeRestaurantId, jobs, `${g.label} linked to ${item.name}`);
-    setOutcomes(out);
-    setBusy(false);
-    // The queue, the list's figures and each saved drink's sheet are read again.
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
-      qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
-      ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
-    ]);
+    // Busy holds until the queue is read again: `shown` carries the versionIds read before the save,
+    // so a click in between would send a stale expectedVersionId and say a good link failed (409).
+    try {
+      const out = await saveEach(activeRestaurantId, jobs, `${g.label} linked to ${item.name}`);
+      setOutcomes(out);
+      // The queue, the list's figures and each saved drink's sheet are read again.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
+        qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
+        ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
+      ]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
