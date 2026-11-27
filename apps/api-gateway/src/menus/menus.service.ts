@@ -29,6 +29,7 @@ import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
 import { repriceIntoDraft, type RepriceReply } from "./menu-reprice";
+import { copyIntoDraft, houseDayWords } from "./menu-copy";
 import {
   setHouseMenuPrice,
   setHouseMenuPrices,
@@ -365,12 +366,37 @@ function readMomentOf(row: Record<string, unknown>): string | null {
  * (`import`) is not a person's, and an unknown moment on either side is not
  * "after".
  */
-function setByAPersonAfter(set: { at: string | null; source: string | null }, readAt: string | null): boolean {
-  if (set.source !== "manual" && set.source !== "agent_accepted") return false;
+function setByAPersonAfter(
+  set: { at: string | null; source: string | null; reason?: string | null; menuId?: string | null },
+  readAt: string | null,
+  planMenuId: string,
+): boolean {
+  if (set.source !== "manual" && set.source !== "agent_accepted" && !correctedOnAnotherMenu(set, planMenuId)) return false;
   if (!set.at || !readAt) return false;
   const a = Date.parse(set.at);
   const r = Date.parse(readAt);
   return Number.isFinite(a) && Number.isFinite(r) && a > r;
+}
+
+/** The reason a menu line's price correction writes to the house's price history (reviewMenuItem). */
+export const MENU_LINE_CORRECTED = "menu line corrected";
+
+/**
+ * r109 menu-g5: a price a person CORRECTED on a line of another menu (the
+ * current one, as a rule) is a person's act, though the history says
+ * 'import' because a menu line set it (ADR 0193). Without this, a price
+ * corrected on the current menu after it was copied into a draft read as a
+ * menu's own price, and making the draft current reverted it as an ordinary
+ * change. Another menu made current is still not a person's (L11): its carry
+ * writes no correction reason.
+ */
+function correctedOnAnotherMenu(set: { source: string | null; reason?: string | null; menuId?: string | null }, planMenuId: string): boolean {
+  return (
+    set.source === "import" &&
+    typeof set.reason === "string" &&
+    set.reason.startsWith(MENU_LINE_CORRECTED) &&
+    set.menuId !== planMenuId
+  );
 }
 
 /**
@@ -1716,7 +1742,7 @@ export class MenusService {
               : { glass: newValueTyped as number }),
             source: "import",
             changedBy: userId,
-            reason: `menu line corrected (${dto.fieldName})`,
+            reason: `${MENU_LINE_CORRECTED} (${dto.fieldName})`,
             menuId: menuItem.menu_id ?? null,
           });
           priceSync = r.outcome;
@@ -2110,13 +2136,13 @@ export class MenusService {
     const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
 
     // Who set each price now in effect (the open version row).
-    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
+    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null; reason: string | null; menuId: string | null }>();
     {
       let after: string | null = null;
       for (;;) {
         let q = client
           .from("menu_price_versions")
-          .select("id, inventory_id, changed_by, effective_from, change_source")
+          .select("id, inventory_id, changed_by, effective_from, change_source, reason, menu_id")
           .eq("restaurant_id", restaurantId)
           .is("effective_to", null);
         if (after) q = q.gt("id", after);
@@ -2128,6 +2154,8 @@ export class MenusService {
             by: r.changed_by ?? null,
             at: r.effective_from ?? null,
             source: r.change_source ?? null,
+            reason: r.reason ?? null,
+            menuId: r.menu_id ?? null,
           });
         }
         if (rows.length < PAGE_ROWS) break;
@@ -2193,7 +2221,7 @@ export class MenusService {
           housePrice,
           result,
           lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source } : null,
-          setAfterRead: !!set && setByAPersonAfter(set, readAt),
+          setAfterRead: !!set && setByAPersonAfter(set, readAt, menuId),
           lock: lock
             ? { lockId: lock.lockId, lockedPrice: lock.lockedPrice, lockedBy: { userId: lock.lockedBy, name: null }, lockedAt: lock.lockedAt }
             : null,
@@ -2579,6 +2607,35 @@ export class MenusService {
     return repriceIntoDraft(
       this.dbService.supabase,
       { restaurantId, menuId, userId, percent: dto.percent, roundTo: dto.roundTo, sections: dto.sections ?? null },
+      this.logger,
+    );
+  }
+
+  /**
+   * r109 menu-g5, "Edit as a new draft": the current menu copied as it is into
+   * a new draft named '<name>, draft of <house day>' (menu-copy.ts). The house
+   * adds, corrects or leaves out lines there and makes it current through the
+   * existing plan; nothing on the current menu is written. The draft's read
+   * moment is the copy, so a price a person sets after it is listed first in
+   * the draft's plan (setByAPersonAfter).
+   */
+  async copyMenuIntoDraft(
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+  ): Promise<{ menuId: string; name: string; lines: number; copiedAt: string }> {
+    const { timezone } = await this.houseZone(restaurantId);
+    const day = houseDayWords(new Date(), timezone);
+    return copyIntoDraft(
+      this.dbService.supabase,
+      {
+        restaurantId,
+        menuId,
+        userId,
+        name: (current) => `${current ?? "The current menu"}, draft of ${day}`,
+        notCurrent: "Only the current menu can be copied into a new draft. Nothing was made.",
+      },
+      (line) => line,
       this.logger,
     );
   }

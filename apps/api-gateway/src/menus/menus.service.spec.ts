@@ -3304,3 +3304,71 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe("Edit as a new draft: a price corrected on the current menu after the copy is not reverted silently (r109 menu-g5)", () => {
+  const house = (): Record<string, Row[]> => ({
+    restaurants: [{ id: "rest-1", timezone: "Europe/Istanbul" }],
+    restaurant_menus: [{ id: "menu-cur", restaurant_id: "rest-1", name: "Wine List", status: "active", read_state: "done", made_current_at: "2026-09-21T12:00:00Z" }],
+    restaurant_inventory: [
+      { id: "inv-2", restaurant_id: "rest-1", master_wine_id: "mw-2", wine_name: "Chianti", menu_price_current: 50, menu_price_glass: null, is_active: true },
+    ],
+    house_price_locks: [],
+    menu_price_versions: [],
+    users: [{ user_id: "user-1", name: "Aylin" }],
+    menu_items: [
+      { id: "c-2", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Chianti", category: "Red", wine_library_id: "mw-2", inventory_item_id: "inv-2", bottle_price: 50, status: "approved" },
+    ],
+    user_onboarding_progress: [],
+  });
+  /** The writer as the SQL is: closes the open version, opens one dated now, moves the house price. */
+  const writer = (tables: Record<string, Row[]>) => (fn: string, args: Row) => {
+    if (fn !== "set_house_menu_price") return { data: null, error: { message: `no rpc ${fn}` } };
+    const now = new Date().toISOString();
+    for (const v of tables.menu_price_versions) if (v.inventory_id === args.p_inventory_id && v.effective_to === null) v.effective_to = now;
+    tables.menu_price_versions.push({
+      id: `v-${tables.menu_price_versions.length + 1}`,
+      restaurant_id: args.p_restaurant_id,
+      inventory_id: args.p_inventory_id,
+      changed_by: args.p_changed_by,
+      effective_from: args.p_effective_from ?? now,
+      change_source: args.p_change_source,
+      reason: args.p_reason,
+      menu_id: args.p_menu_id,
+      effective_to: null,
+    });
+    const row = tables.restaurant_inventory.find((i) => i.id === args.p_inventory_id)!;
+    if (args.p_set_bottle) row.menu_price_current = args.p_bottle_price;
+    return { data: { outcome: "changed", held: [] }, error: null };
+  };
+  afterEach(() => jest.useRealTimers());
+
+  it("a price set by hand after the copy is setAfterRead in the draft's plan", async () => {
+    jest.useFakeTimers({ now: new Date("2026-11-27T09:00:00Z"), doNotFake: ["nextTick", "setImmediate"] });
+    const tables = house();
+    const service = makeService(tables, { rpc: writer(tables) });
+    const draft = await service.copyMenuIntoDraft("rest-1", "menu-cur", "user-1");
+    expect(draft.name).toBe("Wine List, draft of 27 Nov 2026");
+
+    // An hour later the manager corrects the Chianti on the CURRENT menu by hand: 50 -> 58.
+    jest.setSystemTime(new Date("2026-11-27T10:00:00Z"));
+    await service.reviewMenuItem("c-2", "user-1", "rest-1", { fieldName: "bottle_price", newValue: "58" } as any);
+    expect(tables.restaurant_inventory[0].menu_price_current).toBe(58);
+
+    const plan = await service.planFor("rest-1", draft.menuId);
+    expect(plan.readAt).toBe("2026-11-27T09:00:00.000Z");
+    const chianti = plan.lines.find((l) => l.name === "Chianti")!;
+    // Making the draft current would put back 50: the plan lists it first, by whom and when, beside its Keep switch.
+    expect(chianti.bottle).toMatchObject({ result: "change", menuPrice: 50, housePrice: 58, setAfterRead: true, lastSet: { source: "import" } });
+  });
+
+  it("another menu made current after the read is still not a person's (L11)", async () => {
+    jest.useFakeTimers({ now: new Date("2026-11-27T09:00:00Z"), doNotFake: ["nextTick", "setImmediate"] });
+    const tables = house();
+    const service = makeService(tables, { rpc: writer(tables) });
+    const draft = await service.copyMenuIntoDraft("rest-1", "menu-cur", "user-1");
+    tables.restaurant_inventory[0].menu_price_current = 58;
+    tables.menu_price_versions.push({ id: "v-9", restaurant_id: "rest-1", inventory_id: "inv-2", changed_by: "user-1", effective_from: "2026-11-27T10:00:00Z", change_source: "import", reason: "menu line", menu_id: "menu-cur", effective_to: null });
+    const plan = await service.planFor("rest-1", draft.menuId);
+    expect(plan.lines[0].bottle).toMatchObject({ result: "change", setAfterRead: false });
+  });
+});
