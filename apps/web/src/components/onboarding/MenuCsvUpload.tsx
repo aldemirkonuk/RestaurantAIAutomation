@@ -26,6 +26,9 @@ interface MenuCsvUploadProps {
   droppedFiles?: File[] | null
 }
 
+/** Photo types every browser can open, so importOne can redraw them smaller. */
+const REDRAWABLE_PHOTO_RE = /(image\/(jpeg|png|webp|gif)|\.(jpe?g|png|webp|gif)$)/i
+
 interface PreviewRow {
   cells: string[]
 }
@@ -121,21 +124,27 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
     // Validate size/type/count up front. Without this an oversized file is
     // only rejected at the server as a bare 413 — which arrives before the
     // auth guard and reads as a generic network error in the UI.
-    // A photo is redrawn smaller before it is sent (importOne), so its raw
-    // weight is no reason to turn it away (r106: a 14 MB phone photo dropped
-    // with others was refused); a PDF or a sheet is sent as it is and keeps
-    // the limit.
+    // A photo the browser can open is redrawn smaller before it is sent
+    // (importOne), so its raw weight is no reason to turn it away (r106: a
+    // 14 MB phone photo dropped with others was refused). A HEIC or TIFF most
+    // browsers cannot open goes up as it is, so it keeps the limit, as do a
+    // PDF and a sheet.
     const options = {
       accept: (f: File) => isScannable(f) || isTabular(f),
       kindLabel: 'a spreadsheet, CSV, PDF, or image',
+      maxFiles: Number.POSITIVE_INFINITY, // counted once, over the dropped order, below
     }
-    const photos = validateSelection(files.filter(isPhoto), { ...options, maxBytes: Number.POSITIVE_INFINITY })
-    const others = validateSelection(files.filter((f) => !isPhoto(f)), options)
+    const redrawable = (f: File) => isPhoto(f) && REDRAWABLE_PHOTO_RE.test(f.type || f.name)
+    const photos = validateSelection(files.filter(redrawable), { ...options, maxBytes: Number.POSITIVE_INFINITY })
+    const others = validateSelection(files.filter((f) => !redrawable(f)), options)
     const kept = new Set([...photos.accepted, ...others.accepted])
-    const accepted = files.filter((f) => kept.has(f)).slice(0, MAX_UPLOAD_FILES)
+    const keptInOrder = files.filter((f) => kept.has(f))
+    const accepted = keptInOrder.slice(0, MAX_UPLOAD_FILES)
     const errors = [...photos.errors, ...others.errors]
-    if (kept.size > accepted.length)
-      errors.push(`Only ${MAX_UPLOAD_FILES} files at a time — the rest were skipped.`)
+    if (keptInOrder.length > accepted.length)
+      errors.push(
+        `Only ${MAX_UPLOAD_FILES} files at a time — "${keptInOrder[MAX_UPLOAD_FILES].name}" and any after it were skipped.`,
+      )
 
     if (errors.length) setError(errors.join(' '))
     else setError(null)
@@ -186,9 +195,17 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
     scan: boolean
     base64: string | null
     csv: string | null
+    name: string
   }) => {
     if (opts.scan) {
       const photo = await fitPhotoForReading(opts.base64!)
+      // The browser could not redraw it (a HEIC outside Safari): sent whole it
+      // would hit the gateway's body limit as a bare 413, so say so instead.
+      const sent = Math.floor((photo.base64.length * 3) / 4)
+      if (!photo.fitted && photo.mime !== 'application/pdf' && sent > MAX_UPLOAD_BYTES)
+        throw new Error(
+          `"${opts.name}" is ${formatBytes(sent)} and this browser cannot shrink it — the limit is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+        )
       return { result: await importMenu('scan', { imageBase64: photo.base64 }), image: photo.dataUrl }
     }
     const result = opts.base64
@@ -198,7 +215,7 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
   }
 
   const readFile = (file: File) =>
-    new Promise<{ scan: boolean; base64: string | null; csv: string | null }>(
+    new Promise<{ scan: boolean; base64: string | null; csv: string | null; name: string }>(
       (resolve, reject) => {
         const excel = EXCEL_EXTENSION_RE.test(file.name)
         const scan = SCAN_EXTENSION_RE.test(file.name)
@@ -210,11 +227,12 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
               scan,
               base64: arrayBufferToBase64(reader.result as ArrayBuffer),
               csv: null,
+              name: file.name,
             })
           reader.readAsArrayBuffer(file)
         } else {
           reader.onload = () =>
-            resolve({ scan: false, base64: null, csv: reader.result as string })
+            resolve({ scan: false, base64: null, csv: reader.result as string, name: file.name })
           reader.readAsText(file)
         }
       },
@@ -231,13 +249,22 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
       // The file already read into state, then the rest of the queue — each as
       // its own request. One failure is reported but does not abandon the
       // files after it.
-      const first = await importOne({
-        scan: isScanFile,
-        base64: fileBase64,
-        csv: csvContent,
-      })
-      let result = first.result
       const failures: string[] = []
+      let first: Awaited<ReturnType<typeof importOne>> | null = null
+      try {
+        first = await importOne({
+          scan: isScanFile,
+          base64: fileBase64,
+          csv: csvContent,
+          name: fileName || 'The photo',
+        })
+      } catch (err) {
+        // A lone file's failure is the whole answer; with files behind it, the
+        // first one failing must not drop them.
+        if (queue.length === 0) throw err
+        failures.push(`${fileName}: ${readRefusalWords(err, 'import failed')}`)
+      }
+      let result = first?.result
 
       for (let i = 0; i < queue.length; i++) {
         const f = queue[i]
@@ -256,7 +283,7 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
           `${failures.length} of ${total} file(s) failed — ${failures.join('; ')}`,
         )
       }
-      onSuccess(result, { image: first.image })
+      if (result) onSuccess(result, { image: first?.image ?? null })
     } catch (e: any) {
       setError(readRefusalWords(e, 'Import failed. Please try again.'))
     } finally {
