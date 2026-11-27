@@ -21,9 +21,22 @@ export interface DraftRow {
   itemKind: string | null;
   label: string;
   qtyText: string;
+  /**
+   * The number the server holds for this line, kept until the amount is
+   * typed in. `qtyText` prints at most three decimals ("1.125"), which
+   * `readQty` would refuse as "1125 or 1.125"; an amount the person did not
+   * touch is never refused. Typing in the box drops it.
+   */
+  storedQty?: number | null;
   unit: RecipeUnit | '';
   /** What the server last said about this line; dropped once it is edited. */
   saved: { status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null } | null;
+}
+
+/** The line's amount: the stored number while the box is as loaded, else what was typed. */
+export function rowQty(row: DraftRow): number | null {
+  if (row.storedQty != null && row.storedQty > 0 && row.qtyText === qtyText(row.storedQty)) return row.storedQty;
+  return readQty(row.qtyText);
 }
 
 export function rowName(row: DraftRow): string {
@@ -60,7 +73,7 @@ function Note({ note }: { note: { tone: 'warn' | 'ink'; text: string } | null })
 }
 
 function amountWords(row: DraftRow): string {
-  const q = readQty(row.qtyText);
+  const q = rowQty(row);
   if (q === null) return '';
   return `${qtyText(q)} ${row.unit ? UNIT_LABEL[row.unit] : ''}`.trim();
 }
@@ -98,7 +111,7 @@ export default function LineRow({
   const id = useId();
   const [picking, setPicking] = useState(false);
   const stocked = row.role === 'stocked';
-  const qty = readQty(row.qtyText);
+  const qty = rowQty(row);
 
   const pick = (item: ShelfItem) => {
     onChange({
@@ -159,7 +172,7 @@ export default function LineRow({
           value={row.qtyText}
           placeholder="30"
           aria-invalid={qty === null}
-          onChange={(e) => onChange({ qtyText: e.target.value, saved: null })}
+          onChange={(e) => onChange({ qtyText: e.target.value, storedQty: null, saved: null })}
         />
 
         <label htmlFor={`${id}-unit`} className="cl-sr">Unit</label>
