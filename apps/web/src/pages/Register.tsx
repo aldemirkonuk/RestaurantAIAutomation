@@ -879,12 +879,7 @@ export function Register() {
     setJoinEmail('')
     setCreateName('')
     setCreateEmail('')
-    setRestaurantName('')
-    setAddress('')
-    setCity('')
-    setCountry('')
-    setPostalCode('')
-    setPhone('')
+    // The restaurant form is gone from /register (#1930): no house field to clear.
     clearRegisterDraft()
     setDraftNote(false)
     // The first field of the step the note sat on.
