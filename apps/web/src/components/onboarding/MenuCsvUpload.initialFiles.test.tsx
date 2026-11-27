@@ -21,3 +21,22 @@ it('shows no file when nothing was dropped', () => {
   render(<MenuCsvUpload onSuccess={vi.fn()} />)
   expect(screen.queryByText(/menu\.pdf/)).not.toBeInTheDocument()
 })
+
+// r105 review: the panel read initialFiles once, at mount. A drop that lands
+// while it is open, or a second drop, was taken by nobody and gave no error.
+it('takes a drop that lands after the panel is already open', async () => {
+  const pdf = new File([new Uint8Array(10)], 'menu.pdf', { type: 'application/pdf' })
+  const { rerender } = render(<MenuCsvUpload onSuccess={vi.fn()} initialFiles={[]} />)
+  expect(screen.queryByText(/menu\.pdf/)).not.toBeInTheDocument()
+  rerender(<MenuCsvUpload onSuccess={vi.fn()} initialFiles={[pdf]} />)
+  expect(await screen.findByText(/menu\.pdf/)).toBeInTheDocument()
+})
+
+it('takes a second drop, replacing the first', async () => {
+  const first = new File([new Uint8Array(10)], 'first.pdf', { type: 'application/pdf' })
+  const second = new File([new Uint8Array(10)], 'second.pdf', { type: 'application/pdf' })
+  const { rerender } = render(<MenuCsvUpload onSuccess={vi.fn()} initialFiles={[first]} />)
+  expect(await screen.findByText(/first\.pdf/)).toBeInTheDocument()
+  rerender(<MenuCsvUpload onSuccess={vi.fn()} initialFiles={[second]} />)
+  expect(await screen.findByText(/second\.pdf/)).toBeInTheDocument()
+})

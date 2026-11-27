@@ -52,13 +52,15 @@ export function MenuCsvUpload({ onSuccess, initialFiles }: MenuCsvUploadProps) {
   const [queue, setQueue] = useState<File[]>([])
   const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const tookInitial = useRef(false)
+  // Each new array of dropped files is taken once, so a drop that lands while
+  // this panel is already open (or a second drop) is not lost.
+  const tookInitial = useRef<File[] | null>(null)
   useEffect(() => {
-    if (tookInitial.current || !initialFiles?.length) return
-    tookInitial.current = true
+    if (!initialFiles?.length || tookInitial.current === initialFiles) return
+    tookInitial.current = initialFiles
     takeFiles(initialFiles)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialFiles])
 
   const parseCsvPreview = (text: string) => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim())
