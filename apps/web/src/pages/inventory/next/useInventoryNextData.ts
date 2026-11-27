@@ -119,6 +119,8 @@ export interface InvRow {
   /** The unit costs of the last two settled deliveries; null when fewer than two (or unread). Absent on a row not built by toRow. */
   lastSettledCost?: number | null;
   previousSettledCost?: number | null;
+  /** Whether both settled costs hold tax the same way; null = mixed or not stated (r108: then not compared). */
+  settledCostTaxBasis?: 'net' | 'gross_cost' | null;
   /** False when the settled-price read failed: a price move is then unknown, not none. */
   settledCostsReadable?: boolean;
   velocity: number | null;
@@ -302,6 +304,8 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     lastSettledCost: settledCostsReadable ? num(r.lastSettledCost) : null,
     previousSettledCost: settledCostsReadable ? num(r.previousSettledCost) : null,
     settledCostsReadable,
+    settledCostTaxBasis:
+      settledCostsReadable && (r.settledCostTaxBasis === 'net' || r.settledCostTaxBasis === 'gross_cost') ? r.settledCostTaxBasis : null,
     velocity,
     runway,
     daysSinceSale: num(r.daysSinceSale),
@@ -487,13 +491,22 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 export const PRICE_SIGNAL_PCT = 10;
 
 /** What the chip says it holds, in words (the default is stated, not hidden). */
-export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before`;
+export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before. Two costs are compared only when both papers say the same about tax: both before tax, or both with it; a cost whose tax basis is not stated is not compared`;
 
-/** How far the last settled unit cost moved from the one before, in percent; null when there are not two settled costs to compare (a first delivery, an unread or free one). */
+/** The basis a compared move is on, in words. */
+export const TAX_BASIS_WORDS: Record<'net' | 'gross_cost', string> = { net: 'both before tax', gross_cost: 'both with tax' };
+
+/** Two settled costs are there, but they do not state the same tax basis: "basis not stated". */
+export function priceBasisUnstated(row: InvRow): boolean {
+  return row.lastSettledCost != null && row.previousSettledCost != null && (row.settledCostTaxBasis ?? null) === null;
+}
+
+/** How far the last settled unit cost moved from the one before, in percent; null when there are not two settled costs to compare (a first delivery, an unread or free one), or when the two do not state the same tax basis (r108). */
 export function priceMovePct(row: InvRow): number | null {
   const last = row.lastSettledCost ?? null;
   const before = row.previousSettledCost ?? null;
   if (last === null || before === null || !(before > 0)) return null;
+  if ((row.settledCostTaxBasis ?? null) === null) return null;
   return ((last - before) / before) * 100;
 }
 

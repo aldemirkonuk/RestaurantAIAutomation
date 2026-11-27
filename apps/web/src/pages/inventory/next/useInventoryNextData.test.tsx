@@ -69,7 +69,7 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { chipMatch, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
+import { chipMatch, priceBasisUnstated, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -268,7 +268,28 @@ describe('useInventoryNextData: the library fields come on the row', () => {
 
 describe('Price signals: chipMatch reads the last two settled delivery costs (r104 g3)', () => {
   const base = toRow({ id: 'i1', thresholdMin: 2, currentStock: 3 } as never);
-  const two = (last: number | null, prev: number | null): InvRow => ({ ...base, lastSettledCost: last, previousSettledCost: prev });
+  const two = (last: number | null, prev: number | null, basis: 'net' | 'gross_cost' | null = 'net'): InvRow => ({
+    ...base,
+    lastSettledCost: last,
+    previousSettledCost: prev,
+    settledCostTaxBasis: basis,
+  });
+
+  it('r108: a move is compared only on a common stated tax basis; mixed or unstated is "basis not stated"', () => {
+    expect(chipMatch(two(11.8, 10, 'gross_cost'), 'price')).toBe(true);
+    expect(priceMovePct(two(11.8, 10, null))).toBeNull();
+    expect(chipMatch(two(11.8, 10, null), 'price')).toBe(false);
+    expect(priceBasisUnstated(two(11.8, 10, null))).toBe(true);
+    expect(priceBasisUnstated(two(11.8, 10, 'net'))).toBe(false);
+    expect(priceBasisUnstated(two(null, null, null))).toBe(false);
+    expect(priceSignalsHaveBasis([two(11.8, 10, null)])).toBe(false);
+  });
+
+  it('r108: toRow carries the gateway basis, only its two words, and drops it when the read failed', () => {
+    expect(toRow({ id: 'i1', settledCostTaxBasis: 'gross_cost', settledCostsReadable: true } as never).settledCostTaxBasis).toBe('gross_cost');
+    expect(toRow({ id: 'i1', settledCostTaxBasis: 'included', settledCostsReadable: true } as never).settledCostTaxBasis).toBeNull();
+    expect(toRow({ id: 'i1', settledCostTaxBasis: 'net', settledCostsReadable: false } as never).settledCostTaxBasis).toBeNull();
+  });
 
   it('two deliveries 12 percent apart match; 5 percent apart does not; one delivery never does', () => {
     expect(chipMatch(two(11.2, 10), 'price')).toBe(true);
