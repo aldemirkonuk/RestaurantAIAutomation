@@ -155,9 +155,9 @@ describe('MenuReviewScreen -- embedded in the page, on a phone and on a dark gro
     role = 'owner'
     render(<MenuReviewScreen result={RESULT} onConfirm={vi.fn()} onSkip={vi.fn()} embedded />)
     const card = screen.getByTestId('menu-read-review')
-    expect(card.className).toContain('text-gray-900')
+    expect(card.className).toContain('text-inkm-1')
     expect(card.className).toContain('rounded-2xl')
-    expect(screen.getByRole('button', { name: /Keep it, not current/ }).className).toContain('text-gray-900')
+    expect(screen.getByRole('button', { name: /Keep it, not current/ }).className).toContain('text-inkm-1')
   })
   it('a line is two columns on a phone and four from sm up, and its columns may shrink', () => {
     role = 'owner'
