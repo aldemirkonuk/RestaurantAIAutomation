@@ -1145,8 +1145,9 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 }
 .rp-stack__item {
   min-width: 0;
-  /* The slot is the least a card stands at; a card whose content is taller grows to it, so no last line is
-     clipped (r101). The card fills the slot when its content is shorter, as the chart's plot always did. */
+  /* Text cards (reading, goals, writing: TEXT_IDS) take the slot as a floor and grow past it, so no last line is
+     clipped (r101). Chart cards hold the slot as their height and scroll inside .rp-cut__body, so a window pick or
+     a Draw as change never shifts the page. Either way the card fills the slot when its content is shorter. */
   display: flex;
   flex-direction: column;
 }
