@@ -3,7 +3,7 @@
  * it, and whether its sender was checked, in place under the provenance line.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -52,6 +52,16 @@ function mount() {
   );
 }
 
+/** r108 g9: four letters fold the earlier ones; Details lives on a letter, so open the stack first. */
+async function allLetters() {
+  await screen.findAllByTestId('mail-letter');
+  for (const b of [...screen.queryAllByTestId('mail-letter-stack'), ...screen.queryAllByTestId('mail-letter-folded')]) {
+    fireEvent.click(within(b).getByRole('button'));
+  }
+  await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(4));
+  return screen.getAllByTestId('mail-letter');
+}
+
 beforeEach(() => {
   auth.current = { user: { role: 'owner', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'owner' };
   api.get.mockReset();
@@ -87,7 +97,7 @@ beforeEach(() => {
 describe("a received letter's Details", () => {
   it('is a quiet text button on each received letter only, closed until pressed', async () => {
     mount();
-    const rows = await screen.findAllByTestId('mail-letter');
+    const rows = await allLetters();
     const toggles = rows.map((r) => within(r).queryByTestId('letter-details-toggle'));
     expect(toggles.map((t) => t?.getAttribute('aria-expanded') ?? null)).toEqual(['false', 'false', 'false', null]);
     expect(screen.queryByTestId('letter-details')).toBeNull();
@@ -96,7 +106,7 @@ describe("a received letter's Details", () => {
 
   it('opens in place with how it came, the address and the sender check, in the house clock', async () => {
     mount();
-    const [a, b, c] = await screen.findAllByTestId('mail-letter');
+    const [a, b, c] = await allLetters();
     const open = (r: HTMLElement) => {
       const t = within(r).getByTestId('letter-details-toggle');
       fireEvent.click(t);

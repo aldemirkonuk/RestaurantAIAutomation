@@ -372,7 +372,7 @@ export function MailThread({
     const id = focusAfter.current;
     if (!id) return;
     focusAfter.current = null;
-    document.querySelector<HTMLElement>(`[data-letter-name="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+    document.querySelector<HTMLElement>(`[data-letter-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
   }, [opened]);
   // Runs of folded letters; three or more in a row are one stack.
   const rows: Array<{ kind: 'open'; m: MailMessage } | { kind: 'fold'; m: MailMessage } | { kind: 'stack'; ms: MailMessage[] }> = [];
