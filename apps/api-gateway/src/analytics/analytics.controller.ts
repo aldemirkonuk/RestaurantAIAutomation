@@ -97,6 +97,29 @@ function salesGateFor(user?: { role?: string | null }): SalesGate {
   return { withSales: policyFor(user?.role).sees.includes("sales") };
 }
 
+/**
+ * The till window as a reader without `sales` gets it: the route answers, every
+ * figure is `null` and `salesWithheld` says why. `null`, never `0` or `[]`: an
+ * empty series would read as "the house took nothing", and `posConnected:
+ * false` as "no till", which are claims about the house, not about the reader.
+ */
+function withheldPosRevenue(restaurantId: string, days: number) {
+  return {
+    restaurantId,
+    days,
+    salesWithheld: true as const,
+    from: null,
+    to: null,
+    timezone: null,
+    zoneUnset: null,
+    posConnected: null,
+    revenue: null,
+    checkCount: null,
+    dailySeries: null,
+    consumption: null,
+  };
+}
+
 function parseHorizon(raw?: string): number | undefined {
   if (raw === undefined || raw === "") return undefined;
   const n = Number.parseInt(raw, 10);
@@ -1204,11 +1227,18 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @Query("compare") compare?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
       ? Math.min(Math.max(parsed, 1), 365)
       : 30;
+    // The till's takings are a sales figure (ADR 0298 decision 9). Staff keep
+    // the route and are told the figures are withheld; neither the checks nor
+    // the house's clock are read for them (ADR 0348 decision 3), whatever
+    // `days` or `compare` says.
+    if (!salesGateFor(user).withSales)
+      return withheldPosRevenue(restaurantId, span);
     try {
       const window =
         compare === "prior"

@@ -112,6 +112,24 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
     }
   });
 
+  it('[REVERT-FAILS] staff: the till is not asked for either, and its register says it is held back (the gateway withholds it too)', async () => {
+    const TILL = '/analytics/pos-revenue/r1?days=30';
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === TILL) return { data: { posConnected: true, revenue: 71120, checkCount: 9, dailySeries: [] } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+    auth.role = 'staff';
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrapper() });
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(TILL);
+    expect(result.current.registers.till!.data).toBeUndefined();
+    expect(result.current.registers.till!.failure).toMatchObject({
+      forbidden: true,
+      heldBack: { readers: ['owner', 'manager'], known: true },
+    });
+  });
+
   it('staff: reading everything again still does not ask for them', async () => {
     auth.role = 'staff';
     const { result } = mount();

@@ -15,7 +15,7 @@ Laying the till beside the window just before it was ruled web-only with no new 
 1. **One read of 2N days.** With compare on, the web asks `pos-revenue?days=2N` and nothing else. It splits the answer at the house-clock day boundary, by the dates the gateway filed, never by timestamps: the last N days are the window, the N before them the prior.
 2. **Totals come from the days kept.** The window's revenue and check count, and the prior's revenue, are summed from the split series. A day the server could not state, or that rang nothing, stays out of the sum and is a gap in the line, never 0.
 3. **A year offers no compare.** 2N would pass the gateway's 365-day cap, so at 365 days the toggle is replaced by a line saying no compare is offered. The read stays 365 days and nothing is split.
-4. **Staff get nothing extra.** Compare adds no request the staff reader could not already make: a staff read is answered withheld (all figures null, no series; PR #1362 / ADR 0348) whatever `days` says, so there is no window and no prior to split.
+4. **Staff get nothing extra.** Compare adds no request the staff reader could not already make: a staff read is answered withheld by the gateway's sales gate (`salesGateFor` in `getPosRevenue`: all figures null, no series, whatever `days` or `compare` says; ADR 0298 decision 9, ADR 0348), and the till's `readers` mean the page does not ask at all, so there is no window and no prior to split. Pinned by `pos-revenue.spec.ts` on the real controller and `useReportsNextData.test.tsx`. The same gate on `basket` is PR #1362's.
 5. **#2027 is left alone.** The gateway parameter stays in its PR, tested and unused; it is neither closed nor retargeted. Removing it is the founder's call.
 
 ## Rejected
