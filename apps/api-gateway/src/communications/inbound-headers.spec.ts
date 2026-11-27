@@ -9,7 +9,6 @@ import {
   addressesIn,
   decodeEncodedWords,
   displayLabel,
-  ilikeExactly,
   parseAddressList,
   parseSender,
   senderAddress,
@@ -104,11 +103,11 @@ describe("the provider lookup matches the sender exactly (audit follow-up, PR 95
   it("a wildcard sender is parsed as written, then escaped for the lookup", () => {
     // #955: a From that two readings do not agree on names nobody, so `<%@%>` never reaches the lookup.
     expect(senderAddress("<%@%>")).toBeNull();
-    expect(ilikeExactly("%@%")).toBe("\\%@\\%");
-    expect(ilikeExactly("a_b*c\\d@x.com")).toBe("a\\_b\\*c\\\\d@x.com");
-    expect(likeMatches("sales@bigdist.com", ilikeExactly("%@%"))).toBe(false);
+    expect(likeExactly("%@%")).toBe("\\%@\\%");
+    expect(likeExactly("a_b*c\\d@x.com")).toBe("a\\_b\\*c\\\\d@x.com");
+    expect(likeMatches("sales@bigdist.com", likeExactly("%@%"))).toBe(false);
     expect(
-      likeMatches("Sales@BigDist.com", ilikeExactly("sales@bigdist.com")),
+      likeMatches("Sales@BigDist.com", likeExactly("sales@bigdist.com")),
     ).toBe(true);
   });
 });
@@ -227,7 +226,7 @@ describe("RFC 2047 encoded words (N-2)", () => {
 
 /* ---------- the bridge, end to end over a tiny in-memory supabase ---------- */
 // #951's own ILIKE model (PostgREST reads `*` as `%` first), kept beside
-// the mail-store bridge for the `ilikeExactly` assertions above.
+// the mail-store bridge for the `likeExactly` assertions above.
 function likeMatches(value: string, pattern: string): boolean {
   const p = pattern.replace(/\*/g, "%");
   let re = "";

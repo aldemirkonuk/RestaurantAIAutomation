@@ -28,7 +28,7 @@ import {
 import {
   decodeEncodedWords,
   displayLabel,
-  ilikeExactly,
+  likeExactly,
   parseSender,
 } from "../../communications/inbound-headers";
 import { senderUnconfirmed } from "../../communications/sender-authentication";
@@ -870,7 +870,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         .select("id, restaurant_id, name")
         .eq("restaurant_id", restaurantId)
         // Exact, never a pattern: a From of `%@%` must not reach a vendor.
-        .ilike("contact_email", ilikeExactly(senderEmail))
+        .ilike("contact_email", likeExactly(senderEmail))
         .limit(1);
       const provider = providers?.[0];
       if (!provider) {
