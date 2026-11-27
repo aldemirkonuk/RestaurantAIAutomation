@@ -431,16 +431,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     if (restaurantId === null) return;
     for (const other of [prevId, nextId]) {
       if (other === null) continue;
-      void qc.prefetchQuery({
-        queryKey: inventoryItemKeys.figures(restaurantId, other),
-        queryFn: () => getItemFigures(other, restaurantId),
-        staleTime: 30_000,
-      });
-      void qc.prefetchQuery({
-        queryKey: inventoryItemKeys.usedIn(restaurantId, other),
-        queryFn: () => getItemUsedIn(other, restaurantId),
-        staleTime: 60_000,
-      });
+      void qc.prefetchQuery(figuresQuery(restaurantId, other));
+      void qc.prefetchQuery(usedInQuery(restaurantId, other));
     }
   }, [qc, restaurantId, prevId, nextId]);
 
