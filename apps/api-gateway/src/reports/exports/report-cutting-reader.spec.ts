@@ -129,7 +129,7 @@ const BENCH_SOURCES = {
 
 const PAGE: Record<ExportableCutting, PageRead> = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
-  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d), undefined, HOLDER) },
+  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.compare && compareOffered(ctx.days) ? ctx.days * 2 : ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d), undefined, HOLDER) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: {
     sources: BENCH_SOURCES,
@@ -162,7 +162,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       .join("\n");
     for (const [id, p] of Object.entries(PAGE)) {
       if ("path" in p) {
-        expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+        expect([id, web.replace(/=>\s+`/g, "=> `").includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
         continue;
       }
       // A composed cutting: its own path is null, and its `sources` block names
@@ -207,11 +207,12 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const fromPage = (await PAGE[id].call(controller, days)) as Record<string, unknown>;
       const fromExport = await reader.read(RID, id, id === "till" ? days : null);
       if (id === "till") {
-        // The endpoint also attaches a per-wine consumption breakdown that the
-        // till cutting never reads; everything else must match.
-        const { consumption, ...rest } = fromPage;
-        expect(consumption).toBeDefined();
-        expect(fromExport).toEqual(rest);
+        // The page's call does not ask for the per-wine breakdown (r41 gap 8),
+        // so the endpoint and the export answer the same window, on the wire.
+        expect(fromPage.consumption).toBeUndefined();
+        expect(JSON.parse(JSON.stringify(fromExport))).toStrictEqual(
+          JSON.parse(JSON.stringify(fromPage)),
+        );
       } else if (id === "reading") {
         // The page's last step is the person's own snoozes (ADR 0191 round 3);
         // with no one looking it drops nothing and says it read no one's. The

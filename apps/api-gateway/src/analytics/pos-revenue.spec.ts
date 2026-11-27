@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { AnalyticsController } from "./analytics.controller";
+import { AnalyticsController, wantsConsumption } from "./analytics.controller";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
@@ -1127,6 +1127,9 @@ describe("AnalyticsService.getPosConsumptionBreakdown", () => {
   });
 });
 
+// Staff are answered "withheld" before any read (ADR 0348), so these reads are an owner's.
+const OWNER = { role: "owner" };
+
 describe("GET /analytics/pos-revenue/:restaurantId", () => {
   let controller: AnalyticsController;
   const goals = { getPosRevenueWindow: jest.fn() };
@@ -1190,7 +1193,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", undefined, OWNER, "consumption");
 
     expect(body.posConnected).toBe(false);
     expect(body.revenue).toBeNull();
@@ -1214,7 +1217,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       { wineName: "Malbec", bottlesSold: 2 },
     ]);
 
-    const body = await controller.getPosRevenue("r1", undefined);
+    const body = await controller.getPosRevenue("r1", undefined, undefined, OWNER, "consumption");
 
     expect(body.revenue).toBe(4200);
     expect(body.consumption).toHaveLength(1);
@@ -1239,11 +1242,47 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30");
+    const body = await controller.getPosRevenue("r1", "30", undefined, OWNER, "consumption");
 
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
     expect(analytics.getPosConsumptionBreakdown).not.toHaveBeenCalled();
+  });
+
+  it("reads no breakdown unless asked, and the body carries none (r41 gap 8)", async () => {
+    const window = {
+      from: "2026-07-28",
+      to: "2026-08-26",
+      days: 30,
+      timezone: LA,
+      zoneUnset: false,
+      posConnected: true,
+      revenue: 4200,
+      checkCount: 61,
+      dailySeries: [{ date: "2026-08-26", revenue: 4200 }],
+    };
+    goals.getPosRevenueWindow.mockResolvedValue(window);
+    analytics.getPosConsumptionBreakdown.mockResolvedValue([
+      { wineName: "Malbec", bottlesSold: 2 },
+    ]);
+
+    for (const include of [undefined, "", "daily", "consumptions"]) {
+      const body = await controller.getPosRevenue("r1", "365", undefined, OWNER, include);
+      // What goes over the wire: the window, and nothing else.
+      expect(JSON.parse(JSON.stringify(body))).toStrictEqual(window);
+    }
+    expect(goals.getPosRevenueWindow).toHaveBeenCalledTimes(4);
+    expect(analytics.getPosConsumptionBreakdown).not.toHaveBeenCalled();
+  });
+
+  it("`include` asks for the breakdown by name, alone or in a list", () => {
+    expect(wantsConsumption("consumption")).toBe(true);
+    expect(wantsConsumption("Consumption")).toBe(true);
+    expect(wantsConsumption("daily, consumption")).toBe(true);
+    expect(wantsConsumption(undefined)).toBe(false);
+    expect(wantsConsumption("")).toBe(false);
+    expect(wantsConsumption("consumptions")).toBe(false);
+    expect(wantsConsumption("no-consumption")).toBe(false);
   });
 
   it("passes compare=prior through, and ignores any other compare value", async () => {
@@ -1256,9 +1295,9 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       checkCount: null,
       dailySeries: [],
     });
-    await controller.getPosRevenue("r1", "30", "prior");
+    await controller.getPosRevenue("r1", "30", "prior", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "prior");
-    await controller.getPosRevenue("r1", "30", "year");
+    await controller.getPosRevenue("r1", "30", "year", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
   });
 
@@ -1273,15 +1312,15 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    await controller.getPosRevenue("r1", "99999");
+    await controller.getPosRevenue("r1", "99999", undefined, OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365);
 
-    await controller.getPosRevenue("r1", "banana");
+    await controller.getPosRevenue("r1", "banana", undefined, OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
-    await controller.getPosRevenue("r1", "0");
+    await controller.getPosRevenue("r1", "0", undefined, OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
   });
 });
