@@ -16,7 +16,7 @@ import {
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
-import { CorrectionRowLite, overlayCorrections } from "./correction-overlay";
+import { CorrectionRowLite, movesCost, overlayCorrections } from "./correction-overlay";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -108,6 +108,8 @@ export interface FinalisedItem {
   lotsMatched: number;
   lotsFinalised: number;
   bottlesFinalised: number;
+  /** Units still on the shelf in this delivery's lots of the item (`bottles_matched`). */
+  bottlesMatched: number;
   source: "accepted_proposal" | "invoice_line";
   basis?: string;
   /** How an invoice price became this cost (lane 1.4); absent for a proposal. */
@@ -399,6 +401,25 @@ function overlaid(
     at.forEach((i, k) => (out[i] = laid.lines[k] as unknown as LineRow));
   }
   return out;
+}
+
+/** What a correction re-cost did, per delivery the paper is the invoice on (r109). */
+export interface CorrectionRecost {
+  /** False when the corrected field cannot move a cost: nothing was read or posted. */
+  costField: boolean;
+  deliveries: {
+    deliveryId: string;
+    /** Items whose lots now carry the corrected paper's cost (a lot already there writes nothing). */
+    recosted: FinalisedItem[];
+    /** Items the corrected paper cannot cost: their lots keep the cost they had, and why. */
+    kept: { inventoryId: string; reason: string }[];
+    /** Sales rows moved to the corrected cost (`restate_sale_cost`); 0 with no order. */
+    salesRestated: number;
+    /** Units this delivery booked that were drawn before the correction: their draws keep their cost. */
+    drawnBefore: number;
+    /** Why nothing moved on this delivery, when nothing did. */
+    note?: string;
+  }[];
 }
 
 interface AgreedPrice {
@@ -730,6 +751,7 @@ export class DeliveryStockService {
     deliveryId: string,
     userId: string | null,
     only?: ReadonlySet<string>,
+    reason?: string,
   ): Promise<StockResult<CostReceipt>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
@@ -780,7 +802,7 @@ export class DeliveryStockService {
         continue;
       }
 
-      const posted = await this.post(restaurantId, deliveryId, inventoryId, price, userId, `delivery ${deliveryId} verified (ADR 0103 A1)`);
+      const posted = await this.post(restaurantId, deliveryId, inventoryId, price, userId, reason ?? `delivery ${deliveryId} verified (ADR 0103 A1)`);
       if (!posted.ok)
         return {
           ok: false,
@@ -799,6 +821,96 @@ export class DeliveryStockService {
         papers: priced.value.papers,
       },
     };
+  }
+
+  /**
+   * r109 (DD-r108-20): a correction to a paper's money re-costs the lots it
+   * settled and restates the sales already made from them.
+   *
+   * Runs after `DocumentCorrectionService.correct` lands revision `revision`.
+   * Only a field that can move a cost (`movesCost`) reads anything. Only a
+   * delivery the paper is the INVOICE on, and that is VERIFIED, is re-costed:
+   * before VERIFIED its lots are provisional and verify will cost the corrected
+   * paper itself (`agreedPrices` reads the corrections). The derivation is
+   * verify's own (`finaliseAtVerified`): landed cost per bottle, charges shared
+   * the same way, posted through `finalise_delivery_cost`, which writes the
+   * prior cost to `inventory_lot_revaluations` with the reason
+   * `correction revision n of document X`, and writes nothing for a lot already
+   * at that cost (a replay posts nothing new).
+   *
+   * Supersedes ADR 0103 QA 10a (6) for a correction only: a lot whose line was
+   * CORRECTED is revalued; a lot revalued by hand is still only flagged.
+   *
+   * An item the corrected paper cannot cost (a unit that does not map, a price
+   * and total that now disagree) is NOT revalued: its lots keep the cost they
+   * had and `kept` says why. Draws already made keep their cost
+   * (`invoice_lot_wac` rows are not touched); a sale costed at the estimate,
+   * or restated before, follows the paper through `restate_sale_cost`, and only
+   * when the delivery has an order, because that is what a sale names.
+   */
+  async recostAfterCorrection(
+    restaurantId: string,
+    documentId: string,
+    revision: number,
+    userId: string | null,
+    path: string,
+  ): Promise<StockResult<CorrectionRecost>> {
+    if (!movesCost(path)) return { ok: true, value: { costField: false, deliveries: [] } };
+    const paper = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    if (paper.error)
+      return { ok: false, status: 500, error: `the paper ${documentId} could not be read to re-cost it: ${paper.error.message}. The correction stands; nothing was revalued.` };
+    if (!paper.data) return { ok: false, status: 404, error: "Document not found" };
+    const join = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("delivery_id, role")
+      .eq("document_id", documentId)
+      .eq("role", "invoice");
+    if (join.error)
+      return { ok: false, status: 500, error: `the deliveries this paper prices could not be read: ${join.error.message}. The correction stands; nothing was revalued.` };
+    const reason = `correction revision ${revision} of document ${documentId}`;
+    const out: CorrectionRecost = { costField: true, deliveries: [] };
+    const ids = [...new Set(((join.data ?? []) as { delivery_id: string }[]).map((r) => r.delivery_id))];
+    for (const deliveryId of ids) {
+      const delivery = await this.deliveryFor(restaurantId, deliveryId);
+      if (!delivery.ok) return delivery;
+      if (delivery.value.state !== "VERIFIED") {
+        out.deliveries.push({ deliveryId, recosted: [], kept: [], salesRestated: 0, drawnBefore: 0, note: `delivery ${deliveryId} is not verified yet, so its lots are still provisional; verifying it costs the corrected paper` });
+        continue;
+      }
+      const booked = await this.bookedSoFar(deliveryId);
+      if (!booked.ok) return booked;
+      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, undefined, reason);
+      if (!costed.ok) return costed;
+      const kept = costed.value.stillProvisional.map((k) => ({
+        inventoryId: k.inventoryId,
+        reason: `${k.reason.replace(/\s*The lot stays provisional[^]*$/, "")} Its lots keep the cost they had; nothing was revalued.`,
+      }));
+      let salesRestated = 0;
+      let drawnBefore = 0;
+      for (const item of costed.value.finalised) {
+        drawnBefore += Math.max(0, (booked.value.get(item.inventoryId) ?? 0) - item.bottlesMatched);
+        if (!delivery.value.orderId) continue;
+        const restated = await this.db.getClient().rpc("restate_sale_cost", {
+          p_restaurant_id: restaurantId,
+          p_inventory_id: item.inventoryId,
+          p_source_order_id: delivery.value.orderId,
+          p_unit_cost: item.unitCost,
+          p_performed_by: userId,
+        });
+        if (restated.error)
+          return { ok: false, status: 503, error: `the lots of item ${item.inventoryId} carry the corrected cost, but the sales already made from them were not restated: ${restated.error.message}. Correcting again, or verifying the delivery again, is safe.` };
+        salesRestated += Number((restated.data as { rows_restated?: number } | null)?.rows_restated ?? 0);
+      }
+      out.deliveries.push({ deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore });
+    }
+    return { ok: true, value: out };
   }
 
   /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
@@ -972,6 +1084,7 @@ export class DeliveryStockService {
         lotsMatched: Number(receipt.lots_matched ?? 0),
         lotsFinalised: Number(receipt.lots_finalised ?? 0),
         bottlesFinalised: Number(receipt.bottles_finalised ?? 0),
+        bottlesMatched: Number(receipt.bottles_matched ?? 0),
         source: price.source,
         ...(price.basis ? { basis: price.basis } : {}),
         ...(price.landed ? { landed: price.landed } : {}),
