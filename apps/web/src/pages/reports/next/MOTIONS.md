@@ -62,6 +62,10 @@ to those would put a moving cutting somewhere the announcement says it is not.
   the dialog it lands on appears as any full-screen opening does, and the one
   it leaves is gone. No slide, no cross-fade, no count on the marker. It is a
   subject change, and the reader pressed the button that named the subject.
+- **The keyboard's tooltip moves no differently from the pointer's.** Left and Right
+  walk the same `.rp-tip` that hovering moves, so it keeps `rp-tip-in`'s 120 ms
+  opacity and, under reduced motion, none. Escape hides it at once; nothing fades
+  out (the crosshair goes with it). The polite live line under the plot is read, not shown.
 - **Figures of record do not count up.** No `tally` on this page. A figure of
   record is read, not watched — and half the figures in "Figures of record" are
   em dashes, so a ticker would be animating an absence.
