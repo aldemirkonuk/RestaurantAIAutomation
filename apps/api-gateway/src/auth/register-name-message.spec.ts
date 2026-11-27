@@ -32,6 +32,13 @@ describe("RegisterRestaurantDto.name messages", () => {
     }
   });
 
+  it("a missing or non-string name says it once, not twice", async () => {
+    const needed = "Your name is needed, so nothing was recorded.";
+    expect(await nameMessages(undefined)).toEqual([needed]);
+    expect(await nameMessages(42)).toEqual([needed]);
+    expect(await nameMessages(null)).toEqual([needed]);
+  });
+
   it("a 300-character name is too long, and only that", async () => {
     expect(await nameMessages("a".repeat(300))).toEqual([CAP.person.message]);
   });
