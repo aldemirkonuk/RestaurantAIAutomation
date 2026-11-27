@@ -862,6 +862,20 @@ describe("MenusService -- a menu reads in its printed order (r108 menu-g14)", ()
     expect(menu.items.map((l: any) => l.name)).toEqual(["Line a", "Line b", "Typed"]);
   });
 
+  it("a CSV read writes each line's place as it was read, 0..n-1", async () => {
+    const tables: Record<string, Row[]> = { restaurants: [{ id: "rest-1", default_threshold_min: 3 }], restaurant_menus: [], menu_items: [], restaurant_inventory: [] };
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    await service.importMenu(
+      { method: "csv", data: { csvContent: "name,category,bottle_price\nZinfandel,Red,40\nAlbarino,White,30\nMerlot,Red,35\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(tables.menu_items.map((l) => [l.name, l.line_no])).toEqual([
+      ["Zinfandel", 0],
+      ["Albarino", 1],
+      ["Merlot", 2],
+    ]);
+  });
+
   it("a typed line on an empty menu is its first place", async () => {
     const tables = house([]);
     await makeService(tables, { wineSubmissions }).addMenuItem({ menuId: "menu-1", name: "First" } as any, "user-1", "rest-1", true);
