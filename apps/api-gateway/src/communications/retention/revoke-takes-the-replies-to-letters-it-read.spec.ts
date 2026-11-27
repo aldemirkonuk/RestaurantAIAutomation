@@ -171,4 +171,37 @@ describe("revoking gmail_read_all and the replies to the letters it read", () =>
     expect(run.error).toMatch(/replies to the letters this connection read could NOT be read/);
     expect(left(tables)).toContain("guest-reply");
   });
+
+  describe("the house's reply to a VENDOR letter the wide grant also read", () => {
+    const vendorWorld = () => [
+      row("vendor-v", { kind: "vendor", mirrored_by_grant_id: GRANT, message_id: "<v1@mail>" }),
+      row("reply-r", {
+        kind: "vendor",
+        direction: "outbound",
+        status: "SENT",
+        message_text: "the house's own words to the vendor",
+        email_headers: { answers: "vendor-v" },
+      }),
+    ];
+    const standing = [{ id: "vendor-only", restaurant_id: HOUSE, integration_id: "gmail_read", revoked_at: null }];
+
+    it("is left untouched and unstamped while the vendor-only reading is live", async () => {
+      const { db, tables } = world({ rows: vendorWorld(), connections: standing });
+      const run = await revoke(db);
+      const r = tables.procurement_conversations.find((x) => x.id === "reply-r")!;
+      expect(r.mirrored_by_grant_id).toBeNull();
+      expect(r.raw_deleted_at).toBeNull();
+      expect(r.message_text).toBe("the house's own words to the vendor");
+      expect(run.says).toMatch(/\b1 vendor reply was kept/);
+    });
+
+    it("is left untouched when no vendor-only reading is live", async () => {
+      const { db, tables } = world({ rows: vendorWorld() });
+      await revoke(db);
+      const r = tables.procurement_conversations.find((x) => x.id === "reply-r")!;
+      expect(r.raw_deleted_at).toBeNull();
+      expect(r.message_text).toBe("the house's own words to the vendor");
+      expect(r.email_headers).toEqual({ answers: "vendor-v" });
+    });
+  });
 });
