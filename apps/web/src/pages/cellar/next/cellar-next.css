@@ -1212,3 +1212,27 @@ textarea.cl-field {
 /* The loose-lines line holds the height of its own button (30 px) from first paint, so the read landing does not
    drop the page 11 px above 640 px; at 640 px and under .cl-offer-room already holds two lines. No motion. */
 @media (min-width: 641px) { .cl-loose-room { min-height: max(1lh, 30px); } }
+
+/* The cocktail register's controls are a thumb's size on a phone or a touch screen (r108 walk N3, r109 drinks-4: Copy,
+   Amend, Add a cocktail, Swap a good, Link them, Print the spec book were 30 px at 375, Export 36 px, and the two
+   filter boxes' labels 16 px). The same 44 px as the recipe sheet's `cl-rcp-tick` above. Where a control sits in a
+   room held from first paint the room is raised with it, so the line landing moves nothing: the strip is the button row
+   (44 px, and at a phone the note's two lines, the gap and the row = 92 px), the loose-lines room is one line and the
+   button's row. A label is 44 px tall with a margin that gives back what it takes, so the line holding it keeps its
+   height. No transition, and none under reduced motion (ADR 0112). */
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-cocktails .cl-btn,
+  .cl-cocktails .cl-strip button { min-height: 44px; }
+  .cl-cocktails .cl-norecipe-room label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-block: calc((1lh - 44px) / 2);
+  }
+  .cl-strip { min-height: 44px; }
+  .cl-loose-room { min-height: 44px; }
+}
+@media (max-width: 640px) {
+  .cl-strip { min-height: 92px; }
+  .cl-loose-room { min-height: calc(1lh + 44px); }
+}

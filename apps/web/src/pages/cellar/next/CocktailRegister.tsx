@@ -416,7 +416,7 @@ export default function CocktailRegister({
   };
 
   return (
-    <div data-testid="cocktail-register" data-settling={settling ? 'true' : undefined}>
+    <div className="cl-cocktails" data-testid="cocktail-register" data-settling={settling ? 'true' : undefined}>
       <div className="cl-row-controls">
         <label htmlFor="cl-ck-search" className="cl-sr">Search this house’s cocktails</label>
         <input
