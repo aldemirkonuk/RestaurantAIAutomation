@@ -2623,10 +2623,10 @@ export class MenusService {
     restaurantId: string,
     menuId: string,
     userId: string,
-  ): Promise<{ menuId: string; name: string; lines: number; copiedAt: string }> {
+  ): Promise<{ menuId: string; name: string; lines: number; copiedAt: string; timezone: string | null }> {
     const { timezone } = await this.houseZone(restaurantId);
     const day = houseDayWords(new Date(), timezone);
-    return copyIntoDraft(
+    const made = await copyIntoDraft(
       this.dbService.supabase,
       {
         restaurantId,
@@ -2638,6 +2638,8 @@ export class MenusService {
       (line) => line,
       this.logger,
     );
+    // The house's zone rides along so the page says the copy moment on the house's clock.
+    return { ...made, timezone };
   }
 
   async removeFailedRead(restaurantId: string, menuId: string, userId: string): Promise<{ menuId: string; removed: true }> {
