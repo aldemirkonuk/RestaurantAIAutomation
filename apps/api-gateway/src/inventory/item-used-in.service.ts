@@ -50,6 +50,8 @@ export interface DrinkRecipeLine {
 
 const PAGE = 1000;
 const CHUNK = 100;
+/** House cocktail ids per ingredient read (a URL of uuids stays short). */
+const INGREDIENT_CHUNK = 200;
 const LINE_COLS =
   "id, menu_id, name, by_glass_price, bottle_price, inventory_item_id, wine_library_id";
 
@@ -264,35 +266,57 @@ export class ItemUsedInService {
         source: "A cocktail recipe names a catalogue drink, and this item is not one.",
       };
     }
-    const ing = await client
-      .from("cocktail_ingredients")
-      .select("cocktail_id, quantity, unit")
-      .or(keys.join(","));
-    if (ing.error) return failed("The cocktail recipes", ing.error.message);
-    const rows = (ing.data ?? []) as Array<Record<string, any>>;
-    if (rows.length === 0) return { readable: true, lines: [], source };
-    const cocktails = await client
-      .from("cocktails")
-      .select("id, name, display_name")
-      .in("id", [...new Set(rows.map((r) => r.cocktail_id))])
-      // NULL restaurant_id is the catalogue, not this house's.
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null);
-    if (cocktails.error) return failed("The cocktail recipes", cocktails.error.message);
-    const byId = new Map(
-      ((cocktails.data ?? []) as Array<Record<string, any>>).map((c) => [c.id, c]),
-    );
-    const lines = rows
-      .filter((r) => byId.has(r.cocktail_id))
-      .map((r) => {
-        const c = byId.get(r.cocktail_id)!;
-        return {
-          cocktailId: c.id,
-          name: c.display_name || c.name,
-          quantity: r.quantity == null ? null : Number(r.quantity),
-          unit: r.unit ?? null,
-        };
-      });
+    // The house's live cocktails first (a house's own few hundred), then only
+    // THEIR ingredient rows. Reading cocktail_ingredients by the drink alone
+    // scanned every house's and the whole catalogue's rows for it, unordered,
+    // and PostgREST stops at 1,000 rows: a house cocktail past the first 1,000
+    // was missing here while the list's count had it.
+    const byId = new Map<string, Record<string, any>>();
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("cocktails")
+        .select("id, name, display_name")
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const c of rows) byId.set(String(c.id), c);
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    const houseIds = [...byId.keys()];
+    const lines: CocktailLine[] = [];
+    for (let i = 0; i < houseIds.length; i += INGREDIENT_CHUNK) {
+      const chunk = houseIds.slice(i, i + INGREDIENT_CHUNK);
+      let from: string | null = null;
+      for (;;) {
+        let q = client
+          .from("cocktail_ingredients")
+          .select("id, cocktail_id, quantity, unit")
+          .in("cocktail_id", chunk)
+          .or(keys.join(","));
+        if (from) q = q.gt("id", from);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+        if (error) return failed("The cocktail recipes", error.message);
+        const rows = (data ?? []) as Array<Record<string, any>>;
+        for (const r of rows) {
+          const c = byId.get(String(r.cocktail_id));
+          if (!c) continue;
+          lines.push({
+            cocktailId: c.id,
+            name: c.display_name || c.name,
+            quantity: r.quantity == null ? null : Number(r.quantity),
+            unit: r.unit ?? null,
+          });
+        }
+        if (rows.length < PAGE) break;
+        from = String(rows[rows.length - 1].id);
+      }
+    }
     return { readable: true, lines, source };
   }
 
