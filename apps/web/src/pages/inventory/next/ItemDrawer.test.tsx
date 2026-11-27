@@ -481,7 +481,9 @@ describe('the item drawer', () => {
       window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
       open(row());
       fireEvent.click(screen.getByTestId('ivd-card-onhand'));
-      await waitFor(() => expect(spy).toHaveBeenCalled());
+      // At once: the scroll fires on the next tick, not after the 220 ms open (waitFor would wait a second).
+      await new Promise((r) => setTimeout(r, 100));
+      expect(spy).toHaveBeenCalled();
     } finally {
       Element.prototype.scrollIntoView = was;
       window.matchMedia = wasMq;
