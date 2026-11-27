@@ -768,6 +768,55 @@ export class RawMailRetentionService {
       return { deleted: 0, attachmentsDeleted: 0, error: null };
     }
 
+    // THE WIDER GRANT'S ROWS GO WHOLE. A vendor row keeps its place as a
+    // tombstone because the order it answered keeps the facts. A team or guest
+    // row (`gmail_read_all`) has no order and no vendor, so there is nothing of
+    // it that is the house's own record: it is deleted, row and all, with its
+    // attachment rows (ON DELETE CASCADE).
+    const { data: kindRows, error: kindError } = await this.db.supabase
+      .from("procurement_conversations")
+      .select("id, kind")
+      .in("id", conversationIds);
+    if (kindError) {
+      return {
+        deleted: 0,
+        attachmentsDeleted: 0,
+        error: `The raw mail was NOT deleted: which rows were a vendor's and which a team member's or guest's could not be read (${kindError.message}).`,
+      };
+    }
+    const strangerIds = (kindRows ?? [])
+      .filter((r) => r.kind === "team" || r.kind === "guest")
+      .map((r) => String(r.id));
+    let strangersDeleted = 0;
+    let strangerAttachments = 0;
+    if (strangerIds.length) {
+      const stamp = new Date().toISOString();
+      const bytes = await this.deleteAttachmentBytes(strangerIds, stamp);
+      strangerAttachments = bytes.deleted;
+      const { data: gone, error: goneError } = await this.db.supabase
+        .from("procurement_conversations")
+        .delete()
+        .in("id", strangerIds)
+        .select("id");
+      if (goneError) {
+        return {
+          deleted: 0,
+          attachmentsDeleted: strangerAttachments,
+          error: `The team and guest messages were NOT deleted: ${goneError.message}`,
+        };
+      }
+      strangersDeleted = (gone ?? []).length;
+    }
+    const vendorIds = conversationIds.filter((id) => !strangerIds.includes(id));
+    if (!vendorIds.length) {
+      return {
+        deleted: strangersDeleted,
+        attachmentsDeleted: strangerAttachments,
+        error: null,
+      };
+    }
+    conversationIds = vendorIds;
+
     const at = new Date().toISOString();
     const tombstone =
       reason === "grant_revoked"
@@ -790,15 +839,15 @@ export class RawMailRetentionService {
 
     if (error) {
       return {
-        deleted: 0,
-        attachmentsDeleted: attachments.deleted,
+        deleted: strangersDeleted,
+        attachmentsDeleted: attachments.deleted + strangerAttachments,
         error: `The raw mail was NOT deleted: ${error.message}`,
       };
     }
 
     return {
-      deleted: (updated ?? []).length,
-      attachmentsDeleted: attachments.deleted,
+      deleted: (updated ?? []).length + strangersDeleted,
+      attachmentsDeleted: attachments.deleted + strangerAttachments,
       error: attachments.error,
     };
   }
@@ -980,7 +1029,7 @@ export class RawMailRetentionService {
       revocation: RETENTION_DISCLOSURE_COPY.revocation,
       windowIntro: RETENTION_DISCLOSURE_COPY.windowIntro,
       archive: await this.archiveDisclosure(restaurantId, live.jurisdiction),
-      appliesTo: ["gmail_read"],
+      appliesTo: ["gmail_read", "gmail_read_all"],
     };
   }
 
@@ -1036,7 +1085,7 @@ export class RawMailRetentionService {
     const { data: grants, error: grantError } = await this.db.supabase
       .from("integration_oauth_connections")
       .select("restaurant_id")
-      .eq("integration_id", "gmail_read")
+      .in("integration_id", ["gmail_read", "gmail_read_all"])
       .is("revoked_at", null);
     if (grantError) {
       throw new ServiceUnavailableException(

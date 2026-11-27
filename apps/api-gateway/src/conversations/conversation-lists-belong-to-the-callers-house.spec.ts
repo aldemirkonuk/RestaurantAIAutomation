@@ -394,6 +394,43 @@ describe("a credit claim's letter is withheld from staff on every list route (AD
     expect(idsOf(res.body)).toContain("conv-a2-credit-draft");
   });
 
+  describe("team and guest mail (gmail_read_all) is owner/manager territory", () => {
+    function addGuestMail() {
+      tables.procurement_conversations.push({
+        id: "conv-a3-guest",
+        restaurant_id: HOUSE_A,
+        order_id: null,
+        provider_id: null,
+        channel: "email",
+        direction: "inbound",
+        kind: "guest",
+        from_address: "guest@diner.example",
+        message_text: "A table for six on Saturday",
+        created_at: "2026-09-20T14:00:00Z",
+      });
+    }
+
+    it("withholds a guest's message from staff on the list", async () => {
+      addGuestMail();
+      const staff = await get("/", { role: "staff" });
+      expect(idsOf(staff.body)).not.toContain("conv-a3-guest");
+      expect(staff.text).not.toContain("table for six");
+      expect(idsOf(staff.body)).toContain("conv-a1");
+    });
+
+    it.each(["owner", "manager"])("shows it to %s", async (role) => {
+      addGuestMail();
+      const res = await get("/", { role });
+      expect(idsOf(res.body)).toContain("conv-a3-guest");
+    });
+
+    it("never shows house A's guest mail to house B", async () => {
+      addGuestMail();
+      const res = await get("/", { house: HOUSE_B, role: "owner" } as never);
+      expect(idsOf(res.body)).not.toContain("conv-a3-guest");
+    });
+  });
+
   it("does not withhold an ordinary message from staff", async () => {
     // conv-a1 carries no `status` at all — the withholding must be specific
     // to the two credit-letter statuses, not a blanket new gate.
