@@ -107,4 +107,41 @@ describe("/house: the till's last 90 days", () => {
     await page()
     expect(screen.getByLabelText("Your till's item sales export").closest('label')).toHaveClass('min-h-11')
   })
+
+  it("after one month is read the drop stays, so month two can be sent", async () => {
+    h.importTillHistory
+      .mockResolvedValueOnce(answer({ daysRead: 2 }))
+      .mockResolvedValueOnce(answer({ daysRead: 3 }))
+    await page()
+    drop(exportFile('Date,Item,Qty\n2026-10-20,Meze,3\n'))
+    expect(await screen.findByText('2 days read; stock was not moved.')).toBeInTheDocument()
+    expect(screen.getByText('Send another export (one month at a time).')).toBeInTheDocument()
+    drop(exportFile('Date,Item,Qty\n2026-11-20,Meze,3\n'))
+    expect(await screen.findByText('3 days read; stock was not moved.')).toBeInTheDocument()
+    expect(h.importTillHistory).toHaveBeenCalledTimes(2)
+  })
+
+  it('the picker is emptied after a pick, so the same file can be chosen again', async () => {
+    await page()
+    const input = screen.getByLabelText("Your till's item sales export") as HTMLInputElement
+    const reset = vi.fn()
+    Object.defineProperty(input, 'value', { configurable: true, get: () => 'C:\\fakepath\\item-sales.csv', set: reset })
+    const big = exportFile()
+    Object.defineProperty(big, 'size', { value: 5 * 1024 * 1024 + 1 })
+    // A file refused on size is never sent, so the control stays mounted with the file still in it.
+    fireEvent.change(input, { target: { files: [big] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('over 5 MB')
+    expect(reset).toHaveBeenCalledWith('')
+  })
+
+  it("names the rows whose money was in another currency, and that the quantity was kept", async () => {
+    h.importTillHistory.mockResolvedValue(
+      answer({ netForeignCount: 2, netForeign: ['2026-11-20 House Red: the net sales is written in $, not the house\'s EUR, so the money was left out and the quantity kept'] }),
+    )
+    await page()
+    drop(exportFile())
+    const note = await screen.findByTestId('house-till-foreign')
+    expect(note).toHaveTextContent('left out of 2 rows')
+    expect(note).toHaveTextContent('House Red')
+  })
 })

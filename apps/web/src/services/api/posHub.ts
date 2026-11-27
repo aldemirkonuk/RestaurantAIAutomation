@@ -284,6 +284,9 @@ export interface TillHistoryAnswer {
   refused: string[];
   refusedCount: number;
   netDropped: boolean;
+  /** Rows whose net was written in another currency than the house's (left out, quantity kept). Absent on an older gateway. */
+  netForeign?: string[];
+  netForeignCount?: number;
   stockMoved: false;
   fileRefused: string | null;
   errors: string[];

@@ -10,7 +10,6 @@ export const TILL_REFUSED_SHOWN = 5
 type TillState =
   | { kind: 'ask' }
   | { kind: 'reading' }
-  | { kind: 'read'; answer: TillHistoryAnswer }
   | { kind: 'refused'; words: string }
 
 function fileText(file: File): Promise<string> {
@@ -32,6 +31,9 @@ const daysSaid = (n: number) => `${n} ${n === 1 ? 'day' : 'days'} read; stock wa
  */
 export function TillHistory({ houseId }: { houseId: string | null | undefined }) {
   const [state, setState] = useState<TillState>({ kind: 'ask' })
+  // The last export's answer stays on the page under the drop: a month at a
+  // time is the page's own advice, so a second export must have somewhere to go.
+  const [answer, setAnswer] = useState<TillHistoryAnswer | null>(null)
   const sending = useRef(false)
 
   const send = async (file: File | undefined) => {
@@ -43,8 +45,13 @@ export function TillHistory({ houseId }: { houseId: string | null | undefined })
     sending.current = true
     setState({ kind: 'reading' })
     try {
-      const answer = await importTillHistory(houseId, await fileText(file))
-      setState(answer.fileRefused ? { kind: 'refused', words: answer.fileRefused } : { kind: 'read', answer })
+      const read = await importTillHistory(houseId, await fileText(file))
+      if (read.fileRefused) {
+        setState({ kind: 'refused', words: read.fileRefused })
+      } else {
+        setAnswer(read)
+        setState({ kind: 'ask' })
+      }
     } catch (cause) {
       const status = getErrorStatus(cause)
       setState({
@@ -64,34 +71,50 @@ export function TillHistory({ houseId }: { houseId: string | null | undefined })
     <div className="py-6 font-serif text-2xl" data-testid="house-till-history">
       <span className="block text-xs uppercase tracking-[0.12em] text-[#1a5e6b]">Optional · for your counts</span>
       <span className="mt-2 block">Your till&apos;s last 90 days</span>
-      {state.kind === 'read' ? (
+      {answer && state.kind !== 'reading' && (
         <div className="mt-2 font-sans text-base" role="status">
-          <p>{daysSaid(state.answer.daysRead)}</p>
-          {state.answer.netDropped && (
+          <p>{daysSaid(answer.daysRead)}</p>
+          {answer.netDropped && (
             <p className="mt-1 text-sm text-[#6d685f]">The money was left out: the house&apos;s money is not set yet.</p>
           )}
-          {state.answer.refusedCount > 0 && (
-            <div className="mt-2 text-sm text-[#6d685f]" data-testid="house-till-refused">
+          {(answer.netForeignCount ?? 0) > 0 && (
+            <div className="mt-2 text-sm text-[#6d685f]" data-testid="house-till-foreign">
               <p>
-                {state.answer.refusedCount} {state.answer.refusedCount === 1 ? 'row was' : 'rows were'} not read:
+                The money was left out of {answer.netForeignCount} {answer.netForeignCount === 1 ? 'row' : 'rows'}, written in another currency than the house&apos;s:
               </p>
               <ul className="mt-1 list-disc pl-5">
-                {state.answer.refused.slice(0, TILL_REFUSED_SHOWN).map((line) => (
+                {(answer.netForeign ?? []).slice(0, TILL_REFUSED_SHOWN).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-              {state.answer.refusedCount > TILL_REFUSED_SHOWN && (
-                <p className="mt-1">and {state.answer.refusedCount - TILL_REFUSED_SHOWN} more.</p>
+              {(answer.netForeignCount ?? 0) > TILL_REFUSED_SHOWN && (
+                <p className="mt-1">and {(answer.netForeignCount ?? 0) - TILL_REFUSED_SHOWN} more.</p>
               )}
             </div>
           )}
-          {state.answer.errors.map((line) => (
+          {answer.refusedCount > 0 && (
+            <div className="mt-2 text-sm text-[#6d685f]" data-testid="house-till-refused">
+              <p>
+                {answer.refusedCount} {answer.refusedCount === 1 ? 'row was' : 'rows were'} not read:
+              </p>
+              <ul className="mt-1 list-disc pl-5">
+                {answer.refused.slice(0, TILL_REFUSED_SHOWN).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              {answer.refusedCount > TILL_REFUSED_SHOWN && (
+                <p className="mt-1">and {answer.refusedCount - TILL_REFUSED_SHOWN} more.</p>
+              )}
+            </div>
+          )}
+          {answer.errors.map((line) => (
             <p key={line} role="alert" className="mt-2 text-sm text-red-700">
               {line}
             </p>
           ))}
         </div>
-      ) : state.kind === 'reading' ? (
+      )}
+      {state.kind === 'reading' ? (
         <p className="mt-2 text-[#6d685f]" role="status">Reading your till&apos;s sales…</p>
       ) : (
         <div
@@ -103,18 +126,30 @@ export function TillHistory({ houseId }: { houseId: string | null | undefined })
           }}
         >
           <label className="flex min-h-11 cursor-pointer items-center text-xl">
-            Drop the till&apos;s item sales export here (Square, Toast or Lightspeed, as CSV).
+            {answer
+              ? 'Send another export (one month at a time).'
+              : "Drop the till's item sales export here (Square, Toast or Lightspeed, as CSV)."}
             <input
               type="file"
               accept=".csv,text/csv"
               aria-label="Your till's item sales export"
               className="sr-only"
-              onChange={(event) => void send(event.target.files?.[0])}
+              onChange={(event) => {
+                const input = event.target
+                const file = input.files?.[0]
+                // Emptied after every pick, so choosing the same file again fires
+                // change even while this input stays mounted (a file refused on
+                // size never swaps the control out).
+                void send(file)
+                input.value = ''
+              }}
             />
           </label>
-          <p className="mt-2 font-sans text-sm text-[#6d685f]">
-            Sales are kept by day and item. Stock is not moved: the shelf has not been counted yet.
-          </p>
+          {!answer && (
+            <p className="mt-2 font-sans text-sm text-[#6d685f]">
+              Sales are kept by day and item. Stock is not moved: the shelf has not been counted yet.
+            </p>
+          )}
           {state.kind === 'refused' && (
             <p role="alert" className="mt-2 font-sans text-sm text-red-700">
               {state.words}
