@@ -311,6 +311,32 @@ export function useIntakeReadAgain() {
   });
 }
 
+/** What a 'Check now' answered (POST communications/letters/reader/check). */
+export interface CheckNowResult {
+  outcome: 'read' | 'busy' | 'no_grant' | 'error';
+  mirrored: number;
+  says: string;
+}
+
+/**
+ * 'Check now' (DD-r106-9 / DD-r108-47): one read of the house's mailbox,
+ * sooner than the 5-minute run. The server holds the once-a-minute floor and
+ * refuses staff. A read can file letters, so the reader's line, the summary
+ * and the people list are read again.
+ */
+export function useCheckNow() {
+  const house = useHouse();
+  const qc = useQueryClient();
+  return useMutation<CheckNowResult>({
+    mutationFn: async () => (await apiClient.post<CheckNowResult>('/communications/letters/reader/check')).data,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['house-letter-sender', house] });
+      void qc.invalidateQueries({ queryKey: mailKeys.summary(house) });
+      void qc.invalidateQueries({ queryKey: ['mail-people', house] });
+    },
+  });
+}
+
 /**
  * POST / DELETE /mail/letters/:id/no-reply-needed (r28 mail gap 4). On
  * success every read that says who is waiting is read again: the thread, the

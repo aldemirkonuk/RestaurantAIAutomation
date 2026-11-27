@@ -23,7 +23,7 @@ import { Sheet } from '@/components/mudavym';
 import type { Detent } from '@/components/mudavym/Sheet';
 import { EM, MONO, SANS } from './cm-format';
 import { readFailure, writeFailureSentence } from './senders-format';
-import { useIntakeReadAgain } from './useMailData';
+import { useCheckNow, useIntakeReadAgain } from './useMailData';
 import {
   houseMailboxStatus,
   heldAtDoorWords,
@@ -116,6 +116,7 @@ export function IntakeHealthSheet({
   conversationWords,
   intake,
   now,
+  canCheck = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -130,12 +131,28 @@ export function IntakeHealthSheet({
   /** The intake record; `absent` while it is read or when the route is not served. */
   intake: IntakeRead;
   now: number;
+  /** Owner or manager: may ask for a read now. The server refuses anyone else. */
+  canCheck?: boolean;
 }) {
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const house = houseMailboxStatus(reader, { readFailed: readerFailed, now });
   const unrecorded = unrecordedDoorStatus();
   const shared = sharedMailboxDoor(intake, now);
   const readAgain = useIntakeReadAgain();
+  const checkNow = useCheckNow();
+  const [checked, setChecked] = useState<string | null>(null);
+  const runCheckNow = async () => {
+    setChecked(null);
+    try {
+      const r = await checkNow.mutateAsync();
+      setChecked(r.says);
+    } catch (err) {
+      const f = readFailure(err);
+      // Inside the minute the server says when to try again; that is the answer.
+      setChecked(f.status === 429 ? f.message : writeFailureSentence('Checking now', f));
+    }
+  };
+  const reading = reader?.granted === true && reader.enabled;
   const [offered, setOffered] = useState<string | null>(null);
   const waiting = intake.kind === 'known' ? (intake.data.intake?.waiting ?? 0) : 0;
   const runReadAgain = async () => {
@@ -185,6 +202,39 @@ export function IntakeHealthSheet({
             lastRead={lastRead}
             lastStored={lastStoredWords(summary?.doors.houseMailbox.lastStoredAt, known, now)}
           />
+          {reading && (
+            <div className="flex flex-wrap items-center gap-2">
+              {/* HOUSE_INBOX_INTERVAL_MINUTES on the gateway (house-inbox.service.ts). */}
+              <span data-testid="read-cadence" style={{ ...CELL }}>
+                Read every 5 minutes.
+              </span>
+              {canCheck && (
+                <button
+                  type="button"
+                  data-testid="check-now"
+                  disabled={checkNow.isPending}
+                  onClick={() => void runCheckNow()}
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    borderRadius: 6,
+                    border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    cursor: checkNow.isPending ? 'default' : 'pointer',
+                  }}
+                >
+                  {checkNow.isPending ? 'Checking…' : 'Check now'}
+                </button>
+              )}
+              {checked && (
+                <span role="status" data-testid="check-now-result" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+                  {checked}
+                </span>
+              )}
+            </div>
+          )}
           <Door
             testId="door-mudavym"
             name="Mudavym's mailbox and your Mudavym address"
