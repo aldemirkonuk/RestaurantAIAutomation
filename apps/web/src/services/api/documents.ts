@@ -21,6 +21,10 @@ import { sealed, rethrowSpoken } from './seal'
 
 export interface ProcurementDocument {
   id: string
+  /** The rate the paper was filed at (newest conversion on its audit trail); null when never converted. */
+  filedAt?: { from: string; to: string; rate: number; rateDate: string; sentence: string } | null
+  /** Says so when that rate could not be read; a failed read is not "never converted". */
+  filedAtReason?: string | null
   doc_type:
     | 'invoice'
     | 'packing_slip'

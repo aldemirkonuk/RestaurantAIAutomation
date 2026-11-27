@@ -13,6 +13,8 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
     select: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     order: mockOrder,
+    not: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
     maybeSingle: mockMaybeSingle,
     storage: {
       from: jest.fn().mockReturnValue({ createSignedUrl: mockCreateSignedUrl }),
@@ -107,6 +109,33 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
 
     expect(mockCreateSignedUrl).not.toHaveBeenCalled();
     expect((result.document as any).imageUrl).toBeNull();
+  });
+
+  it("a reload still says what rate the paper was filed at", async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-4", storage_path: null }, error: null });
+    mockOrder
+      .mockResolvedValueOnce({ data: [] }) // the lines
+      .mockResolvedValueOnce({
+        data: [{ paper_currency: "EUR", new_currency: "USD", exchange_rate: "1.08400000", rate_date: "2026-11-20" }],
+        error: null,
+      });
+    const result = await controller.detail("doc-4", user);
+    expect((result.document as any).filedAt).toMatchObject({
+      from: "EUR",
+      to: "USD",
+      rate: 1.084,
+      sentence: "filed at 1 EUR = 1.0840 USD on 20 Nov",
+    });
+  });
+
+  it("a paper never converted has no filedAt, and a failed read says it failed", async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-5", storage_path: null }, error: null });
+    mockOrder
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: null, error: { message: "boom" } });
+    const result: any = await controller.detail("doc-5", user);
+    expect(result.document.filedAt).toBeNull();
+    expect(result.document.filedAtReason).toContain("could not be read");
   });
 
   it("returns imageUrl null (never throws) when signing fails", async () => {
@@ -213,6 +242,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       /** The latest row of procurement_document_currency_changes, if any. */
       lastChange?: any;
       lastChangeError?: any;
+      /** The house's own currency; "USD" unless said. */
+      house?: string | null;
+      houseError?: any;
     } = {},
   ) {
     const refileCalls: Array<[string, string, string]> = [];
@@ -231,6 +263,11 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
           maybeSingle: async () =>
             table === "procurement_document_currency_changes"
               ? { data: opts.lastChange ?? null, error: opts.lastChangeError ?? null }
+              : table === "restaurants"
+              ? {
+                  data: { currency: opts.house === undefined ? "USD" : opts.house },
+                  error: opts.houseError ?? null,
+                }
               : {
                   data: opts.doc === undefined ? DOC : opts.doc,
                   error: opts.docError ?? null,
@@ -536,6 +573,47 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     const row = inserts.find((i) => i.table === "procurement_document_currency_changes")!.row;
     expect([row.paper_currency, row.exchange_rate, row.rate_date]).toEqual([null, null, null]);
     expect(fxSeen.map((f) => f.fx)).toEqual([null, null]);
+  });
+
+  it("says when the label was corrected, and the rate-less 400 says a currency was missing, not 'no currency was sent'", async () => {
+    const { controller } = harness({ doc: { ...DOC, currency: "TRY" } });
+    const out: any = await controller.restateCurrency(
+      "doc-9",
+      { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
+      user,
+    );
+    expect(out.sentence).toContain("The paper had been filed as TRY; its own figures are in EUR");
+    const agree = harness({ doc: { ...DOC, currency: "EUR" } });
+    const same: any = await agree.controller.restateCurrency(
+      "doc-9",
+      { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
+      user,
+    );
+    expect(same.sentence).not.toContain("had been filed as");
+    await expect(
+      harness().controller.restateCurrency("doc-9", { currency: "USD", rate: 1.084, rateDate: "2026-11-20" } as any, user),
+    ).rejects.toThrow(/which currency the paper's own figures are in \(fromCurrency\)/);
+  });
+
+  it("refuses a conversion into a currency that is not the house's, in words, and writes nothing", async () => {
+    const { controller, inserts, updates } = harness({ house: "TRY" });
+    const call = controller.restateCurrency(
+      "doc-9",
+      { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
+      user,
+    );
+    await expect(call).rejects.toMatchObject({ status: 400 });
+    await expect(call).rejects.toThrow(/house's own money, TRY, and USD is not that/);
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("a failed house-currency read refuses the conversion and says it failed", async () => {
+    const { controller, inserts } = harness({ houseError: { message: "boom" } });
+    await expect(
+      controller.restateCurrency("doc-9", { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" }, user),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(inserts).toHaveLength(0);
   });
 
   it.each([
