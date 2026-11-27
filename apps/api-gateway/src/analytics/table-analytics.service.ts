@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
+import { sharedLensRead } from "./lens-shared-reads";
 import * as E from "./engine";
 
 /** A table's id as Postgres stores it; anything else cannot be one of the house's. */
@@ -220,7 +221,10 @@ export class TableAnalyticsService {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     const client = this.dbService.getClient();
     try {
-      return await readWholeWindow<any>("The POS checks in this window", () =>
+      // One shared read per (house, window): table performance and the waiter
+      // lenses select the same checks, items JSON included. See lens-shared-reads.ts.
+      return await sharedLensRead(client, `pos_checks|${restaurantId}|${sinceDays}`, () =>
+        readWholeWindow<any>("The POS checks in this window", () =>
         client
           .from("pos_checks")
           .select(
@@ -233,6 +237,7 @@ export class TableAnalyticsService {
           // waiter figure inherited it.
           .eq("voided", false)
           .gte("opened_at", since),
+        ),
       );
     } catch (err: any) {
       if (!(err instanceof WholeReadError)) throw err;
