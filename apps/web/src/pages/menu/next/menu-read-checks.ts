@@ -13,6 +13,9 @@ export interface CheckLine {
   id: string;
   name: string;
   section: string | null | undefined;
+  /** With the vintage, part of what makes two lines the same: a vertical or two houses' Reserva is not a repeat. */
+  producer?: string | null;
+  vintage?: string | null;
   glass: number | null;
   bottle: number | null;
 }
@@ -93,8 +96,9 @@ export function menuReadChecks(lines: CheckLine[], currency: string | null = nul
     const seen = new Map<string, CheckLine>();
     const said = new Set<string>();
     for (const l of group) {
-      const n = normaliseName(l.name);
-      if (!n) continue;
+      const name = normaliseName(l.name);
+      if (!name) continue;
+      const n = `${name}|${normaliseName(l.producer ?? '')}|${normaliseName(String(l.vintage ?? ''))}`;
       const first = seen.get(n);
       if (!first) {
         seen.set(n, l);
@@ -122,6 +126,8 @@ export function checkLinesFromPlan(lines: PlanLine[]): CheckLine[] {
     id: l.menuItemId,
     name: l.name,
     section: l.category,
+    producer: l.producer,
+    vintage: l.vintage,
     glass: l.glass.menuPrice,
     bottle: l.bottle.menuPrice,
   }));
@@ -132,6 +138,8 @@ export function checkLinesFromReview(items: MenuImportReviewItem[]): CheckLine[]
     id: i.menuItemId,
     name: i.name,
     section: i.category,
+    producer: i.producer,
+    vintage: i.vintage,
     glass: i.byGlassPrice,
     bottle: i.bottlePrice,
   }));

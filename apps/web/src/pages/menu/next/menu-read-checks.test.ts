@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatMoney } from '../../../lib/currency';
-import { menuReadChecks, normaliseName, type CheckLine } from './menu-read-checks';
+import { checkLinesFromPlan, checkLinesFromReview, menuReadChecks, normaliseName, type CheckLine } from './menu-read-checks';
 
 const L = (id: string, name: string, bottle: number | null, glass: number | null = null, section = 'red'): CheckLine => ({
   id,
@@ -53,6 +53,19 @@ describe('menuReadChecks', () => {
     expect(menuReadChecks([L('a', 'Rakı', 90, null, 'spirit'), L('b', 'Raki', 95, null, 'wine')], 'TRY')).toEqual([]);
     expect(menuReadChecks([L('a', 'Rakı', 90, null, 'spirit'), L('b', 'Raki', 95, null, 'spirit')], 'TRY')).toHaveLength(1);
     expect(normaliseName('İstanbul  ')).toBe(normaliseName('istanbul'));
+  });
+
+  it('a vertical and two producers\' Reserva are not repeats; the same wine twice still is', () => {
+    const V = (id: string, name: string, producer: string | null, vintage: string | null): CheckLine => ({ ...L(id, name, 90), producer, vintage });
+    expect(menuReadChecks([V('a', 'Château Musar', 'Musar', '2014'), V('b', 'Château Musar', 'Musar', '2015'), V('c', 'Château Musar', 'Musar', '2016')], 'USD')).toEqual([]);
+    expect(menuReadChecks([V('a', 'Reserva', 'Marqués de Riscal', null), V('b', 'Reserva', 'Muga', null)], 'USD')).toEqual([]);
+    const f = menuReadChecks([V('a', 'Château Musar', 'Musar', '2014'), V('b', 'CHÂTEAU MUSAR', 'MUSAR', '2014')], 'USD');
+    expect(f.map((x) => x.kind)).toEqual(['duplicate']);
+  });
+
+  it('carries producer and vintage from a plan line and a review item', () => {
+    expect(checkLinesFromPlan([{ menuItemId: 'x', name: 'N', producer: 'P', vintage: '2015', glass: { menuPrice: null }, bottle: { menuPrice: 5 } } as any])[0]).toMatchObject({ producer: 'P', vintage: '2015' });
+    expect(checkLinesFromReview([{ menuItemId: 'y', name: 'N', producer: 'Q', vintage: '2016', byGlassPrice: null, bottlePrice: 5 } as any])[0]).toMatchObject({ producer: 'Q', vintage: '2016' });
   });
 
   it('flags a glass at or above its bottle, each kind on its own', () => {
