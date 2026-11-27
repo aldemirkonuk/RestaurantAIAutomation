@@ -15,12 +15,12 @@ import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/c
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { CURRENCY_CODES, currencyForCountry, currencyLabel, currencyToRecord } from '../lib/currency'
 import { settingsApi } from '../services/api/settings'
+import { readDroppedMenu } from '../lib/menuDrop'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { countryCodeFor } from '../lib/countries'
 import { zoneForPlace } from '../lib/zoneForPlace'
 import { zoneLabel } from '../lib/zoneLabel'
 import { writeProof } from '../lib/firstProof'
-import { fitPhotoForReading } from '../lib/fitPhoto'
 import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuStanding'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
@@ -524,12 +524,13 @@ export default function GetStarted() {
    */
   const ingestDrop = (files: File[]) => {
     if (files.length === 0) return
-    if (files.length === 1 && files[0].type.startsWith('image/')) {
-      // The photo is read here, so a file box left open by an earlier drop
+    if (files.every((f) => f.type.startsWith('image/'))) {
+      // The photos are read here, so a file box left open by an earlier drop
       // closes with its refusal ("not a spreadsheet…"): that word was left
-      // standing beside this photo's own (r33 walk w1 F7).
+      // standing beside this photo's own (r33 walk w1 F7). Several photos
+      // dropped together are one menu, one read (r105, #2076).
       if (menuMethod === 'file') chooseMethod(null)
-      void ingestDroppedImage(files[0])
+      void ingestDroppedPhotos(files)
       return
     }
     setError(null)
@@ -537,22 +538,26 @@ export default function GetStarted() {
     setMenuMethod('file')
   }
 
-  const ingestDroppedImage = async (file: File) => {
-    setSaving(true)
+  const ingestDroppedPhotos = async (dropped: File[]) => {
     setError(null)
+    setSaving(true)
     try {
-      const image = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result))
-        reader.onerror = () => reject(new Error('Could not read that photo.'))
-        reader.readAsDataURL(file)
-      })
-      // Sent as bare base64, fitted for the reader (r28 gap 12): the data URL
-      // FileReader gives was sent whole, prefix and all, and a phone photo
-      // went up at full size.
-      const photo = await fitPhotoForReading(image)
-      const result = await importMenu('scan', { imageBase64: photo.base64 })
-      menuRead(result, { image: photo.dataUrl })
+      const out = await readDroppedMenu(dropped)
+      if (out.kind === 'refused') {
+        setError(out.words)
+        return
+      }
+      if (out.kind === 'files') {
+        setDroppedFiles(out.files)
+        setMenuMethod('file')
+        return
+      }
+      const result = await importMenu(
+        'scan',
+        out.pages.length === 1 ? { imageBase64: out.pages[0] } : { images: out.pages },
+      )
+      // The proof shows the page as an <img>: a bare base64 page is not a src (r28 gap 12 sent the data URL).
+      menuRead(result, { image: `data:image/jpeg;base64,${out.pages[0]}` })
     } catch (cause) {
       setError(photoNotRead(cause))
     } finally {
