@@ -59,6 +59,7 @@ import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
 import { SHEET_HOLD_ROOM } from './recipe/holdRoom';
 import {
+  useCocktailManages,
   useCocktailRegister,
   useCocktailWrites,
   type CocktailInput,
@@ -189,6 +190,9 @@ export default function CocktailRegister({
 }) {
   const { data, loading, error } = useCocktailRegister(true);
   const { create, amend, retire, copy } = useCocktailWrites();
+  // Recording, amending and retiring a cocktail are an owner's or a manager's;
+  // the gateway refuses them to staff with 403, so staff are not offered them.
+  const manages = useCocktailManages();
   // The house's money, as the drink's own cards print it: the cellar's
   // `money()` wrote $ for every house, so a lira list read "$14.00" beside
   // cards that read "₺14.00" (r7 browser check, 2026-11-12).
@@ -405,26 +409,34 @@ export default function CocktailRegister({
           onChange={(e) => setQuery(e.target.value)}
           style={{ minWidth: 220, flex: '1 1 220px' }}
         />
-        <button
-          type="button"
-          className="cl-btn cl-focus"
-          data-on={draft !== null && editId === null}
-          onClick={() => {
-            changeDraft(draft && editId === null ? null : {});
-            setEditId(null);
-          }}
-          style={{ marginLeft: 'auto' }}
-        >
-          <Plus size={13} aria-hidden />
-          Add a cocktail
-        </button>
+        {manages ? (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            data-on={draft !== null && editId === null}
+            onClick={() => {
+              changeDraft(draft && editId === null ? null : {});
+              setEditId(null);
+            }}
+            style={{ marginLeft: 'auto' }}
+          >
+            <Plus size={13} aria-hidden />
+            Add a cocktail
+          </button>
+        ) : null}
       </div>
+      {manages ? null : (
+        <p className="cl-note" data-testid="cocktail-who-writes">
+          An owner or a manager keeps this list: adding, amending or taking a
+          cocktail off, and writing its recipe, are theirs.
+        </p>
+      )}
 
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
 
       {seesCost ? <MenuDrinksOffer /> : null}
 
-      {draft ? (
+      {draft && manages ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
           <h3 className="cl-h2" style={{ fontSize: 19 }}>
             {editId ? 'Amend this cocktail' : 'A cocktail on this house’s list'}
@@ -587,7 +599,9 @@ export default function CocktailRegister({
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
               {data.rows.length === 0
-                ? 'This house has recorded no cocktails. That read succeeded — the list is empty, not unread. Add one above and it becomes this house’s own row, with a recipe if you want one.'
+                ? manages
+                  ? 'This house has recorded no cocktails. That read succeeded — the list is empty, not unread. Add one above and it becomes this house’s own row, with a recipe if you want one.'
+                  : 'This house has recorded no cocktails. That read succeeded — the list is empty, not unread.'
                 : 'No cocktail matches this reading.'}
             </p>
           ) : (
@@ -697,6 +711,7 @@ export default function CocktailRegister({
                               <p className="cl-said" style={{ marginTop: 4 }}>{c.description}</p>
                             ) : null}
                           </div>
+                          {manages ? (
                           <span style={{ display: 'inline-flex', gap: 6 }}>
                             <button
                               type="button"
@@ -746,6 +761,7 @@ export default function CocktailRegister({
                               {confirmRetire === c.id ? 'Take it off — confirm' : 'Take it off the list'}
                             </button>
                           </span>
+                          ) : null}
                         </div>
                         {/* The menu's price, offered while the drink differs from it (gap 2,
                             slice 2). Not while the drink's own form is open: a price taken
