@@ -40,9 +40,12 @@
   background: var(--paper-0);
   color: var(--ink-2);
   font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  /* min-height eases 180 -> 96 on a pick, so the page under it slides rather
+     than jumping 84px in one frame (r102 menu-motion-1). */
   transition:
     border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    min-height 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .mdv-drop[data-state='dragging'] {
@@ -171,6 +174,32 @@
   animation-delay: 320ms;
 }
 
+/* The read's stages: Sending (a determinate bar), Kept, Reading (dots). Each
+   stage word crossfades in 160 ms (r102 menu-motion-2). */
+.mdv-drop__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  animation: mdv-drop-fade 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-drop__bar {
+  display: block;
+  width: 96px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+
+.mdv-drop__bar i {
+  display: block;
+  height: 100%;
+  background: var(--seal);
+  transform-origin: left center;
+  transition: transform 160ms linear;
+}
+
 .mdv-drop__acts {
   display: flex;
   gap: 12px;
@@ -198,6 +227,15 @@
   }
 }
 
+@keyframes mdv-drop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes mdv-drop-pulse {
   0%,
   100% {
@@ -221,6 +259,14 @@
   .mdv-drop__dots i {
     animation: none;
     opacity: 0.7;
+  }
+
+  .mdv-drop__stage {
+    animation: none;
+  }
+
+  .mdv-drop__bar i {
+    transition: none;
   }
 }
 

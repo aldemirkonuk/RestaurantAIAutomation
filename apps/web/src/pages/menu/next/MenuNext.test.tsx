@@ -21,6 +21,10 @@ import { housePriceNote } from './menu-price-note';
 import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
+/** Each `@media (prefers-reduced-motion: reduce)` body (a media block closes at column 0). */
+const reducedBlocks = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').split('prefers-reduced-motion: reduce)').slice(1).map((b) => b.slice(0, b.indexOf('\n}'))).join('\n');
+
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
 // offers it only to them. A manager reads by default; one case reads as staff.
 let role: string | null = 'manager';
@@ -258,5 +262,59 @@ describe('MenuNext — discard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     expect(await screen.findByRole('alert')).toHaveTextContent('not discarded');
+  });
+});
+
+// r102 menu-motion-4: a row dims while its discard is pending, goes at once on success,
+// and a line that turns up later inks in (DD-r103-7).
+describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => {
+  const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
+
+  it('a pending discard dims the row and takes its pointer', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' })] }));
+    mockDiscard.mockReturnValue(new Promise(() => {}));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    await waitFor(() => expect(rowOf('Raki')).toHaveAttribute('data-state', 'pending'));
+  });
+
+  it('a discarded row goes at once, with no fade state and no wait on the refetch', async () => {
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' })] }));
+    // The confirming read is slow: the row must already be gone before it answers.
+    mockGetMenu.mockReturnValue(new Promise(() => {}));
+    mockDiscard.mockResolvedValue(undefined as never);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    await waitFor(() => expect(screen.queryByText('Raki')).not.toBeInTheDocument());
+    expect(screen.getByText('Tea')).toBeInTheDocument();
+    expect(document.querySelector('[data-state="leaving"]')).toBeNull();
+  });
+
+  it('the first list animates nothing; a line that arrives later is new', async () => {
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' })] }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'b', name: 'Tea' }), line({ id: 'c', name: 'Salep' })] }));
+    mockDiscard.mockResolvedValue(undefined as never);
+    mount();
+    await screen.findByText('Raki');
+    expect(rowOf('Raki')).not.toHaveAttribute('data-new');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard Raki' }));
+    await screen.findByText('Salep');
+    expect(rowOf('Salep')).toHaveAttribute('data-new', 'true');
+    expect(rowOf('Tea')).not.toHaveAttribute('data-new');
+  });
+
+  it('the stylesheet dims 160 ms and inks a new line in 160 ms: no enter, no wash, no exit hold; reduced motion has none', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, 'menu-rows.css'), 'utf8');
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(code).toMatch(/\.mdv-row\s*\{[^}]*opacity 160ms/);
+    expect(code).toMatch(/mdv-row-ink 160ms/);
+    expect(code).not.toMatch(/mdv-row-enter|mdv-row-wash|seal-tint|240ms|600ms|data-state='leaving'/);
+    // Each rule is pinned by its selector inside the reduce block: the [data-new]
+    // rule alone used to satisfy a loose match while the dim kept running.
+    const reduced = reducedBlocks(css);
+    expect(reduced).toMatch(/\.mdv-row\s*\{\s*transition: none;?\s*\}/);
+    expect(reduced).toMatch(/\.mdv-row\[data-new='true'\]\s*\{\s*animation: none;?\s*\}/);
   });
 });

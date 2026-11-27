@@ -315,6 +315,8 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [reviewed, setReviewed] = useState(false);
   const [details, setDetails] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
+  // The share of the file the server has received; never goes back (r102 menu-motion-2).
+  const [sent, setSent] = useState(0);
   const dateRead = readMenuDate(date);
   const shape = uploadShapeOf(files);
   // The optional fields stay behind "Add details", and open by themselves when
@@ -325,7 +327,11 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
     mutationFn: async ({ again }: { again: boolean }) => {
       if (shape.problem) throw new Error(shape.problem);
       setReadingId(null);
+      setSent(0);
       const labels = {
+        onUploadProgress: (share: number | null) => {
+          if (share !== null) setSent((prev) => Math.max(prev, share));
+        },
         ...(cadence ? { cadence } : {}),
         ...(dateRead.value ? { menuDate: dateRead.value } : {}),
         ...(again ? { readAgain: true } : {}),
@@ -385,6 +391,8 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
           onFiles={(picked, mode) => setFiles((prev) => (mode === 'add' ? [...prev, ...picked] : picked))}
           onClear={() => setFiles([])}
           reading={read.isPending}
+          stage={readingId ? 'kept' : 'sending'}
+          sent={sent}
           accept="image/*,application/pdf,.csv,.xlsx,.xls"
           multiple
           inputLabel="Menu to read"
