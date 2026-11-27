@@ -258,7 +258,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
       <div className="flex items-center justify-between gap-3">
         <button
           onClick={addRow}
-          className="flex items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium transition-colors"
+          className="flex min-h-11 items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add another line
