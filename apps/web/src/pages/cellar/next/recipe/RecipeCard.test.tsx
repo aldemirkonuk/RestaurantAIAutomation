@@ -255,6 +255,17 @@ describe('the printable recipe card', () => {
       expect((await screen.findAllByLabelText('Amount'))[0]).toHaveValue('50');
     });
 
+    it('holds the preview line\'s room before a number is typed, and the preview lands inside the same room (r108)', async () => {
+      mount();
+      await screen.findByTestId('recipe-print');
+      const room = screen.getByTestId('recipe-make-room');
+      expect(room).toHaveClass('cl-make-room');
+      expect(room.textContent).toBe('');
+      fireEvent.change(make(), { target: { value: '12' } });
+      expect(screen.getByTestId('recipe-make-room')).toBe(room);
+      expect(room).toContainElement(screen.getByTestId('recipe-make-preview'));
+    });
+
     it('an owner\'s cost line gains the cost to make N, N x the serve to the cent', async () => {
       serveAt2_11();
       mount();
@@ -295,5 +306,14 @@ describe('the printable recipe card', () => {
       expect(window.localStorage.getItem(`mudavym.recipeCard.make.v1:u1:${RID}:${CID}`)).toBe('12');
       expect(window.localStorage.getItem(`mudavym.recipeCard.make.v1:u1:${RID}:other`)).toBeNull();
     });
+  });
+});
+
+describe('the Include cost tick is a thumb\'s size at a phone (r108 drinks-7, walk F5)', () => {
+  it('carries the 44 px class, and the phone rule gives it 44 px', () => {
+    const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8');
+    expect(readFileSync(join(__dirname, 'RecipeCard.tsx'), 'utf8')).toMatch(/htmlFor=\{boxId\} className="cl-note cl-rcp-tick"/);
+    const block = css.match(/@media \(max-width: 719px\), \(pointer: coarse\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+    expect(block).toMatch(/\.cl-rcp-tick\s*\{\s*min-height:\s*44px/);
   });
 });

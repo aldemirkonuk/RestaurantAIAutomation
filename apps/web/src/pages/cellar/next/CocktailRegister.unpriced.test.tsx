@@ -135,3 +135,15 @@ describe('Only without a cost', () => {
     }
   });
 });
+
+describe('the no-cost line holds its room from first paint (r108 drinks-5, walk F2)', () => {
+  it('draws the room before the figures land, and the line lands inside the same room', async () => {
+    mount();
+    const room = screen.getByTestId('no-cost-room');
+    expect(room).toHaveClass('cl-norecipe-room');
+    expect(room.textContent).toBe('');
+    const line = await screen.findByTestId('no-cost-yet');
+    expect(screen.getByTestId('no-cost-room')).toBe(room);
+    expect(room).toContainElement(line);
+  });
+});

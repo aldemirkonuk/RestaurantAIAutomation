@@ -1070,7 +1070,8 @@ textarea.cl-field {
   .cl-rcp .cl-linkish,
   .cl-rcp-link,
   .cl-rcp-good,
-  .cl-rcp-pick { min-height: 44px; }
+  .cl-rcp-pick,
+  .cl-rcp-tick { min-height: 44px; }
   .cl-rcp .cl-field { font-size: 16px; }
   .cl-rcp .cl-btn { font-size: 14px; }
   .cl-rcp-edit { grid-template-columns: 1fr 88px 108px; }
@@ -1145,6 +1146,10 @@ textarea.cl-field {
    one line wide holds 1lh, two at a phone. No transition, and none under reduced motion (ADR 0112). */
 .cl-norecipe-room { display: flow-root; min-height: calc(12px + 1lh); }
 @media (max-width: 640px) { .cl-norecipe-room { min-height: calc(12px + 2lh); } }
+
+/* The Make N preview under the recipe card's controls: its room (10px margin + one line) is held
+   whether or not a number is typed, so typing never moves the card. No transition (ADR 0112). */
+.cl-make-room { display: flow-root; min-height: calc(10px + 1lh); }
 
 /* The figures line over the cocktail list (r104 drinks need 3): its room is the
    same loading and loaded, so the table under it does not move when the list lands. */

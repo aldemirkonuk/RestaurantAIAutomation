@@ -242,3 +242,15 @@ describe('the house said band holds one entry of room (r106, walk r105 FAIL 14)'
     expect(rule('mdv-counter__quiet') + rule('mdv-counter__saidlist')).not.toMatch(/transition|animation/);
   });
 });
+
+describe('the foot holds two lines from first paint (r108 drinks-7, walk F4)', () => {
+  const css = readFileSync(resolve(__dirname, 'house-shell.css'), 'utf8');
+  const rule = css.match(/\n\.mdv-counter__foot \{([^}]*)\}/)?.[1] ?? '';
+
+  it('holds 53 px, the height the foot takes once the read stamp has landed and it wraps', () => {
+    expect(rule).toMatch(/min-height:\s*53px/);
+    expect(rule).toMatch(/box-sizing:\s*border-box/);
+    expect(rule).not.toMatch(/transition|animation/);
+  });
+
+});
