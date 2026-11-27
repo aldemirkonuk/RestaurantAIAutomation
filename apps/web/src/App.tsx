@@ -251,7 +251,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                {/* onboarding-r110-g2: the first stock count, walked from /house. */}
                 <Route
                   path="/house/count"
                   element={

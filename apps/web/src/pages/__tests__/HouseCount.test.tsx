@@ -1,9 +1,4 @@
-/**
- * onboarding-r110-g2: the first stock count, walked shelf by shelf from
- * /house. Skip writes nothing (empty is not zero), 0 is written as 0, a
- * decimal or a negative is refused, and a resumed walk leaves out what is
- * already counted.
- */
+/** onboarding-r110-g2: the first stock count, walked shelf by shelf from /house. */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -130,7 +125,7 @@ describe('/house/count walks the shelf', () => {
     expect(cardName()).toBe('Rakı')
     await press('Next')
     expect(submitSpotCount.mock.calls.map((c) => c[0].body.clientCountId)).toEqual(['key-1', 'key-1'])
-    // Back, change the number: the old key would make the server keep 7.
+    // A new number after Back gets a new key.
     await press('Back')
     type('8')
     await press('Next')

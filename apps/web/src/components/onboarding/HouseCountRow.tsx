@@ -4,10 +4,8 @@ import { getInventory } from '../../services/api/inventory'
 import { notCounted, toCountGood, type CountGood } from '../../lib/firstCount'
 
 /**
- * onboarding-r110-g2: the /house row that opens the first count. Low stock
- * has nothing to say until goods are counted, so the row says how many
- * goods no count has reached. No row once every good is counted; a failed
- * read still offers the count, without a number it could not read.
+ * onboarding-r110-g2: the /house row that opens the first count. No row once
+ * every good is counted; a failed read offers the count without a number.
  */
 export function HouseCountRow() {
   const [left, setLeft] = useState<number | 'unread' | null>(null)

@@ -1,9 +1,6 @@
 /**
- * onboarding-r110-g2: the first stock count, walked shelf by shelf.
- *
- * Pure parts of /house/count: which goods are still to count, the order the
- * walk takes (shelf, then name), and what a typed count means. The page
- * (pages/HouseCount.tsx) holds the walk itself.
+ * onboarding-r110-g2, the pure parts of /house/count: which goods are left
+ * to count, the walk's order (shelf, then name), and what a typed count means.
  */
 
 export interface CountGood {
@@ -85,25 +82,16 @@ export function readTypedCount(typed: string): TypedCount {
   return { kind: 'unreadable' }
 }
 
+const UNIT_WORDS: Record<string, string> = {
+  bottle: 'bottles',
+  case: 'cases',
+  keg: 'kegs',
+  pack: 'packs',
+  glass: 'glasses',
+  shot: 'shots',
+}
+
 /** The unit, as the card says it after the number. */
 export function unitWord(uom: string | null): string {
-  switch (uom) {
-    case null:
-    case 'bottle':
-      return 'bottles'
-    case 'each':
-      return 'each'
-    case 'case':
-      return 'cases'
-    case 'keg':
-      return 'kegs'
-    case 'pack':
-      return 'packs'
-    case 'glass':
-      return 'glasses'
-    case 'shot':
-      return 'shots'
-    default:
-      return uom
-  }
+  return uom === null ? 'bottles' : (UNIT_WORDS[uom] ?? uom)
 }

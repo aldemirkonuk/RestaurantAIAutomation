@@ -23,7 +23,7 @@ async function readLocationNames(): Promise<Map<string, string>> {
       if (typeof l?.id === 'string' && typeof l?.name === 'string' && l.name.trim()) names.set(l.id, l.name.trim())
     }
   } catch {
-    // The names only order the walk: without them it still groups by shelf.
+    // Names only order the walk; without them it still groups by shelf.
   }
   return names
 }
@@ -44,10 +44,8 @@ export default function HouseCount() {
   const [marks, setMarks] = useState<Record<string, Mark>>({})
   const [refusal, setRefusal] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
-  // One key per good and number, made at the tap and reused when the same
-  // number is tried again, so a count that landed before the line dropped is
-  // not written twice. A new number gets a new key: reusing the old one
-  // would let the server keep the first number as a duplicate.
+  // A key per good and number, made at the tap and reused on a retry of the
+  // same number; a new number gets a new key, or the server keeps the first.
   const keys = useRef<Record<string, { qty: number; id: string }>>({})
   const card = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLInputElement | null>(null)
@@ -75,9 +73,8 @@ export default function HouseCount() {
   const good = goods[index] ?? null
   const done = load.kind === 'read' && goods.length > 0 && index >= goods.length
 
-  // The incoming card enters from the side the walk moves toward; the card
-  // it replaces leaves at once (no exit). Nothing moves under reduced motion
-  // (ADR 0112), not even the fade.
+  // The new card enters from the side the walk moves toward; the old one
+  // leaves at once. Under reduced motion nothing moves (ADR 0112).
   useLayoutEffect(() => {
     if (!moved.current) return
     const el = card.current
@@ -144,8 +141,7 @@ export default function HouseCount() {
 
   const skip = () => {
     if (!good) return
-    // Nothing is written: the good stays "not counted". A good counted
-    // earlier in this walk keeps its count.
+    // Writes nothing: the good stays "not counted" (or keeps an earlier count).
     setMarks((m) => (m[good.id] === 'counted' ? m : { ...m, [good.id]: 'skipped' }))
     go(index + 1, 'next')
   }
@@ -196,7 +192,7 @@ export default function HouseCount() {
           </div>
         ) : good ? (
           <>
-            {/* The counter snaps: a count is a fact, it does not roll. */}
+            {/* The counter snaps: a count is a fact. */}
             <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]" data-testid="house-count-counter">
               {index + 1} of {goods.length}
             </p>
@@ -234,7 +230,7 @@ export default function HouseCount() {
                   <span className="text-lg text-[#6d685f]">{unitWord(good.uom)}</span>
                 </span>
               </label>
-              {/* Held open so a refusal never moves the buttons. */}
+              {/* Held open: no shift. */}
               <p className="mt-2 min-h-[1.25rem] text-sm text-red-700" role="alert">
                 {refusal ?? ''}
               </p>
