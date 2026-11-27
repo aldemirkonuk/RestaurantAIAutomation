@@ -59,6 +59,8 @@ import {
   lastWriterWords,
   houseMailboxStatus,
   MAIL_SEARCH_MAX,
+  MAIL_HEADER_RESERVE,
+  READ_SCOPE_HOLD,
   mailSearchTerm,
   mailStatusLine,
   searchEmptyWords,
@@ -564,7 +566,7 @@ function ReadScope({ canAnswer, inboxSwitchedOff }: { canAnswer: boolean; inboxS
   const offered = useReadAllOffered(canAnswer);
   const stop = useStopReadingAll();
   // Hold the line's place while the grants are read, so it does not pop in and shift the list (r77 w3 finding 2).
-  if (grants.isPending) return <div aria-hidden="true" data-testid="read-scope-pending" className="min-h-[38px] md:min-h-[20px]" />;
+  if (grants.isPending) return <div aria-hidden="true" data-testid="read-scope-pending" className={inboxSwitchedOff ? READ_SCOPE_HOLD.two : READ_SCOPE_HOLD.one} />;
   if (grants.isError) {
     return (
       <p data-testid="read-scope" style={{ ...QUIET, margin: 0 }}>
@@ -766,7 +768,7 @@ export function MailTab({
 
   return (
     <div className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
-      <header className="grid gap-1">
+      <header className={`grid gap-1 content-start ${MAIL_HEADER_RESERVE}`} data-testid="mail-header-block">
         <p data-testid="mail-header" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
           {headerSentence(summary, {
             failed: summaryQ.isError,
