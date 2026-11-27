@@ -140,7 +140,7 @@ export interface ComposeSheetProps {
 }
 
 export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: ComposeSheetProps) {
-  const data = useComposeData();
+  const data = useComposeData(open);
   const person = prefill?.person ?? null;
   const [to, setTo] = useState<Recipient | null>(
     person ? { providerId: null, providerName: person.name ?? '', email: person.address } : null,

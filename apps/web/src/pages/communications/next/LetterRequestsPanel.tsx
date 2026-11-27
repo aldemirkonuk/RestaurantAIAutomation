@@ -80,7 +80,7 @@ export function releaseBody(r: LetterRequest) {
  * The house's letter requests. One read, shared by this panel and the page's
  * "To send" count, so the count and the list cannot disagree.
  */
-export function useLetterRequests(restaurantId: string) {
+export function useLetterRequests(restaurantId: string, enabled = true) {
   return useQuery({
     queryKey: letterRequestKeys.forHouse(restaurantId),
     queryFn: async () => {
@@ -92,7 +92,7 @@ export function useLetterRequests(restaurantId: string) {
         viewer: data.viewer ?? { userId: null, mayDecline: false },
       };
     },
-    enabled: Boolean(restaurantId),
+    enabled: enabled && Boolean(restaurantId),
     staleTime: 15_000,
   });
 }
