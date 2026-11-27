@@ -72,6 +72,13 @@ function readMenuPriceAsWritten(input: string): MenuPriceRead {
   if (!tokens) return none(raw, "no_number");
   if (tokens.length > 1) return none(raw, "two_readings");
 
+  // A minus (hyphen, U+2212, en dash) touching the number, or the currency
+  // symbol before it, is a negative amount. Never read it as its absolute
+  // value: `-45` is not 45. A spaced dash (`Glass – 12`) is a separator, and
+  // a trailing `45,-` is the Dutch/German "no cents" form, so both still read.
+  if (/[-−–]\p{Sc}?$/u.test(raw.slice(0, raw.search(/\d/))))
+    return none(raw, "negative");
+
   const token = tokens[0];
   const dots = (token.match(/\./g) ?? []).length;
   const commas = (token.match(/,/g) ?? []).length;

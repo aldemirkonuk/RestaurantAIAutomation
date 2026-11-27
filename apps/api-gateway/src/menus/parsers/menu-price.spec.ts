@@ -69,7 +69,7 @@ describe("readMenuPrice: the edit route and a file read the same text the same w
 });
 
 describe("readMenuPrice: a minus in front is not a price (a discount row is not a line)", () => {
-  it.each(["-45", "-10,50", "- 12", "\u221245", "-$45", "-\u20ba450"])(
+  it.each(["-45", "-10,50", "- 12", "\u221245", "-$45", "-\u20ba450", "\u201345", "-1.250,00", "-\u20ba45", "\u20ba-45", "(-45)"])(
     "%s has no amount and says it is below zero",
     (raw) => {
       expect(readMenuPrice(raw)).toEqual({
@@ -84,6 +84,8 @@ describe("readMenuPrice: a minus in front is not a price (a discount row is not 
     ["45,-", 45],
     ["45-", 45],
     ["12.50 -", 12.5],
+    ["Glass \u2013 12", 12],
+    ["12 -", 12],
   ])("%s keeps its trailing mark and reads %s", (raw, amount) => {
     expect(readMenuPrice(raw)).toEqual({ amount, raw, reason: null });
   });
