@@ -84,6 +84,9 @@ export const bench = analysis<BenchRegister>({
   // pacing", "The week's shape" and the goals desk, rather than
   // /analytics/overview, which ran eight lenses to return three (audit G9).
   path: null,
+  // Half of this comparison is the house's spend (r108): staff keep the page,
+  // not the comparison.
+  readers: ['owner', 'manager'],
   sources: {
     cashflow: (rid) => `/analytics/cashflow/${rid}`,
     seasonality: (rid) => `/analytics/seasonality/${rid}`,

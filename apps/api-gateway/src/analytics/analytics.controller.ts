@@ -38,6 +38,11 @@ import {
   insightReadable,
   insightsForRole,
 } from "./insights/insight-feed-role";
+import {
+  readerSees,
+  registerReadable,
+  withheldRegister,
+} from "./report-registers-role";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { goalScenarioBook } from "./goal-scenarios";
@@ -100,6 +105,11 @@ const MAX_FORECAST_HORIZON = 365;
  */
 function salesGateFor(user?: { role?: string | null }): SalesGate {
   return { withSales: policyFor(user?.role).sees.includes("sales") };
+}
+
+/** The gate the goal routes hand on: the till's, and what the role may read of a goal. */
+function goalGateFor(user?: { role?: string | null }): SalesGate {
+  return { ...salesGateFor(user), goalSees: readerSees(user) };
 }
 
 function parseHorizon(raw?: string): number | undefined {
@@ -209,6 +219,10 @@ export class AnalyticsController {
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
+    // Figures of record are the house's cost and margin: an owner's or a
+    // manager's. Staff are answered before the cellar is read (r108).
+    if (!registerReadable("financial", readerSees(user)))
+      return withheldRegister("financial");
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
@@ -937,7 +951,7 @@ export class AnalyticsController {
     return this.goalsService.listGoals(
       restaurantId,
       status || "active",
-      salesGateFor(user),
+      goalGateFor(user),
     );
   }
 
@@ -983,7 +997,7 @@ export class AnalyticsController {
       return await this.goalsService.listGoalsWithProgress(
         restaurantId,
         status || "active",
-        salesGateFor(user),
+        goalGateFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute goal progress");
@@ -1059,7 +1073,7 @@ export class AnalyticsController {
         restaurantId,
         goalId,
         undefined,
-        salesGateFor(user),
+        goalGateFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute goal progress");
@@ -1186,7 +1200,12 @@ export class AnalyticsController {
     description:
       "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
   })
-  async getCashflow(@Param("restaurantId") restaurantId: string) {
+  async getCashflow(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    if (!registerReadable("cashflow", readerSees(user)))
+      return withheldRegister("cashflow");
     return this.advanced.getCashflow(restaurantId);
   }
 
@@ -1304,7 +1323,22 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.advanced.getOverview(restaurantId, salesGateFor(user));
+    const overview = await this.advanced.getOverview(
+      restaurantId,
+      goalGateFor(user),
+    );
+    // The overview carries the same registers by another door (r108): a role
+    // that may not read them is told so here, with no figure.
+    const sees = readerSees(user);
+    return {
+      ...overview,
+      financial: registerReadable("financial", sees)
+        ? overview.financial
+        : withheldRegister("financial"),
+      cashflow: registerReadable("cashflow", sees)
+        ? overview.cashflow
+        : withheldRegister("cashflow"),
+    };
   }
 
   @Get("recommendations/:restaurantId")

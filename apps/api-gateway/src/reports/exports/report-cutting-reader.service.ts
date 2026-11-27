@@ -4,6 +4,7 @@ import { AdvancedAnalyticsService } from "../../analytics/advanced-analytics.ser
 import { GoalsService } from "../../analytics/goals.service";
 import { TableAnalyticsService } from "../../analytics/table-analytics.service";
 import { InsightGeneratorService } from "../../analytics/insights/insight-generator.service";
+import { DATA_CLASSES } from "../../ask-readings/reading-data-classes";
 import type { ExportableCutting } from "./report-export-cuttings";
 
 /**
@@ -12,6 +13,8 @@ import type { ExportableCutting } from "./report-export-cuttings";
  * every export is asked for by a role ADR 0145's ROLE_POLICY lets see sales.
  */
 const EXPORT_READS_SALES = { withSales: true } as const;
+/** The goal reads' gate: a holder sees every class of a goal, as on the page (r108). */
+const EXPORT_READS_GOALS = { ...EXPORT_READS_SALES, goalSees: DATA_CLASSES } as const;
 
 /**
  * Reads one cutting's payload the way the /reports page reads it — through the
@@ -83,7 +86,7 @@ export class ReportCuttingReader {
         return this.goals.listGoalsWithProgress(
           restaurantId,
           "active",
-          EXPORT_READS_SALES,
+          EXPORT_READS_GOALS,
         );
       // The bench is composed from three registers, as `rp-registers-bench.tsx`
       // `sources` reads them (no longer /analytics/overview, which ran eight
@@ -150,7 +153,7 @@ export class ReportCuttingReader {
     const settled = await Promise.allSettled([
       this.advanced.getCashflow(restaurantId),
       this.advanced.getSeasonality(restaurantId),
-      this.goals.listGoals(restaurantId, "active", EXPORT_READS_SALES),
+      this.goals.listGoals(restaurantId, "active", EXPORT_READS_GOALS),
     ]);
     if (settled.every((r) => r.status === "rejected"))
       throw new Error(
