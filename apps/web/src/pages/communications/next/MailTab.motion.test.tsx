@@ -177,4 +177,18 @@ describe('the test letter arrives', () => {
     expect(screen.getByTestId('setup-test-state').getAttribute('data-state')).toBe('arrived');
     expect(screen.getByTestId('setup-test-state').className).toBe('');
   });
+
+  it('is drawn settling from its first frame: the "Arrived" line is never inserted bare and given its class after', () => {
+    const { rerender, container } = render(tree(view(LETTER())));
+    const changes: string[] = [];
+    const watch = new MutationObserver((records) => {
+      for (const r of records) if (r.type === 'attributes' && r.attributeName === 'class') changes.push(r.attributeName);
+    });
+    watch.observe(container, { subtree: true, attributes: true, childList: true });
+    rerender(tree(view(LETTER({ arrivedAt: new Date().toISOString(), arrivedFrom: 'a@b.test' }))));
+    changes.push(...watch.takeRecords().filter((r) => r.type === 'attributes' && r.attributeName === 'class').map((r) => r.attributeName!));
+    watch.disconnect();
+    expect(screen.getByTestId('setup-test-state').className).toBe('mail-arrive');
+    expect(changes).toEqual([]);
+  });
 });
