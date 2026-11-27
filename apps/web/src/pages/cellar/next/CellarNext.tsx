@@ -203,7 +203,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
                 {naming.name}
                 <span style={{ color: 'var(--seal)' }}>.</span>
               </h1>
-              <p className="cl-standing" style={{ fontSize: 15.5 }}>
+              <p className="cl-standing cl-standing-hold" style={{ fontSize: 15.5 }}>
                 {data.registersLoading
                   ? 'Working out what this house keeps…'
                   : data.registers && data.registers.decidedBy !== 'unknown'

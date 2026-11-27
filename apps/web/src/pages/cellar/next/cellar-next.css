@@ -1178,10 +1178,14 @@ textarea.cl-field {
 /* The two rule notes under the headline ("The Cellar" / which view opens) are drawn once the
    registers read settles, never while it is in flight (the provisional wording was 148px at 375
    and the settled 114px, so the block shrank under the reader: walk p12, CLS 0.161). The hold is
-   the SETTLED height, measured at 375-480 px: 114, at 481-640 px: 79, at 641-1000 px (the sidebar
+   the SETTLED height, measured at 375-481 px: 114, at 482-640 px: 79, at 641-1000 px (the sidebar
    narrows the column; measured at 768): 114, at 1001 px and up: 79. A house whose text wraps
    longer than that grows by the difference, one shorter leaves a gap, never a shift. No
    transition, and none under reduced motion (ADR 0112). */
 .cl-notes-hold { min-height: 79px; }
-@media (max-width: 480px) { .cl-notes-hold { min-height: 114px; } }
+/* The standing line under the headline reads one line while the registers read is in flight and
+   two lines at a phone once it settles (25px -> 50px, measured 375-481 px; the 641-1000 band
+   settles at 25px). Its settled room is held at a phone. No motion (ADR 0112). */
+@media (max-width: 481px) { .cl-standing-hold { min-height: 50px; } }
+@media (max-width: 481px) { .cl-notes-hold { min-height: 114px; } }
 @media (min-width: 641px) and (max-width: 1000px) { .cl-notes-hold { min-height: 114px; } }
