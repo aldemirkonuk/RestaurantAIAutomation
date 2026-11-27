@@ -132,19 +132,24 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
   const confirm = async () => {
     if (!from || !to) return;
     setBusy(true);
-    const out = await saveEach(
-      rid,
-      go.map(({ drink, body }) => ({ drink, body })),
-      `${from.name} swapped for ${to.name}`,
-      'swap this good',
-    );
-    setOutcomes(out);
-    setBusy(false);
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
-      qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
-      ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
-    ]);
+    // Busy holds until the reads land: the plans still carry the versionIds read before the save, so a
+    // second Confirm in between would 409 on every drink and call a swap that worked a failure.
+    try {
+      const out = await saveEach(
+        rid,
+        go.map(({ drink, body }) => ({ drink, body })),
+        `${from.name} swapped for ${to.name}`,
+        'swap this good',
+      );
+      setOutcomes(out);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
+        qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
+        ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
+      ]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const dishes = uses.data?.dishCount ?? 0;

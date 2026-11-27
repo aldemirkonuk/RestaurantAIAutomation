@@ -194,6 +194,24 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
     expect(plan).not.toHaveTextContent('Gimlet: not swapped: counted by volume, keeps');
   });
 
+  it('Confirm stays off until the reads land, so a second click never sends a stale version (r108 fix)', async () => {
+    await choose('Better gin');
+    let release: (v: unknown) => void = () => {};
+    const held = new Promise((r) => (release = r));
+    const was = h.get.getMockImplementation()!;
+    h.get.mockImplementation(async (url: string) => {
+      if (url.includes('loose-lines')) await held;
+      return was(url);
+    });
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('swap-confirm')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('swap-confirm'));
+    expect(h.put).toHaveBeenCalledTimes(2);
+    await act(async () => release(null));
+    await waitFor(() => expect(screen.getByTestId('swap-confirm')).not.toBeDisabled());
+  });
+
   it('says each drink’s outcome: one saved, one someone saved first', async () => {
     h.put
       .mockReset()
