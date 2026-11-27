@@ -289,11 +289,14 @@ export class MailSetupService {
           .maybeSingle(),
         this.sender.resolve(restaurantId, userId),
       ]);
-      if (grants.error || choice.error) {
-        this.logger.error(
-          `Mail setup senders could not be read for ${restaurantId}: ${(grants.error ?? choice.error)!.message}`,
-        );
+      if (grants.error) {
+        this.logger.error(`Mail setup senders could not be read for ${restaurantId}: ${grants.error.message}`);
         return failed("Which mailboxes this house can send from could not be read.");
+      }
+      // An unread choice is not "no choice": say so (QA round 26, #975 M11).
+      if (choice.error) {
+        this.logger.error(`Mail setup sender choice could not be read for ${restaurantId}: ${choice.error.message}`);
+        return failed("The house's chosen mailbox could not be read.");
       }
       const rows = ((grants.data ?? []) as Record<string, unknown>[]).filter(
         (r) => Array.isArray(r.scopes) && (r.scopes as string[]).includes(GMAIL_SEND_SCOPE),

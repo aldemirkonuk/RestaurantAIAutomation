@@ -457,6 +457,7 @@ export function MailTab({
           status={status}
           sender={senderQ.data ?? null}
           senderFailed={senderQ.isError}
+          conversationWords={senderQ.data?.conversation?.words ?? null}
           onBack={() => back({ setup: null })}
         />
       ) : threadKey ? (

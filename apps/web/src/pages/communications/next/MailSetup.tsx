@@ -32,23 +32,38 @@ function Senders({
   view,
   sender,
   senderFailed,
+  conversationWords,
 }: {
   view: MailSetupView;
   sender: SenderLineInput | null;
   senderFailed: boolean;
+  conversationWords: string | null;
 }) {
   const navigate = useNavigate();
   const choose = useChooseSender();
   const { failed, choices, chosenConnectionId } = view.senders;
   const sendingNow = choices.find((c) => c.sending)?.connectionId ?? null;
   const [picked, setPicked] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const current = picked ?? chosenConnectionId ?? sendingNow;
+  // With nothing stored, the mailbox sending now can be pinned as it stands,
+  // but only if it is the signed-in person's own (QA round 26, #980).
+  const mayPin = Boolean(current && choices.find((c) => c.connectionId === current)?.mine);
+  const done = () => {
+    setPicked(null);
+    setSaved(true);
+  };
 
   return (
     <Part title="Which address letters leave from">
       <p data-testid="setup-sender-line" style={TEXT}>
         {senderLine(sender, { failed: senderFailed })}
       </p>
+      {conversationWords && (
+        <p data-testid="setup-conversation-words" style={TEXT}>
+          {conversationWords}
+        </p>
+      )}
       {failed ? (
         <p role="alert" data-testid="setup-senders-unread" style={ALERT}>
           {failed} That does not mean none is connected.
@@ -67,7 +82,10 @@ function Senders({
           className="grid gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (current) choose.mutate(current, { onSuccess: () => setPicked(null) });
+            if (current && mayPin) {
+              setSaved(false);
+              choose.mutate(current, { onSuccess: done });
+            }
           }}
         >
           <fieldset style={{ border: 0, margin: 0, padding: 0 }} className="grid gap-1.5">
@@ -87,7 +105,10 @@ function Senders({
                   // Only the person who connected a mailbox may make it the
                   // house's (QA round 26, #973); the server refuses it too.
                   disabled={!view.canChange || choose.isPending || !c.mine}
-                  onChange={() => setPicked(c.connectionId)}
+                  onChange={() => {
+                    setSaved(false);
+                    setPicked(c.connectionId);
+                  }}
                 />
                 <span>
                   {choiceName(c)}
@@ -104,7 +125,7 @@ function Senders({
           )}
           {view.canChange ? (
             <span className="flex flex-wrap items-center gap-3">
-              <button type="submit" style={ACT} disabled={!picked || picked === chosenConnectionId || choose.isPending}>
+              <button type="submit" style={ACT} disabled={!mayPin || current === chosenConnectionId || choose.isPending}>
                 {choose.isPending ? 'Saving…' : 'Save'}
               </button>
               {chosenConnectionId && (
@@ -112,7 +133,10 @@ function Senders({
                   type="button"
                   style={LINK}
                   disabled={choose.isPending}
-                  onClick={() => choose.mutate(null, { onSuccess: () => setPicked(null) })}
+                  onClick={() => {
+                    setSaved(false);
+                    choose.mutate(null, { onSuccess: done });
+                  }}
                 >
                   Let Mudavym choose again
                 </button>
@@ -129,6 +153,9 @@ function Senders({
               connected.
             </p>
           )}
+          <p role="status" aria-live="polite" data-testid="setup-saved" style={QUIET}>
+            {saved && !choose.isPending && !choose.isError ? 'Saved.' : ''}
+          </p>
           {choose.isError && (
             <p role="alert" data-testid="setup-save-failed" style={ALERT}>
               {setupFailWords(choose.error, 'choose')}
@@ -144,12 +171,15 @@ export function MailSetup({
   status,
   sender,
   senderFailed,
+  conversationWords,
   onBack,
 }: {
   /** The tab's own status line, so the two never disagree. */
   status: MailStatus;
   sender: SenderLineInput | null;
   senderFailed: boolean;
+  /** `conversation.words` from the sender read, the intake sheet's sentence; null when not read. */
+  conversationWords: string | null;
   onBack: () => void;
 }) {
   const q = useMailSetup();
@@ -171,7 +201,7 @@ export function MailSetup({
         <p style={QUIET}>Reading the mail setup…</p>
       ) : (
         <>
-          <Senders view={q.data} sender={sender} senderFailed={senderFailed} />
+          <Senders view={q.data} sender={sender} senderFailed={senderFailed} conversationWords={conversationWords} />
           <MailArrival view={q.data} now={now} />
         </>
       )}
