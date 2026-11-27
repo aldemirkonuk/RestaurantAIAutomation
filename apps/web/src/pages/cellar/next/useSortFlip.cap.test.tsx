@@ -1,4 +1,4 @@
-/** The slide is bounded: at most FLIP_ROW_CAP rows animate in one change (r108 DD-r108-33). */
+/** The slide is all or nothing: every moved row slides up to FLIP_ROW_CAP rows, none past it (r108 DD-r108-33). */
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { act, render } from '@testing-library/react';
 import { useRef } from 'react';
@@ -14,22 +14,31 @@ function Table({ ids, expose }: { ids: string[]; expose: (before: () => void) =>
   return <table><tbody ref={body}>{ids.map((i) => <tr key={i} data-row={i}><td>{i}</td></tr>)}</tbody></table>;
 }
 
+function slide(n: number) {
+  (Element.prototype as unknown as { animate: unknown }).animate = animate;
+  window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })) as never;
+  const real = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const at = Array.from(this.parentElement!.children).indexOf(this) * 40;
+    return { top: at, bottom: at + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: at, toJSON() {} } as DOMRect;
+  };
+  const ids = Array.from({ length: n }, (_, i) => `r${i}`);
+  let before: () => void = () => {};
+  const { rerender } = render(<Table ids={ids} expose={(b) => { before = b; }} />);
+  animate.mockClear();
+  act(() => { before(); });
+  rerender(<Table ids={[...ids].reverse()} expose={(b) => { before = b; }} />);
+  HTMLElement.prototype.getBoundingClientRect = real;
+}
+
 describe('useSortFlip row cap', () => {
-  it('animates no more than the cap when every one of many rows moves', () => {
-    (Element.prototype as unknown as { animate: unknown }).animate = animate;
-    window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })) as never;
-    const real = HTMLElement.prototype.getBoundingClientRect;
-    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-      const at = Array.from(this.parentElement!.children).indexOf(this) * 40;
-      return { top: at, bottom: at + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: at, toJSON() {} } as DOMRect;
-    };
-    const ids = Array.from({ length: 100 }, (_, i) => `r${i}`);
-    let before: () => void = () => {};
-    const { rerender } = render(<Table ids={ids} expose={(b) => { before = b; }} />);
-    animate.mockClear();
-    act(() => { before(); });
-    rerender(<Table ids={[...ids].reverse()} expose={(b) => { before = b; }} />);
-    HTMLElement.prototype.getBoundingClientRect = real;
+  it('slides every row when exactly the cap moves', () => {
+    slide(FLIP_ROW_CAP);
     expect(animate).toHaveBeenCalledTimes(FLIP_ROW_CAP);
+  });
+
+  it('slides none when more than the cap move: no part-slide with rows crossing others in place (r108 fix)', () => {
+    slide(100);
+    expect(animate).toHaveBeenCalledTimes(0);
   });
 });

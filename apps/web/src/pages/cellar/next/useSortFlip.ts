@@ -10,7 +10,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { prefersReducedMotion, settle, type MotionToken } from '../../../lib/mudavym/motion';
 
 export const SORT_FLIP: MotionToken = { easing: settle.easing, ms: 180 };
-/** Past this many rows the slide is skipped: one animation per moved row is bounded (r108). */
+/** When more rows than this move, none slides: a part-slide has some rows crossing others in place, so it is all or nothing (r108). */
 export const FLIP_ROW_CAP = 60;
 
 const pageTop = (el: Element) => el.getBoundingClientRect().top + (typeof window === 'undefined' ? 0 : window.scrollY);
@@ -27,15 +27,17 @@ export function useSortFlip(body: RefObject<HTMLElement | null>, sortKey: string
     was.current = null;
     const el = body.current;
     if (!from || !el || prefersReducedMotion() || typeof Element.prototype.animate !== 'function') return;
-    let played = 0;
+    const moved: Array<[HTMLElement, number]> = [];
     el.querySelectorAll<HTMLElement>('tr[data-row]').forEach((row) => {
       const start = from.get(row.dataset.row as string);
-      if (start == null || played >= FLIP_ROW_CAP) return;
+      if (start == null) return;
       const delta = start - pageTop(row);
-      if (Math.abs(delta) < 1) return;
-      played += 1;
-      row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], { duration: SORT_FLIP.ms, easing: SORT_FLIP.easing });
+      if (Math.abs(delta) >= 1) moved.push([row, delta]);
     });
+    if (moved.length > FLIP_ROW_CAP) return;
+    for (const [row, delta] of moved) {
+      row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], { duration: SORT_FLIP.ms, easing: SORT_FLIP.easing });
+    }
   }, [body, sortKey]);
   return {
     before: () => {
