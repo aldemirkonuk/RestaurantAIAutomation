@@ -138,7 +138,7 @@ describe('M6: a till window pick keeps the last drawing until the new one lands'
 
   it('the dimming is ink-only and off under reduced motion', () => {
     const c = css('reports-next.css');
-    expect(c).toMatch(/\.rp-standin\[data-stale\] > :not\(\[role='status'\]\) \{\s*opacity: 0\.55;/);
+    expect(c).toMatch(/\.rp-standin\[data-stale\] > \* \{\s*opacity: 0\.55;/);
     expect(c).toMatch(/transition: opacity 160ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
     expect(c).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.rp-standin > \* \{\s*transition: none;/);
   });

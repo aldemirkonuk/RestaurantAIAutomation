@@ -539,6 +539,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     body: (
       <Cutting
         id={c.id}
+        house={data.restaurantId}
         strip={strip}
         onFit={FIT_IDS.includes(c.id) ? onFit : undefined}
         onControls={onControls}
