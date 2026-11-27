@@ -69,7 +69,7 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { toRow, useInventoryNextData } from './useInventoryNextData';
+import { chipMatch, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -301,5 +301,39 @@ describe('useInventoryNextData — open bottles and zones that could not be read
     expect(result.current.unread).toContain('where each title sits, so its zones say they could not be read');
     act(() => result.current.rereadUnread());
     expect(m.listRefetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Price signals: chipMatch reads the last two settled delivery costs (r104 g3)', () => {
+  const base = toRow({ id: 'i1', thresholdMin: 2, currentStock: 3 } as never);
+  const two = (last: number | null, prev: number | null): InvRow => ({ ...base, lastSettledCost: last, previousSettledCost: prev });
+
+  it('two deliveries 12 percent apart match; 5 percent apart does not; one delivery never does', () => {
+    expect(chipMatch(two(11.2, 10), 'price')).toBe(true);
+    expect(chipMatch(two(8.8, 10), 'price')).toBe(true);
+    expect(chipMatch(two(10.5, 10), 'price')).toBe(false);
+    expect(chipMatch(two(null, null), 'price')).toBe(false);
+    expect(chipMatch(two(11.2, null), 'price')).toBe(false);
+  });
+
+  it('a free first delivery makes no move, and an unpriced good is never a 0 percent move', () => {
+    expect(priceMovePct(two(5, 0))).toBeNull();
+    expect(priceMovePct(two(null, null))).toBeNull();
+    expect(priceMovePct(two(11, 10))).toBeCloseTo(10, 5);
+    expect(chipMatch(two(11, 10), 'price')).toBe(false); // exactly the default is not "more than"
+  });
+
+  it('toRow carries the two costs from the gateway row, and drops them when the read failed', () => {
+    const ok = toRow({ id: 'i1', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true } as never);
+    expect([ok.lastSettledCost, ok.previousSettledCost, ok.settledCostsReadable]).toEqual([11.2, 10, true]);
+    const bad = toRow({ id: 'i1', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: false } as never);
+    expect([bad.lastSettledCost, bad.previousSettledCost, bad.settledCostsReadable]).toEqual([null, null, false]);
+  });
+
+  it('the chip has a basis only when a good has two settled costs, and is readable only when no row failed', () => {
+    expect(priceSignalsHaveBasis([two(11, 10), two(null, null)])).toBe(true);
+    expect(priceSignalsHaveBasis([two(null, null)])).toBe(false);
+    expect(priceSignalsReadable([two(11, 10)])).toBe(true);
+    expect(priceSignalsReadable([{ ...two(11, 10), settledCostsReadable: false }])).toBe(false);
   });
 });

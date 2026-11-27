@@ -440,6 +440,43 @@ describe('chips', () => {
     expect(screen.getByTestId('inv-row-b')).toBeTruthy();
   });
 
+  it('Price signals lists the goods whose last settled delivery moved past the house default, and only those (r104 g3)', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true }),
+        row({ id: 'flat', lastSettledCost: 10.5, previousSettledCost: 10, settledCostsReadable: true }),
+        row({ id: 'one', lastSettledCost: null, previousSettledCost: null, settledCostsReadable: true }),
+      ],
+    });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const price = within(chips).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
+    expect(price.disabled).toBe(false);
+    expect(price.title).toMatch(/more than 10 percent/);
+    fireEvent.click(price);
+    expect(screen.getByTestId('inv-row-up')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-flat')).toBeNull();
+    expect(screen.queryByTestId('inv-row-one')).toBeNull();
+  });
+
+  it('Price signals says it could not be read, never zero, when the settled prices did not answer', () => {
+    mock.data = data({ rows: [row({ id: 'a', settledCostsReadable: false })] });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /Price signals/ }) as HTMLButtonElement;
+    expect(price.disabled).toBe(true);
+    expect(price.textContent).toContain('—');
+    expect(price.title).toMatch(/could not be read/);
+  });
+
+  it('Price signals is a cost figure: staff are not shown the chip', () => {
+    mock.data = data({
+      canManage: false,
+      rows: [row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true })],
+    });
+    renderPage();
+    expect(within(screen.getByTestId('inventory-chips')).queryByRole('button', { name: /Price signals/ })).toBeNull();
+  });
+
   it('shows the house price editor only to owners and managers', () => {
     mock.data = data({ rows: [row()], canManage: true });
     const { unmount } = renderPage();

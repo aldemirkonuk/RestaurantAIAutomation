@@ -116,6 +116,11 @@ export interface InvRow {
   reorderPoint: number | null;
   /** False when the gateway's analytics join failed for this read. */
   analyticsReadable: boolean;
+  /** The unit costs of the last two settled deliveries; null when fewer than two (or unread). Absent on a row not built by toRow. */
+  lastSettledCost?: number | null;
+  previousSettledCost?: number | null;
+  /** False when the settled-price read failed: a price move is then unknown, not none. */
+  settledCostsReadable?: boolean;
   velocity: number | null;
   /** Days of cover. Null at zero velocity: a title nobody buys has no runway. */
   runway: number | null;
@@ -258,6 +263,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const stock = num(r.stockLive);
   const par = num(r.thresholdMin);
   const analyticsReadable = r.analyticsReadable !== false;
+  const settledCostsReadable = r.settledCostsReadable !== false;
   const velocity = analyticsReadable ? num(r.velocityPerDay) : null;
   const cover = analyticsReadable ? num(r.daysOfCover) : null;
   const runway =
@@ -300,6 +306,9 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     par,
     reorderPoint: num(r.reorderPoint),
     analyticsReadable,
+    lastSettledCost: settledCostsReadable ? num(r.lastSettledCost) : null,
+    previousSettledCost: settledCostsReadable ? num(r.previousSettledCost) : null,
+    settledCostsReadable,
     velocity,
     runway,
     daysSinceSale: num(r.daysSinceSale),
@@ -480,9 +489,36 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 }
 
 /**
- * Whether a row belongs under a chip. `price` matches nothing: a price signal
- * needs a market figure and none is read (`retail_price_avg` is not selected,
- * database.service.ts:42-53), so its count is the dash, never 0.
+ * A good is a price signal when its latest settled delivery cost per unit
+ * differs from the one before by more than this many percent. The house will
+ * set its own; until then it is said in words on the chip (r104 g3).
+ */
+export const PRICE_SIGNAL_PCT = 10;
+
+/** What the chip says it holds, in words (the default is stated, not hidden). */
+export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before`;
+
+/** How far the last settled unit cost moved from the one before, in percent; null when there are not two settled costs to compare (a first delivery, an unread or free one). */
+export function priceMovePct(row: InvRow): number | null {
+  const last = row.lastSettledCost ?? null;
+  const before = row.previousSettledCost ?? null;
+  if (last === null || before === null || !(before > 0)) return null;
+  return ((last - before) / before) * 100;
+}
+
+/** Whether the house has anything to compare: the read answered and some good has two settled costs. */
+export function priceSignalsReadable(rows: InvRow[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.settledCostsReadable !== false);
+}
+export function priceSignalsHaveBasis(rows: InvRow[]): boolean {
+  return rows.some((r) => priceMovePct(r) !== null);
+}
+
+/**
+ * Whether a row belongs under a chip. `price` matches a good whose last
+ * settled delivery cost moved by more than PRICE_SIGNAL_PCT from the one
+ * before; a good with one delivery, or none settled, never matches (and is
+ * never read as a 0 % move).
  */
 export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean {
   switch (chip) {
@@ -498,8 +534,10 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
       return countDue(row, now);
     case 'dead':
       return row.deadStock;
-    case 'price':
-      return false;
+    case 'price': {
+      const pct = priceMovePct(row);
+      return pct !== null && Math.abs(pct) > PRICE_SIGNAL_PCT;
+    }
   }
 }
 
