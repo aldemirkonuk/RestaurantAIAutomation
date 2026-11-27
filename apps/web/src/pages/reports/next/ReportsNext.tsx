@@ -60,7 +60,6 @@ import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, t
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import type { ViewCtx } from './rp-spec';
 import { READING, failureLine, type MoneyIn } from './rp-format';
 import {
   ANALYSIS_IDS,
@@ -131,8 +130,6 @@ function Action({
 
 /** The house sheet's footprint, drawn as paper while the reader's own is on its way. */
 const OUTLINES = outlineSlots();
-/** What a cutting that reads neither the till window nor the goals desk is given. */
-const FROZEN_CTX: ViewCtx = { days: 30 };
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   // The till window lives in the page link (`?days=90`), so a reload, Back,
@@ -143,7 +140,14 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // by going back one entry, and that entry predates the pick, so carrying
   // the mark would close onto the old window. Without it the view closes in
   // place and keeps the window; Back still returns to the window before.
-  const [params, setParams] = useSearchParams();
+  const [params, setParamsNow] = useSearchParams();
+  // react-router hands a new setter whenever the link changes, so a window
+  // click would hand every memoised cutting a new `onDays` and redraw it
+  // (perf-p4-5, r108). The setters below read the latest one from a ref and
+  // stay the same function for the life of the page.
+  const setParamsRef = useRef(setParamsNow);
+  setParamsRef.current = setParamsNow;
+  const setParams = useCallback<typeof setParamsNow>((...a) => setParamsRef.current(...a), []);
   const tillDays = tillDaysOf(params.get(DAYS_PARAM));
   const setTillDays = useCallback(
     (d: number) =>
@@ -536,6 +540,48 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     }),
     [data.goalsDesk, tillDays, tillCompare, currencyMark, saving],
   );
+  // Each cutting is handed only what it reads, so a till-window click redraws
+  // the till and not the other cards (perf-p4-5, re-expressed on the compare
+  // chain in r108). The window and compare matter to the one register that
+  // takes a window (ViewCtx says so); the desk to the goals cutting alone;
+  // every other cutting gets a context that changes only with the currency.
+  // The page-level reads (sparklines, strips, the compare hold) keep `ctx`.
+  const windowCtx = useMemo(
+    () => ({ days: tillDays, compare: tillCompare, currency: currencyMark }),
+    [tillDays, tillCompare, currencyMark],
+  );
+  const goalsCtx = useMemo(
+    () => ({ days: DEFAULT_TILL_DAYS, goals: { ...data.goalsDesk, placeBlocked: saving }, currency: currencyMark }),
+    [data.goalsDesk, currencyMark, saving],
+  );
+  const plainCtx = useMemo(() => ({ days: DEFAULT_TILL_DAYS, currency: currencyMark }), [currencyMark]);
+  const ctxFor = (id: AnalysisId) =>
+    CATALOGUE[id].takesWindow ? windowCtx : id === 'goals' ? goalsCtx : plainCtx;
+  // The handlers close over an id only: made once per id, the same function
+  // until the sheet's own editors change.
+  const handlers = useMemo(
+    () =>
+      Object.fromEntries(
+        ANALYSIS_IDS.map((id) => [
+          id,
+          {
+            onGraph: (g: GraphType) => onGraph(id, g),
+            onSwap: (to: AnalysisId) => onSwap(id, to),
+            onRemove: () => onRemove(id),
+            onComboPick: (p: ComboPick) => onComboPick(id, p),
+          },
+        ]),
+      ) as Record<
+        AnalysisId,
+        {
+          onGraph: (g: GraphType) => void;
+          onSwap: (to: AnalysisId) => void;
+          onRemove: () => void;
+          onComboPick: (p: ComboPick) => void;
+        }
+      >,
+    [onGraph, onSwap, onRemove, onComboPick],
+  );
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =
     data.currency?.state === 'unstated'
@@ -570,44 +616,6 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const sparksPending = SPARK_IDS.some(
     (id) => data.registers[id]?.loading && !lastSparks.current.byId[id],
   );
-  // Each cutting is handed only what it reads, so a till-window click redraws
-  // the till and not the other cards (perf-p4-5). `days` and `compare` matter
-  // to the one register that takes a window; the goals desk to the goals
-  // cutting alone. Every cutting is handed the house's currency (audit G5).
-  const windowCtx = useMemo(
-    () => ({ days: tillDays, compare: tillCompare, currency: currencyMark }),
-    [tillDays, tillCompare, currencyMark],
-  );
-  const goalsCtx = useMemo(
-    () => ({ days: FROZEN_CTX.days, goals: { ...data.goalsDesk, placeBlocked: saving }, currency: currencyMark }),
-    [data.goalsDesk, saving, currencyMark],
-  );
-  const frozenCtx = useMemo(() => ({ ...FROZEN_CTX, currency: currencyMark }), [currencyMark]);
-  // The handlers close over an id only, so they are made once per id and stay
-  // the same function until the sheet's own editors change.
-  const handlers = useMemo(
-    () =>
-      Object.fromEntries(
-        ANALYSIS_IDS.map((id) => [
-          id,
-          {
-            onComboPick: (p: ComboPick) => onComboPick(id, p),
-            onGraph: (g: GraphType) => onGraph(id, g),
-            onSwap: (to: AnalysisId) => onSwap(id, to),
-            onRemove: () => onRemove(id),
-          },
-        ]),
-      ) as Record<
-        AnalysisId,
-        {
-          onComboPick: (p: ComboPick) => void;
-          onGraph: (g: GraphType) => void;
-          onSwap: (to: AnalysisId) => void;
-          onRemove: () => void;
-        }
-      >,
-    [onComboPick, onGraph, onSwap, onRemove],
-  );
 
   // The hold follows what the till card draws, stand-in included (Cutting's own rule).
   const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast);
@@ -637,7 +645,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onControls={onControls}
         graph={c.graph}
         register={data.registers[c.id]}
-        ctx={CATALOGUE[c.id].takesWindow ? windowCtx : c.id === 'goals' ? goalsCtx : frozenCtx}
+        ctx={ctxFor(c.id)}
         arranging={editing}
         swapOptions={swapOptions}
         arrange={arrange}

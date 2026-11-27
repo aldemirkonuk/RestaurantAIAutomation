@@ -536,18 +536,26 @@ export function useReportsNextData(
   });
 
   /**
-   * The last window each window-taking register drew, for this house (r41
-   * gap 4). useQueries hands a changed key a NEW observer (query-core 5.90
-   * `#findMatchingObservers` matches by query hash), so `placeholderData`
-   * never sees the previous window; the page keeps it itself.
+   * The register handed out last time, per id, with what it was made from. A
+   * register whose read has not changed is the SAME object again, so a cutting
+   * memoised on it does not redraw for another cutting's read (perf-p4-5,
+   * r108): a till-window click changes the till's register and no other.
    */
-  const lastWindow = useRef(new Map<AnalysisId, { rid: string; days: number; compare: boolean; data: unknown }>());
-
   const kept = useRef<
-    Partial<Record<AnalysisId, { reg: Register<unknown>; data: unknown; loading: boolean; error: unknown }>>
+    Partial<Record<AnalysisId, { reg: Register<unknown>; from: readonly unknown[] }>>
   >({});
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
+    const same = (id: AnalysisId, from: readonly unknown[], make: () => Register<unknown>) => {
+      const prev = kept.current[id];
+      if (prev && prev.from.length === from.length && prev.from.every((v, k) => v === from[k])) {
+        map[id] = prev.reg;
+        return;
+      }
+      const reg = make();
+      kept.current[id] = { reg, from };
+      map[id] = reg;
+    };
     active.forEach((id, i) => {
       const q = results[i];
       if (!q) return;
@@ -571,38 +579,31 @@ export function useReportsNextData(
       const readers = CATALOGUE[id].readers;
       if (readers && heldBack.has(id)) {
         // Not in flight, not refused by the gateway, not empty: withheld.
-        map[id] = {
+        same(id, ['held', activeRole], () => ({
           data: undefined,
           loading: false,
           failure: heldBackFailure(readers, activeRole),
           refetch: () => {},
-        };
+        }));
         return;
       }
+      // The gateway withheld a lens for this reader's role (ADR 0348, #1436):
+      // never handed to a view, which would read it as empty.
       if (q.data === WITHHELD) {
-        map[id] = {
+        same(id, ['withheld', activeRole, q.refetch], () => ({
           data: undefined,
           loading: false,
           failure: heldBackFailure(readers ?? GATEWAY_READERS, activeRole ?? 'staff'),
           refetch: () => void q.refetch(),
-        };
+        }));
         return;
       }
-      // The same object again while nothing it says has changed, so a card that
-      // is memoised on its register does not redraw for another card's read.
-      const prev = kept.current[id];
-      if (prev && prev.data === q.data && prev.loading === q.isPending && prev.error === q.error) {
-        map[id] = prev.reg;
-        return;
-      }
-      const reg: Register<unknown> = {
+      same(id, ['read', q.data, q.isPending, q.error, q.refetch], () => ({
         data: q.data,
         loading: q.isPending,
         failure: q.isError ? failureOf(q.error) : null,
         refetch: () => void q.refetch(),
-      };
-      kept.current[id] = { reg, data: q.data, loading: q.isPending, error: q.error };
-      map[id] = reg;
+      }));
     });
     return map;
     // `results` is a fresh array each render; the ids and their states are what
