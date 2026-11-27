@@ -80,13 +80,18 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
   const [same, setSame] = useState(false);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [outcomes, setOutcomes] = useState<LinkOutcome[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const uses = useQuery({
     queryKey: [...looseLinesKey(activeRestaurantId), 'linked', from?.id ?? null],
     queryFn: () => recipesApi.looseLines(rid, from!.id),
     enabled: Boolean(from && activeRestaurantId),
     retry: false,
   });
+  // Busy holds while a save is in flight, then until a read NEWER than the save has landed. invalidateQueries
+  // resolves even when the re-read fails (the old data stays), so its promise is not that proof.
+  const waiting = savedAt !== null && uses.dataUpdatedAt < savedAt;
+  const busy = saving || waiting;
 
   const plans: Plan[] = useMemo(() => {
     if (!uses.data || !to) return [];
@@ -131,7 +136,7 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
   const go = plans.filter((p) => !p.refused);
   const confirm = async () => {
     if (!from || !to) return;
-    setBusy(true);
+    setSaving(true);
     // Busy holds until the reads land: the plans still carry the versionIds read before the save, so a
     // second Confirm in between would 409 on every drink and call a swap that worked a failure.
     try {
@@ -142,13 +147,14 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
         'swap this good',
       );
       setOutcomes(out);
+      setSavedAt(Date.now());
       await Promise.all([
         qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
         qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
         ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
       ]);
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 
@@ -171,12 +177,17 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
       ) : (
         <p className="cl-said" data-testid="swap-from">
           Swap out {from.name}{' '}
-          <button type="button" className="cl-btn cl-focus" onClick={() => (setFrom(null), setTo(null), setOutcomes([]))} disabled={busy}>
+          <button type="button" className="cl-btn cl-focus" onClick={() => (setFrom(null), setTo(null), setOutcomes([]), setSavedAt(null))} disabled={busy}>
             Choose another
           </button>
         </p>
       )}
       {from && uses.isError ? <p className="cl-note" role="alert">Which drinks use {from.name} could not be read just now.</p> : null}
+      {waiting && uses.isError ? (
+        <p className="cl-said" role="status" data-testid="swap-reread-failed">
+          The drinks could not be read again; close and reopen before the next swap.
+        </p>
+      ) : null}
       {from && uses.data ? (
         <>
           <p className="cl-said" data-testid="swap-uses">
