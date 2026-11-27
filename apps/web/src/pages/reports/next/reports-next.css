@@ -265,6 +265,36 @@
   inset: 0;
 }
 
+/* "Read a stretch" (r108 g3). The readout's 20 px are always reserved under a
+   drawing that offers one, and taken from the plot's own flex room, so marking
+   a stretch never moves the card or what sits below it. One line; the whole
+   sentence is in its title and its live region. The band is a recharts
+   ReferenceArea in the seal tint that follows the pointer 1:1: no transition,
+   so nothing here is a motion (MOTIONS.md, deliberate non-motions). */
+.rp-stretch {
+  flex: 0 0 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--rp-mono);
+  font-size: 11px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklch, var(--ink-1) 60%, transparent);
+}
+.rp-stretch[data-state='read'] {
+  color: var(--ink-1);
+}
+.rp-plot[data-stretch-id] {
+  cursor: crosshair;
+}
+.rp-plot[data-stretching='true'] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* What a plot is drawing, said once above it (N-03): 11 px, 60% ink, in the
    reader's order. It stands in for the rotated value-axis titles, which sat on
    the tick labels. */

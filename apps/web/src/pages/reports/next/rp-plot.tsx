@@ -33,7 +33,7 @@
  * a screen reader without a second description.
  */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useReducer, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -45,6 +45,7 @@ import {
   LabelList,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
@@ -60,6 +61,7 @@ import { tipMotion, useAfterPaint, useDrawIn } from './rp-draw';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
 import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
+import { NO_STRETCH, stretchSpan, stretchStep } from './rp-stretch';
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
 
@@ -178,6 +180,7 @@ function Plot({
   label,
   caption,
   held = false,
+  stretch,
 }: {
   children: ReactNode;
   label: string;
@@ -185,19 +188,133 @@ function Plot({
   held?: boolean;
   /** What is drawn, said once above the plot (N-03). */
   caption?: ReactNode;
+  /** The till's "Read a stretch" (r108 g3): its readout slot, always reserved when offered. */
+  stretch?: Stretch;
 }) {
   const { ref, state } = useDrawIn();
   return (
     <>
       {caption != null && <PlotCaption>{caption}</PlotCaption>}
-      <div className="rp-plot" role="img" aria-label={label} ref={ref} data-draw={state}>
+      <div
+        className="rp-plot"
+        role="img"
+        aria-label={label}
+        ref={ref}
+        data-draw={state}
+        {...(stretch ? { 'data-stretch-id': stretch.id, 'data-stretching': stretch.span ? 'true' : 'false' } : {})}
+      >
         {!held && (
           <ResponsiveContainer width="100%" height="100%" debounce={1}>
             {children as never}
           </ResponsiveContainer>
         )}
       </div>
+      {stretch && (
+        <p className="rp-stretch" data-stretch-id={stretch.id} data-state={stretch.state} aria-live="polite" title={stretch.words}>
+          {stretch.words}
+        </p>
+      )}
     </>
+  );
+}
+
+/* ─────────────────────────────────────────────── read a stretch (g3) ───── */
+
+/** Said in the reserved slot before anything is marked. */
+export const STRETCH_HINT = 'Drag across days, or tap a first and a last day, to read a stretch.';
+
+interface Stretch {
+  id: string;
+  /** The marked slots of the drawing's rows, low to high. */
+  span: [number, number] | null;
+  words: string;
+  state: 'hint' | 'half' | 'read';
+  /** The chart's pointer handlers; empty when the drawing offers no stretch. */
+  on: Record<string, (st: { activeTooltipIndex?: number } | null, e?: { target?: unknown }) => void>;
+}
+
+/**
+ * The stretch on one drawing. Indices are slots of `series.data` (the whole
+ * window, never the thinned rows); `slotOf` maps a drawn row back to its slot.
+ * Escape, or a press outside this drawing, clears it. A press on a sheet being
+ * arranged is the cutting's drag, never a stretch.
+ */
+function useStretch(series: CatSeries, slotOf: (drawn: number) => number | undefined): Stretch | undefined {
+  const [s, send] = useReducer(stretchStep, NO_STRETCH);
+  const id = useId();
+  const offered = series.stretch != null;
+  const marked = s.anchor != null;
+  useEffect(() => {
+    if (!offered || !marked) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') send({ type: 'clear' });
+    };
+    const press = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (!t?.closest?.(`[data-stretch-id="${CSS.escape(id)}"]`)) send({ type: 'clear' });
+    };
+    // A release outside the drawing still ends the press.
+    const release = () => send({ type: 'up' });
+    document.addEventListener('keydown', key);
+    document.addEventListener('pointerdown', press);
+    document.addEventListener('pointerup', release);
+    return () => {
+      document.removeEventListener('keydown', key);
+      document.removeEventListener('pointerdown', press);
+      document.removeEventListener('pointerup', release);
+    };
+  }, [offered, marked, id]);
+  if (!series.stretch) return undefined;
+  const at = (st: { activeTooltipIndex?: number } | null) => {
+    const i = st?.activeTooltipIndex;
+    return typeof i === 'number' ? slotOf(i) : undefined;
+  };
+  const span = stretchSpan(s);
+  const half = span != null && !s.settled && !s.down;
+  const words = span == null
+    ? STRETCH_HINT
+    : half
+      ? (series.stretchFrom?.(span[0]) ?? STRETCH_HINT)
+      : (series.stretch(span[0], span[1]) ?? STRETCH_HINT);
+  return {
+    id,
+    span,
+    words,
+    state: span == null ? 'hint' : half ? 'half' : 'read',
+    on: {
+      onMouseDown: (st, e) => {
+        const t = e?.target as Element | undefined;
+        if (t?.closest?.('[data-arranging="true"]')) return;
+        const i = at(st);
+        if (i != null) send({ type: 'down', at: i });
+      },
+      onMouseMove: (st) => {
+        if (!s.down) return;
+        const i = at(st);
+        if (i != null) send({ type: 'move', at: i });
+      },
+      onMouseUp: (st) => send({ type: 'up', at: at(st) }),
+    },
+  };
+}
+
+/** The marked days as a band behind the drawing: the house's tint, no animation (it follows the pointer 1:1). */
+function stretchBand(stretch: Stretch | undefined, all: ReadonlyArray<{ label: string }>, yAxisId?: string) {
+  if (!stretch?.span) return null;
+  const x1 = all[stretch.span[0]]?.label;
+  const x2 = all[stretch.span[1]]?.label;
+  if (x1 == null || x2 == null) return null;
+  return (
+    <ReferenceArea
+      x1={x1}
+      x2={x2}
+      {...(yAxisId ? { yAxisId } : {})}
+      fill="var(--seal-tint)"
+      fillOpacity={1}
+      stroke="none"
+      ifOverflow="hidden"
+      className="rp-stretch-band"
+    />
   );
 }
 
@@ -483,6 +600,9 @@ export const HOLD_OVER = 100;
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
   const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel, priorLabel } = series;
   const data = thinCats(all, refs);
+  const slots = new Map(all.map((d, i) => [d as object, i]));
+  const stretch = useStretch(series, (i) => (data[i] ? slots.get(data[i]) : undefined));
+  const band = stretchBand(stretch, all);
   const heavy = data.length > HOLD_OVER;
   const painted = useAfterPaint(heavy ? `${kind}:${data.length}` : null);
   const held = heavy && !painted;
@@ -528,6 +648,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
         padding={kind === 'bars' ? undefined : X_ORIGIN_PAD}
       />
       <YAxis {...AXIS} width={gutter} tickFormatter={(v: number) => format(v)} />
+      {band}
       {tip}
       {(refs ?? []).map((r) => (
         <ReferenceLine
@@ -568,8 +689,8 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     }));
     const labelled = rows.length <= LABEL_BARS_MAX;
     return (
-      <Plot label={label} caption={caption} held={held}>
-        <BarChart data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN}>
+      <Plot label={label} caption={caption} held={held} stretch={stretch}>
+        <BarChart data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN} {...stretch?.on}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
             {labelled && valueLabels('shown', format)}
@@ -606,8 +727,8 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   if (kind === 'area')
     return (
-      <Plot label={label} caption={caption} held={held}>
-        <AreaChart data={data} margin={MARGIN}>
+      <Plot label={label} caption={caption} held={held} stretch={stretch}>
+        <AreaChart data={data} margin={MARGIN} {...stretch?.on}>
           {axes}
           <Area
             type="monotone"
@@ -651,8 +772,8 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot label={label} caption={caption} held={held}>
-      <LineChart data={data} margin={MARGIN}>
+    <Plot label={label} caption={caption} held={held} stretch={stretch}>
+      <LineChart data={data} margin={MARGIN} {...stretch?.on}>
         {axes}
         <Line
           type="monotone"
@@ -726,6 +847,8 @@ export function ComboPlot({
 }) {
   const [own, setOwn] = useState<Partial<ComboPick> | undefined>(pick);
   const plan = planCombo(series, onPick ? pick : own);
+  // Rows are the series' slots one for one (rp-combo.ts), so a row is its slot.
+  const stretch = useStretch(series, (i) => (i >= 0 && i < series.data.length ? i : undefined));
   if (!plan) return null;
   const set = (side: keyof ComboPick, key: string) => {
     const next = choose(plan.pick, side, key);
@@ -785,10 +908,12 @@ export function ComboPlot({
           bars.unit,
         )}`}
         caption={caption}
+        stretch={stretch}
       >
         <ComposedChart
           data={rows}
           margin={{ ...MARGIN, ...(split ? { right: 2 } : {}), ...(rows.length <= LABEL_BARS_MAX ? { top: 20 } : {}) }}
+          {...stretch?.on}
         >
           <CartesianGrid vertical={false} {...GRID} />
           <XAxis dataKey="label" {...AXIS} interval={tickInterval(rows)} minTickGap={26} />
@@ -807,6 +932,7 @@ export function ComboPlot({
               tickFormatter={(v: number) => line.format(v)}
             />
           )}
+          {stretchBand(stretch, rows, 'bars')}
           <Tooltip
             wrapperStyle={tipWrapper(barGutter)}
             {...tipMotion()}
