@@ -122,6 +122,42 @@ describe('on a touch device', () => {
     expect(onFiles).toHaveBeenCalledWith([photo], 'add');
   });
 
+  it('a phone holding one page offers Take the next page, and a photo taken there is added, not replaced', () => {
+    coarse(true);
+    const photo = new File(['x'], 'p2.jpg', { type: 'image/jpeg' });
+    const one = new File(['x'], 'p1.jpg', { type: 'image/jpeg' });
+    const { onFiles } = mount({ files: [one] });
+    expect(screen.queryByRole('button', { name: 'Take a photo of the menu' })).toBeNull();
+    const next = screen.getByRole('button', { name: 'Take the next page' });
+    expect(css).toMatch(/\.mdv-drop__next\s*\{[^}]*min-height: 44px/);
+    const input = screen.getByLabelText('Menu to read: take a photo');
+    const click = vi.spyOn(input, 'click');
+    fireEvent.click(next);
+    expect(click).toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [photo] } });
+    expect(onFiles).toHaveBeenCalledWith([photo], 'add');
+  });
+
+  it('no next-page button while reading, or for a single-file host', () => {
+    coarse(true);
+    const one = new File(['x'], 'p1.jpg', { type: 'image/jpeg' });
+    mount({ files: [one], reading: true });
+    expect(screen.queryByRole('button', { name: 'Take the next page' })).toBeNull();
+  });
+
+  it('on a desktop, Add pages opens a second picker and what it picks is added', () => {
+    const one = new File(['x'], 'p1.jpg', { type: 'image/jpeg' });
+    const two = new File(['x'], 'p2.jpg', { type: 'image/jpeg' });
+    const { onFiles } = mount({ files: [one] });
+    const input = screen.getByLabelText('Menu to read: add pages');
+    const click = vi.spyOn(input, 'click');
+    fireEvent.click(screen.getByRole('button', { name: 'Add pages' }));
+    expect(click).toHaveBeenCalled();
+    fireEvent.change(input, { target: { files: [two] } });
+    expect(onFiles).toHaveBeenCalledWith([two], 'add');
+    expect(screen.getByRole('button', { name: 'Change' })).toBeTruthy();
+  });
+
   it('is a 56 px button', () => {
     expect(css).toMatch(/\.mdv-drop__camera\s*\{[^}]*min-height: 56px/);
   });

@@ -101,6 +101,7 @@ export function DropZone({
 }: DropZoneProps) {
   const pickRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const addRef = useRef<HTMLInputElement>(null);
   const depth = useRef(0);
   const [dragging, setDragging] = useState(false);
   const coarse = useCoarsePointer();
@@ -137,6 +138,21 @@ export function DropZone({
         onChange={(e) => {
           const picked = Array.from(e.target.files ?? []);
           onFiles(picked, 'replace');
+        }}
+      />
+      <input
+        ref={addRef}
+        type="file"
+        className="mdv-drop__input"
+        multiple
+        accept={accept}
+        aria-label={`${inputLabel}: add pages`}
+        disabled={disabled}
+        tabIndex={-1}
+        onChange={(e) => {
+          const added = Array.from(e.target.files ?? []);
+          if (added.length) onFiles(added, 'add');
+          e.target.value = '';
         }}
       />
       <input
@@ -218,6 +234,26 @@ export function DropZone({
             </div>
             {!reading ? (
               <div className="mdv-drop__acts">
+                {multiple && coarse ? (
+                  <button
+                    type="button"
+                    className="mdv-btn mdv-drop__next"
+                    disabled={disabled}
+                    onClick={() => cameraRef.current?.click()}
+                  >
+                    Take the next page
+                  </button>
+                ) : null}
+                {multiple && !coarse ? (
+                  <button
+                    type="button"
+                    className="mdv-link"
+                    onClick={() => addRef.current?.click()}
+                    disabled={disabled}
+                  >
+                    Add pages
+                  </button>
+                ) : null}
                 <button type="button" className="mdv-link" onClick={openPicker} disabled={disabled}>
                   Change
                 </button>
