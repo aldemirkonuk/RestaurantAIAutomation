@@ -17,6 +17,7 @@ import { GoalReachedProducer } from "./goal-reached.producer";
 import { CeilingHeldProducer } from "./ceiling-held.producer";
 import { DeliveryRecordedProducer } from "./delivery-recorded.producer";
 import { InvoiceConfirmedProducer } from "./invoice-confirmed.producer";
+import { PriceMovedProducer } from "./price-moved.producer";
 import { SaleRecordProducer } from "./sale-record.producer";
 import { MarketPriceProducer } from "./market-price.producer";
 import {
@@ -176,6 +177,9 @@ export class NotificationProducersService {
     // The tenth (0160 §111) — the house's own mail-reading declaration with
     // no live grant behind it. Narrows itself to owners/managers; see its header.
     private readonly mailGrantAbsent: MailGrantAbsentProducer,
+    // The eleventh (r109 g4) — a price moved on a paper just verified.
+    // Narrows itself to owners/managers; see its header.
+    private readonly priceMoved: PriceMovedProducer,
     // Optional for the same reason the ledger's is: the spec constructs this
     // service positionally, and production keeps the wall clock.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
@@ -284,6 +288,13 @@ export class NotificationProducersService {
         now,
         () =>
           this.invoiceConfirmed.sweepTenant(tenant.id, timeZone, audience, now),
+      ),
+      // Narrows to owners and managers itself: a price is the house's money.
+      [PriceMovedProducer.PRODUCER]: await this.runOne(
+        tenant.id,
+        PriceMovedProducer.PRODUCER,
+        now,
+        () => this.priceMoved.sweepTenant(tenant.id, timeZone, audience, now),
       ),
       // Narrows the audience it is handed to owners and managers itself — the
       // only producer that does, and the reason is in its own header.
@@ -508,6 +519,7 @@ export class NotificationProducersService {
       [CeilingHeldProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [DeliveryRecordedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [InvoiceConfirmedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
+      [PriceMovedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [GrantSuspendedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [AddedToolProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [MailGrantAbsentProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],

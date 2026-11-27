@@ -16,6 +16,7 @@ import { GoalReachedProducer } from "./producers/goal-reached.producer";
 import { CeilingHeldProducer } from "./producers/ceiling-held.producer";
 import { DeliveryRecordedProducer } from "./producers/delivery-recorded.producer";
 import { InvoiceConfirmedProducer } from "./producers/invoice-confirmed.producer";
+import { PriceMovedProducer } from "./producers/price-moved.producer";
 import { SaleRecordProducer } from "./producers/sale-record.producer";
 import { MarketPriceProducer } from "./producers/market-price.producer";
 import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
@@ -69,6 +70,7 @@ import { AreaRoutingModule } from "../areas/area-routing.module";
     CeilingHeldProducer,
     DeliveryRecordedProducer,
     InvoiceConfirmedProducer,
+    PriceMovedProducer,
     SaleRecordProducer,
     MarketPriceProducer,
     GrantSuspendedProducer,
