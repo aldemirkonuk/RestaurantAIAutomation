@@ -26,6 +26,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
+  getMenuPlan,
   getMenuSourceUrl,
   importMenu,
   listMenuVersions,
@@ -328,6 +329,14 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
       setLinkError(reasonOf(err));
     }
   };
+  // The current menu's own row says how many prices are still to carry, from the plan read the panel below uses
+  // (same key, so it is read once). Nothing is offered when none is left; a failed read says so.
+  const left = useQuery({
+    queryKey: ['menu', 'plan', v.menuId],
+    queryFn: () => getMenuPlan(v.menuId),
+    enabled: v.current && canManage,
+  });
+  const toCarry = v.current && left.data ? left.data.counts.change + left.data.counts.new_wine : 0;
   const standing = v.current
     ? `current since ${day(v.madeCurrentAt)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
     : v.status === 'archived'
@@ -357,16 +366,23 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
         ) : null}
       </td>
       <td>
-        {canManage ? (
+        {canManage && (!v.current || toCarry > 0) ? (
           <button
             type="button"
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={v.current ? `Carry ${versionLabel(v)} prices again` : `Make ${versionLabel(v)} current`}
+            aria-label={
+              v.current ? `Finish carrying ${toCarry} ${toCarry === 1 ? 'price' : 'prices'} of ${versionLabel(v)}` : `Make ${versionLabel(v)} current`
+            }
           >
-            {planning ? 'See below' : v.current ? 'Carry its prices again' : 'Make current'}
+            {planning ? 'See below' : v.current ? `Finish carrying ${toCarry} ${toCarry === 1 ? 'price' : 'prices'}` : 'Make current'}
           </button>
+        ) : null}
+        {v.current && canManage && left.isError ? (
+          <span role="alert" className="cl-dim" style={{ display: 'block' }}>
+            What is left to carry could not be read ({reasonOf(left.error)}).
+          </span>
         ) : null}
       </td>
     </tr>

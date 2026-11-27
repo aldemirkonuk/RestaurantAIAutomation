@@ -306,9 +306,9 @@ describe('MenuVersions', () => {
     expect(rows).toHaveLength(3);
     expect(rows[1]).toHaveTextContent('current since 2026-09-01, chosen by Bo');
     expect(rows[2]).toHaveTextContent('last one used, used until 2026-09-01');
-    // The current menu offers "Carry its prices again" (a cut-off carry is finished there); the others "Make current".
+    // The others offer "Make current"; the current menu offers a carry only when prices are left (own tests below).
     expect(screen.getAllByRole('button', { name: /^Make .* current$/ })).toHaveLength(2);
-    expect(within(rows[1]).getByRole('button', { name: /^Carry .* prices again$/ })).toBeInTheDocument();
+    expect(within(rows[1]).queryByRole('button', { name: /carry|current/i })).toBeNull();
   });
 
   it('a failed read of the kept menus says so -- not "none kept"', async () => {
@@ -342,7 +342,7 @@ describe('MenuVersions', () => {
   it('a cut-off carry is finished from the current menu\'s own row, and the sentence says what it carried', async () => {
     const current = version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
     mockList.mockResolvedValue({ current, lastUsed: null, versions: [current] });
-    mockPlan.mockImplementation(async (id: string) => plan(id, { current: true }));
+    mockPlan.mockImplementation(async (id: string) => plan(id, { current: true, counts: { ...plan(id).counts, change: 2 } }));
     mockMake.mockResolvedValue({
       outcome: 'already_current',
       menuId: 'm2',
@@ -353,7 +353,7 @@ describe('MenuVersions', () => {
       failed: [{ menuItemId: 'l3', name: 'Barolo', error: 'timeout' }],
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: /^Carry .* prices again$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Finish carrying 2 prices of / }));
     expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
     expect(mockMake).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Carry its prices again' }));
@@ -370,6 +370,37 @@ describe('MenuVersions', () => {
     expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3, priceSync: { unchanged: 3 } })).toBe(
       'That menu was already the current one. No line was carried.',
     );
+  });
+
+  it('the current row says "Finish carrying N prices" when N are left, counting changes and new wines, and a click opens the plan', async () => {
+    const current = version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
+    mockList.mockResolvedValue({ current, lastUsed: null, versions: [current] });
+    mockPlan.mockImplementation(async (id: string) => plan(id, { current: true, counts: { ...plan(id).counts, change: 2, new_wine: 1 } }));
+    mount(true);
+    const btn = await screen.findByRole('button', { name: /^Finish carrying 3 prices of / });
+    expect(btn).toHaveTextContent('Finish carrying 3 prices');
+    fireEvent.click(btn);
+    expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
+    expect(mockMake).not.toHaveBeenCalled();
+  });
+
+  it('the current row offers nothing when no price is left to carry', async () => {
+    const current = version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
+    mockList.mockResolvedValue({ current, lastUsed: null, versions: [current] });
+    mockPlan.mockImplementation(async (id: string) => plan(id, { current: true }));
+    mount(true);
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledWith('m2'));
+    const row = await screen.findByTestId('menu-version-row');
+    expect(within(row).queryByRole('button', { name: /carry|current/i })).toBeNull();
+  });
+
+  it('a failed read of what is left says so, and offers no button', async () => {
+    const current = version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
+    mockList.mockResolvedValue({ current, lastUsed: null, versions: [current] });
+    mockPlan.mockRejectedValue(new Error('network down'));
+    mount(true);
+    expect(await screen.findByText(/What is left to carry could not be read \(network down\)/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Finish carrying/ })).toBeNull();
   });
 
   it('staff see every kept menu but are offered no choice of the current one', async () => {
