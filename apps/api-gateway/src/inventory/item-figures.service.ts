@@ -7,6 +7,7 @@ import { readHouseItem } from "./item-used-in.service";
 export type MoneyView = "shown" | "staff" | "unread";
 
 const DAY = 86_400_000;
+const TX_PAGE = 1000;
 const MONEY_HIDDEN: Record<Exclude<MoneyView, "shown">, string> = {
   staff: "Money is shown to owners and managers.",
   unread: "Your role in this house could not be read, so money is not shown.",
@@ -67,14 +68,29 @@ export class ItemFiguresService {
 
     // ── waste vs given (K10: never added together) ──
     const since30 = new Date(now.getTime() - 30 * DAY).toISOString();
-    const tx = await client
-      .from("inventory_transactions")
-      .select("transaction_type, quantity_change, unit_cost")
-      .eq("inventory_id", itemId)
-      .eq("restaurant_id", restaurantId)
-      .eq("stock_type", "live")
-      .in("transaction_type", ["waste", "comp"])
-      .gte("transaction_date", since30);
+    // Paged by id, 1000 a page: PostgREST stops at max_rows, and a sum over one page is silently short.
+    const tx: { data: Array<Record<string, any>>; error: { message: string } | null } = { data: [], error: null };
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("inventory_transactions")
+        .select("id, transaction_type, quantity_change, unit_cost")
+        .eq("inventory_id", itemId)
+        .eq("restaurant_id", restaurantId)
+        .eq("stock_type", "live")
+        .in("transaction_type", ["waste", "comp"])
+        .gte("transaction_date", since30);
+      if (after) q = q.gt("id", after);
+      const page = await q.order("id", { ascending: true }).limit(TX_PAGE);
+      if (page.error) {
+        tx.error = page.error;
+        break;
+      }
+      const got = (page.data ?? []) as Array<Record<string, any>>;
+      tx.data.push(...got);
+      if (got.length < TX_PAGE) break;
+      after = String(got[got.length - 1].id);
+    }
     let waste;
     if (tx.error) {
       waste = {
