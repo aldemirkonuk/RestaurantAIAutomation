@@ -659,8 +659,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     toAddresses: unknown;
     transport: unknown;
     auth: SenderAuth | null;
-    // Auto-Submitted and the like: the mail reads ask this to tell an out-of-office from a letter.
-    transport: Record<string, unknown>;
   }): Promise<void> {
     if (!p.restaurantId || !p.mirroredByGrantId) {
       this.logger.warn(
@@ -704,7 +702,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             // "automatic mail never counts" can see a team or guest auto-reply.
             transport: p.transport,
             auth: p.auth,
-            transport: p.transport,
           },
           mirrored_by_grant_id: p.mirroredByGrantId,
           kind: p.kind,
@@ -862,7 +859,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         toAddresses: payload.to_addresses,
         transport: transportSignals,
         auth: senderAuth,
-        transport: { ...transportSignals },
       });
       return;
     }
