@@ -262,10 +262,12 @@ function Body({
       ) : (
         <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} />
       )}
-      {figures.length > 0 && (
+      {/* On a phone the list keeps its slot across Draw as (r103): a row the drawing does not show is drawn
+          hidden, so Table and One figure do not take the list out of the card and Area put it back. */}
+      {(flat ? figures.length > 0 : view.figures.length > 0) && (
         <dl className="rp-dl">
-          {figures.map((f) => (
-            <FigureRow key={f.label} label={f.label} value={f.value} note={f.note} />
+          {(flat ? figures : view.figures).map((f) => (
+            <FigureRow key={f.label} label={f.label} value={f.value} note={f.note} held={!figures.includes(f)} />
           ))}
         </dl>
       )}

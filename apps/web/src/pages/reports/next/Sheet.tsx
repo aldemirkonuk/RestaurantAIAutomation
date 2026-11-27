@@ -45,6 +45,7 @@ import {
 } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { tuck } from '@/lib/mudavym';
+import { useAfterPaint } from './rp-draw';
 import { colsForWidth, liftCuttings, projectCuttings, sheetLayouts, slotRect } from './rp-arrange';
 import {
   ANALYSIS_IDS,
@@ -126,6 +127,8 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
      phone never waits on a measurement, and react-grid-layout is not mounted
      there at all. The measured box width takes over as soon as it exists. */
   const stacked = isStackedWidth(width);
+  /* Entering Arrange: the page answers in its first frame, the drag and resize handles of ten cards a task later (r103). */
+  const handles = useAfterPaint(arranging ? 'arranging' : null);
 
   /* While arranging, a card's controls row is room the card gains, not room the plot gives up (r101): the grid
      draws the slot plus the rows the controls take, and what the reader moves or resizes is written back without them. */
@@ -233,8 +236,8 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         margin={SHEET_MARGIN}
         containerPadding={[0, 0]}
         compactType="vertical"
-        isDraggable={arranging}
-        isResizable={arranging}
+        isDraggable={handles}
+        isResizable={handles}
         draggableCancel={DRAG_CANCEL}
         onDragStop={handleChange}
         onResizeStop={handleChange}

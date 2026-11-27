@@ -641,6 +641,9 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   justify-content: space-between;
   gap: 10px;
 }
+.rp-fig[data-held] {
+  display: none;
+}
 .rp-fig dt {
   font-size: 11.5px;
   color: var(--ink-4);
@@ -1173,6 +1176,11 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 @media (max-width: 767px) {
   .rp-page__inner {
     overflow-x: clip;
+  }
+  /* A figure the drawing does not show keeps its row's space, invisible, so Draw as does not move the card's content (r103). */
+  .rp-fig[data-held] {
+    display: flex;
+    visibility: hidden;
   }
 }
 
