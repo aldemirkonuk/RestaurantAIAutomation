@@ -99,6 +99,8 @@ export interface InventoryItem {
   previousSettledCost?: number;
   /** False = the settled-price read failed, so "no price move" is unknown, not none. Absent = from before this field. */
   settledCostsReadable?: boolean;
+  /** True = only the newest settled deliveries were read, so a good whose earlier delivery fell outside may be missing from Price signals. */
+  settledCostsCapped?: boolean;
   locations?: WineLocationBreakdown[];
 }
 

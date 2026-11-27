@@ -116,6 +116,7 @@ export function normalizeInventoryItem(
     lastSettledCost: typeof item.lastSettledCost === 'number' ? item.lastSettledCost : undefined,
     previousSettledCost: typeof item.previousSettledCost === 'number' ? item.previousSettledCost : undefined,
     settledCostsReadable: item.settledCostsReadable,
+    settledCostsCapped: item.settledCostsCapped,
     locations: item.locations ?? [],
   } as InventoryItem;
 }

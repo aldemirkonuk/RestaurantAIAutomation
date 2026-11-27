@@ -233,17 +233,23 @@ export class InventoryService {
       const rows: SettledRow[] = [];
       let capped = false;
       for (let page = 0; page < SETTLED_READ_PAGES; page += 1) {
-        const { data, error } = await client
+        const { data, error, count } = await client
           .from("inventory_lot_revaluations")
-          .select("inventory_id, source_order_id, new_unit_cost, new_cost_provenance, created_at")
+          .select("inventory_id, source_order_id, new_unit_cost, new_cost_provenance, created_at", {
+            count: "exact",
+          })
           .eq("restaurant_id", restaurantId)
           .in("new_cost_provenance", [...SETTLED_PRICES])
           .order("created_at", { ascending: false })
           .order("id", { ascending: false })
-          .range(page * SETTLED_PAGE, page * SETTLED_PAGE + SETTLED_PAGE - 1);
+          .range(rows.length, rows.length + SETTLED_PAGE - 1);
         if (error) throw error;
         rows.push(...((data ?? []) as SettledRow[]));
-        if ((data ?? []).length < SETTLED_PAGE) break;
+        // The end is the exact count, not a short page: a server that caps a
+        // response below SETTLED_PAGE would otherwise stop the read at page 1.
+        const got = (data ?? []).length;
+        if (typeof count === "number" ? rows.length >= count : got < SETTLED_PAGE) break;
+        if (got === 0) break;
         if (page === SETTLED_READ_PAGES - 1) capped = true;
       }
       return { map: settledMovesFrom(rows), ok: true, capped };
