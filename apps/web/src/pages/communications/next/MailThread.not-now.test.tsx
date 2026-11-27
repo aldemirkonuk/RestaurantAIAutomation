@@ -85,7 +85,7 @@ function mount(at = '/communications?with=vendor%3A7b000000-0000-4000-8000-00000
   render(
     <MemoryRouter initialEntries={[at]}>
       <QueryClientProvider client={qc}>
-        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} />
+        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} onAnswer={vi.fn()} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -136,10 +136,10 @@ describe('Not now on a thread', () => {
     expect(screen.queryByTestId('thread-not-now-open')).toBeNull();
   });
 
-  it('a thread that does not wait offers no Not now', async () => {
+  it('a thread that does not wait offers no Not now (though it can be answered)', async () => {
     threadNow = () => thread(false);
     mount();
-    await screen.findAllByTestId('mail-letter');
+    await screen.findByTestId('write-thread-reply');
     expect(screen.queryByTestId('thread-not-now-open')).toBeNull();
   });
 
