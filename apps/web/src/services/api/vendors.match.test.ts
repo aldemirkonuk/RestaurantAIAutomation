@@ -4,21 +4,29 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { get } = vi.hoisted(() => ({ get: vi.fn() }))
-vi.mock('./client', () => ({ apiClient: { get } }))
+const answer = vi.hoisted(() => ({ next: 'fail' as 'fail' | 'none' }))
+vi.mock('./client', () => ({
+  apiClient: {
+    get: async () => {
+      if (answer.next === 'fail') throw new Error('503')
+      return { data: [] }
+    },
+  },
+}))
 
 import { matchVendorCatalogue } from './vendors'
 
-beforeEach(() => get.mockReset())
+beforeEach(() => {
+  answer.next = 'fail'
+})
 
 describe('matchVendorCatalogue', () => {
   it('answers null when the read failed, never an empty list', async () => {
-    get.mockRejectedValue(new Error('503'))
     expect(await matchVendorCatalogue('Suvla', undefined, 'TR')).toBeNull()
   })
 
   it('answers [] when the catalogue was asked and knows no match', async () => {
-    get.mockResolvedValue({ data: [] })
+    answer.next = 'none'
     expect(await matchVendorCatalogue('Suvla')).toEqual([])
   })
 })
