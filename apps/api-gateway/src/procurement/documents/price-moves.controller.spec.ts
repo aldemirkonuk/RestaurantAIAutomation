@@ -123,3 +123,37 @@ describe("DocumentsController.priceMoves — a cost that jumped with no PO to ca
     await expect(c.priceMoves("d1", user)).rejects.toMatchObject({ status: 500 });
   });
 });
+
+describe("DocumentsController.priceMoves at the exact threshold, through the lot read (r108, DD-r108-23)", () => {
+  // The lot cost arrives from numeric(14,6) as a number or, from some drivers,
+  // as its decimal string; both must land on the same exact verdict.
+  it.each([
+    [1, "1.1"],
+    [2, "2.2"],
+    [3, "3.3"],
+    [20, "22"],
+    ["1.000000", 1.1],
+    ["3.000000", 3.3],
+  ])("a lot at %s and a line at %s is not moved (exactly 10 percent)", async (cost, price) => {
+    const c = controllerWith({
+      procurement_document_lines: { data: [line({ unit_price: price })], error: null },
+      inventory_lots: { data: [lot(cost as number, "2026-11-01")], error: null },
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toMatchObject({ compared: true, moved: false });
+    expect((out.lines[0] as any).sentence ?? null).toBeNull();
+  });
+
+  it.each([
+    [1, 1.11, "was 1.00, now 1.11, up 11 percent"],
+    [20, 22.01, "was 20.00, now 22.01, up 10.1 percent"],
+    [3, 2.69, "was 3.00, now 2.69, down 10.3 percent"],
+  ])("a lot at %s and a line at %s is moved: %s", async (cost, price, sentence) => {
+    const c = controllerWith({
+      procurement_document_lines: { data: [line({ unit_price: price })], error: null },
+      inventory_lots: { data: [lot(cost, "2026-11-01")], error: null },
+    });
+    const out = await c.priceMoves("d1", user);
+    expect(out.lines[0]).toMatchObject({ compared: true, moved: true, sentence });
+  });
+});
