@@ -231,6 +231,7 @@ function makeService(
     wineSubmissions?: unknown;
     csvParser?: unknown;
     scanParser?: unknown;
+    notifications?: unknown;
   } = {},
 ) {
   const supabase = makeFakeSupabase(tables, opts.rpc, opts.rpcCalls);
@@ -240,6 +241,7 @@ function makeService(
     (opts.csvParser ?? undefined) as any,
     (opts.scanParser ?? undefined) as any,
     (opts.wineSubmissions ?? undefined) as any,
+    (opts.notifications ?? undefined) as any,
   );
 }
 
@@ -2724,6 +2726,149 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
     // A stopped read keeps no half of what it wrote, as a failed one does.
     expect(tables.menu_items.filter((l) => l.menu_id === "menu-stuck")).toHaveLength(0);
     expect(tables.master_wine_library_submissions).toHaveLength(0);
+  });
+});
+
+// DD-r108-18 (menu-r108-7): the page promises the read shows when it is done,
+// so a person who left hears it on the bell. Only the call that wins the
+// `read_state = 'reading'` update writes, so a read ended twice rings once.
+describe("MenusService — a long read that ends rings the bell of the house's owners and managers, once", () => {
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: unknown[]) =>
+      items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const base = (): Record<string, Row[]> => ({
+    restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: [],
+    user_onboarding_progress: [],
+    master_wine_library_submissions: [],
+    user_restaurant_access: [
+      { user_id: "u-owner", restaurant_id: "rest-1", role: "owner", is_active: true },
+      { user_id: "u-manager", restaurant_id: "rest-1", role: "manager", is_active: true },
+      { user_id: "u-staff", restaurant_id: "rest-1", role: "staff", is_active: true },
+      { user_id: "u-gone", restaurant_id: "rest-1", role: "manager", is_active: false },
+      { user_id: "u-elsewhere", restaurant_id: "rest-2", role: "owner", is_active: true },
+    ],
+  });
+  const bell = (fail = false) => {
+    const rows: Row[] = [];
+    return {
+      rows,
+      createNotification: async (n: Row) => {
+        if (fail) throw new Error("notifications table is down");
+        rows.push(n);
+        return n;
+      },
+    };
+  };
+  const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+  const held = () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    return {
+      release: () => release(),
+      parser: {
+        parseWithWarnings: async () => {
+          await gate;
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    };
+  };
+
+  it("a finished read tells each owner and manager of that house once; staff, a former manager and another house hear nothing", async () => {
+    const tables = base();
+    const notifications = bell();
+    const service = makeService(tables, {
+      wineSubmissions,
+      notifications,
+      scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] }) },
+    });
+    const r = await service.importMenu(dto, "u-staff");
+    await service.whenRead(r.menuId);
+    expect(notifications.rows.map((n) => n.userId).sort()).toEqual(["u-manager", "u-owner"]);
+    for (const n of notifications.rows) {
+      expect(n).toMatchObject({
+        restaurantId: "rest-1",
+        type: "menu_read",
+        actionUrl: "/menu",
+        metadata: { menuId: r.menuId, readState: "done" },
+      });
+      expect(n.message).toMatch(/^1 line was read\. No price has changed yet/);
+    }
+  });
+
+  it("a read ended twice (another server swept it, then this one finished) writes one row per person, the one that won", async () => {
+    const tables = base();
+    const notifications = bell();
+    const { release, parser } = held();
+    const thisServer = makeService(tables, { wineSubmissions, notifications, scanParser: parser });
+    const r = await thisServer.importMenu(dto, "u-owner");
+    // Another server, which is not reading it, takes the read for stopped.
+    tables.restaurant_menus.find((m) => m.id === r.menuId)!.extracted_at = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    const otherServer = makeService(tables, { wineSubmissions, notifications });
+    await otherServer.listVersions("rest-1");
+    release();
+    await thisServer.whenRead(r.menuId);
+    expect((await thisServer.readStatus("rest-1", r.menuId)).state).toBe("failed");
+    expect(notifications.rows.map((n) => [n.userId, n.metadata.readState]).sort()).toEqual([
+      ["u-manager", "failed"],
+      ["u-owner", "failed"],
+    ]);
+  });
+
+  it("a read that finished first is not rung again by a later sweep", async () => {
+    const tables = base();
+    const notifications = bell();
+    const service = makeService(tables, {
+      wineSubmissions,
+      notifications,
+      scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] }) },
+    });
+    const r = await service.importMenu(dto, "u-owner");
+    await service.whenRead(r.menuId);
+    tables.restaurant_menus.find((m) => m.id === r.menuId)!.extracted_at = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    await makeService(tables, { wineSubmissions, notifications }).listVersions("rest-1");
+    expect(notifications.rows).toHaveLength(2);
+    expect(notifications.rows.every((n) => n.metadata.readState === "done")).toBe(true);
+  });
+
+  it("a failed read says it failed, with no figure, whether nothing was read or the reader broke", async () => {
+    for (const parseWithWarnings of [
+      async () => ({ items: [], warnings: [] }),
+      async () => {
+        throw new Error("reader timed out after 120000 ms");
+      },
+    ]) {
+      const tables = base();
+      const notifications = bell();
+      const service = makeService(tables, { wineSubmissions, notifications, scanParser: { parseWithWarnings } });
+      const r = await service.importMenu(dto, "u-owner");
+      await service.whenRead(r.menuId);
+      expect(notifications.rows).toHaveLength(2);
+      for (const n of notifications.rows) {
+        expect(n.metadata.readState).toBe("failed");
+        expect(n.title).toBe("The menu you sent could not be read");
+        expect(`${n.title} ${n.message}`).not.toMatch(/\d/);
+      }
+    }
+  });
+
+  it("a bell that cannot be written leaves the finished read done, with its line", async () => {
+    const tables = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      notifications: bell(true),
+      scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] }) },
+    });
+    const r = await service.importMenu(dto, "u-owner");
+    await service.whenRead(r.menuId);
+    expect((await service.readStatus("rest-1", r.menuId)).state).toBe("done");
+    expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(1);
   });
 });
 
