@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
@@ -25,6 +25,10 @@ const api = vi.hoisted(() => ({
   listFails: null as unknown,
   /** Holds the clean-papers read (`status = received`) open forever when set (W48). */
   cleanPending: false,
+  /** Holds the review-queue and verified-book reads open until `gate` opens (P8). */
+  queuePending: false,
+  verifiedPending: false,
+  gate: Promise.resolve() as Promise<void>,
   /** Holds the door-count read open forever when set (W50b). */
   doorPending: false,
   /** Rejects only the clean-papers read when set (W49). */
@@ -78,6 +82,10 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
             ? Promise.reject(api.verifiedFails)
           : opts.status === 'received' && api.cleanPending
             ? new Promise<never>(() => {})
+          : opts.status === 'needs_review' && api.queuePending
+            ? api.gate.then(() => api.queue)
+          : opts.status === 'verified' && api.verifiedPending
+            ? api.gate.then(() => api.verified)
             : Promise.resolve(
               opts.status === 'verified'
                 ? api.verified
@@ -228,6 +236,9 @@ beforeEach(() => {
   api.unverifiedFails = null;
   api.listFails = null;
   api.cleanPending = false;
+  api.queuePending = false;
+  api.verifiedPending = false;
+  api.gate = Promise.resolve();
   api.doorPending = false;
   api.cleanFails = null;
   api.verifiedFails = null;
@@ -956,7 +967,8 @@ describe('ReceiptsNext — a correction refreshes the sheet above it', () => {
     );
     // The sheet's keys name the house (W47), so the refresh must name it too:
     // a house-less prefix would no longer reach the sheet's buckets.
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'rest-A', 'd1'] });
+    // The goods list is keyed by the house alone (r41 gap 1), so its refresh is too.
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-items', 'rest-A'] });
     expect(spy).toHaveBeenCalledWith({ queryKey: ['canonical-document-mappings', 'rest-A', 'd1'] });
   });
 });
@@ -1243,5 +1255,40 @@ describe('ReceiptsNext — every paper type in words (W44)', () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await screen.findByText((_, el) => el?.tagName === 'SPAN' && /^Document · SYN-X-1$/.test(el.textContent ?? ''));
     expect(container.textContent).not.toContain('a_new_kind');
+  });
+});
+
+describe('ReceiptsNext — a lane holds its place while it is read (r41 invoices gap P8)', () => {
+  const outlines = (c: HTMLElement) => c.querySelectorAll('[data-lane-outline]').length;
+
+  it('every lane holds a place while its read is on the way, and none once they land', async () => {
+    let open!: () => void;
+    api.gate = new Promise<void>((r) => (open = r));
+    api.queuePending = true;
+    api.verifiedPending = true;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/Reading the queue/);
+    // all three reads are in flight on a cold load: the queue's, the clean papers' and the verified book's
+    expect(outlines(container)).toBe(3);
+    await act(async () => {
+      open();
+    });
+    await waitFor(() => expect(outlines(container)).toBe(0));
+    expect(await screen.findByText(/INV-88/)).toBeTruthy();
+  });
+
+  it('a lane whose read failed draws no outline, it says the failure', async () => {
+    api.cleanFails = new Error('boom');
+    api.verifiedFails = new Error('boom');
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/papers that read cleanly/);
+    expect(outlines(container)).toBe(0);
+  });
+
+  it('with no house selected nothing is asked, so nothing holds a place', async () => {
+    api.restaurantId = null;
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    await screen.findByText(/No restaurant is selected/);
+    expect(outlines(container)).toBe(0);
   });
 });

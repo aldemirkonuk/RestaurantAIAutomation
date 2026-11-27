@@ -65,6 +65,15 @@ describe('RememberedShelf', () => {
     expect(screen.getAllByRole('button')).toHaveLength(1)
   })
 
+  it('an item the list cannot name is said so, never printed as its id', () => {
+    render(
+      <RememberedShelf line={line({ inventoryId: 'item-lost' })} itemName={itemName} onLink={vi.fn()} />,
+    )
+    const row = screen.getByTestId('shelf-linked')
+    expect(row).toHaveTextContent('the list does not name')
+    expect(row.textContent).not.toContain('item-lost')
+  })
+
   it('records the tick as `remembered`, not as a fresh choice', async () => {
     const onLink = vi.fn().mockResolvedValue(undefined)
     render(

@@ -54,7 +54,7 @@
  * confident about something it did not read.
  */
 
-import { useContext, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Wordmark } from '@/components/mudavym'
@@ -156,16 +156,36 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    * id. A FAILED read here leaves the names unknown and the shelf rows fall
    * back to the id — the proposal itself still stands, because the memory and
    * the item list are two different facts.
+   *
+   * The key names the house and NOT the paper (r41 invoices audit, gap 1): it
+   * is the house's whole list of goods, the same for every paper, and keying it
+   * by the paper read that whole list again for every paper opened. Papers in
+   * one house now share one read per minute; a write here still refreshes it
+   * (ReceiptsNext `refreshSheet`), and a paper naming a good the shared list
+   * does not have reads it again once (`namesAGoodTheListLacks` below).
    */
   const itemsQ = useQuery({
-    queryKey: ['canonical-document-items', rid, id],
+    queryKey: ['canonical-document-items', rid],
     queryFn: () => getInventory(),
     staleTime: 60_000,
   })
   const itemName = (inventoryId: string): string | null => {
     const it = (itemsQ.data ?? []).find((x) => x.id === inventoryId)
-    if (!it) return null
-    if (!it.wineName) return null
+    if (!it) {
+      // Never the raw id. A failed read and a read still on its way are said
+      // as what they are; only a finished read that lacks the id falls to the
+      // shelf row's own "does not name" wording.
+      if (itemsQ.isError) return 'an item (the names could not be loaded)'
+      if (itemsQ.isPending) return 'an item (its name is loading)'
+      return null
+    }
+    if (!it.wineName) {
+      // A food or supply good has no wine name; the house's own name for it
+      // is the row's `display_name` (the gateway sends the raw row). A bottle
+      // size or vintage is a wine fact, so none is added to it.
+      const own = (it as { display_name?: string | null }).display_name
+      return typeof own === 'string' && own.trim() ? own.trim() : null
+    }
     const vintage = it.wineVintage ? ` ${it.wineVintage}` : ''
     const size = it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''
     return `${it.wineName}${vintage}${size}`
@@ -211,6 +231,28 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const fetchedAt = q.dataUpdatedAt || Date.now()
   const res = q.data
   const doc = res?.canonical
+
+  /**
+   * The shared list was read before this paper opened, and this paper names a
+   * good it does not have — one added since (a pairing on another paper, a new
+   * good on /inventory). Read the list again, ONCE: a list read after the
+   * paper opened is final for this paper, so a good the list will never hold
+   * (one taken off the shelves) cannot make it read in a loop.
+   */
+  const openedAt = useMemo(() => Date.now(), [id])
+  const namesAGoodTheListLacks =
+    !!doc &&
+    !!itemsQ.data &&
+    !itemsQ.isFetching &&
+    itemsQ.dataUpdatedAt < openedAt &&
+    doc.layer2.lines.some((l) =>
+      [l.inventoryId, l.proposedInventoryId].some(
+        (gid) => !!gid && !itemsQ.data!.some((x) => x.id === gid),
+      ),
+    )
+  useEffect(() => {
+    if (namesAGoodTheListLacks) void itemsQ.refetch()
+  }, [namesAGoodTheListLacks])
 
   /**
    * The delivery this document sits on — the FIRST one, and only when there is

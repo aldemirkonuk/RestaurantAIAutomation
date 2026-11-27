@@ -718,6 +718,37 @@ const EDITABLE_FIELDS = [
 
 type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
 
+/**
+ * The place a lane holds while its read is on the way (r41 invoices gap P8).
+ * Rows are the height of a queue row (two lines in 9px padding) and a heading
+ * the height of a lane heading, so a lane that lands fills the place and the
+ * lane under it stays where it was. Drawn for the eye only: the header line
+ * already says "Reading the queue…", and a read that failed draws none of this
+ * (the failure sentence stands in its place).
+ */
+function LaneOutline({ rows, heading = false }: { rows: number; heading?: boolean }) {
+  const bar = { background: 'var(--paper-2, #EAE4D8)', borderRadius: 2 } as const;
+  return (
+    <div aria-hidden="true" data-lane-outline="">
+      {heading && <div style={{ ...bar, width: 120, height: 14, margin: '4px 0' }} />}
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          style={{
+            height: 52,
+            boxSizing: 'border-box',
+            padding: '9px 8px',
+            borderBottom: '1px solid var(--paper-2, #EAE4D8)',
+          }}
+        >
+          <div style={{ ...bar, width: '55%', height: 12 }} />
+          <div style={{ ...bar, width: '35%', height: 10, marginTop: 8, opacity: 0.6 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** The vendor the list endpoint names for a row (walk-through W8), if any. */
 function vendorOf(d: ProcurementDocument): string | null {
   const name = (d as ProcurementDocument & { vendorName?: string | null }).vendorName;
@@ -838,9 +869,11 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    * document disagreeing on screen. Every write that touches lines refreshes it.
    */
   const refreshSheet = () => {
-    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+    for (const k of ['canonical-document', 'canonical-document-mappings']) {
       void qc.invalidateQueries({ queryKey: [k, rid, doc.id] });
     }
+    // The goods list is the house's, shared by every paper (r41 gap 1).
+    void qc.invalidateQueries({ queryKey: ['canonical-document-items', rid] });
   };
   const detailQ = useQuery({
     queryKey: detailKey,
@@ -1937,6 +1970,16 @@ export default function ReceiptsNext() {
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.queue.map(queueRow)}
+                {data.queueReading && <LaneOutline rows={3} />}
+              </div>
+            )}
+
+            {/* The lanes below the queue hold their place while their own reads
+                are on the way, so a lane landing late does not push the lane
+                under it (r41 invoices gap P8). A failed read draws none. */}
+            {data.cleanReading && (
+              <div style={{ marginTop: 16 }}>
+                <LaneOutline rows={1} heading />
               </div>
             )}
 
@@ -1965,6 +2008,12 @@ export default function ReceiptsNext() {
                 <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                   {data.clean.map(queueRow)}
                 </div>
+              </div>
+            )}
+
+            {data.verifiedReading && (
+              <div style={{ marginTop: 16 }}>
+                <LaneOutline rows={0} heading />
               </div>
             )}
 

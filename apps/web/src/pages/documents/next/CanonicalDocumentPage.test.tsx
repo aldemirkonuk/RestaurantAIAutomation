@@ -219,9 +219,11 @@ describe('CanonicalDocumentPage', () => {
     )
     const { rerender } = render(tree('rest-A'))
     await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
-    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+    for (const k of ['canonical-document', 'canonical-document-mappings']) {
       expect(qc.getQueryCache().find({ queryKey: [k, 'rest-A', 'doc-syn'], exact: true })).toBeTruthy()
     }
+    // The goods list is the house's, shared by every paper (r41 gap 1).
+    expect(qc.getQueryCache().find({ queryKey: ['canonical-document-items', 'rest-A'], exact: true })).toBeTruthy()
     expect(documentMock).toHaveBeenCalledTimes(1)
     // Within the 30s stale window a house-less key would answer from the cache.
     rerender(tree('rest-B'))

@@ -92,6 +92,16 @@ export interface ReceiptsNextData {
   cleanCapped: boolean;
   verified: ProcurementDocument[];
   verifiedKnown: boolean;
+  /**
+   * A lane's read is on its way: asked, not answered, not failed. The page
+   * holds that lane's place with an outline so the lanes under it do not jump
+   * as the reads land in any order (r41 invoices gap P8). A failed read is NOT
+   * reading, so the outline never stands in for the failure sentence, and with
+   * no house selected nothing is asked, so nothing is reading.
+   */
+  queueReading: boolean;
+  cleanReading: boolean;
+  verifiedReading: boolean;
   verifiedCount: number | null;
   verifiedCapped: boolean;
   /** null until the uncounted list answers — `[]` would read as "all clear". */
@@ -229,6 +239,9 @@ export function useReceiptsNextData(): ReceiptsNextData {
     cleanCapped: cleanRows.length >= RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS,
     verified,
     verifiedKnown: verifiedQ.data !== undefined,
+    queueReading: enabled && queueQ.data === undefined && !queueQ.isError,
+    cleanReading: enabled && cleanQ.data === undefined && !cleanQ.isError,
+    verifiedReading: enabled && verifiedQ.data === undefined && !verifiedQ.isError,
     verifiedCount: verifiedQ.data === undefined ? null : verifiedQ.data.length,
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
