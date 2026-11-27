@@ -142,3 +142,54 @@ describe('readRefusalWords', () => {
     expect(readRefusalWords({}, 'fallback')).toBe('fallback')
   })
 })
+
+describe('waitForRead can be stopped (r110 g4)', () => {
+  it('a signal already aborted asks nothing and says the wait was stopped', async () => {
+    const stop = new AbortController()
+    stop.abort()
+    await expect(waitForRead('m1', { sleep: noSleep, signal: stop.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('an abort during a sleep ends the wait before the next poll', async () => {
+    const stop = new AbortController()
+    get.mockResolvedValue(status('reading'))
+    let sleeps = 0
+    const sleep = async () => {
+      sleeps += 1
+      if (sleeps === 2) stop.abort()
+    }
+    await expect(waitForRead('m1', { sleep, signal: stop.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+
+  it('an answer that arrives after the abort is dropped, even a finished one', async () => {
+    const stop = new AbortController()
+    get.mockImplementation(async () => {
+      stop.abort()
+      return status('done', { reply: { menuId: 'm1', items: [], warnings: [] } })
+    })
+    await expect(waitForRead('m1', { sleep: noSleep, signal: stop.signal })).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('a poll that fails after the abort is the abort, not a lost read', async () => {
+    const stop = new AbortController()
+    get.mockImplementation(async () => {
+      stop.abort()
+      throw new Error('canceled')
+    })
+    await expect(waitForRead('m1', { sleep: noSleep, signal: stop.signal })).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('the signal rides on the poll, and importMenu passes the caller\'s', async () => {
+    const stop = new AbortController()
+    post.mockResolvedValue({ data: { menuId: 'm1', reading: true } })
+    get.mockResolvedValue(status('done', { reply: { menuId: 'm1', items: [], warnings: [] } }))
+    vi.useFakeTimers()
+    const run = importMenu('scan', { imageBase64: 'AAAA' }, { signal: stop.signal })
+    await vi.advanceTimersByTimeAsync(2000)
+    await run
+    vi.useRealTimers()
+    expect(get).toHaveBeenCalledWith('/menu-versions/m1/read', { signal: stop.signal })
+  })
+})
