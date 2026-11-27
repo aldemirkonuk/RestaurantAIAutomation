@@ -328,7 +328,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   const MEMBER_KEYS = [
     "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
     "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
-    "price_flag", "price_flag_note", "created_at",
+    "price_flag", "price_flag_note", "created_at", "description", "printed_marks",
   ];
   const ROOT_KEYS = ["menuId", "name", "status", "items"];
 
@@ -355,6 +355,8 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       price_flag_note: null,
       raw_extracted_text: null,
       created_at: "2026-10-07T10:00:00Z",
+      description: null,
+      printed_marks: null,
       ...over,
     });
     return {
@@ -818,6 +820,56 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
  * inventory row with NO price, dropping the line's by_glass_price /
  * bottle_price. Now the line's prices reach the house, dated by the line.
  */
+describe("MenusService -- a line keeps what the menu prints (r108 menu-g10)", () => {
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: unknown[]) =>
+      items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const tables = (): Record<string, Row[]> => ({
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_menus: [],
+    menu_items: [],
+    restaurant_inventory: [],
+  });
+
+  it("a read's description and its printed marks are stored; a mark not on the line's text is dropped", async () => {
+    const t = tables();
+    await makeService(t, { wineSubmissions }).importParsedItems(
+      [
+        { name: "Mercimek", category: "soup", description: "Red lentil, lemon", printed_marks: ["V", "GF"], raw_text: "Mercimek (V) red lentil, lemon 120" },
+        { name: "Garden salad", printed_marks: ["V"], raw_text: "Garden salad 90" },
+        { name: "Köfte", printed_marks: ["contains nuts"] },
+      ] as any,
+      "rest-1",
+      "user-1",
+      "scan",
+    );
+    const by = (n: string) => t.menu_items.find((l) => l.name === n)!;
+    expect(by("Mercimek")).toMatchObject({ description: "Red lentil, lemon", printed_marks: ["V"] });
+    expect(by("Garden salad").printed_marks).toBeNull();
+    expect(by("Köfte").printed_marks).toBeNull();
+  });
+
+  it("a CSV Notes cell with cost and supplier text is not stored as printed marks", async () => {
+    const t = tables();
+    await makeService(t, { wineSubmissions, csvParser: new CsvParserService() }).importMenu(
+      { method: "csv", data: { csvContent: "Ad,Notes,bottle_price\nSoave,\"Supplier Kavaklidere; cost 210 TL / reorder at 6\",40\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(t.menu_items[0].printed_marks ?? null).toBeNull();
+  });
+
+  it("a CSV's Description and Dietary columns are read, the marks as the row prints them", async () => {
+    const t = tables();
+    await makeService(t, { wineSubmissions, csvParser: new CsvParserService() }).importMenu(
+      { method: "csv", data: { csvContent: "Ad,Açıklama,Dietary,bottle_price\nSoave,Crisp and dry,VG; GF,40\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(t.menu_items[0]).toMatchObject({ name: "Soave", description: "Crisp and dry", printed_marks: ["VG", "GF"] });
+  });
+});
+
 describe("MenusService.addMenuItem — the line's prices reach the house (ADR 0193)", () => {
   const wineSubmissions = {
     resolveLibraryWinesBatch: async (items: unknown[]) =>

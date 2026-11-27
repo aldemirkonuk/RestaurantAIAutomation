@@ -73,6 +73,9 @@ export const MEMBER_LINE_KEYS = [
   "price_flag",
   "price_flag_note",
   "created_at",
+  // r108 menu-g10: what the menu prints beside the line (not its raw text).
+  "description",
+  "printed_marks",
 ] as const;
 
 /**

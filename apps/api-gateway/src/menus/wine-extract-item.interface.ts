@@ -48,6 +48,11 @@ export interface WineExtractItem {
   by_glass_price?: number;
   bottle_price?: number;
   raw_text?: string; // original text line from scan/csv
+  // r108 menu-g10: the line's printed description, and the dietary or
+  // allergen marks the menu PRINTS beside it (never inferred). A mark is kept
+  // only when it appears in raw_text (parsers/printed-marks.ts).
+  description?: string;
+  printed_marks?: string[];
 }
 
 /**

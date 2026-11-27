@@ -396,6 +396,13 @@ export interface MenuLine {
   flag_reason?: 'corrected' | 'added_by_hand' | 'past_free_limit' | 'unknown' | null
   /** For a correction: the field a manager corrected. */
   flag_field?: string | null
+  /** The line's description as the menu prints it (r108 menu-g10); absent from an older gateway. */
+  description?: string | null
+  /**
+   * Dietary or allergen marks the menu PRINTS beside the line, as printed
+   * (r108 menu-g10). Never inferred; none is never "free of".
+   */
+  printed_marks?: string[] | null
   created_at: string
   /**
    * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every

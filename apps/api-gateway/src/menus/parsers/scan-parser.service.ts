@@ -77,14 +77,32 @@ const CATEGORY_VOCABULARY_CLAUSE =
   "above, never the heading as printed, and never a word outside the list. " +
   "Omit category only when the line gives no basis at all for choosing one. ";
 
+/**
+ * r108 menu-g10. description is the line's own printed description, short.
+ * printed_marks are only the marks the menu PRINTS beside the line, as
+ * printed; never a mark worked out from the name (a wrong "no nuts" is a
+ * safety harm). raw_text comes back ONLY for a line that prints a mark: the
+ * gateway keeps a mark only when it appears in that line's text
+ * (printed-marks.ts), and the prompt's measured reason for leaving raw_text
+ * out (above) is a cost on EVERY line, which this keeps to the few that
+ * carry marks.
+ */
+const PRINTED_MARKS_CLAUSE =
+  "description is the line's own printed description, at most 200 characters; omit it when none is printed. " +
+  "printed_marks lists only the dietary or allergen marks the menu itself prints beside the line, exactly as printed " +
+  "(a legend symbol or words such as 'V', 'VG', 'GF', a chilli symbol, 'contains nuts'); " +
+  "never work a mark out from the name or the ingredients, and omit printed_marks when the line prints none. " +
+  "On a line that prints a mark, and only then, also return raw_text: the line exactly as printed. ";
+
 const WINE_EXTRACTION_PROMPT =
   "You are analyzing a restaurant beverage menu image. " +
   "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
   "them. For each item return JSON: " +
-  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
+  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, description, printed_marks }. " +
   CATEGORY_VOCABULARY_CLAUSE +
+  PRINTED_MARKS_CLAUSE +
   "producer is the winery/estate/château name, or the brewery/distillery for " +
   "a beer or a spirit. " +
   "vintage, region and grape_variety describe wine — omit all three on a " +
