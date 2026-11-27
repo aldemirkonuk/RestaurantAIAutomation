@@ -1,0 +1,121 @@
+/* The page strip of a several-photo menu (r109 g2). Motion is transform and
+   opacity only; under reduced motion none of it runs (ADR 0112). */
+
+.mdv-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mdv-pages__page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 112px;
+  animation: mdv-pages-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--mdv-pg-delay, 0ms);
+  touch-action: manipulation;
+}
+
+.mdv-pages__page[data-lifted='true'] {
+  position: relative;
+  z-index: 2;
+  cursor: grabbing;
+}
+
+.mdv-pages__thumb {
+  position: relative;
+  width: 64px;
+  height: 88px;
+  overflow: hidden;
+  border: 1px solid var(--paper-2);
+  border-radius: 6px;
+  background: var(--paper-1);
+  cursor: grab;
+}
+
+.mdv-pages__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 160ms ease-out;
+}
+
+.mdv-pages__img--doc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.mdv-pages__n {
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.mdv-pages__acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.mdv-pages__btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mdv-pages__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mdv-pages__btn:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+.mdv-drop__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@keyframes mdv-pages-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-pages__page {
+    animation: none;
+  }
+
+  .mdv-pages__img {
+    transition: none;
+  }
+}

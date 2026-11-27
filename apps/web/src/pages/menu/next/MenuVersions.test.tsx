@@ -786,6 +786,21 @@ describe('a read in the background, several photos, the same file again (founder
     expect(await screen.findByTestId('menu-read-result')).toHaveTextContent('Read 30 lines from 3 pages and kept this menu.');
   });
 
+  it('a page turned and moved on the strip goes up in the new order with its turn following it', async () => {
+    const menuPhotos = await import('../../../lib/menuPhotos');
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm9', current: false, pages: 3, itemsExtracted: 3, submissionsCreated: 0, items: [] });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [photo('p1.jpg'), photo('p2.jpg'), photo('p3.jpg')] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn page 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move page 2 earlier' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Read these 3 pages as one menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    const [sent, turns] = vi.mocked(menuPhotos.photosToPages).mock.calls.at(-1) as [File[], Record<number, number>];
+    expect(sent.map((f) => f.name)).toEqual(['p2.jpg', 'p1.jpg', 'p3.jpg']);
+    expect(turns).toEqual({ 0: 90 });
+  });
+
   it('a PDF among photos is refused before anything is sent', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mount(true);

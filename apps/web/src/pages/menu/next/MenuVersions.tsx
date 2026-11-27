@@ -50,7 +50,7 @@ import { DropZone } from '../../../components/mudavym/DropZone';
 import { MenuSheetButton } from './MenuSheetButton';
 import { deviceClockNote, houseDay, houseMoment } from './menu-clock';
 import { versionsPollMs } from './menu-read-poll';
-import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
+import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages, type PageTurn } from '../../../lib/menuPhotos';
 import './menu-settle.css';
 import { MenuReadNotes } from '../../../components/onboarding/MenuReadNotes';
 
@@ -290,7 +290,7 @@ export function uploadShapeOf(files: File[]): { kind: 'csv' | 'sheet' | 'file' |
 }
 
 /** The pages of the chosen photos, ready to send. One photo the browser cannot redraw goes as it is. */
-async function pagesOf(files: File[]): Promise<{ images: string[] } | { imageBase64: string }> {
+async function pagesOf(files: File[], turns: Record<number, PageTurn> = {}): Promise<{ images: string[] } | { imageBase64: string }> {
   if (files.length === 1) {
     try {
       return { imageBase64: await photoToJpegBase64(files[0]) };
@@ -298,7 +298,7 @@ async function pagesOf(files: File[]): Promise<{ images: string[] } | { imageBas
       return { imageBase64: await fileToBase64(files[0]) };
     }
   }
-  const images = await photosToPages(files);
+  const images = await photosToPages(files, turns);
   const problem = pagesProblem(images);
   if (problem) throw new Error(problem);
   return { images };
@@ -330,6 +330,23 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
 }) {
   const queryClient = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
+  // Quarter turns by page index. A reorder or a removal re-keys them by the file, so a turn stays with its page.
+  const [turns, setTurns] = useState<Record<number, PageTurn>>({});
+  const holdFiles = (picked: File[], mode: 'replace' | 'add') => {
+    if (mode === 'add') {
+      setFiles((prev) => [...prev, ...picked]);
+      return;
+    }
+    const rekeyed: Record<number, PageTurn> = {};
+    if (picked.length > 1) {
+      picked.forEach((f, i) => {
+        const was = files.indexOf(f);
+        if (was >= 0 && turns[was]) rekeyed[i] = turns[was];
+      });
+    }
+    setTurns(rekeyed);
+    setFiles(picked);
+  };
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
@@ -371,7 +388,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       if (shape.kind === 'csv') return importMenu('csv', { csvContent: await files[0].text() }, labels);
       if (shape.kind === 'sheet') return importMenu('csv', { fileBase64: await fileToBase64(files[0]) }, labels);
       if (shape.kind === 'file') return importMenu('scan', { imageBase64: await fileToBase64(files[0]) }, labels);
-      return importMenu('scan', await pagesOf(files), labels);
+      return importMenu('scan', await pagesOf(files, turns), labels);
     },
     onMutate: () => onReadStart?.(),
     onSuccess: (r) => {
@@ -415,8 +432,13 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'stretch' }}>
         <DropZone
           files={files}
-          onFiles={(picked, mode) => setFiles((prev) => (mode === 'add' ? [...prev, ...picked] : picked))}
-          onClear={() => setFiles([])}
+          onFiles={holdFiles}
+          onClear={() => {
+            setFiles([]);
+            setTurns({});
+          }}
+          turns={turns}
+          onTurn={(i, t) => setTurns((prev) => ({ ...prev, [i]: t }))}
           reading={read.isPending}
           stage={readingId ? 'kept' : 'sending'}
           sent={sent}
