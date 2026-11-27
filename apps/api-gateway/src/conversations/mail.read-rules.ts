@@ -154,3 +154,46 @@ export function personRef(providerId: string, name: unknown): MailPersonRef {
     name: typeof name === "string" ? name : null,
   };
 }
+
+export const SEEN_BAD_TIME =
+  "Name the newest letter the thread showed, as the thread gave its time.";
+
+/**
+ * The time of the newest letter a screen showed, for POST /mail/thread/seen.
+ * Kept exactly as given (Postgres keeps microseconds; a JavaScript Date would
+ * drop them, and the thread would then never read as seen). Anything that is
+ * not a real Postgres time is a 400 in words.
+ */
+export function mailSeenThroughOf(raw: unknown): string {
+  if (
+    typeof raw !== "string" ||
+    !PG_TIME_RE.test(raw.trim()) ||
+    Number.isNaN(Date.parse(isoForDateParse(raw.trim())))
+  ) {
+    throw new BadRequestException(SEEN_BAD_TIME);
+  }
+  return raw.trim();
+}
+
+/**
+ * Is this row new to the person reading it (r36 mail gap 6)? Only when its
+ * newest letter came from the vendor and is later than the newest letter of
+ * it they were shown. A row never opened is new. `seenKnown` false means the
+ * marks could not be read: then nobody can say, and the answer is null,
+ * never false.
+ */
+export function newToYou(
+  lastDirection: "inbound" | "outbound" | null,
+  lastAt: unknown,
+  seenThrough: unknown,
+  seenKnown: boolean,
+): boolean | null {
+  if (!seenKnown) return null;
+  if (lastDirection !== "inbound" || typeof lastAt !== "string") return false;
+  if (typeof seenThrough !== "string") return true;
+  const last = Date.parse(isoForDateParse(lastAt));
+  const seen = Date.parse(isoForDateParse(seenThrough));
+  if (Number.isNaN(last)) return false;
+  if (Number.isNaN(seen)) return true;
+  return last > seen;
+}

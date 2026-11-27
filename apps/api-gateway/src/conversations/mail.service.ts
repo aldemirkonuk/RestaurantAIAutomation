@@ -19,6 +19,7 @@ import type {
   MailOrderRef,
   MailPeoplePage,
   MailPersonRow,
+  MailSeenAnswer,
   MailSummary,
   MailThreadPage,
   MailThreadRow,
@@ -56,6 +57,8 @@ import {
   mailDirectionOf as direction,
   mailDoorOf,
   mailSearchOf,
+  mailSeenThroughOf,
+  newToYou,
   personRef,
   stripSubjectLine,
   withholdsHouseLetters,
@@ -91,6 +94,11 @@ export const NO_REPLY_NOT_RECEIVED =
 export const NO_REPLY_FAILED =
   "The mark could not be saved just now, so nothing changed. Try again.";
 
+export const SEEN_NOT_FOUND = "That thread is not in this house's mail.";
+export const SEEN_NO_PERSON = "This session names no person, so nothing can be kept as seen.";
+export const SEEN_FAILED =
+  "What you have read could not be kept just now. The letters are unchanged.";
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -123,6 +131,11 @@ export class MailService {
       limit?: string | number;
       /** r28 mail gap 16: a name, subject, order number or a letter's words. */
       query?: unknown;
+      /**
+       * The reader (public.users.id from the token), for "new to you" (r36
+       * mail gap 6). Without one, every row's newToYou is null.
+       */
+      userId?: string | null;
     },
   ): Promise<MailPeoplePage> {
     const limit = clampMailLimit(opts.limit);
@@ -144,6 +157,13 @@ export class MailService {
     const rows = (data ?? []) as any[];
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    const seen = await this.seenByPerson(
+      houseId,
+      opts.userId,
+      page
+        .filter((r) => direction(r.last_direction) === "inbound")
+        .map((r) => String(r.provider_id)),
+    );
     return {
       people: page.map(
         (r): MailPersonRow => ({
@@ -160,6 +180,12 @@ export class MailService {
           channels: Array.isArray(r.channels) ? r.channels : [],
           newestOpenOrderId: r.newest_open_order_id ?? null,
           newestOpenOrderNumber: r.newest_open_order_number ?? null,
+          newToYou: newToYou(
+            direction(r.last_direction),
+            r.last_at,
+            seen.through.get(String(r.provider_id)),
+            seen.known,
+          ),
           unsentStatus:
             typeof r.unsent_status === "string" ? r.unsent_status : null,
         }),
@@ -175,7 +201,13 @@ export class MailService {
   async listThreads(
     houseId: string,
     callerRole: string | null | undefined,
-    opts: { with?: string; after?: string; limit?: string | number },
+    opts: {
+      with?: string;
+      after?: string;
+      limit?: string | number;
+      /** The reader, for "new to you" (r36 mail gap 6). */
+      userId?: string | null;
+    },
   ): Promise<MailThreadsPage> {
     const limit = clampMailLimit(opts.limit);
     const after = opts.after ? decodeMailCursor(opts.after) : null;
@@ -222,6 +254,14 @@ export class MailService {
     const rows = (threadsRes.data ?? []) as any[];
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
+    const seen = await this.seenByThread(
+      houseId,
+      opts.userId,
+      providerId,
+      page
+        .filter((t) => direction(t.last_direction) === "inbound")
+        .map((t) => String(t.thread_key)),
+    );
     return {
       person: personRef(providerId, provider?.name),
       threads: page.map(
@@ -237,6 +277,12 @@ export class MailService {
           waiting: t.waiting === true,
           orderId: t.order_id ?? null,
           orderNumber: t.order_number ?? null,
+          newToYou: newToYou(
+            direction(t.last_direction),
+            t.last_at,
+            seen.through.get(String(t.thread_key)),
+            seen.known,
+          ),
         }),
       ),
       next:
@@ -479,6 +525,116 @@ export class MailService {
       url,
       expiresInSeconds: ATTACHMENT_LINK_SECONDS,
     };
+  }
+
+  /**
+   * Per vendor, the newest letter this person was shown over that vendor's
+   * threads (r36 mail gap 6), for the vendors whose newest letter came in:
+   * only those can be new. One row per vendor, so a page never reads more
+   * than a page. A failed read is logged and leaves `known` false, so the
+   * page still answers and says nothing about what is new; the list matters
+   * more than the mark.
+   */
+  private async seenByPerson(
+    houseId: string,
+    userId: string | null | undefined,
+    providerIds: string[],
+  ): Promise<{ known: boolean; through: Map<string, string> }> {
+    const through = new Map<string, string>();
+    if (typeof userId !== "string" || !UUID_RE.test(userId)) {
+      return { known: false, through };
+    }
+    if (providerIds.length === 0) return { known: true, through };
+    const { data, error } = await this.db.rpc("mail_seen_through_by_person", {
+      p_restaurant_id: houseId,
+      p_user_id: userId,
+      p_provider_ids: [...new Set(providerIds)],
+    });
+    if (error) {
+      this.logger.error(`mail seen read failed: ${error.message}`);
+      return { known: false, through };
+    }
+    for (const r of (data ?? []) as any[]) {
+      if (typeof r.seen_through === "string") {
+        through.set(String(r.provider_id), r.seen_through);
+      }
+    }
+    return { known: true, through };
+  }
+
+  /** The same, per thread of one vendor: one row per thread key on the page. */
+  private async seenByThread(
+    houseId: string,
+    userId: string | null | undefined,
+    providerId: string,
+    threadKeys: string[],
+  ): Promise<{ known: boolean; through: Map<string, string> }> {
+    const through = new Map<string, string>();
+    if (typeof userId !== "string" || !UUID_RE.test(userId)) {
+      return { known: false, through };
+    }
+    if (threadKeys.length === 0) return { known: true, through };
+    const { data, error } = await this.db
+      .from("mail_thread_seen")
+      .select("thread_key, seen_through")
+      .eq("restaurant_id", houseId)
+      .eq("user_id", userId)
+      .eq("provider_id", providerId)
+      .in("thread_key", [...new Set(threadKeys)]);
+    if (error) {
+      this.logger.error(`mail seen read failed: ${error.message}`);
+      return { known: false, through };
+    }
+    for (const r of (data ?? []) as any[]) {
+      if (typeof r.seen_through === "string") {
+        through.set(String(r.thread_key), r.seen_through);
+      }
+    }
+    return { known: true, through };
+  }
+
+  /**
+   * POST /mail/thread/seen (r36 mail gap 6): this person was shown this
+   * thread through the letter at `through`. The SQL keeps the smaller of that
+   * and the thread's real newest letter, and never moves a kept time back, so
+   * a letter that came in after the screen was drawn stays new. Any member of
+   * the house may keep their own marks; the person and the house are the
+   * token's, never the request's.
+   */
+  async markSeen(
+    houseId: string,
+    userId: string | null | undefined,
+    opts: { key?: unknown; with?: unknown; through?: unknown },
+  ): Promise<MailSeenAnswer> {
+    const key = typeof opts.key === "string" ? opts.key.trim() : "";
+    if (!key || key.length > 500) {
+      throw new BadRequestException("Name the thread to open.");
+    }
+    const withKey = typeof opts.with === "string" ? opts.with.trim() : "";
+    const providerId = PERSON_KEY_RE.exec(withKey)?.[1]?.toLowerCase();
+    if (!providerId) {
+      throw new BadRequestException("Name the thread's person.");
+    }
+    const through = mailSeenThroughOf(opts.through);
+    if (typeof userId !== "string" || !UUID_RE.test(userId)) {
+      throw new ForbiddenException(SEEN_NO_PERSON);
+    }
+    const { data, error } = await this.db.rpc("mail_thread_mark_seen", {
+      p_restaurant_id: houseId,
+      p_user_id: userId,
+      p_provider_id: providerId,
+      p_thread_key: key,
+      p_through: through,
+    });
+    if (error) {
+      this.logger.error(`mail seen mark failed: ${error.message}`);
+      throw new ServiceUnavailableException(SEEN_FAILED);
+    }
+    const kept = Array.isArray(data) ? data[0] : data;
+    if (typeof kept !== "string") {
+      throw new NotFoundException(SEEN_NOT_FOUND);
+    }
+    return { key, with: `vendor:${providerId}`, seenThrough: kept };
   }
 
   /**

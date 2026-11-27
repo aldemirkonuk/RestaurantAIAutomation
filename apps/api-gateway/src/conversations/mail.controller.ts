@@ -22,6 +22,7 @@ import type {
   MailAttachmentLink,
   MailNoReplyAnswer,
   MailPeoplePage,
+  MailSeenAnswer,
   MailSummary,
   MailThreadPage,
   MailThreadsPage,
@@ -43,9 +44,10 @@ function houseOf(user: AuthUser | undefined): string {
 
 /**
  * GET /mail/* — the read model behind the /communications Mail tab (founder
- * /goal 2026-11-07). Its one write is the "needs no reply" mark on a letter
- * (r28 mail gap 4), which only an owner or manager may set; that is enforced
- * in MailService, for the reason below.
+ * /goal 2026-11-07). Its writes are the "needs no reply" mark on a letter
+ * (r28 mail gap 4), which only an owner or manager may set (enforced in
+ * MailService, for the reason below), and each reader's own "seen" mark on a
+ * thread (r36 mail gap 6), which any member keeps for themselves.
  *
  * Signed-in only, and deliberately no role decorator anywhere in this file:
  * every member of the house may read its vendor mail (draft ADR 0357 answer 3, PR #747, staff
@@ -100,6 +102,7 @@ export class MailController {
       after,
       limit,
       query: q,
+      userId: user?.userId ?? null,
     });
   }
 
@@ -123,6 +126,7 @@ export class MailController {
       with: withKey,
       after,
       limit,
+      userId: user?.userId ?? null,
     });
   }
 
@@ -151,6 +155,32 @@ export class MailController {
       key,
       with: withKey,
       before,
+    });
+  }
+
+  @Post("thread/seen")
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      "Keep this thread as read by the caller, through the newest letter the screen showed (r36 mail gap 6)",
+  })
+  @ApiQuery({ name: "key", required: true })
+  @ApiQuery({ name: "with", required: true, description: "vendor:<provider uuid>" })
+  @ApiQuery({
+    name: "through",
+    required: true,
+    description: "The newest letter's time, exactly as GET /mail/thread gave it",
+  })
+  markSeen(
+    @CurrentUser() user: AuthUser,
+    @Query("key") key?: string,
+    @Query("with") withKey?: string,
+    @Query("through") through?: string,
+  ): Promise<MailSeenAnswer> {
+    return this.mail.markSeen(houseOf(user), user?.userId, {
+      key,
+      with: withKey,
+      through,
     });
   }
 
