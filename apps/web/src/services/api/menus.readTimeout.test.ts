@@ -11,7 +11,7 @@ vi.mock('./client', () => ({
   getActiveRestaurantId: () => 'r-1',
 }));
 
-import { importMenu, MENU_READ_TIMEOUT_MS } from './menus';
+import { importMenu, makeMenuCurrent, MENU_READ_TIMEOUT_MS } from './menus';
 
 describe('importMenu', () => {
   it('outlasts the shared 30 s client timeout, since the gateway reads for minutes', async () => {
@@ -21,5 +21,11 @@ describe('importMenu', () => {
     expect(post).toHaveBeenCalledWith('/menus/import', expect.objectContaining({ method: 'scan' }), {
       timeout: MENU_READ_TIMEOUT_MS,
     });
+  });
+
+  it('making a menu current names the long timeout too: the carry runs inside that call (r102 menu-func-2)', async () => {
+    post.mockResolvedValue({ data: { outcome: 'made_current' } });
+    await makeMenuCurrent('m-1', 'fp-1');
+    expect(post).toHaveBeenLastCalledWith('/menu-versions/m-1/make-current', { fingerprint: 'fp-1' }, { timeout: MENU_READ_TIMEOUT_MS });
   });
 });

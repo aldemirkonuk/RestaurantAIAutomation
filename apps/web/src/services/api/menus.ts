@@ -128,6 +128,9 @@ type MenuImportData =
  * A menu read is one billed call that can run for minutes (a PDF is read in
  * chunks, up to 3 min each). The shared client gives up at 30 s while the
  * gateway keeps reading and billing, so a retry paid twice (r102 menu-func-1).
+ * Ten minutes covers about three slow chunks, not the parser's worst case (a
+ * 65-page menu is seven serial chunks): past that the client still gives up
+ * while the gateway reads on. The real fix is the background read (#1889 chain).
  */
 export const MENU_READ_TIMEOUT_MS = 10 * 60 * 1000
 
@@ -414,6 +417,11 @@ export async function getMenuSourceUrl(
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
-  const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
+  // The carry runs inside this call and can take minutes on a long menu.
+  const response = await apiClient.post<MakeCurrentResult>(
+    `/menu-versions/${menuId}/make-current`,
+    { fingerprint },
+    { timeout: MENU_READ_TIMEOUT_MS }
+  )
   return response.data
 }
