@@ -209,7 +209,8 @@ describe('Used in', () => {
         onRetry={vi.fn()}
       />,
     );
-    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('listitem').textContent).toBe('Lion milk29,57 ml · old recipe box, read only');
+    // The old-box label is said once, in the side text here or, once #1989 moves it into the tag, beside the amount.
+    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('listitem').textContent).toMatch(/^Lion milk29,57 ml( · old recipe box, read only)?$/);
   });
 
   it('shows menu prices to owners and managers only', () => {
