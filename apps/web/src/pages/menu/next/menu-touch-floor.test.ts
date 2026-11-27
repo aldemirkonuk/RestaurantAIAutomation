@@ -41,7 +41,8 @@ describe('the 44 px floor on a phone (r110 menu-6)', () => {
     for (const needle of ['more look good', 'Add a wine', 'Skip review']) {
       const at = src.indexOf(needle);
       expect(at).toBeGreaterThan(-1);
-      expect(src.slice(Math.max(0, at - 330), at)).toMatch(/max-sm:min-h-\[44px\]/);
+      // The button that holds the words: from its own <button to the words, no further back.
+      expect(src.slice(src.lastIndexOf('<button', at), at)).toMatch(/max-sm:min-h-\[44px\]/);
     }
     expect(src).toMatch(/disabled:opacity-50 max-sm:min-h-\[44px\]/);
   });
