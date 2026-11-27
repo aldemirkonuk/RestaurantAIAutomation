@@ -1827,8 +1827,11 @@ export class MenusService {
     // "already_current" with zero lines, so a carry cut off part-way (a deploy,
     // a refused price call) could never be finished from any screen. Every
     // price is written dated by the original choice, so the carry is safe to
-    // run again: a line already carried answers "unchanged", a price someone
-    // set after the choice answers "stale" and stands, a lock still holds.
+    // run again: a line already carried answers "unchanged", a lock still holds,
+    // and a price someone set after the choice answers "stale" and stands --
+    // but only for the price they set: the writer's staleness covers both kinds,
+    // so a glass edit also answers the uncarried bottle "stale", and that one is
+    // sent to failed below (failFalseStale), never left as a price "kept".
     const outcome = r.outcome;
     if (outcome === "already_current" && !madeCurrentAt) return { outcome, ...empty };
 
@@ -1854,8 +1857,9 @@ export class MenusService {
     // The switch is already committed: a refusal from here on must never
     // reach the page as "nothing changed".
     let priceSync: Map<string, PriceSyncEntry>;
+    let inventoryOf: Map<string, string>;
     try {
-      ({ priceSync } = await this.addToInventory(lines, restaurantId, userId, {
+      ({ priceSync, inventoryMap: inventoryOf } = await this.addToInventory(lines, restaurantId, userId, {
         effectiveFrom: madeCurrentAt,
         menuId,
       }));
@@ -1863,8 +1867,12 @@ export class MenusService {
       const why = err instanceof Error ? err.message : String(err);
       this.logger.error(`menu ${menuId} is current but its prices were not carried: ${why}`);
       throw new InternalServerErrorException(
-        `This menu is now the current one, but its prices did not reach the house (${why}). Choose it again under Menus kept to carry them; a price set since it was chosen stays.`,
+        `This menu is now the current one, but its prices did not reach the house (${why}). Open Menus kept and use Carry its prices again on it; a price set since it was chosen stays.`,
       );
+    }
+
+    if (outcome === "already_current") {
+      await this.failFalseStale(lines, priceSync, inventoryOf, restaurantId, madeCurrentAt);
     }
 
     const counts: Record<string, number> = {};
@@ -1900,6 +1908,66 @@ export class MenusService {
       held,
       returned,
     };
+  }
+
+  /**
+   * The re-carry of a current menu: a "stale" answer is true only for a price
+   * someone set after the choice. The writer checks staleness against the
+   * wine's ONE open price version, which covers both kinds, so a manager's
+   * glass edit also answers the uncarried bottle "stale" -- and the page would
+   * say the house "kept a price someone set after this menu was chosen" for a
+   * bottle nobody touched. A named kind whose house price is still the one in
+   * effect at the choice is sent to failed, in words; a read that fails is said.
+   * (A per-kind check inside the writer is a migration on the lock-holding
+   * function and is its own decision.)
+   */
+  private async failFalseStale(
+    lines: InsertedMenuItem[],
+    priceSync: Map<string, PriceSyncEntry>,
+    inventoryOf: Map<string, string>,
+    restaurantId: string,
+    madeCurrentAt: string,
+  ): Promise<void> {
+    const stale = lines.filter((l) => priceSync.get(l.id)?.outcome === "stale" && inventoryOf.get(l.id));
+    if (stale.length === 0) return;
+    const at = Date.parse(madeCurrentAt);
+    const ids = [...new Set(stale.map((l) => inventoryOf.get(l.id)!))];
+    type Version = { inventory_id: string; bottle_price: number | string | null; glass_price: number | string | null; effective_from: string; effective_to: string | null };
+    const history = new Map<string, Version[]>();
+    let readError: string | null = null;
+    for (let i = 0; i < ids.length && readError === null; i += WINE_ID_CHUNK) {
+      const { data, error } = await this.dbService.supabase
+        .from("menu_price_versions")
+        .select("inventory_id, bottle_price, glass_price, effective_from, effective_to")
+        .eq("restaurant_id", restaurantId)
+        .in("inventory_id", ids.slice(i, i + WINE_ID_CHUNK))
+        .or(`effective_to.is.null,effective_to.gt.${madeCurrentAt}`);
+      if (error) readError = error.message;
+      else for (const v of (data ?? []) as Version[]) history.set(String(v.inventory_id), [...(history.get(String(v.inventory_id)) ?? []), v]);
+    }
+    const same = (a: unknown, b: unknown) => (a == null || b == null ? a == b : Number(a) === Number(b));
+    for (const line of stale) {
+      const entry = priceSync.get(line.id)!;
+      const fail = (error: string) => priceSync.set(line.id, { ...entry, outcome: "failed", error });
+      if (readError !== null) {
+        fail(`a price of this wine was set after this menu was chosen, and whether it was this price could not be read (${readError}), so nothing is said about it. Choose the menu again to carry it.`);
+        continue;
+      }
+      const rows = history.get(inventoryOf.get(line.id)!) ?? [];
+      const open = rows.find((v) => v.effective_to === null);
+      const before = rows.find((v) => v.effective_to !== null && Date.parse(v.effective_from) <= at && Date.parse(v.effective_to) > at);
+      if (!open || !before) continue; // nothing to compare: the writer's answer stands
+      const blocked = (
+        [
+          ["bottle", line.bottle_price, open.bottle_price, before.bottle_price],
+          ["glass", line.by_glass_price, open.glass_price, before.glass_price],
+        ] as const
+      ).filter(([, menu, house, pre]) => menu != null && !same(menu, house) && same(house, pre));
+      if (blocked.length === 0) continue;
+      fail(
+        `the ${blocked.map(([k]) => k).join(" and ")} price from this menu was not written: another price of this wine was changed after this menu was chosen, which blocks this one too. The house still has its earlier ${blocked.map(([k]) => k).join(" and ")} price; set it on Inventory.`,
+      );
+    }
   }
 
   private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {

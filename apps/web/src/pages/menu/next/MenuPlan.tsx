@@ -73,7 +73,8 @@ function plural(n: number, one: string, many: string): string {
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
 ): string {
-  if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
+  if (plan.current)
+    return "This is already the current menu. If a carry of its prices was cut off, carrying them again finishes it; a price set since it was chosen stays.";
   const c = plan.counts;
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
@@ -436,14 +437,20 @@ export function MenuPlan({
       ) : null}
 
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
-        {canManage && !plan.current ? (
+        {canManage ? (
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
             disabled={choose.isPending}
             onClick={() => choose.mutate(plan.fingerprint)}
           >
-            {choose.isPending ? 'Making it current…' : 'Make it current'}
+            {plan.current
+              ? choose.isPending
+                ? 'Carrying its prices…'
+                : 'Carry its prices again'
+              : choose.isPending
+                ? 'Making it current…'
+                : 'Make it current'}
           </button>
         ) : null}
         {onCancel ? (

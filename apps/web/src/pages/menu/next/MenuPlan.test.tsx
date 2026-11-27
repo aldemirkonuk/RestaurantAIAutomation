@@ -123,7 +123,9 @@ describe('the plan in one sentence', () => {
     expect(
       planSentence(plan({ lines: [unmatched, unpriced], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 2, new_wine: 0 }, dormantLocks: [] })),
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either (flagged); 1 line is not matched to a wine, so no price.');
-    expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
+    expect(planSentence(plan({ current: true }))).toBe(
+      'This is already the current menu. If a carry of its prices was cut off, carrying them again finishes it; a price set since it was chosen stays.',
+    );
   });
 
   it('names the kitchen lines it leaves on the menu and carries nowhere', () => {

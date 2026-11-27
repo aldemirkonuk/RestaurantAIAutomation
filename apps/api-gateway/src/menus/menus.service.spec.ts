@@ -81,6 +81,14 @@ function makeFakeSupabase(
         extra.push((r) => (r[col] ?? null) === val);
         return api;
       },
+      // `.or("effective_to.is.null,effective_to.gt.<iso>")`: the one shape the
+      // price-history read uses.
+      or(expr: string) {
+        const [, , gt] = /^(\w+)\.is\.null,\w+\.gt\.(.+)$/.exec(expr) ?? [];
+        const iso = gt ?? "";
+        extra.push((r) => r.effective_to == null || Date.parse(String(r.effective_to)) > Date.parse(iso));
+        return api;
+      },
       limit() {
         return api;
       },
@@ -1638,6 +1646,63 @@ describe("MenusService — every menu read is kept as its own version", () => {
       const r = await choose(service, read.menuId);
       expect(r.flagged).toBe(0);
       expect(tables.menu_items[0].price_flag).toBeNull();
+    });
+
+    describe("re-carrying the current menu: a stale answer is true only for the price that was set", () => {
+      const rerun = async (open: { bottle: number | null; glass: number | null }, versionsRead?: string) => {
+        const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+        await choose(service, read.menuId); // the choice; its carry is then "cut off" below
+        tables.menu_price_versions = [
+          // in effect at the choice (2026-09-21T12:00:00Z), closed by a later edit
+          { id: "v1", restaurant_id: "rest-1", inventory_id: "inv-1", bottle_price: 60, glass_price: null, effective_from: "2026-09-01T00:00:00Z", effective_to: "2026-09-22T00:00:00Z" },
+          { id: "v2", restaurant_id: "rest-1", inventory_id: "inv-1", bottle_price: open.bottle, glass_price: open.glass, effective_from: "2026-09-22T00:00:00Z", effective_to: null },
+        ];
+        // The writer's whole-wine answer: a newer price is in effect, whichever kind it was.
+        const stale = makeService(tables, {
+          wineSubmissions,
+          rpc: (fn, args) =>
+            fn === "set_house_menu_price" ? { data: { outcome: "stale", held: [] }, error: null } : makeCurrentRpc(tables)(fn, args),
+        });
+        if (versionsRead) {
+          // Only the re-carry's own history read (the one with `.or`) fails; the plan's read is whole.
+          const fake = (stale as any).dbService.supabase;
+          const real = fake.from;
+          fake.from = (table: string) => {
+            const api = real(table);
+            if (table === "menu_price_versions") {
+              const or = api.or;
+              api.or = (e: string) => {
+                or(e);
+                api.then = (resolve: any) => resolve({ data: null, error: { message: versionsRead } });
+                return api;
+              };
+            }
+            return api;
+          };
+        }
+        return stale.makeCurrent("rest-1", read.menuId, "user-2", (await stale.planFor("rest-1", read.menuId)).fingerprint);
+      };
+
+      it("a glass edit after the choice does not make the untouched bottle a price 'kept': it is failed, in words", async () => {
+        const r = await rerun({ bottle: 60, glass: 14 });
+        expect(r.outcome).toBe("already_current");
+        expect(r.priceSync).toEqual({ failed: 1 });
+        expect(r.failed).toEqual([
+          { menuItemId: expect.any(String), name: "Opus One", error: expect.stringMatching(/bottle price from this menu was not written: another price of this wine was changed after this menu was chosen/) },
+        ]);
+      });
+
+      it("a bottle set after the choice stays stale: that price really was set later", async () => {
+        const r = await rerun({ bottle: 62, glass: null });
+        expect(r.priceSync).toEqual({ stale: 1 });
+        expect(r.failed).toEqual([]);
+      });
+
+      it("a failed read of the price history is said on the line, never taken for either answer", async () => {
+        const r = await rerun({ bottle: 60, glass: 14 }, "statement timeout");
+        expect(r.priceSync).toEqual({ failed: 1 });
+        expect(r.failed[0].error).toMatch(/could not be read \(statement timeout\)/);
+      });
     });
 
     it("choosing a current menu whose choice has no moment on record writes no price", async () => {
