@@ -423,6 +423,84 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(calls.rpc.find((c) => c.name === "restate_sale_cost")).toBeDefined();
   });
 
+  it("r102 F3 - a USD order verified with an EUR price leaves the lot cost unchanged and says why", async () => {
+    const { db, calls } = makeDb({ currency: "USD" });
+    const svc = service(db);
+    const warn = jest.spyOn((svc as any).logger, "warn");
+
+    await svc.verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "vendor billed in euros",
+    } as any);
+
+    // 43 EUR set on a lot booked at a 4.00 USD estimate is about an 11x cost.
+    expect(calls.rpc.find((c) => c.name === "revalue_lot")).toBeUndefined();
+    expect(calls.rpc.find((c) => c.name === "restate_sale_cost")).toBeUndefined();
+    const said = warn.mock.calls.map((c) => String(c[0]));
+    expect(
+      said.some((s) =>
+        s.includes(
+          "the invoice is in EUR, the order in USD; the lot cost was not changed",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("r102 F3 - extra bottles on a paper in another money are booked with no cost", async () => {
+    const { db, calls } = makeDb({ currency: "USD" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 12,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 12,
+      priceOverrideReason: "vendor billed in euros",
+    } as any);
+
+    const move = calls.rpc.find((c) => c.name === "apply_stock_movement");
+    expect(move).toBeDefined();
+    expect(move!.args.p_delta).toBe(2);
+    // The count still moves; the price in the wrong money does not ride along.
+    expect(move!.args.p_unit_cost).toBeNull();
+    expect(move!.args.p_cost_provenance).toBeNull();
+    expect(calls.rpc.find((c) => c.name === "revalue_lot")).toBeUndefined();
+  });
+
+  it("r102 F3 - a same-currency invoice still revalues the lot", async () => {
+    const { db, calls } = makeDb({ currency: "USD" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "usd",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const reval = calls.rpc.find((c) => c.name === "revalue_lot");
+    expect(reval).toBeDefined();
+    expect(reval!.args.p_unit_cost).toBeCloseTo(43);
+  });
+
+  it("r102 F3 - an order that states no currency cannot tell, so it still revalues", async () => {
+    // Today's behaviour, kept on purpose: with no order currency there is
+    // nothing to compare the paper's money against.
+    const { db, calls } = makeDb({ currency: null });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "vendor billed in euros",
+    } as any);
+
+    expect(calls.rpc.find((c) => c.name === "revalue_lot")).toBeDefined();
+  });
+
   it("an equal-quantity price correction still reaches the lot", async () => {
     // ledgerDelta is 0 here (accepted == already stocked). Pre-fix this was the
     // silent case: no movement, so the corrected price landed nowhere at all.
