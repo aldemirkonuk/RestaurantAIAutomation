@@ -87,6 +87,13 @@ export interface CatSeries {
   stretch?: (a: number, b: number) => string | undefined;
   /** The prompt once a first day is tapped on the single-pointer path. */
   stretchFrom?: (a: number) => string;
+  /**
+   * A ranking (r110 g2): `data` is EVERY ranked row, and the drawing cuts it
+   * (`rp-rank.ts`): `cap` rows on a card, every row in full screen, ties kept.
+   * `noun` and `by` make the caption ("12 of 37 wines, highest margin first");
+   * `ends` offers Highest / Lowest. Absent: the series is not a ranking.
+   */
+  rank?: { cap: number; noun: string; by: string; ends?: boolean };
 }
 
 export interface Point {
