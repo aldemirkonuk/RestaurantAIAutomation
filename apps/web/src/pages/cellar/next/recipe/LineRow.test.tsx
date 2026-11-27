@@ -117,6 +117,17 @@ describe('LineRow', () => {
     for (const t of ['1,250', '12,345', '123.456', '999,999']) expect(readQty(t), t).toBeNull();
   });
 
+  it('three digits after a separator is a decimal when the unit is one no serve holds a thousand of', () => {
+    for (const u of ['oz', 'tsp', 'tbsp', 'dash', 'barspoon', 'cl', 'l', 'kg'] as const) {
+      expect(readQty('1.125', u), u).toBe(1.125);
+      expect(readQty('1,125', u), u).toBe(1.125);
+    }
+    expect(readQty('1.500', 'l')).toBe(1.5);
+    for (const u of ['ml', 'g', 'each', '', null, undefined] as const) expect(readQty('1.125', u), String(u)).toBeNull();
+    expect(rowQty({ ...blank, qtyText: '1.125', unit: 'oz' })).toBe(1.125);
+    expect(rowQty({ ...blank, qtyText: '1.125', unit: 'ml' })).toBeNull();
+  });
+
   it('QA round 21: a stored three-decimal amount the person did not edit is never refused', () => {
     for (const n of [1.125, 1.375, 2.125, 3.333, 15.625, 999.999]) {
       const row = { ...blank, qtyText: qtyText(n), storedQty: n };

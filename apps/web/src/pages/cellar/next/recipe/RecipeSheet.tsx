@@ -55,7 +55,7 @@ import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../ser
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
 import { draftKey, dropDraft, keepDraft, takeDraft } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
-import { AMBIGUOUS_AMOUNT, qtyText } from './units';
+import { qtyText, readsAsThousandAmbiguous } from './units';
 import WhatIsInAServe from './WhatIsInAServe';
 import {
   useCanEditRecipe,
@@ -210,7 +210,7 @@ export function whyBlocked(rows: DraftRow[]): string | null {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const q = rowQty(r);
-    if (q === null && AMBIGUOUS_AMOUNT.test(r.qtyText.trim())) {
+    if (q === null && readsAsThousandAmbiguous(r.qtyText, r.unit)) {
       const t = r.qtyText.trim();
       return `${named(i)}: ${t} could be ${t.replace(/[.,]/, '')} or ${t.replace(',', '.').replace(/0+$/, '').replace(/\.$/, '')}. Type it without the separator.`;
     }
