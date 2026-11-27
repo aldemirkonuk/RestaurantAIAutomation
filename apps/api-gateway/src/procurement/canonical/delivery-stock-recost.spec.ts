@@ -188,4 +188,52 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
     expect(r).toMatchObject({ ok: false, status: 500 });
     expect(posted()).toEqual([]);
   });
+
+  describe("two corrections landing together (r109 invoices walk)", () => {
+    /** The corrections table answers from a script, one answer per read, the last one repeating. */
+    const script = (answers: unknown[][]) => {
+      let i = 0;
+      Object.defineProperty(db.answers, "document_corrections", {
+        configurable: true,
+        get: () => ({ data: answers[Math.min(i++, answers.length - 1)], error: null }),
+      });
+    };
+
+    it("[REVERT-FAILS] a re-cost that read revision 2 re-runs when revision 3 landed before its post", async () => {
+      given({});
+      const r2 = [fix(2, "lines[0].netPrice", 55), fix(2, "lines[0].netAmount", 550)];
+      const r3 = [fix(3, "lines[0].netPrice", 50), fix(3, "lines[0].netAmount", 500)];
+      script([
+        [{ revision: 2 }],            // pass 1: the newest revision before
+        r2,                           //         the corrections this derivation read (revision 3 had not landed)
+        [{ revision: 3 }],            //         the newest revision after the post: it moved
+        [{ revision: 3 }],            // pass 2: before
+        [...r2, ...r3],               //         the corrections read now include revision 3
+        [{ revision: 3 }],            //         after: settled
+      ]);
+      const r = await recost("lines[0].netAmount", 2);
+      expect(posted().map((c) => c.args.p_unit_cost)).toEqual([55, 50]);
+      expect(r.ok && r.value.deliveries).toHaveLength(1);
+      expect(r.ok && r.value.deliveries[0].recosted).toHaveLength(1);
+    });
+
+    it("posts once when nothing newer landed", async () => {
+      given({});
+      script([[{ revision: 3 }], [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)], [{ revision: 3 }]]);
+      await recost("lines[0].netAmount", 3);
+      expect(posted()).toHaveLength(1);
+    });
+
+    it("says so, in words, when it keeps moving", async () => {
+      given({});
+      const lines = [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)];
+      let n = 0;
+      Object.defineProperty(db.answers, "document_corrections", {
+        configurable: true,
+        get: () => ({ data: n++ % 3 === 1 ? lines : [{ revision: n }], error: null }),
+      });
+      const r = await recost("lines[0].netAmount", 3);
+      expect(r).toMatchObject({ ok: false, status: 503, error: expect.stringMatching(/three times running/) });
+    });
+  });
 });

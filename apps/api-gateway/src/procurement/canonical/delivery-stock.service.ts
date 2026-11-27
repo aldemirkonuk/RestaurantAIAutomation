@@ -884,33 +884,74 @@ export class DeliveryStockService {
         out.deliveries.push({ deliveryId, recosted: [], kept: [], salesRestated: 0, drawnBefore: 0, note: `delivery ${deliveryId} is not verified yet, so its lots are still provisional; verifying it costs the corrected paper` });
         continue;
       }
-      const booked = await this.bookedSoFar(deliveryId);
-      if (!booked.ok) return booked;
-      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, undefined, reason);
-      if (!costed.ok) return costed;
-      const kept = costed.value.stillProvisional.map((k) => ({
-        inventoryId: k.inventoryId,
-        reason: `${k.reason.replace(/\s*The lot stays provisional[^]*$/, "")} Its lots keep the cost they had; nothing was revalued.`,
-      }));
-      let salesRestated = 0;
-      let drawnBefore = 0;
-      for (const item of costed.value.finalised) {
-        drawnBefore += Math.max(0, (booked.value.get(item.inventoryId) ?? 0) - item.bottlesMatched);
-        if (!delivery.value.orderId) continue;
-        const restated = await this.db.getClient().rpc("restate_sale_cost", {
-          p_restaurant_id: restaurantId,
-          p_inventory_id: item.inventoryId,
-          p_source_order_id: delivery.value.orderId,
-          p_unit_cost: item.unitCost,
-          p_performed_by: userId,
-        });
-        if (restated.error)
-          return { ok: false, status: 503, error: `the lots of item ${item.inventoryId} carry the corrected cost, but the sales already made from them were not restated: ${restated.error.message}. Correcting again, or verifying the delivery again, is safe.` };
-        salesRestated += Number((restated.data as { rows_restated?: number } | null)?.rows_restated ?? 0);
+      // Two corrections landing together each re-cost from the corrections THEY read, and the
+      // later post wins: A (revision 2) can read {r2}, B (revision 3) lands and posts cost3, then
+      // A posts cost2 over it. So the newest revision is read before the derivation and again
+      // after the post, and the delivery is re-costed while it moved (every pass reads the
+      // corrections afresh and posts nothing for a lot already at that cost).
+      let entry: CorrectionRecost["deliveries"][number];
+      for (let attempt = 1; ; attempt++) {
+        const seen = await this.newestRevision(deliveryId);
+        if (!seen.ok) return seen;
+        const booked = await this.bookedSoFar(deliveryId);
+        if (!booked.ok) return booked;
+        const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, undefined, reason);
+        if (!costed.ok) return costed;
+        const kept = costed.value.stillProvisional.map((k) => ({
+          inventoryId: k.inventoryId,
+          reason: `${k.reason.replace(/\s*The lot stays provisional[^]*$/, "")} Its lots keep the cost they had; nothing was revalued.`,
+        }));
+        let salesRestated = 0;
+        let drawnBefore = 0;
+        for (const item of costed.value.finalised) {
+          drawnBefore += Math.max(0, (booked.value.get(item.inventoryId) ?? 0) - item.bottlesMatched);
+          if (!delivery.value.orderId) continue;
+          const restated = await this.db.getClient().rpc("restate_sale_cost", {
+            p_restaurant_id: restaurantId,
+            p_inventory_id: item.inventoryId,
+            p_source_order_id: delivery.value.orderId,
+            p_unit_cost: item.unitCost,
+            p_performed_by: userId,
+          });
+          if (restated.error)
+            return { ok: false, status: 503, error: `the lots of item ${item.inventoryId} carry the corrected cost, but the sales already made from them were not restated: ${restated.error.message}. Correcting again, or verifying the delivery again, is safe.` };
+          salesRestated += Number((restated.data as { rows_restated?: number } | null)?.rows_restated ?? 0);
+        }
+        entry = { deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore };
+        const now = await this.newestRevision(deliveryId);
+        if (!now.ok) return now;
+        if (now.value <= seen.value) break;
+        if (attempt >= 3)
+          return { ok: false, status: 503, error: `a newer correction to the paper of delivery ${deliveryId} landed while it was being re-costed, three times running, so its lots may carry the cost of an earlier revision. Correcting again, or verifying the delivery again, is safe.` };
       }
-      out.deliveries.push({ deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore });
+      out.deliveries.push(entry);
     }
     return { ok: true, value: out };
+  }
+
+  /** The newest correction revision on any invoice paper of a delivery (0 when none). A failed read is not 0 (ADR 0067). */
+  private async newestRevision(deliveryId: string): Promise<StockResult<number>> {
+    const docs = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("document_id")
+      .eq("delivery_id", deliveryId)
+      .eq("role", "invoice");
+    if (docs.error)
+      return { ok: false, status: 500, error: `the papers of delivery ${deliveryId} could not be read to see whether a newer correction landed: ${docs.error.message}. The correction stands; retry is safe.` };
+    const ids = [...new Set(((docs.data ?? []) as { document_id: string }[]).map((r) => r.document_id))];
+    if (!ids.length) return { ok: true, value: 0 };
+    const read = await this.db
+      .getClient()
+      .from("document_corrections")
+      .select("revision")
+      .in("document_id", ids)
+      .order("revision", { ascending: false })
+      .limit(1);
+    if (read.error)
+      return { ok: false, status: 500, error: `the newest correction of delivery ${deliveryId} could not be read (${read.error.message}), so no cost is posted that may be an earlier revision's. Retry is safe.` };
+    const top = ((read.data ?? []) as { revision: number | string }[]).reduce((m, r) => Math.max(m, Number(r.revision) || 0), 0);
+    return { ok: true, value: top };
   }
 
   /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
