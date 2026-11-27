@@ -81,6 +81,9 @@ describe('LooseFoodsChip', () => {
     expect(chip.textContent).not.toMatch(/0/);
     expect(chip.getAttribute('title')).toMatch(/could not be read/);
     expect((chip as HTMLButtonElement).disabled).toBe(true);
+    // A read again that failed is unread too, even with an older answer still held.
+    rerender(<LooseFoodsChip load={{ isPending: false, isError: true, data: answer() }} onOpen={() => {}} />);
+    expect(chip.textContent).toBe('Named in recipes, not in the book —');
   });
 
   it('counts the names and opens the sheet', () => {
