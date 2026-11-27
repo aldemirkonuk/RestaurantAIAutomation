@@ -52,7 +52,7 @@ import {
   type MailThreadsPage,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
-import { FadeAway, MailMotionStyles, prefersReducedMotion, useArriveFocus } from './mail-motion';
+import { FadeAway, MailMotionStyles, prefersReducedMotion, useArriveFocus, useEnteringKeys } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
 import { mailKeys, useHouse, useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
 import { hasModifier, inOverlay, isTypingTarget, nextWaiting, threadKey as threadKeyOf } from './mail-keys';
@@ -388,6 +388,36 @@ export function MailThread({
     if (run.length >= STACK_AT) rows.push({ kind: 'stack', ms: run });
     else run.forEach((r) => rows.push({ kind: 'fold', m: r }));
   }
+  // "N new letters below" (r108 mail g11): vendor letters that arrived after the first read, while the thread
+  // is open. Only the first page can gain one; "Show earlier letters" adds old letters, not arrivals.
+  const headIds = (head?.messages ?? []).map((m) => m.id);
+  const entering = useEnteringKeys(headIds, threadKey, Boolean(head));
+  // An auto-reply or a bounce is not waiting on anyone (the fold rule says the same), so it is no arrival.
+  const arrived = letters.filter((m) => m.direction === 'inbound' && m.automatic !== true && entering.has(m.id));
+  const newestArrived = arrived.length ? arrived[arrived.length - 1]!.id : null;
+  const [cleared, setCleared] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
+  const clearedIds = cleared.key === threadKey ? cleared.ids : new Set<string>();
+  const below = arrived.filter((m) => !clearedIds.has(m.id));
+  const belowKey = below.map((m) => m.id).join('|');
+  useEffect(() => {
+    if (!newestArrived || below.length === 0) return;
+    const el = document.querySelector<HTMLElement>(`[data-letter-id="${CSS.escape(newestArrived)}"]`);
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setCleared({ key: threadKey, ids: new Set([...clearedIds, ...arrived.map((m) => m.id)]) });
+      }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [newestArrived, belowKey, threadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const jumpToArrived = () => {
+    if (!newestArrived) return;
+    const el = document.querySelector<HTMLElement>(`[data-letter-id="${CSS.escape(newestArrived)}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    el?.focus({ preventScroll: true });
+    setCleared({ key: threadKey, ids: new Set([...clearedIds, ...arrived.map((m) => m.id)]) });
+  };
   const settleId = canReply ? noReplyTarget(head, letters) : null;
   // Only the newest marked letter offers to take its mark back: an older
   // mark is behind it in the thread, and taking it back changes nothing.
@@ -536,6 +566,48 @@ export function MailThread({
               ),
             )}
           </ul>
+
+          {/* The announcement is its own quiet region; the button below it is the act. */}
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="new-letter-live"
+            style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}
+          >
+            {below.length === 0 ? '' : below.length === 1 ? `A new letter from ${vendor}` : `${below.length} new letters from ${vendor}`}
+          </div>
+          {below.length > 0 && (
+            // Zero height, so its arrival moves nothing; it sticks to the section's bottom edge while the letter is off screen.
+            <div style={{ position: 'sticky', bottom: 12, height: 0, zIndex: 2, overflow: 'visible' }}>
+              <button
+                type="button"
+                data-testid="new-letter-below"
+                onClick={jumpToArrived}
+                className={prefersReducedMotion() ? undefined : 'mail-fade-in'}
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  margin: '0 auto',
+                  width: 'fit-content',
+                  minHeight: 44,
+                  padding: '0 16px',
+                  borderRadius: 22,
+                  border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                  background: 'var(--paper-0, #FAF7F1)',
+                  color: 'var(--seal-deep, #14515C)',
+                  fontFamily: SANS,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {below.length === 1 ? '1 new letter below' : `${below.length} new letters below`}
+              </button>
+            </div>
+          )}
 
           {q.isError && q.data && !q.isFetchNextPageError && (
             <p role="status" style={{ ...QUIET, margin: 0 }}>

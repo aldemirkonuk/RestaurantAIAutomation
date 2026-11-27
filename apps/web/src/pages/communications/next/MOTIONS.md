@@ -38,6 +38,7 @@ Deliberate non-motions, and why each one stays still:
 
 - **Mail moves by opacity only** (`mail-motion.tsx`): arrival settles, rows fade in, chips fade out.
 - **A folded letter unfolds in place** (`MailThread.tsx`, r108 g9): an unfolded body takes `mail-fade-in` 160 ms, opacity only; no height or translate animation, no fold-back animation, and nothing at all under reduced motion. Folding, not scrolling, puts the newest letter near the top.
+- **"N new letters below" appears by opacity** (`MailThread.tsx`, r108 g11): `mail-fade-in` 160 ms; no slide, no exit fade, nothing under reduced motion. Its jump is one instant `scrollIntoView` (`behavior: 'auto'`), never smooth.
 
 `prefers-reduced-motion` is honoured everywhere: `.cmp-pick` drops its
 transition, and the sheet renders at its end state with nothing scheduled at all
