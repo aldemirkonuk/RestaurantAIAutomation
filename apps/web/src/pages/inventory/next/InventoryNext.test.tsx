@@ -22,6 +22,8 @@ vi.mock('../../../lib/tableExport', () => ({ exportTable: exportSpy }));
 vi.mock('./useInventoryNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useInventoryNextData: () => mock.data,
+  // The table warms a row on intent (perf p8-3); this suite has no auth or client to warm against.
+  useWarmRow: () => () => undefined,
 }));
 vi.mock('../command/CellarMapView', () => ({
   CellarMapView: (p: Record<string, unknown>) => {

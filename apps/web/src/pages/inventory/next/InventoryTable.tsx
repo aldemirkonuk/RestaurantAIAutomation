@@ -31,6 +31,8 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   onToggle: (id: string) => void;
   advice: AdviceLoad;
   onPriceChanged: () => void;
+  /** Start a row's reads on intent (the page's `useWarmRow`). Absent: nothing is warmed, so the table needs no providers. */
+  warm?: (row: { id: string; name: string | null; kind: string | null }) => void;
   /** The sort in force, and how a sortable header sets one. Absent = plain headers. */
   sort?: SortId;
   onSort?: (sort: SortId) => void;
@@ -40,6 +42,9 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   /** Selects every listed row, or clears them when all are already selected. */
   onSelectAll?: () => void;
 }
+
+/** How long the pointer rests on a row before its reads start: a sweep across the book reads nothing. */
+export const WARM_REST_MS = 120;
 
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
 
@@ -111,6 +116,10 @@ interface RowFns {
   zoneName: (id: string | null) => string;
   onPriceChanged: () => void;
   onSelect?: (id: string) => void;
+  /** Reads the row's own reads ahead of the click: at once, or after the pointer has rested on it. */
+  warm: (row: InvRow, now: boolean) => void;
+  /** The pointer left, so a read that was waiting on a rest is dropped. */
+  cool: () => void;
 }
 
 const TableRow = memo(function TableRow(p: TableRowProps) {
@@ -132,6 +141,10 @@ const TableRow = memo(function TableRow(p: TableRowProps) {
                   data-standing={row.standing}
                   aria-selected={open}
                   onClick={() => toggle(row.id)}
+                  onPointerEnter={open ? undefined : () => fns.current.warm(row, false)}
+                  onPointerLeave={open ? undefined : () => fns.current.cool()}
+                  onFocus={open ? undefined : () => fns.current.warm(row, true)}
+                  onTouchStart={open ? undefined : () => fns.current.warm(row, true)}
                 >
                   {selecting ? (
                     <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
@@ -251,8 +264,17 @@ export default function InventoryTable(props: InventoryTableProps) {
 
   // The page hands new function objects every render; rows read the latest
   // through this ref and take a toggle whose identity never changes.
-  const fns = useRef<RowFns>({ zoneName, onPriceChanged, onSelect: props.onSelect });
-  fns.current = { zoneName, onPriceChanged, onSelect: props.onSelect };
+  const resting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cool = useCallback(() => clearTimeout(resting.current), []);
+  useEffect(() => cool, [cool]);
+  const warm = (row: InvRow, now: boolean) => {
+    clearTimeout(resting.current);
+    const go = () => props.warm?.({ id: row.id, name: row.name, kind: row.kind });
+    if (now) go();
+    else resting.current = setTimeout(go, WARM_REST_MS);
+  };
+  const fns = useRef<RowFns>({ zoneName, onPriceChanged, onSelect: props.onSelect, warm, cool });
+  fns.current = { zoneName, onPriceChanged, onSelect: props.onSelect, warm, cool };
   const onToggleRef = useRef(onToggle);
   onToggleRef.current = onToggle;
   const toggle = useCallback((id: string) => onToggleRef.current(id), []);
