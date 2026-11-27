@@ -32,7 +32,7 @@ export function ProtectedRoute({
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 relative">
             <div className="w-12 h-12 border-3 border-slate-200 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
+            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin motion-reduce:animate-none" />
           </div>
           <p className="text-slate-500 font-medium">Loading...</p>
         </div>
@@ -67,7 +67,7 @@ export function ProtectedRoute({
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 relative">
             <div className="w-12 h-12 border-3 border-slate-200 rounded-full" />
-            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
+            <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin motion-reduce:animate-none" />
           </div>
           <p className="text-slate-500 font-medium">Loading permissions...</p>
         </div>

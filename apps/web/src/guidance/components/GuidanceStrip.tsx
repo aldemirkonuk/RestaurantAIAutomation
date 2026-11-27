@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useReducedMotion } from '../../lib/mudavym/motion'
 import { cn } from '../../lib/utils'
 
 export interface GuidanceStripProps {
@@ -34,15 +35,17 @@ export function GuidanceStrip({
   bodyId,
   className,
 }: GuidanceStripProps) {
+  // ADR 0112: reduced motion is no animation at all, the opacity fade included.
+  const reduced = useReducedMotion()
   return (
     <motion.div
       role="region"
       aria-label={ariaLabel}
       aria-live="polite"
       data-guidance={dataGuidance}
-      initial={{ opacity: 0, y: -4 }}
+      initial={reduced ? false : { opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+      transition={reduced ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
         'mx-3 sm:mx-4 mt-2 rounded-2xl border border-[#96404E]/12 bg-white/92 px-3.5 py-2.5 shadow-[0_1px_0_rgba(148,64,78,0.04)] backdrop-blur-sm',
         className,
