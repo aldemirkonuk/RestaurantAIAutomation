@@ -370,11 +370,11 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
    Before its read lands the book is one line; when the rows arrive (up to 100, ~42 px each) they
    push "Write to a vendor" and "Who is writing" down (a layout shift of 0.3-0.5 on a phone). The
    page keeps how many rows the book settled at, per house, for this tab, and holds that room
-   (at most a dozen rows) while the read is out; a first-ever visit holds six. The hold ends the
+   (at most a dozen rows) while the read is out; a first-ever visit holds twelve, and the book draws no more than twelve rows until "Show the rest" is pressed, so the room held equals the room drawn. The hold ends the
    moment rows land, the read fails, or the house turns out to have none — it is a min-height,
    never a fade (ADR 0112). Storage may be blocked: then the first-visit guess is used. */
 const BOOK_ROW_PX = 42;
-const BOOK_ROWS_FIRST_VISIT = 6;
+const BOOK_ROWS_FIRST_VISIT = 12;
 const BOOK_ROWS_MAX = 12;
 const bookRowsKey = (house: string) => `comms-book-rows:${house}`;
 
@@ -415,6 +415,7 @@ export default function CommunicationsNext() {
   useEffect(() => {
     if (data.hasData && !data.isError) rememberBookRows(bookHouse, data.rows.length);
   }, [bookHouse, data.hasData, data.isError, data.rows.length]);
+  const [bookAll, setBookAll] = useState(false);
   const [compose, setCompose] = useState(false);
   const [library, setLibrary] = useState(false);
   /* Which drafted reply is open. One panel for the page, keyed off the row the
@@ -908,9 +909,20 @@ export default function CommunicationsNext() {
               </p>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                {data.rows.map((item) => (
+                {(bookAll ? data.rows : data.rows.slice(0, BOOK_ROWS_MAX)).map((item) => (
                   <LedgerRow key={item.id} item={item} />
                 ))}
+                {!bookAll && data.rows.length > BOOK_ROWS_MAX && (
+                  <button
+                    type="button"
+                    data-testid="book-show-rest"
+                    onClick={() => setBookAll(true)}
+                    className="cm-row w-full py-2.5 text-left"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+                  >
+                    Show the rest ({data.rows.length - BOOK_ROWS_MAX})
+                  </button>
+                )}
               </div>
             )}
           </section>

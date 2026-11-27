@@ -1108,12 +1108,23 @@ describe('the tour finds every step (COMMS-W38)', () => {
 describe('the unread conversation book holds its room (perf-p10-1)', () => {
   beforeEach(() => window.sessionStorage.clear());
 
-  it('holds six rows on a first visit while unread, and says it is reading', () => {
+  it('holds twelve rows on a first visit while unread, and says it is reading', () => {
     mockData.current = { ...base, hasData: false };
     render(<CommunicationsNext />);
     const held = screen.getByTestId('book-reading');
-    expect(held.style.minHeight).toBe('252px');
+    expect(held.style.minHeight).toBe('504px');
     expect(held.textContent).toContain('Reading the conversation book');
+  });
+
+  it('a 100-row answer draws twelve rows and a Show the rest control, which draws the others', () => {
+    const rows = Array.from({ length: 100 }, (_, i) => item({ id: `r${i}` }));
+    mockData.current = { ...base, hasData: true, rows };
+    render(<CommunicationsNext />);
+    const book = screen.getByLabelText('Conversation book');
+    expect(within(book).getAllByRole('button', { expanded: false })).toHaveLength(12);
+    fireEvent.click(screen.getByTestId('book-show-rest'));
+    expect(within(book).getAllByRole('button', { expanded: false })).toHaveLength(100);
+    expect(screen.queryByTestId('book-show-rest')).toBeNull();
   });
 
   it('holds the last known row count for this house, clamped to twelve', () => {
@@ -1158,7 +1169,7 @@ describe('the unread conversation book holds its room (perf-p10-1)', () => {
     try {
       mockData.current = { ...base, hasData: false };
       render(<CommunicationsNext />);
-      expect(screen.getByTestId('book-reading').style.minHeight).toBe('252px');
+      expect(screen.getByTestId('book-reading').style.minHeight).toBe('504px');
     } finally {
       get.mockRestore();
     }
