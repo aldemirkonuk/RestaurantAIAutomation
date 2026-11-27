@@ -1,0 +1,102 @@
+/* /menu rows: a pending discard dims; a discarded row leaves at once (the
+   page's own copy drops it, no exit hold); a new line inks in. The arrival is
+   the house's `ink` (cubic-bezier(0.16, 1, 0.3, 1) at 160 ms), opacity only,
+   as `mdv-stub-ink` is: no slide and no seal-tint wash, the seal being kept for
+   commitment (MOTIONS.md "No stamp"). Rows are not overlays, so ADR 0112's
+   no-exit-animation rule is untouched (r102 menu-motion-4, DD-r102-9/DD-r103-7). */
+.mdv-row {
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mdv-row[data-state='pending'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.mdv-row[data-new='true'] {
+  animation: mdv-row-ink 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes mdv-row-ink {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-row {
+    transition: none;
+  }
+
+  .mdv-row[data-new='true'] {
+    animation: none;
+  }
+}
+
+/* The room the current menu's table will take, held while it is read: desktop
+   only, where the walk measured the +287 px jump (r103 menu-7, F2). */
+@media (min-width: 900px) {
+  .mdv-reserve {
+    min-height: var(--mdv-reserve, 0px);
+  }
+}
+
+/* Below 600 px a table of 5-7 columns is wider than the page: its actions (Change
+   price, Discard, Make current) sat past the edge of a scroller. Each line and each
+   kept menu is a stacked card instead, its actions 44 px high. Layout only: no
+   animation or transition is added (reduced motion changes nothing here). */
+@media (max-width: 599px) {
+  .mdv-cards,
+  .mdv-cards tbody,
+  .mdv-cards tr,
+  .mdv-cards td {
+    display: block;
+    width: auto;
+  }
+
+  /* The column heads are said once by the row's own words; kept for assistive tech. */
+  .mdv-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .mdv-cards tr {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--paper-2);
+  }
+
+  .mdv-cards td {
+    padding: 2px 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .mdv-cards td:empty {
+    display: none;
+  }
+
+  .mdv-cards td[data-label]::before {
+    content: attr(data-label) ': ';
+    opacity: 0.7;
+  }
+
+  .mdv-cards .mdv-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    white-space: normal !important;
+  }
+
+  .mdv-cards .cl-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

@@ -9,6 +9,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { MenuReviewScreen } from './MenuReviewScreen'
 import { getMenuPlan, makeMenuCurrent } from '../../services/api/menus'
+import { formatMoney } from '../../lib/currency'
+
+vi.mock('../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }))
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY')
+/** The page's text as the DOM matcher reads it: Intl's no-break space read as a space. */
+const shown = (s: string) => s.replace(/\s+/g, ' ')
+
 
 // The choice goes through the plan (ADR 0193 round 3, L13), which reads with react-query.
 function render(ui: ReactElement) {
@@ -76,7 +84,7 @@ describe('MenuReviewScreen — the current-menu choice after a read', () => {
     render(<MenuReviewScreen result={RESULT} onConfirm={onConfirm} onSkip={vi.fn()} />)
     await chooseThroughThePlan()
     expect(await screen.findByText(/^This is now the current menu/)).toHaveTextContent(
-      /This is now the current menu: 2 lines, 1 price set from this menu, 1 flagged for a blank price\. 1 could not be priced: Opus One \(the price was not saved\)\./,
+      /This is now the current menu: 2 lines, 1 line priced from this menu, 1 line with a blank price, noted on the line so a manager can set it on Inventory\. 1 could not be priced: Opus One \(the price was not saved\)\./,
     )
     expect(onConfirm).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -125,7 +133,7 @@ describe('MenuReviewScreen -- a price a lock held is said too (ADR 0193 round 3,
     render(<MenuReviewScreen result={RESULT} onConfirm={onConfirm} onSkip={vi.fn()} />)
     await chooseThroughThePlan()
     expect(await screen.findByText(/^This is now the current menu/)).toHaveTextContent(
-      'Held by a lock, not changed: Barolo (bottle, locked at 95.00).',
+      shown(`Held by a lock, not changed: Barolo (bottle, locked at ${m(95)}).`),
     )
     expect(onConfirm).not.toHaveBeenCalled()
   })

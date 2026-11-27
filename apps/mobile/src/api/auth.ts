@@ -77,26 +77,37 @@ export function joinViaInvite(input: {
   });
 }
 
-/** Path B — create an owner account and the restaurant record together. */
-export interface RegisterRestaurantInput {
+/**
+ * Path B, step 1 -- an account and nothing else. The address is proved
+ * (verify-email) BEFORE a house is opened: `register/restaurant` opened an org
+ * and a house on an address nobody had proved (r104, DD-r102-7).
+ */
+export interface RegisterAccountInput {
   name: string;
   email: string;
   password: string;
+}
+
+export function registerAccount(input: RegisterAccountInput) {
+  return api<{ success: true } & AuthTokens>("/auth/register/account", {
+    method: "POST",
+    body: input,
+  });
+}
+
+/** Path B, step 2 -- the verified owner opens the house (`register/house`). */
+export interface FirstHouseInput {
   restaurantName: string;
   address: string;
   city: string;
   country: string;
-  stateProvince?: string;
-  postalCode?: string;
-  phone?: string;
-  cuisineType?: string;
 }
 
-export function registerRestaurant(input: RegisterRestaurantInput) {
-  return api<{ success: true } & AuthTokens>("/auth/register/restaurant", {
-    method: "POST",
-    body: input,
-  });
+export function createFirstHouse(input: FirstHouseInput) {
+  return api<{ success: true; restaurantId: string } & AuthTokens>(
+    "/auth/register/house",
+    { method: "POST", body: input },
+  );
 }
 
 export function requestPasswordReset(email: string) {

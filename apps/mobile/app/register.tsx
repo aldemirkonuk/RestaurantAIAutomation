@@ -33,7 +33,7 @@ import {
   checkEmailAvailable,
   fetchInvitePreview,
   joinViaInvite,
-  registerRestaurant,
+  registerAccount,
 } from "@/api/auth";
 
 type Path = "join" | "new";
@@ -48,12 +48,9 @@ type Path = "join" | "new";
  * `inviteCode.ts` exists and why the field validates against the exact charset
  * the server mints from.
  *
- * **Path B, "Open a Restaurant"**, is a 3-section rail form on web — identity,
- * location, contact — with address autocomplete, a phone input and a cuisine
- * picker. Mobile collects the seven fields `RegisterRestaurantDto` actually
- * requires and stops there. The three optional embellishments are **not**
- * ported and are named in the gap document rather than quietly counted:
- * autocomplete needs a places provider mobile has no key for.
+ * **Path B, "Open a Restaurant"**, creates the account only; the restaurant is
+ * opened on `/open-house` once the address is verified (r104: verify, then
+ * create), the order the web sign-up already follows.
  *
  * Deep links pre-route the path (`?invite=CODE`, `?type=join|new`, D-09), the
  * same three parameters web honours.
@@ -83,12 +80,6 @@ export default function RegisterScreen() {
   // Path A.
   const [code, setCode] = useState(presetCode ?? "");
   const [invitePreview, setInvitePreview] = useState<string | null>(null);
-
-  // Path B.
-  const [restaurantName, setRestaurantName] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [country, setCountry] = useState("");
 
   const redirect = safeRedirectTarget(params.redirect);
 
@@ -168,11 +159,6 @@ export default function RegisterScreen() {
     };
     if (path === "join") {
       next.code = inviteCodeError(code);
-    } else {
-      next.restaurantName = restaurantName.trim() ? null : "Name the restaurant.";
-      next.address = address.trim() ? null : "Enter the street address.";
-      next.city = city.trim() ? null : "Enter the city.";
-      next.country = country.trim() ? null : "Enter the country.";
     }
     setIssues(next);
     if (Object.values(next).some(Boolean)) return;
@@ -195,14 +181,10 @@ export default function RegisterScreen() {
                 email: address_,
                 password,
               })
-            : await registerRestaurant({
+            : await registerAccount({
                 name: name.trim(),
                 email: address_,
                 password,
-                restaurantName: restaurantName.trim(),
-                address: address.trim(),
-                city: city.trim(),
-                country: country.trim(),
               });
         setPendingRoute(path === "join" ? (redirect ?? "/") : "/verify-email");
         return tokens;
@@ -230,7 +212,7 @@ export default function RegisterScreen() {
       intro={
         path === "join"
           ? "Someone sent you an eight-character code. That's all you need."
-          : "Create the owner account and the restaurant record together."
+          : "Create the owner account first. Once your address is verified, you will open the restaurant."
       }
     >
       <PathSwitch path={path} onChange={setPath} disabled={busy} />
@@ -305,57 +287,6 @@ export default function RegisterScreen() {
         editable={!busy}
       />
 
-      {path === "new" ? (
-        <>
-          <AuthField
-            label="Restaurant name"
-            value={restaurantName}
-            onChangeText={(next) => {
-              setRestaurantName(next);
-              setIssues((prev) => ({ ...prev, restaurantName: null }));
-            }}
-            error={issues.restaurantName}
-            placeholder="Bistro Konyaaltı"
-            editable={!busy}
-          />
-          <AuthField
-            label="Street address"
-            value={address}
-            onChangeText={(next) => {
-              setAddress(next);
-              setIssues((prev) => ({ ...prev, address: null }));
-            }}
-            error={issues.address}
-            placeholder="12 Liman Caddesi"
-            editable={!busy}
-          />
-          <AuthField
-            label="City"
-            value={city}
-            onChangeText={(next) => {
-              setCity(next);
-              setIssues((prev) => ({ ...prev, city: null }));
-            }}
-            error={issues.city}
-            placeholder="Antalya"
-            editable={!busy}
-          />
-          <AuthField
-            label="Country"
-            value={country}
-            onChangeText={(next) => {
-              setCountry(next);
-              setIssues((prev) => ({ ...prev, country: null }));
-            }}
-            error={issues.country}
-            placeholder="Türkiye"
-            editable={!busy}
-            returnKeyType="go"
-            onSubmitEditing={submit}
-          />
-        </>
-      ) : null}
-
       {error ? (
         <AuthNotice tone="danger">
           <AppText variant="footnote" tone="danger">
@@ -366,7 +297,7 @@ export default function RegisterScreen() {
 
       <View style={{ marginTop: space.sm }}>
         <AuthButton
-          label={path === "join" ? "Join" : "Create restaurant"}
+          label={path === "join" ? "Join" : "Create account"}
           onPress={submit}
           busy={busy}
         />

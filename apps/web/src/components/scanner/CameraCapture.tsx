@@ -51,6 +51,15 @@ interface CameraCaptureProps {
   onFileUpload: (imageBase64: string) => void
   enableLiveDetection?: boolean
   useCameraModal?: boolean
+  /**
+   * The start panel's words. The defaults are the wine-menu scanner's; an
+   * owner's first menu (MenuScanUpload) says its own, with no engineering
+   * note and no "AI" (r33 walk: /get-started showed "Scan Wine Menu", "live AI
+   * detection" and the OCR model list to a new owner).
+   */
+  heading?: string
+  intro?: string
+  showPipeline?: boolean
 }
 
 export function CameraCapture({
@@ -58,6 +67,9 @@ export function CameraCapture({
   onFileUpload,
   enableLiveDetection = true,
   useCameraModal = false,
+  heading = 'Scan Wine Menu',
+  intro = 'Use your camera for live AI detection, or upload a menu photo or PDF for full analysis.',
+  showPipeline = true,
 }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -550,10 +562,8 @@ export function CameraCapture({
             <div className="w-20 h-20 bg-indigo-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
               <Camera className="w-10 h-10 text-indigo-600" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Scan Wine Menu</h3>
-            <p className="text-gray-500 mb-6">
-              Use your camera for live AI detection, or upload a menu photo or PDF for full analysis.
-            </p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">{heading}</h3>
+            <p className="text-gray-500 mb-6">{intro}</p>
 
             <div className="flex flex-col gap-3">
               <button
@@ -579,6 +589,7 @@ export function CameraCapture({
               </div>
             )}
 
+            {showPipeline && (
             <div className="mt-6 p-4 bg-purple-50 border border-purple-100 rounded-xl text-left">
               <div className="flex items-start gap-3">
                 <Zap className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
@@ -591,6 +602,7 @@ export function CameraCapture({
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
       ) : useCameraModal ? null : (

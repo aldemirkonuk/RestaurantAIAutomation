@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 /**
  * Opening a house, as AuthContext hands it to the page (F-006).
@@ -191,6 +189,34 @@ describe("createFirstHouse (F-006, scope item 5)", () => {
   });
 });
 
+describe("the role read after a house opens (r70)", () => {
+  it("asks /auth/me/role once for the new house, not once per state change", async () => {
+    signedInWithNoHouse("loads");
+    const auth = await mount();
+    const roleCalls = () =>
+      h.instance.get.mock.calls.filter(([url]) => url === "/api/v1/auth/me/role");
+    expect(roleCalls()).toHaveLength(0);
+
+    // A real gateway answers after the active house has already changed, so
+    // the two state changes land in separate renders.
+    const answer = h.instance.get.getMockImplementation()!;
+    h.instance.get.mockImplementation(async (url: string, cfg?: unknown) => {
+      if (url === "/api/v1/auth/me") await new Promise((r) => setTimeout(r, 40));
+      return answer(url, cfg);
+    });
+
+    // Not inside `act`: act holds every update until it exits, which would
+    // fold the two renders into one and hide the duplicate.
+    const opening = auth().createFirstHouse(HOUSE);
+    await waitFor(() => expect(roleCalls()).toHaveLength(1));
+    await opening;
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(roleCalls()).toHaveLength(1);
+    expect(roleCalls()[0][1]).toEqual({ params: { restaurantId: A } });
+  });
+});
+
 describe("registerRestaurant (F-006, scope item 6)", () => {
   it("hands a refusal to Register's house form with its status", async () => {
     h.instance.post.mockRejectedValue(refused);
@@ -235,22 +261,6 @@ describe("registerRestaurant (F-006, scope item 6)", () => {
     expect(houseNotOpened(status(409), "register")).toBe(
       "A house is already open at this place, so this one was not registered. If it is yours, sign in instead.",
     );
-  });
-
-  it("Register.tsx's house-form catch calls houseNotOpened, never the error's text (source read)", () => {
-    // A source read, not a render: the form cannot be rendered today
-    // (Register.tsx starts it at step 1 and nothing moves it on), so this
-    // checks what its catch calls, not what a person sees.
-    const src = readFileSync(
-      resolve(process.cwd(), "src/pages/Register.tsx"),
-      "utf8",
-    );
-    const start = src.indexOf("const handleCreateSubmit = async () => {");
-    expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf("\n  }\n", start));
-    expect(body).toContain("setError(houseNotOpened(err, 'register'))");
-    expect(body).not.toContain("err.message");
-    expect(body).not.toContain("err instanceof Error ?");
   });
 });
 
