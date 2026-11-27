@@ -6001,6 +6001,10 @@ export class ProcurementService {
     reason: string,
     unitCost?: number | null,
     userId?: string | null,
+    // r102 F3: the paper's currency and the order's. When both are stated and
+    // differ, the unit cost is a different money from the estimate it would
+    // be set against, so closed checks are not restated.
+    currencies?: { invoice?: string | null; order?: string | null },
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
@@ -6182,6 +6186,16 @@ export class ProcurementService {
       // the invoice's cost, keeping the old figure in an audit row. It runs
       // even when no live lot is left: that is exactly the case where every
       // bottle was already poured and sold. Idempotent, so a retry is safe.
+      const invoiceMoney = currencies?.invoice?.trim().toUpperCase() || null;
+      const orderMoney = currencies?.order?.trim().toUpperCase() || null;
+      if (invoiceMoney && orderMoney && invoiceMoney !== orderMoney) {
+        this.logger.warn(
+          `verifyReceipt did not restate sales for ${inventoryId} on order ${orderId}: ` +
+            `the invoice is in ${invoiceMoney} and the order is in ${orderMoney}, ` +
+            `so its unit cost cannot be set against the cost the sales carried.`,
+        );
+        return;
+      }
       const { data: restated, error: restateError } =
         await this.databaseService.supabase.rpc("restate_sale_cost", {
           p_restaurant_id: restaurantId,
@@ -6712,6 +6726,10 @@ export class ProcurementService {
         // really cost rather than what we expected it to.
         match.effectiveUnitCost,
         userId,
+        {
+          invoice: body.invoiceCurrency,
+          order: (orderRow as any).currency,
+        },
       );
     }
 

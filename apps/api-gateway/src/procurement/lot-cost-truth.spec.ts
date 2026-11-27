@@ -393,6 +393,36 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(reval!.args.p_unit_cost).toBeCloseTo(10, 10);
   });
 
+  it("r102 F3 - a USD order verified with an EUR price restates no closed check", async () => {
+    const { db, calls } = makeDb({ currency: "USD" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "vendor billed in euros",
+    } as any);
+
+    // 43 EUR over a 4.00 USD estimate would scale every closed check by about
+    // 11x. A ratio of two different currencies is not a restatement.
+    expect(calls.rpc.find((c) => c.name === "restate_sale_cost")).toBeUndefined();
+  });
+
+  it("r102 F3 - the same currency still restates", async () => {
+    const { db, calls } = makeDb({ currency: "USD" });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    expect(calls.rpc.find((c) => c.name === "restate_sale_cost")).toBeDefined();
+  });
+
   it("an equal-quantity price correction still reaches the lot", async () => {
     // ledgerDelta is 0 here (accepted == already stocked). Pre-fix this was the
     // silent case: no movement, so the corrected price landed nowhere at all.
