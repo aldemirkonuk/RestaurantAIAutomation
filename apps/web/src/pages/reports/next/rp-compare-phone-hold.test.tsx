@@ -154,7 +154,7 @@ describe('a thinned 365-day caption stays one line (r109)', () => {
     // three lines at 343 px grew the card after the read; the whole caption is held to one line's worth
     expect(cap.length).toBeLessThanOrEqual(56);
     expect(cap).not.toMatch(/the table has every one/);
-    expect(container.querySelector('[role="img"]')?.getAttribute('aria-label') ?? '').toMatch(/the table has every one/);
+    expect(container.querySelector('.rp-plot')?.getAttribute('aria-label') ?? '').toMatch(/the table has every one/);
   });
 });
 
