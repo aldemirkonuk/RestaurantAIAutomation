@@ -426,6 +426,18 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     expect((out as any).filedAt.sentence).toBe("filed at 1 EUR = 1.0840 USD on 20 Nov");
   });
 
+  it("the rate applied is the rate kept: rounded to the 8 places the audit column holds", async () => {
+    const { controller, inserts, fxSeen } = harness();
+    await controller.restateCurrency(
+      "doc-9",
+      { currency: "USD", fromCurrency: "EUR", rate: 0.123456789, rateDate: "2026-11-20" },
+      user,
+    );
+    const row = inserts.find((i) => i.table === "procurement_document_currency_changes")!.row;
+    expect(row.exchange_rate).toBe(0.12345679);
+    expect(fxSeen.map((f) => (f.fx as any).rate)).toEqual([0.12345679, 0.12345679]);
+  });
+
   it("a plain relabel stores no rate", async () => {
     const { controller, inserts, fxSeen } = harness();
     await controller.restateCurrency("doc-9", { currency: "TRY" }, user);
@@ -436,6 +448,7 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
 
   it.each([
     ["no rate at all", { currency: "USD", fromCurrency: "EUR", rateDate: "2026-11-20" }],
+    ["a rate that would round to zero in the audit column", { currency: "USD", fromCurrency: "EUR", rate: 1e-9, rateDate: "2026-11-20" }],
     ["a rate of zero", { currency: "USD", fromCurrency: "EUR", rate: 0, rateDate: "2026-11-20" }],
     ["no paper currency", { currency: "USD", rate: 1.084, rateDate: "2026-11-20" }],
     ["no day", { currency: "USD", fromCurrency: "EUR", rate: 1.084 }],

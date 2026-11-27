@@ -1,4 +1,4 @@
-import { convertMoney, filedAtSentence, rateProblem, apportionCents } from "./fx-convert";
+import { convertMoney, filedAtSentence, rateProblem, roundRate, apportionCents } from "./fx-convert";
 import { planRefile, type DocumentMoney, type LineMoney } from "./invoice-currency";
 
 function rng(seed: number) {
@@ -91,6 +91,17 @@ describe("apportionCents / filedAtSentence", () => {
   });
   it("says what was filed at", () => {
     expect(filedAtSentence("EUR", "USD", 1.084, "2026-11-20")).toBe("filed at 1 EUR = 1.0840 USD on 20 Nov");
+  });
+  it("never prints a small rate as 0", () => {
+    expect(filedAtSentence("VND", "USD", 0.0000436, "2026-11-20")).toBe("filed at 1 VND = 0.0000436 USD on 20 Nov");
+    expect(filedAtSentence("IDR", "USD", 0.0000634, "2026-11-20")).toContain("0.0000634");
+    expect(filedAtSentence("XXX", "USD", 0.00000001, "2026-11-20")).toContain("0.00000001");
+  });
+  it("refuses a rate the audit column cannot keep, and rounds the rest to what it keeps", () => {
+    expect(rateProblem(4e-9)).toMatch(/too small/);
+    expect(rateProblem(1e-8)).toBeNull();
+    expect(roundRate(1.0840000049)).toBe(1.084);
+    expect(roundRate(0.123456789)).toBe(0.12345679);
   });
 });
 
