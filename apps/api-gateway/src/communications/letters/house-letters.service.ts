@@ -85,6 +85,8 @@ import {
 } from "../mime-headers";
 import { checkedFromSeal, plainLetterWithFiles, type CheckedAttachments, type OutboundAttachment } from "../mime-attachments";
 import { HouseLetterFilesService, type SealedFile } from "./house-letter-files.service";
+import { readHouseZone } from "../../common/house-day";
+import { houseClockSendAt, sendAtOutOfBounds, SEND_AT_NO_ZONE, type SendAtChosen } from "./send-at";
 import type {
   InsertedInsightDto,
   QueueLetterDto,
@@ -302,6 +304,11 @@ export class HouseLettersService {
   }): Promise<{ requestId: string; requestedAt: string; told: number; says: string; notices: GuardrailHit[] }> {
     const { restaurantId, dto } = params;
     const userId = assertNamedActor(params.userId, "asked and nothing was sent");
+    if (dto.sendAt) {
+      throw new BadRequestException(
+        "A request asks a manager to send the letter; when it leaves is theirs to choose. Nothing was asked and nothing was sent.",
+      );
+    }
     if (dto.fileIds?.length) {
       throw new UnprocessableEntityException(
         "A request carries the words only: an owner or a manager attaches files when they write the letter. Nothing was asked and nothing was sent.",
@@ -757,6 +764,7 @@ export class HouseLettersService {
     says: string;
     notices: GuardrailHit[];
     insightsRecorded: number;
+    sendAtChosen: SendAtChosen | null;
   }> {
     const { restaurantId, dto } = params;
     const userId = assertNamedActor(
@@ -773,6 +781,11 @@ export class HouseLettersService {
     const standing = await gates.authority.assertMaySend(userId, restaurantId, "send this letter", {
       canAsk: true,
     });
+
+    // ── 0e. a time on the house's clock (r110 mail-gap g1) ──────────────────
+    // An owner's or a manager's own letter only: a release sends what was
+    // asked for, when it was asked for. Read in the house's zone, never UTC.
+    const chosenAt = dto.sendAt ? await this.chooseSendAt(restaurantId, dto, params.role) : null;
 
     // ── 0c. a reply to a team member or a guest (r104 mail-gap g1) ──────────
     // No vendor, so no book: the only address is the one that wrote, on the
@@ -954,7 +967,12 @@ export class HouseLettersService {
         : null;
 
     const now = Date.now();
-    const dispatchAt = new Date(now + (identity.undoMs ?? 0)).toISOString();
+    if (chosenAt) {
+      const outOfBounds = sendAtOutOfBounds(chosenAt.atMs, now, identity.undoMs);
+      // (A release never gets here: 0e refuses a release with a time.)
+      if (outOfBounds) throw new BadRequestException(outOfBounds);
+    }
+    const dispatchAt = new Date(chosenAt ? chosenAt.atMs : now + (identity.undoMs ?? 0)).toISOString();
 
     const letter = {
       order_id: dto.orderId ?? draft?.orderId ?? null,
@@ -987,6 +1005,8 @@ export class HouseLettersService {
         // writer approved.
         sender_connection_id: identity.grant?.connectionId ?? null,
         written_by: userId,
+        // A time on the house's clock (r110 g1): dispatch re-checks the writer.
+        ...(chosenAt ? { send_at_chosen: chosenAt.chosen } : {}),
         // The files the seal held (g6b): release compares the bytes to these.
         ...(files.length ? { files } : {}),
         template_id: dto.templateId ?? null,
@@ -1094,13 +1114,47 @@ export class HouseLettersService {
       dispatchAt,
       undoMs: identity.undoMs,
       sender: identity.address,
-      says:
-        identity.ceremony === "undo"
+      says: chosenAt
+        ? `Queued to leave from ${identity.address} at ${chosenAt.chosen.local} on the house's clock (${chosenAt.chosen.zone}). It has not been sent. Until then it can be pulled back, and Mail in Communications shows it as queued, never as sent.`
+        : identity.ceremony === "undo"
           ? `Queued to leave from ${identity.address} at ${dispatchAt}. It has not been sent. Until then it can be pulled back, and Mail in Communications shows it as queued, never as sent.`
           : `Queued to leave from ${identity.address}. It has not been sent yet; Mail in Communications will say so when it has.`,
       notices: hits.filter((h) => !h.blocking),
       insightsRecorded: verified.length,
+      sendAtChosen: chosenAt?.chosen ?? null,
     };
+  }
+
+  /**
+   * A choice of time read on the house's clock (r110 mail-gap g1). 400 for a
+   * staff member (a grant to send is not a say over when) and for a release;
+   * a house with no zone is refused in words, never read as UTC.
+   */
+  private async chooseSendAt(
+    restaurantId: string,
+    dto: QueueLetterDto,
+    role: string | null | undefined,
+  ): Promise<{ atMs: number; chosen: SendAtChosen }> {
+    if (!isOwnerOrManager(role)) {
+      throw new BadRequestException(
+        "Only the house's owner or a manager can set a letter to leave later. Send it now instead. Nothing was queued and nothing was sent.",
+      );
+    }
+    if (dto.requestId) {
+      throw new BadRequestException(
+        "A released request leaves now, as it was asked for; it cannot be set to leave later. Nothing was queued and nothing was sent.",
+      );
+    }
+    let zone: string | null;
+    try {
+      zone = (await readHouseZone(this.db.client, restaurantId)).zone;
+    } catch (err) {
+      throw new ConflictException(
+        `${err instanceof Error ? err.message : String(err)} So no time on the house's clock could be set. Nothing was queued and nothing was sent.`,
+      );
+    }
+    if (!zone) throw new ConflictException(SEND_AT_NO_ZONE);
+    return houseClockSendAt(dto.sendAt as NonNullable<QueueLetterDto["sendAt"]>, Date.now(), zone);
   }
 
   /**
@@ -1463,6 +1517,8 @@ export class HouseLettersService {
         subject: (headers.subject as string | null) ?? null,
         to: (headers.to as string | null) ?? null,
         dispatchAt: (row.scheduled_send_at as string | null) ?? null,
+        // A time on the house's clock (r110 g1), so the row can say "Leaves Mon 08:00".
+        sendAtChosen: (headers.send_at_chosen as SendAtChosen | undefined) ?? null,
       };
     });
   }
@@ -2059,6 +2115,10 @@ export class HouseLettersService {
       // let a manager release the same letter again.
       let leftTheHouse = false;
       try {
+        // A letter set for a time on the house's clock (r110 g1) can wait
+        // days: the writer may have left the house since. Their standing is
+        // read again now, and a writer who can no longer send sends nothing.
+        if (headers.send_at_chosen) await this.writerMayStillSend(restaurantId, writer);
         // A letter pinned at queue time leaves through that grant or not at
         // all (QA round 26, #973). Only a letter queued before pins existed
         // still follows the house's rule as it stands now.
@@ -2165,6 +2225,27 @@ export class HouseLettersService {
     }
 
     return { considered: rows.length, sent, failed, skipped, rewaited };
+  }
+
+  /** Throws, in words, when the writer of a letter set for later can no longer send. */
+  private async writerMayStillSend(restaurantId: string, writer: string): Promise<void> {
+    if (!this.authority) {
+      throw new Error(
+        "the writer's standing could not be checked (not wired into the dispatcher), so a letter set for a chosen time did not leave; nothing was sent",
+      );
+    }
+    try {
+      await this.authority.assertMaySend(writer, restaurantId, "send this letter", { canAsk: false });
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        throw new Error(
+          "the person who wrote it can no longer send for this house, so it did not leave at the time chosen; nothing was sent",
+        );
+      }
+      throw new Error(
+        `the writer's standing could not be read (${err instanceof Error ? err.message : String(err)}), so it did not leave at the time chosen; nothing was sent`,
+      );
+    }
   }
 
   /**
