@@ -74,7 +74,7 @@ export async function settledEventId(
  * needs no second model call.
  */
 
-const SYSTEM_PROMPT = `You are reading a beverage distributor's delivery paperwork for a restaurant's back office.
+export const SYSTEM_PROMPT = `You are reading a beverage distributor's delivery paperwork for a restaurant's back office.
 
 CLASSIFY the document first. It is exactly one of these twelve:
 - "invoice": states prices and an amount owed. A Turkish e-Fatura or fatura is an invoice.
@@ -103,17 +103,18 @@ EXTRACT, transcribing only what is printed:
 - buyerName and buyerTaxId — the same two fields for the BUYER (the "SAYIN"/"BILL TO" block), when printed
 - header money: subtotal, freight, fuelSurcharge, splitCaseFee, deliveryFee, depositTotal, tax, otherCharges, discountTotal, total
 - taxBreakdown: one row per printed tax rate — {rate, taxableBase, amount, category}
-- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit, lineKind
+- lines: vendorSku, description, vintage, formatMl, qty, uom, packSize (bottles per case), unitPrice, priceBaseQty, priceBaseUom, lineTotal, allowance, deposit, lineKind, vatRatePercent
 
 RULES
 - Transcribe, never compute. If a line total is not printed, leave it null; do not multiply.
 - "currency": the ISO 4217 alpha-3 the document DENOMINATES its money in, when the document itself says so. Null when it does not say — null is a correct answer and "USD" is not a fallback. A house that has stated its own currency supplies it downstream; a guess here would overwrite that.
 - Never invent a value to make the arithmetic work. A document that does not add up must come back not adding up — that is a signal, and smoothing it over hides the error we exist to catch.
-- uom is one of: bottle, case, keg, pack, split_case, each, liter. Use what the document says.
+- uom is one of: bottle, case, keg, pack, split_case, each, liter, kg, g. Use what the document says. A line sold by weight ("3 KG", "KGM", "750 GR") is kg or g, never each.
 - packSize is bottles per case when stated (a "12/750ml" case is packSize 12). Null if not stated — do not assume 12.
 - priceBaseQty / priceBaseUom are the quantity the UNIT PRICE is stated for, and its unit — ONLY when the document prints it. "142,00 / KS(12)" is priceBaseQty 12, priceBaseUom "bottle"; "22.00 / BT" is priceBaseQty 1, priceBaseUom "bottle". Null if not stated — do not assume 12, exactly as for packSize. Getting this wrong is a factor-of-twelve error on the line.
 - deliveredDate: transcribe only if printed AS A DELIVERY DATE — "DELIVERED Aug 12, 2026", "TESLİM TARİHİ", "Teslim tarihi", or the date printed against a referenced irsaliye when that date is presented as the delivery date. It is NOT docDate: a Turkish invoice is commonly issued days after the despatch it bills. Null when the page prints no delivery date; never copy docDate into it.
 - taxBreakdown: one row per rate the document actually prints, {"rate": 20, "taxableBase": 9172.00, "amount": 1834.40, "category": "S"}. "KDV %20 (matrah 9.172,00) 1.834,40" is ONE row; "Sales tax 8.625% on 2,940.00 = 253.58" is ONE row. rate is the percentage as a number (20, 8.625), taxableBase is the amount the rate was applied to (the matrah), amount is the tax it produced. category is the EN 16931 code (S standard, Z zero-rated, E exempt) only if the document states one — null otherwise. Empty array when no rate is printed; do not derive a rate by dividing the tax by a subtotal.
+- vatRatePercent: the tax rate printed ON THE LINE ITSELF, as a number — a till receipt's "%10" or "%01" beside the item is 10 or 1, an invoice's KDV % / VAT % column is its value for that row. Null when the line prints no rate. Never copy a rate from the tax rows, never fill one in from the country or the goods, and never work one out from the amounts.
 - lineKind: "goods" (default), "deposit" (the line IS a returnable-container deposit or CRV — a "Depozito", "CRV", "bottle deposit" row), or "fee" (the line IS a freight, fuel or delivery charge). A line that IS the deposit gets lineKind "deposit" and NO deposit amount — its own lineTotal is the deposit. The line-level "deposit" field is a DIFFERENT thing: a deposit charged on that line IN ADDITION to its net, e.g. twelve bottles of wine plus a per-bottle crate charge. Never set both on one line.
 - Free goods: only set a line's allowance/zero price if the document itself says so.
 - Money as plain numbers, no currency symbols or thousands separators.
@@ -123,7 +124,7 @@ RULES
 - Anything illegible: null, and say so in "unreadable".
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"vendorTaxId":null,"vendorTaxOffice":null,"vendorAddress":null,"vendorCountry":null,"buyerName":null,"buyerTaxId":null,"currency":null,"currencySeen":null,"subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"vendorTaxId":null,"vendorTaxOffice":null,"vendorAddress":null,"vendorCountry":null,"buyerName":null,"buyerTaxId":null,"currency":null,"currencySeen":null,"subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","vatRatePercent":null,"printed":{}}],"unreadable":[]}`;
 
 /**
  * The fence-stripping `normalize` applies before `JSON.parse`.
@@ -363,6 +364,15 @@ export class DocumentExtractorService {
               `Line ${i + 1}: unrecognised price base unit "${rawBaseUom}" — the printed price basis was not applied.`,
             );
 
+          // Audit D1: an unmapped unit is kept as `each` for the count, so its
+          // glyph is kept on the line, or "2 kutu @ 264" would cost 264 a
+          // bottle. Only filled where the model's own transcript left it out.
+          const kept = spreadPrinted(l?.printed, droppedPrintedKeys).printed;
+          const printed: Record<string, string> = kept ?? Object.create(null);
+          if (rawUom && !uom && !printed.uom) printed.uom = rawUom;
+          if (rawBaseUom && !priceBaseUom && !printed.priceBaseUom)
+            printed.priceBaseUom = rawBaseUom;
+
           // What the line IS. An unrecognised label falls back to the
           // description sniff rather than to a confident `goods`: a CRV row
           // filed as wine is refundable money inside cost of goods.
@@ -372,6 +382,20 @@ export class DocumentExtractorService {
             i,
             warnings,
           );
+
+          // BT-152 as printed beside the line. A figure that is not a rate is
+          // dropped and said, never clamped: 120 is a misread, not 99.
+          const rawRate = num(
+            typeof l?.vatRatePercent === "string"
+              ? l.vatRatePercent.replace(/%/g, "")
+              : l?.vatRatePercent,
+          );
+          const vatRatePercent =
+            rawRate != null && rawRate >= 0 && rawRate < 100 ? rawRate : null;
+          if (rawRate != null && vatRatePercent == null)
+            warnings.push(
+              `Line ${i + 1}: a tax rate of ${rawRate} % is not a rate — it was not kept.`,
+            );
 
           return {
             lineNo: i + 1,
@@ -396,7 +420,8 @@ export class DocumentExtractorService {
             // the `line_net_amount` 360-against-180 failure of 2026-09-04.
             deposit: lineKind === "deposit" ? null : num(l?.deposit),
             lineKind,
-            ...spreadPrinted(l?.printed, droppedPrintedKeys),
+            ...(vatRatePercent != null ? { vatRatePercent } : {}),
+            ...(Object.keys(printed).length ? { printed } : {}),
             poNumber: str(parsed.poNumber),
           };
         })
