@@ -20,7 +20,12 @@ function build(opts: { inventory?: unknown; lowStock?: unknown } = {}) {
     }),
   };
   const svc = new InventoryService(db as any);
-  return { svc, db, started, releaseInventory: (v: unknown) => releaseInventory(v) };
+  return {
+    svc,
+    db,
+    started,
+    releaseInventory: (v: unknown) => releaseInventory(v),
+  };
 }
 
 describe("getInventorySummary — the two reads are asked together", () => {
@@ -49,7 +54,9 @@ describe("getInventorySummary — the two reads are asked together", () => {
   });
 
   it("a failed low-stock read fails the summary, it is not read as none", async () => {
-    const { svc, releaseInventory } = build({ lowStock: new Error("view down") });
+    const { svc, releaseInventory } = build({
+      lowStock: new Error("view down"),
+    });
     const pending = svc.getInventorySummary("r1");
     releaseInventory([]);
     await expect(pending).rejects.toThrow("view down");

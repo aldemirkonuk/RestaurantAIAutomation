@@ -10,7 +10,12 @@ function makeCurrentService(
   version: () => Promise<unknown>,
 ) {
   const rpc = jest.fn();
-  const svc = new MenusService({ supabase: { rpc } } as any, {} as any, {} as any, {} as any);
+  const svc = new MenusService(
+    { supabase: { rpc } } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
   (svc as any).readLines = jest.fn(lines);
   (svc as any).readVersionRow = jest.fn(version);
   (svc as any).computePlan = jest.fn().mockResolvedValue({ fingerprint: "fp" });
@@ -53,7 +58,9 @@ describe("makeCurrent — the lines and the version row are asked together", () 
         throw new Error("version down");
       },
     );
-    await expect(svc.makeCurrent("r1", "m1", "u1", "fp")).rejects.toThrow("lines down");
+    await expect(svc.makeCurrent("r1", "m1", "u1", "fp")).rejects.toThrow(
+      "lines down",
+    );
     expect(rpc).not.toHaveBeenCalled();
   });
 });
@@ -74,19 +81,29 @@ function progressService(row: Record<string, unknown>, activeMenu: boolean) {
           return c;
         },
         maybeSingle: async () => {
-          if (table === "user_onboarding_progress") return { data: row, error: null };
+          if (table === "user_onboarding_progress")
+            return { data: row, error: null };
           if (table === "restaurant_menus")
             return { data: activeMenu ? { id: "m1" } : null, error: null };
           return { data: { threshold_configured: true }, error: null };
         },
-        single: async () => ({ data: { ...row, ...patches[patches.length - 1] }, error: null }),
-        then: (res: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(res),
+        single: async () => ({
+          data: { ...row, ...patches[patches.length - 1] },
+          error: null,
+        }),
+        then: (res: (v: unknown) => unknown) =>
+          Promise.resolve({ error: null }).then(res),
       };
       void mode;
       return c;
     },
   };
-  const svc = new MenusService({ supabase } as any, {} as any, {} as any, {} as any);
+  const svc = new MenusService(
+    { supabase } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
   return { svc, reads, patches };
 }
 
@@ -102,13 +119,17 @@ const ROW = {
 describe("updateOnboardingProgress — reads the row and the menu heal, not the threshold", () => {
   it("never reads restaurants", async () => {
     const { svc, reads } = progressService(ROW, false);
-    await svc.updateOnboardingProgress("u1", { checklist_dismissed: true } as any);
+    await svc.updateOnboardingProgress("u1", {
+      checklist_dismissed: true,
+    } as any);
     expect(reads).not.toContain("restaurants");
   });
 
   it("completes when the healed menu makes all three true (rule unchanged)", async () => {
     const { svc, patches } = progressService(ROW, true);
-    await svc.updateOnboardingProgress("u1", { checklist_dismissed: true } as any);
+    await svc.updateOnboardingProgress("u1", {
+      checklist_dismissed: true,
+    } as any);
     expect(patches[0]).toEqual({ menu_uploaded: true });
     expect(patches[1]).toMatchObject({ checklist_dismissed: true });
     expect(typeof (patches[1] as any).completed_at).toBe("string");
@@ -116,7 +137,9 @@ describe("updateOnboardingProgress — reads the row and the menu heal, not the 
 
   it("does not complete while a task is still open", async () => {
     const { svc, patches } = progressService(ROW, false);
-    await svc.updateOnboardingProgress("u1", { checklist_dismissed: true } as any);
+    await svc.updateOnboardingProgress("u1", {
+      checklist_dismissed: true,
+    } as any);
     expect(patches).toEqual([{ checklist_dismissed: true }]);
   });
 });
