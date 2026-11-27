@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { DraftKeptNote } from '../components/onboarding/DraftKeptNote'
 import { clearRegisterDraft, readRegisterDraft, writeRegisterDraft, type RegisterDraft } from '../lib/registerDraft'
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
@@ -121,6 +122,8 @@ export function Register() {
   // once, before the first paint, so restoring replays nothing and moves nothing.
   const [draft] = useState(() => readRegisterDraft(path))
   const draftDone = useRef(false)
+  // The note says a draft was kept; Start over (below) clears it and the fields.
+  const [draftNote, setDraftNote] = useState(draft !== null)
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
     const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -871,9 +874,29 @@ export function Register() {
   // Single step key — AnimatePresence fires ONLY when the user actually navigates between steps
   const stepKey = `${path}-${path === 'join' ? pathAStep : 1}`
 
+  const startOver = () => {
+    setJoinName('')
+    setJoinEmail('')
+    setCreateName('')
+    setCreateEmail('')
+    setRestaurantName('')
+    setAddress('')
+    setCity('')
+    setCountry('')
+    setPostalCode('')
+    setPhone('')
+    clearRegisterDraft()
+    setDraftNote(false)
+    // The first field of the step the note sat on.
+    setTimeout(() => document.getElementById(path === 'join' ? 'join-name' : 'create-name')?.focus(), 0)
+  }
+  // Said on the step that holds the restored name: create step 1, join step 2.
+  const noteHere = draftNote && (path === 'join' ? pathAStep === 2 : path === 'create')
+
   const content = (() => {
-    if (path === 'join') return pathAStep === 1 ? pathAStep1() : pathAStep2()
-    if (path === 'create') return pathBStep1()
+    const note = noteHere ? <DraftKeptNote onStartOver={startOver} /> : null
+    if (path === 'join') return pathAStep === 1 ? pathAStep1() : <>{note}{pathAStep2()}</>
+    if (path === 'create') return <>{note}{pathBStep1()}</>
   })()
 
   // sketch 118 · Direction B, the founder's pick (2026-09-19; ADR 0149 row 35,
