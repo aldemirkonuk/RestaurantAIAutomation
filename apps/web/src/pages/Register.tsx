@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { clearRegisterDraft, readRegisterDraft, writeRegisterDraft, type RegisterDraft } from '../lib/registerDraft'
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
+import { Wine, ArrowRight, ArrowLeft, Check, X, AlertCircle, Mail, Lock, User } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
@@ -12,6 +13,7 @@ import { prefersReducedMotion } from '../lib/mudavym/motion'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
+import { Pending } from '@/components/onboarding/Pending'
 
 /** Height the valid-invite card takes (16 px gap included), measured in the r102 walk at 375 px. */
 const INVITE_CARD_ROOM_PX = 142
@@ -84,6 +86,10 @@ export function Register() {
     if (searchParams.get('invite') || type === 'join') return 'join'
     return 'create'
   })
+  // A draft typed before a reload or a trip to /verify-email and back. Read
+  // once, before the first paint, so restoring replays nothing and moves nothing.
+  const [draft] = useState(() => readRegisterDraft(path))
+  const draftDone = useRef(false)
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
     const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -97,16 +103,56 @@ export function Register() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Path A account fields
-  const [joinName, setJoinName] = useState('')
-  const [joinEmail, setJoinEmail] = useState('')
+  const [joinName, setJoinName] = useState(path === 'join' ? draft?.name ?? '' : '')
+  const [joinEmail, setJoinEmail] = useState(path === 'join' ? draft?.email ?? '' : '')
   const [joinPassword, setJoinPassword] = useState('')
   const [joinConfirm, setJoinConfirm] = useState('')
 
   // Path B account fields
-  const [createName, setCreateName] = useState('')
-  const [createEmail, setCreateEmail] = useState('')
+  const [createName, setCreateName] = useState(path === 'create' ? draft?.name ?? '' : '')
+  const [createEmail, setCreateEmail] = useState(path === 'create' ? draft?.email ?? '' : '')
   const [createPassword, setCreatePassword] = useState('')
   const [createConfirm, setCreateConfirm] = useState('')
+
+  // Write what was typed, 400 ms after the last key, and again as the page
+  // goes away. Only the allow-listed non-secret fields reach registerDraft.
+  // The restaurant form is gone from this page (the house is opened on
+  // /get-started), so the restaurant fields of the draft stay empty.
+  const typed: RegisterDraft = {
+    mode: path,
+    name: path === 'join' ? joinName : createName,
+    email: path === 'join' ? joinEmail : createEmail,
+    restaurantName: '',
+    address: '',
+    city: '',
+    country: '',
+    postalCode: '',
+    phone: '',
+  }
+  const typedRef = useRef(typed)
+  typedRef.current = typed
+  const typedKey = JSON.stringify(typed)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!draftDone.current) writeRegisterDraft(typedRef.current)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [typedKey])
+  useEffect(() => {
+    const flush = () => {
+      if (!draftDone.current) writeRegisterDraft(typedRef.current)
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
+  /** The sign-up went through: the draft has done its work. */
+  const finishDraft = () => {
+    draftDone.current = true
+    clearRegisterDraft()
+  }
 
   // Email availability checking state
   const [joinEmailCheck, setJoinEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
@@ -287,7 +333,7 @@ export function Register() {
           {/* Status icon */}
           {validating && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <Loader2 className={on ? 'w-5 h-5 text-inkm-3 animate-spin motion-reduce:animate-none' : 'w-5 h-5 text-gray-400 animate-spin motion-reduce:animate-none'} />
+              <Pending size="md" className={on ? 'text-inkm-3' : 'text-gray-400'} />
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
@@ -408,6 +454,7 @@ export function Register() {
         password: joinPassword,
         ...(inviteMailSecret ? { emailSecret: inviteMailSecret } : {}),
       })
+      finishDraft()
       navigate('/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to join restaurant')
@@ -448,6 +495,7 @@ export function Register() {
             <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-name"
+              autoComplete="name" enterKeyHint="next"
               type="text"
               value={joinName}
               onChange={(e) => setJoinName(e.target.value)}
@@ -464,6 +512,7 @@ export function Register() {
             <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-email"
+              autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next"
               type="email"
               value={joinEmail}
               onChange={(e) => {
@@ -485,7 +534,7 @@ export function Register() {
             {/* Status icon */}
             {joinEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin motion-reduce:animate-none' : 'w-4 h-4 text-gray-400 animate-spin motion-reduce:animate-none'} />
+                <Pending className={on ? 'text-inkm-3' : 'text-gray-400'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
@@ -535,6 +584,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-password"
+              autoComplete="new-password" enterKeyHint="next"
               type="password"
               value={joinPassword}
               onChange={(e) => setJoinPassword(e.target.value)}
@@ -552,6 +602,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="join-confirm-password"
+              autoComplete="new-password" enterKeyHint="done"
               type="password"
               value={joinConfirm}
               onChange={(e) => setJoinConfirm(e.target.value)}
@@ -585,13 +636,11 @@ export function Register() {
       >
         {loading ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
-            Joining...
+            <Pending label="Joining..." />
           </>
         ) : joinEmailCheck.checking ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
-            Checking email…
+            <Pending label="Checking email…" />
           </>
         ) : (
           'Join Restaurant'
@@ -629,6 +678,7 @@ export function Register() {
             <User className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-name"
+              autoComplete="name" enterKeyHint="next"
               type="text"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
@@ -645,6 +695,7 @@ export function Register() {
             <Mail className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-email"
+              autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next"
               type="email"
               value={createEmail}
               onChange={(e) => {
@@ -666,7 +717,7 @@ export function Register() {
             {/* Status icon */}
             {createEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin motion-reduce:animate-none' : 'w-4 h-4 text-gray-400 animate-spin motion-reduce:animate-none'} />
+                <Pending className={on ? 'text-inkm-3' : 'text-gray-400'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (
@@ -716,6 +767,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-password"
+              autoComplete="new-password" enterKeyHint="next"
               type="password"
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
@@ -733,6 +785,7 @@ export function Register() {
             <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
             <input
               id="create-confirm-password"
+              autoComplete="new-password" enterKeyHint="done"
               type="password"
               value={createConfirm}
               onChange={(e) => setCreateConfirm(e.target.value)}
@@ -778,6 +831,7 @@ export function Register() {
               email: createEmail,
               password: createPassword,
             })
+            finishDraft()
             navigate('/verify-email', { replace: true })
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Registration failed')
@@ -788,8 +842,7 @@ export function Register() {
       >
         {createEmailCheck.checking ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
-            Checking email…
+            <Pending label="Checking email…" />
           </>
         ) : (
           <>Create account <ArrowRight className="w-4 h-4 ml-1" /></>

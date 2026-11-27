@@ -158,6 +158,8 @@ function setSwitch(on: boolean) {
 }
 
 beforeEach(() => {
+  // A typed sign-up is kept for the tab (lib/registerDraft.ts); one state's draft must not fill the next.
+  window.sessionStorage.clear()
   window.localStorage.removeItem(PUBLIC_OVERRIDE_KEY)
   h.auth.error = null
   h.auth.resolveSignInMethods.mockReset()
@@ -493,6 +495,7 @@ describe('the switch changes the chrome, never the fields', () => {
     setSwitch(false)
     const off = fieldSignature(await reach())
     cleanup()
+    window.sessionStorage.clear() // the first render's draft would pre-fill the second
     setSwitch(true)
     const on = fieldSignature(await reach())
     expect(on).toEqual(off)

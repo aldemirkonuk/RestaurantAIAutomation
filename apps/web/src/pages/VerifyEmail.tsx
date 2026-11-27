@@ -3,10 +3,11 @@ import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
+import { Mail, CheckCircle, AlertCircle } from 'lucide-react'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { Button } from '../components/ui'
 import { toast } from 'sonner'
+import { Pending } from '@/components/onboarding/Pending'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
@@ -85,6 +86,7 @@ export function VerifyEmail() {
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
+  const [lastTried, setLastTried] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
   // The next page is get-started: have it ready while the person reads this one.
   useEffect(() => prefetchWhenIdle(['get-started']), [])
@@ -374,8 +376,11 @@ export function VerifyEmail() {
       noteSignUpMail(outcome, user?.email)
       if (outcome !== 'sent') {
         setLastResent(null)
+        // The press is answered even when nothing changed: the time of this try.
+        setLastTried(new Date())
         return
       }
+      setLastTried(null)
       setLastResent(new Date())
       startCooldown(RESEND_WAIT_SECONDS)
       toast.success(verificationMailSentence('sent', user?.email))
@@ -534,6 +539,12 @@ export function VerifyEmail() {
                   {mailSentence}
                 </p>
               )}
+              {lastTried && mailTrouble && (
+                <p className="mdv-note" role="status" data-testid="verify-resend-tried">
+                  Tried again at {lastTried.toLocaleTimeString()}. Still not{' '}
+                  {mailState === 'unconfirmed' ? 'confirmed' : 'sent'}.
+                </p>
+              )}
               {waiting && <PollSlot trouble={pollTrouble} className="mdv-note" />}
               {token ? (
                 linkGate ?? (
@@ -613,7 +624,7 @@ export function VerifyEmail() {
                         Sign in to resend
                       </Link>
                       <p className="mdv-note">After you verify, sign in to continue.</p>
-                      <Link className="mdv-link" to="/login">
+                      <Link className="mdv-link mdv-pub__verified" to="/login">
                         I verified it, sign in
                       </Link>
                     </>
@@ -750,11 +761,7 @@ export function VerifyEmail() {
             >
               {verifying ? (
                 <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Verifying...
+                  <Pending label="Verifying..." />
                 </>
               ) : (
                 'Verify My Email'
@@ -795,11 +802,7 @@ export function VerifyEmail() {
             >
               {resending ? (
                 <>
-                  <Loader2
-                    className="w-4 h-4 animate-spin mr-2"
-                    strokeWidth={1.75}
-                  />
-                  Resending...
+                  <Pending label="Resending..." />
                 </>
               ) : (
                 'Resend Verification Email'

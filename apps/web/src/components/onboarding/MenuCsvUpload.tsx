@@ -14,6 +14,7 @@ import {
   isTabular,
   resetFileInput,
 } from '../../lib/uploadAccept'
+import { Pending } from '@/components/onboarding/Pending'
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
@@ -381,12 +382,14 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
             className="w-full bg-[#1A5E6B] hover:bg-[#14515C] text-white"
           >
             {loading ? (
-              <span className="flex items-center gap-2">
-                <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                {progress
-                  ? `Importing ${progress.done + 1} of ${progress.total} — ${progress.current}`
-                  : 'Importing...'}
-              </span>
+              <Pending
+                className="text-white"
+                label={
+                  progress
+                    ? `Importing ${progress.done + 1} of ${progress.total} — ${progress.current}`
+                    : 'Importing...'
+                }
+              />
             ) : queue.length > 0 ? (
               `Import ${queue.length + 1} files`
             ) : isExcelFile || isScanFile ? (

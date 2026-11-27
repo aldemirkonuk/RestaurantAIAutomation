@@ -45,11 +45,11 @@ describe('reduced motion on the way in', () => {
     expect(src('pages/Register.tsx')).not.toMatch(/x: 20|x: -20/)
   })
 
-  it('stops every raw spinner under reduced motion', () => {
+  it('stops every spinner under reduced motion: waits go through Pending, never a raw animate-spin', () => {
     for (const f of ['pages/Register.tsx', 'components/onboarding/MenuScanUpload.tsx']) {
-      const lines = src(f).split('\n').filter((l) => l.includes('animate-spin'))
-      expect(lines.length).toBeGreaterThan(0)
-      for (const l of lines) expect(l).toContain('motion-reduce:animate-none')
+      const text = src(f)
+      expect(text).not.toContain('animate-spin')
+      expect(text).toContain("from '@/components/onboarding/Pending'")
     }
   })
 

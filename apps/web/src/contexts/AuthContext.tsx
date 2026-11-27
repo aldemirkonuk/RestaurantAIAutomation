@@ -40,6 +40,7 @@ import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
 import { forgetDrafts } from "../pages/cellar/next/recipe/drafts";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
+import { clearRegisterDraft } from "../lib/registerDraft";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
 
@@ -1216,6 +1217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (unsent > 0 && !window.confirm(signOutWarning(unsent))) return false;
     }
+    clearRegisterDraft();
     await endSession();
     if (who) {
       try {

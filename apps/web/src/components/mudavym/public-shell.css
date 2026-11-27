@@ -379,6 +379,16 @@
   min-height: 44px;
 }
 
+/* "I verified it, sign in" is a bare link in a grid; measured 22px tall at 375.
+   A 44px target, centred under the button it follows. */
+.mdv-pub__stack > a.mdv-pub__verified {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  min-height: 44px;
+}
+
 .mdv-pub a.mdv-btn {
   display: inline-flex;
   align-items: center;

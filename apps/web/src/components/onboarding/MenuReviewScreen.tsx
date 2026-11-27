@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, ChevronDown, Loader2, Plus, Sparkles } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, Plus, Sparkles } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useAuth } from '../../contexts/AuthContext'
 import {
@@ -13,6 +13,7 @@ import {
 import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
 import { useHouseCurrencyCode } from '../../hooks/queries/useHouseCurrencyCode'
+import { Pending } from '@/components/onboarding/Pending'
 
 interface MenuReviewScreenProps {
   result: MenuImportResult
@@ -75,7 +76,7 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
       className="w-full text-left px-2 py-1 rounded-lg hover:bg-gray-100 text-sm transition-colors disabled:opacity-50"
     >
       {saving ? (
-        <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+        <Pending className="text-gray-400" label="Saving…" />
       ) : value ? (
         <span className="text-gray-900">{value}</span>
       ) : (

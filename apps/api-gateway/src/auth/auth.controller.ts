@@ -506,7 +506,8 @@ export class AuthController {
   async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
     this.logger.log(`Path B house attempt: ${dto.email}`);
     const tokens = await this.authService.registerRestaurant(dto);
-    // `tokens` carries `verificationMail`: did the verification mail leave.
+    // `tokens` is the session pair and the `restaurantId` of the house just opened.
+    // There is no `verificationMail`: the address was verified before this door opens.
     return {
       success: true,
       ...tokens,

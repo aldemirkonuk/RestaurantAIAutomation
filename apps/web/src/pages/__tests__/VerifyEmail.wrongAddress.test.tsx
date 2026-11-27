@@ -53,6 +53,13 @@ afterEach(() => {
 })
 
 describe('Wrong address? Change it', () => {
+  it('the closed control is a thumb target, 44 px tall (r106)', () => {
+    mount()
+    const control = screen.getByRole('button', { name: 'Wrong address? Change it' })
+    expect(control.style.minHeight).toBe('44px')
+    expect(control.style.display).toBe('inline-flex')
+  })
+
   it('is closed until asked, and opens an address field in place', async () => {
     mount()
     expect(screen.queryByLabelText('The address you meant')).toBeNull()

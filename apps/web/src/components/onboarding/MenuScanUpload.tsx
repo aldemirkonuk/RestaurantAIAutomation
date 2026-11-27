@@ -8,6 +8,7 @@ import { writeMenuReading } from '../../lib/houseMenuReading'
 
 /** How long a background read runs before the owner is offered the house (r109 g4). */
 export const GO_ON_AFTER_MS = 3000
+import { Pending } from '@/components/onboarding/Pending'
 
 interface MenuScanUploadProps {
   onSuccess: MenuImportSuccess
@@ -83,8 +84,7 @@ export function MenuScanUpload({ onSuccess, onGoOn }: MenuScanUploadProps) {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
-        <div className="w-12 h-12 rounded-full border-4 border-[#1A5E6B]/20 border-t-[#1A5E6B] animate-spin motion-reduce:animate-none" />
-        <p className="text-gray-600 font-medium">Reading your menu…</p>
+        <Pending size="lg" className="flex-col gap-4 text-[#1A5E6B] font-medium" label="Reading your menu…" />
         {offer && reading ? (
           <>
             <p className="max-w-xs text-center text-sm text-gray-600">

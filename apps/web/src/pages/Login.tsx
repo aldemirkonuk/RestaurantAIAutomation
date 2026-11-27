@@ -23,6 +23,7 @@ import {
   type IdentityProviderDescriptor,
   type SignInMethodsResult,
 } from '../lib/identityProviders'
+import { Pending } from '@/components/onboarding/Pending'
 
 const fieldClass =
   'block w-full pl-11 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 shadow-sm transition-all focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
@@ -348,10 +349,7 @@ export function Login() {
 
             <Button type="submit" variant="default" size="lg" className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'} disabled={resolving}>
               {resolving ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className={on ? 'w-4 h-4 border-2 border-paper-0 opacity-80 border-t-transparent rounded-full animate-spin' : 'w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin'} />
-                  Checking...
-                </span>
+                <Pending className={on ? 'text-paper-0' : 'text-white'} label="Checking..." />
               ) : (
                 <span className="flex items-center justify-center gap-2">
                   Continue
@@ -544,10 +542,7 @@ export function Login() {
 
                 <Button type="submit" variant="default" size="lg" className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'} disabled={loading}>
                   {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className={on ? 'w-4 h-4 border-2 border-paper-0 opacity-80 border-t-transparent rounded-full animate-spin' : 'w-4 h-4 border-2 border-white/80 border-t-transparent rounded-full animate-spin'} />
-                      Signing in...
-                    </span>
+                    <Pending className={on ? 'text-paper-0' : 'text-white'} label="Signing in..." />
                   ) : (
                     'Sign In'
                   )}
