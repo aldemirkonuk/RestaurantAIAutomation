@@ -684,6 +684,14 @@
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
   }
+  /* A row open re-laid-out all 330 stacked rows (Layout 208-298 ms, PrePaint
+     95-144 ms at 4x CPU); the rows off the screen now skip layout and paint.
+     'auto' keeps the size a row last drew, so scroll length does not jump.
+     Phone only: at 1440 px the same rule measured no gain. */
+  .iv-table tbody tr {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+  }
   .iv-row {
     height: auto;
     padding: 10px 2px;
