@@ -441,16 +441,24 @@ export function thinCats<T extends { label: string; value?: number | null; proje
   const must = new Set<number>([0, data.length - 1]);
   const named = new Set(refs.map((r) => r.x).filter((x) => x != null).map(String));
   data.forEach((d, i) => {
-    const edge = i > 0 && (data[i - 1].value == null) !== (d.value == null);
-    if (edge || named.has(d.label)) must.add(i);
+    if (named.has(d.label)) must.add(i);
   });
-  const rest = data.map((_, i) => i).filter((i) => !must.has(i));
-  const buckets = Math.max(max - must.size, 1);
-  const size = Math.ceil(rest.length / buckets);
-  for (let at = 0; at < rest.length; at += size) {
-    const chunk = rest.slice(at, at + size);
-    const top = (i: number) => data[i].value ?? data[i].projected ?? -Infinity;
-    must.add(chunk.reduce((best, i) => (top(i) > top(best) ? i : best), chunk[0]));
+  // The one seam where measuring stops and the projection starts. A closed day
+  // (null value, no projection) is not a seam; the till has many of them.
+  const seam = data.findIndex((d) => d.value == null && d.projected != null);
+  if (seam > 0) {
+    must.add(seam);
+    must.add(seam - 1);
+  }
+  // Consecutive stretches over every row: each keeps its highest open row, or a
+  // closed row only when the whole stretch is closed.
+  const budget = Math.max(max - must.size, 1);
+  const size = Math.ceil(data.length / budget);
+  const top = (i: number) => data[i].value ?? data[i].projected ?? -Infinity;
+  for (let at = 0; at < data.length; at += size) {
+    let best = at;
+    for (let i = at + 1; i < Math.min(at + size, data.length); i++) if (top(i) > top(best)) best = i;
+    must.add(best);
   }
   return [...must].sort((a, b) => a - b).map((i) => data[i]);
 }
