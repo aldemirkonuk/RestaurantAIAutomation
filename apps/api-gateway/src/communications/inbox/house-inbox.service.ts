@@ -96,6 +96,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { grantNamesNotices } from "./house-inbox-notice-terms";
 import { OrchestratorService } from "../../common/orchestrator/orchestrator.service";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import { HouseLettersService } from "../letters/house-letters.service";
@@ -976,7 +977,14 @@ export class HouseInboxService {
     try {
       // Delivery notices first (r109 mail-gap g1): a notice that cannot be
       // recorded stops the run here, before any letter moves the cursor past it.
-      const notices = await this.readNotices(token, restaurantId, cursor);
+      // ...and only for a grant whose RECORDED consent names them (r110 item 4):
+      // a grant sealed before the notices sentence reads the vendor book alone,
+      // and an unreadable consent is "not named", never a wider read.
+      const terms = await grantNamesNotices(this.db, { connectionId, userId, restaurantId, integrationId });
+      if (terms.failed) this.logger.warn(`Delivery notices not asked for ${connectionId}: ${terms.failed}`);
+      const notices = terms.named
+        ? await this.readNotices(token, restaurantId, cursor)
+        : { kept: 0, highest: cursor };
 
       const listing = wide
         ? await this.listWide(token, cursor, addresses)
