@@ -108,4 +108,113 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
     expect(out[0]).toHaveProperty("alert_count");
     expect(out[0]).toHaveProperty("markup_classification");
   });
+
+  // perf-p6-2: keys no reader needs, or that are null, leave the reply too.
+  describe("empty and dead keys", () => {
+    const emptyCols = () =>
+      Object.fromEntries(
+        [
+          ...InventoryService.LIST_DEAD_KEYS,
+          ...InventoryService.LIST_NULL_OMITTED_KEYS,
+        ].map((c) => [c, null]),
+      );
+
+    // A populated house: every row has a sku, a third have a provider and a
+    // count date, one in ten has a glasses-per-bottle override.
+    const populated = Array.from({ length: 330 }, (_, i) =>
+      base({
+        id: `i${i}`,
+        master_wine_id: `m${i}`,
+        wine_name: `Wine number ${i}`,
+        bottle_size_ml: 750,
+        pour_size_ml: 150,
+        ...emptyCols(),
+        sku: `SKU-${i}`,
+        provider_id: i % 3 === 0 ? `p${i}` : null,
+        last_counted_at: i % 3 === 0 ? "2026-11-01T00:00:00Z" : null,
+        markup_ratio: i % 5 === 0 ? 2.5 : null,
+        glasses_per_bottle_override: i % 10 === 0 ? 8 : null,
+        storage_location_id: i % 4 === 0 ? "loc" : null,
+        restaurants: { default_pour_ml: 150 },
+      }),
+    );
+
+    function makeWith(data: any[]) {
+      const svc: any = new (InventoryService as any)({
+        getRestaurantInventory: jest.fn().mockResolvedValue(data),
+        getClient: jest.fn(),
+      });
+      jest.spyOn(svc, "fetchLotRollup").mockResolvedValue(new Map());
+      jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue(new Map());
+      jest
+        .spyOn(svc, "fetchAnalytics")
+        .mockResolvedValue({ map: new Map(), ok: true });
+      return svc as InventoryService;
+    }
+
+    it("drops the five dead keys and null-valued audited keys, keeps filled ones", async () => {
+      const out: any[] = await makeWith(populated).getRestaurantInventory("r1", {
+        lean: true,
+      });
+      for (const r of out) {
+        for (const c of InventoryService.LIST_DEAD_KEYS) expect(r).not.toHaveProperty(c);
+      }
+      const r0 = out[0]; // i%3==0, %5==0, %10==0
+      expect(r0).toMatchObject({
+        sku: "SKU-0",
+        provider_id: "p0",
+        last_counted_at: "2026-11-01T00:00:00Z",
+        markup_ratio: 2.5,
+        markupRatio: 2.5,
+        glassesPerBottle: 8,
+        glassesPerBottleOverride: 8,
+      });
+      const r1 = out[1]; // everything null
+      for (const c of [
+        "provider_id",
+        "last_counted_at",
+        "markup_ratio",
+        "negotiated_price",
+        "menu_section",
+      ]) {
+        expect(r1).not.toHaveProperty(c);
+      }
+      // lastCountedAt keeps its null: four web readers compare it === null.
+      expect(r1).toHaveProperty("lastCountedAt", null);
+      expect(r1.sku).toBe("SKU-1");
+    });
+
+    it("changes no derived figure and shrinks the reply on a populated fixture", async () => {
+      const lean: any[] = await makeWith(populated).getRestaurantInventory("r1", {
+        lean: true,
+      });
+      const full: any[] = await makeWith(populated).getRestaurantInventory("r1");
+      const gone = new Set<string>([
+        ...InventoryService.LIST_UNREAD_COLUMNS,
+        ...InventoryService.LIST_DEAD_KEYS,
+        ...InventoryService.LIST_NULL_OMITTED_KEYS,
+      ]);
+      lean.forEach((l, i) => {
+        for (const [k, v] of Object.entries(full[i])) {
+          if (gone.has(k)) {
+            if (k in l) expect(l[k]).toEqual(v); // kept only when it carries a value
+          } else {
+            expect(l[k]).toEqual(v);
+          }
+        }
+      });
+      const bytes = (x: unknown) => JSON.stringify(x).length;
+      // What #2191's lean list alone sent: the full row minus its 36 columns.
+      const was = full.map((r) => {
+        const c = { ...r };
+        for (const k of InventoryService.LIST_UNREAD_COLUMNS) delete c[k];
+        return c;
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `list bytes full=${bytes(full)} lean-2191=${bytes(was)} lean-now=${bytes(lean)}`,
+      );
+      expect(bytes(lean)).toBeLessThan(bytes(was) * 0.9);
+    });
+  });
 });
