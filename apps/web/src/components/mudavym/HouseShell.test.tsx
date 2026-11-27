@@ -23,6 +23,8 @@ vi.mock('../../services/api/houseCounter', () => ({
 vi.mock('../../services/api/settings', () => ({
   settingsApi: { checkFeatureFlag: (...a: unknown[]) => checkFlag(...a) },
 }));
+// The rail's Communications count is its own spec's (HouseRail.test.tsx); this file has no query client.
+vi.mock('../../pages/communications/next/useMailWaiting', () => ({ SIDEBAR_WAITING_ON: 'the house', useMailWaiting: () => 0 }));
 vi.mock('./HouseBell', () => ({ HouseBell: () => <span data-testid="bell" /> }));
 vi.mock('./HouseUserMenu', () => ({ HouseUserMenu: () => <span data-testid="account" /> }));
 vi.mock('../command/CommandProvider', () => ({

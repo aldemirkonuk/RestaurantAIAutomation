@@ -10,6 +10,7 @@
 
 import { Link, useLocation } from 'react-router-dom';
 import { openAskAi } from '../askai/events';
+import { SIDEBAR_WAITING_ON, useMailWaiting } from '../../pages/communications/next/useMailWaiting';
 import {
   isCurrentRoom,
   visibleFoot,
@@ -22,6 +23,31 @@ export interface RoomsListProps {
   role: ShellRole;
   flags: RoomFlags;
   onNavigate?: () => void;
+}
+
+/**
+ * The Communications room with the count of people waiting on the house (DD-r108-44:
+ * #2185 drew it only in the legacy Sidebar, which no house sees). The rail and the
+ * phone's Rooms sheet both draw RoomsList, so both carry it. The count's slot is
+ * always there, so a number arriving moves nothing, and it has no motion. Zero, a
+ * failed read or an unread summary draw no number, as the sidebar's does not.
+ */
+function WaitingRoom({ name, path, here, onNavigate }: { name: string; path: string; here: boolean; onNavigate?: () => void }) {
+  const n = useMailWaiting();
+  return (
+    <Link
+      to={path}
+      className="mdv-rail__room"
+      aria-current={here ? 'page' : undefined}
+      aria-label={n > 0 ? `${name}, ${n} waiting on ${SIDEBAR_WAITING_ON}` : undefined}
+      onClick={onNavigate}
+    >
+      {name}
+      <span className="mdv-rail__count" data-testid="rail-waiting" aria-hidden="true">
+        {n > 0 ? n : ''}
+      </span>
+    </Link>
+  );
 }
 
 /** The rooms as a list — the rail's body and the phone sheet's. */
@@ -39,14 +65,18 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
               const here = isCurrentRoom(pathname, r);
               return (
                 <li key={r.path}>
-                  <Link
-                    to={r.path}
-                    className="mdv-rail__room"
-                    aria-current={here ? 'page' : undefined}
-                    onClick={onNavigate}
-                  >
-                    {r.name}
-                  </Link>
+                  {r.path === '/communications' ? (
+                    <WaitingRoom name={r.name} path={r.path} here={here} onNavigate={onNavigate} />
+                  ) : (
+                    <Link
+                      to={r.path}
+                      className="mdv-rail__room"
+                      aria-current={here ? 'page' : undefined}
+                      onClick={onNavigate}
+                    >
+                      {r.name}
+                    </Link>
+                  )}
                 </li>
               );
             })}
