@@ -69,10 +69,10 @@ function answer(): Answer {
   };
 }
 
-/** After Campari is linked: the two other names stay, one place higher each. */
+/** After Campari is linked: the two other names stay, one place higher each, and both saved drinks carry the version the save made. */
 function afterCampari(): Answer {
   const a = answer();
-  return { ...a, lineCount: 3, groups: a.groups.slice(1) };
+  return { ...a, lineCount: 3, groups: a.groups.slice(1), drinks: a.drinks.map((d) => ({ ...d, versionId: `${d.versionId}-saved` })) };
 }
 
 let reduced = false;
@@ -261,6 +261,37 @@ describe('the loose-lines queue (r108 drinks-g9)', () => {
     await act(async () => release(null));
     await waitFor(() => expect(screen.queryByTestId('loose-group-campari')).toBeNull());
     await waitFor(() => expect(vermouth()).not.toBeDisabled());
+  });
+
+  it('a link after the re-read sends the version the save made, not the one read before it (r100 P2)', async () => {
+    await openSheet();
+    fireEvent.click(screen.getByTestId('loose-group-sweet vermouth').querySelector('button')!);
+    await act(linkCampari);
+    await waitFor(() => expect(screen.queryByTestId('loose-group-campari')).toBeNull());
+    const vermouth = () => screen.getByTestId('loose-group-sweet vermouth').querySelector('[data-testid="loose-link"]') as HTMLButtonElement;
+    await waitFor(() => expect(vermouth()).not.toBeDisabled());
+    h.put.mockClear();
+    await act(async () => { fireEvent.click(vermouth()); });
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].expectedVersionId).toBe('v-neg2-saved');
+  });
+
+  it('when the re-read fails the buttons stay off and the sheet says so, instead of linking from a stale version (r100 P2)', async () => {
+    await openSheet();
+    fireEvent.click(screen.getByTestId('loose-group-sweet vermouth').querySelector('button')!);
+    h.get.mockReset().mockImplementation(async (url: string) => {
+      if (url === looseUrl) throw Object.assign(new Error('503'), { response: { status: 503, data: {} } });
+      throw new Error(`unexpected GET ${url}`);
+    });
+    await act(linkCampari);
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    await screen.findByTestId('loose-reread-failed');
+    expect(screen.getByTestId('loose-reread-failed')).toHaveTextContent('The queue could not be read again; close and reopen before the next link.');
+    const vermouth = screen.getByTestId('loose-group-sweet vermouth').querySelector('[data-testid="loose-link"]') as HTMLButtonElement;
+    expect(vermouth).toBeDisabled();
+    const puts = h.put.mock.calls.length;
+    fireEvent.click(vermouth);
+    expect(h.put.mock.calls.length).toBe(puts);
   });
 
   it('reduced motion: the groups that stay move with no animation at all', async () => {
