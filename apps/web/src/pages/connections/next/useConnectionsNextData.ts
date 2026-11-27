@@ -502,6 +502,8 @@ export interface CatalogEntryVM {
    */
   scopes?: Array<{ scope: string; label: string; reason?: string }> | null;
   notRequested?: string[] | null;
+  /** The catalogue's data-handling words; only `notices` is read here (r110 item 4). Absent from an older gateway. */
+  dataHandling?: { notices?: string } | null;
 }
 
 /** A query as this page consumes it: never "empty" when it means "unread". */

@@ -43,6 +43,15 @@ export interface MailSetupView {
     /** The newest test letter that arrived, whichever check it answered (QA round 26, #974). */
     lastArrival?: { code: string; arrivedAt: string; arrivedFrom: string | null } | null;
   };
+  /**
+   * Reading grants sealed before the delivery-notice words (r110 item 4): no
+   * bounce is asked for through them. Absent from an older gateway, which then
+   * offers nothing.
+   */
+  notices?: {
+    failed: string | null;
+    old: Array<{ connectionId: string; integrationId: 'gmail_read' | 'gmail_read_all'; mine: boolean }>;
+  };
 }
 
 /** A test letter is waited on, and the page re-reads, for this long after it was started. */

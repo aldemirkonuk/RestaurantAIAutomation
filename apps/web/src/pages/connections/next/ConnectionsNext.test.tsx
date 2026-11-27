@@ -2293,3 +2293,19 @@ describe("the house's own copy of its vendor mail", () => {
     expect(screen.queryByText('Never asked')).not.toBeInTheDocument();
   });
 });
+
+describe('a reading grant says how delivery notices are asked for (r110 item 4)', () => {
+  it("shows the catalogue's own notices sentence on a gmail_read grant, and nothing on a grant without one", () => {
+    const words = 'Connected before these words, a mailbox is not asked for notices until you connect it again.';
+    const d = base();
+    d.catalog = reg([
+      { id: 'gmail_read', provider: 'google', label: 'Gmail — reading vendor replies only', providerLabel: 'Google', description: 'x.', available: true, unavailableReason: null, scopes: [], notRequested: [], dataHandling: { reads: 'r', doesNotRead: 'd', landsIn: 'l', visibleTo: 'v', notices: words } },
+    ]);
+    d.houseGrants = reg({ grants: [grant({ connectionId: 'c9', integrationId: 'gmail_read', label: 'Gmail reading' }), grant()], unattributed: 0 });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    const shown = screen.getAllByTestId('cx-grant-notices');
+    expect(shown).toHaveLength(1);
+    expect(shown[0].textContent?.trim()).toBe(words);
+  });
+});

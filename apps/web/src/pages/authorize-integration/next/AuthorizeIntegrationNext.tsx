@@ -53,6 +53,7 @@ export default function AuthorizeIntegrationNext() {
                 ['Who can see it', doc.integration.dataHandling?.visibleTo],
                 ['How long it stays', doc.integration.dataHandling?.keptFor],
               ] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value ?? 'The deployment did not supply this disclosure.'}</dd></div>)}
+              {doc.integration.dataHandling?.notices && <div data-testid="consent-notices"><dt>Delivery notices</dt><dd>{doc.integration.dataHandling.notices}</dd></div>}
             </dl></section>
             {doc.integration.mirrorsMail && <section><h2>The house’s copy of the mail</h2>
               {!retention ? <p role="alert">The retention facts are unavailable. This permission cannot be approved yet.</p> : <>

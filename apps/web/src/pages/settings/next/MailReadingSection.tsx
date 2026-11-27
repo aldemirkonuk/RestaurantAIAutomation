@@ -109,6 +109,12 @@ function Body({
         house’s complete data-and-privacy terms — every owner meets that sheet at their next sign-in, and it is also
         reachable here.
       </Note>
+      <Note>
+        Separately from Jev: when a letter this house sent does not arrive, Gmail writes back from mailer-daemon or
+        postmaster. Mudavym asks for those bounce notices only through a mailbox whose person agreed to it on the Gmail
+        consent page, keeps one only when it names a letter this house sent, and drops any other notice unread. A
+        mailbox connected before that agreement is not asked; its person can turn on bounce notices in Mail setup.
+      </Note>
       <Row
         label="Jev reads vendor mail"
         consequence={

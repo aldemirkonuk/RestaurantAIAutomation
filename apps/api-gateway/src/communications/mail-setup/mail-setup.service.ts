@@ -37,6 +37,7 @@ import { DatabaseService } from "../../database/database.service";
 import { InboundAddressService } from "../../common/orchestrator/inbound-address.service";
 import { GMAIL_SEND_SCOPE, HouseSenderService } from "../letters/house-sender.service";
 import { newTestCode, testSubject } from "./test-letter";
+import { grantNamesNotices } from "../inbox/house-inbox-notice-terms";
 
 const OWNER_MANAGER = new Set(["owner", "manager"]);
 
@@ -91,6 +92,16 @@ export interface MailSetupView {
      */
     lastArrival: { code: string; arrivedAt: string; arrivedFrom: string | null } | null;
   };
+  /**
+   * The reading grants in this house whose sealed consent does NOT name
+   * delivery notices (r110 item 4), so no bounce is asked for through them.
+   * `mine` grants can be re-asked by their own person; the rest are counted,
+   * never named. Null `failed` and an empty list mean every grant names them.
+   */
+  notices: {
+    failed: string | null;
+    old: Array<{ connectionId: string; integrationId: "gmail_read" | "gmail_read_all"; mine: boolean }>;
+  };
 }
 
 const NO_CHANGE_WORDS =
@@ -119,12 +130,40 @@ export class MailSetupService {
     userId: string,
     role: string | null | undefined,
   ): Promise<MailSetupView> {
-    const [senders, arrival, testLetter] = await Promise.all([
+    const [senders, arrival, testLetter, notices] = await Promise.all([
       this.readSenders(restaurantId, userId),
       this.readArrival(restaurantId),
       this.readTestLetter(restaurantId),
+      this.readNoticeTerms(restaurantId, userId),
     ]);
-    return { canChange: mayChangeHouseMail(role), senders, arrival, testLetter };
+    return { canChange: mayChangeHouseMail(role), senders, arrival, testLetter, notices };
+  }
+
+  /** Which live reading grants were sealed before the delivery-notice words (the reader's own gate). */
+  private async readNoticeTerms(restaurantId: string, userId: string): Promise<MailSetupView["notices"]> {
+    const failed = { failed: "Whether this house's reading grants ask for delivery notices could not be read.", old: [] };
+    const grants = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id, user_id, integration_id")
+      .eq("restaurant_id", restaurantId)
+      .in("integration_id", ["gmail_read", "gmail_read_all"])
+      .is("revoked_at", null);
+    if (grants.error) {
+      this.logger.error(`Mail setup reading grants could not be read for ${restaurantId}: ${grants.error.message}`);
+      return failed;
+    }
+    const old: MailSetupView["notices"]["old"] = [];
+    for (const g of (grants.data ?? []) as Array<{ id: string; user_id: string; integration_id: "gmail_read" | "gmail_read_all" }>) {
+      const terms = await grantNamesNotices(this.db, {
+        connectionId: g.id,
+        userId: g.user_id,
+        restaurantId,
+        integrationId: g.integration_id,
+      });
+      if (terms.failed) return failed;
+      if (!terms.named) old.push({ connectionId: g.id, integrationId: g.integration_id, mine: g.user_id === userId });
+    }
+    return { failed: null, old };
   }
 
   /**
