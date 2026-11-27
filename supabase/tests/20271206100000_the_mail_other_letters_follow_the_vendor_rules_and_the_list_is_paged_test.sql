@@ -18,7 +18,7 @@ INSERT INTO public.procurement_conversations
   (id, restaurant_id, provider_id, kind, from_address, direction, channel, message_text, status, thread_key, message_id, received_at, sent_at, created_at, email_headers) VALUES
   ('a7000000-0000-4000-8000-0000000000a1', '77777777-7777-4777-8777-777777777777', NULL, 'guest', 'guest@x.example', 'inbound', 'email', 'Table for four?', 'DELIVERED', 'gm:g1', '<m1@x.example>', now(), NULL, now() - interval '2 minutes', '{}'),
   ('a7000000-0000-4000-8000-0000000000a2', '77777777-7777-4777-8777-777777777777', NULL, 'guest', 'guest@x.example', 'inbound', 'email', 'Table for four?', 'DELIVERED', 'gm:g1', '<M1@x.example>', now(), NULL, now() - interval '1 minute', '{}'),
-  ('a7000000-0000-4000-8000-0000000000a3', '77777777-7777-4777-8777-777777777777', NULL, 'guest', 'guest@x.example', 'inbound', 'email', 'Out of office', 'DELIVERED', 'gm:g1', '<ooo@x.example>', now(), NULL, now(), '{"transport":{"autoSubmitted":"true"}}'),
+  ('a7000000-0000-4000-8000-0000000000a3', '77777777-7777-4777-8777-777777777777', NULL, 'guest', 'guest@x.example', 'inbound', 'email', 'Out of office', 'DELIVERED', 'gm:g1', '<ooo@x.example>', now(), NULL, now(), '{"transport":{"autoSubmitted":true}}'),
   ('a7000000-0000-4000-8000-0000000000a4', '77777777-7777-4777-8777-777777777777', NULL, 'guest', 'mailer-daemon@x.example', 'inbound', 'email', 'Undeliverable', 'DELIVERED', 'gm:b1', '<b1@x.example>', now(), NULL, now(), '{"from":"Mail Delivery <mailer-daemon@x.example>"}'),
   ('a7000000-0000-4000-8000-0000000000a5', '77777777-7777-4777-8777-777777777777', NULL, 'team', 'deniz@h.example', 'inbound', 'email', 'Shift swap', 'DELIVERED', 'gm:t1', '<t1@h.example>', now(), NULL, now(), '{}');
 

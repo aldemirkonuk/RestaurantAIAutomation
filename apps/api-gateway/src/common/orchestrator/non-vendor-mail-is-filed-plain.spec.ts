@@ -104,6 +104,18 @@ describe("team and guest mail from the wider reader", () => {
     expect(h.gateway.emitRestaurantNotification).not.toHaveBeenCalled();
   });
 
+  it("stores the transport signals, so an auto-reply is stored as automatic", async () => {
+    const h = harness();
+    await (h.bridge as any).handleInboundEmail(
+      event({ headers: { "Auto-Submitted": "auto-replied" } }),
+    );
+    const row = h.inserts[0].body;
+    expect(row.email_headers.transport.autoSubmitted).toBe(true);
+    const plain = harness();
+    await (plain.bridge as any).handleInboundEmail(event({ headers: {} }));
+    expect(plain.inserts[0].body.email_headers.transport.autoSubmitted).toBe(false);
+  });
+
   it("files a message once: a repeat of the same message id in the same house is skipped", async () => {
     const h = harness({ existing: true });
     await (h.bridge as any).handleInboundEmail(event({ house_mail_kind: "team" }));
