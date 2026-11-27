@@ -61,6 +61,7 @@ import {
   Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../../database/database.service";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import {
@@ -80,6 +81,7 @@ import { composeCreditLetter } from "./credit-letter";
 import {
   addressListHeader,
   base64Body,
+  messageIdHeader,
   threadingHeader,
   unstructuredHeader,
 } from "../mime-headers";
@@ -1920,8 +1922,13 @@ export class HouseLettersService {
           restaurantId,
           identity.grant.integrationId as IntegrationId,
         );
+        // Our own Message-ID, stored on the row, so a delivery notice about
+        // this letter finds it (r109 mail-gap g1), as order letters do
+        // (procurement.service.ts mintRfc822MessageId).
+        const rfc822MessageId = `<mudavym-${randomUUID()}@wineops.ai>`;
         const messageId = await sendThroughGrant({
           token,
+          messageId: rfc822MessageId,
           from: identity.address ?? identity.grant.accountEmail ?? "",
           to,
           subject,
@@ -1942,6 +1949,7 @@ export class HouseLettersService {
             sent_at: new Date().toISOString(),
             delivery_status: "sent",
             gmail_message_id: messageId,
+            message_id: rfc822MessageId,
             scheduled_send_at: null,
           })
           .eq("id", id);
@@ -2211,6 +2219,8 @@ export async function sendThroughGrant(params: {
   threadId?: string;
   inReplyTo?: string;
   references?: string;
+  /** Our own Message-ID (r109 g1), so a delivery notice can name the letter. */
+  messageId?: string;
   /** g6a: uploaded files, at most 3 and 5 MB together (mime-attachments.ts). */
   attachments?: OutboundAttachment[];
   fetchImpl?: typeof fetch;
@@ -2244,6 +2254,7 @@ export async function sendThroughGrant(params: {
     ...(params.replyTo
       ? [addressListHeader("Reply-To", [params.replyTo])]
       : []),
+    ...(params.messageId ? [messageIdHeader("Message-ID", params.messageId)] : []),
     ...(inReplyTo ? [inReplyTo] : []),
     ...(references ? [references] : []),
     "MIME-Version: 1.0",
