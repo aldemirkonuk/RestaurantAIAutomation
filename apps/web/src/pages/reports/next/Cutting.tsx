@@ -48,6 +48,7 @@ import {
   BigFigure,
   CatPlot,
   ComboPlot,
+  FlatCats,
   DataTable,
   FigureRow,
   HeatGrid,
@@ -199,8 +200,11 @@ function Drawing({
     case 'line':
     case 'area':
     case 'bars':
+      // Full screen can draw only a marked stretch (r110 g1); the card cannot.
+      if (flat) return <FlatCats series={view.cats!} kind={graph} />;
       return <CatPlot series={view.cats!} kind={graph} />;
     case 'combo':
+      if (flat) return <FlatCats series={view.cats!} kind="combo" pick={combo?.pick} onPick={combo?.onPick} />;
       return <ComboPlot series={view.cats!} pick={combo?.pick} onPick={combo?.onPick} />;
     case 'scatter':
       return <PointPlot series={view.points!} />;

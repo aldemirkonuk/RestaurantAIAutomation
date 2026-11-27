@@ -74,6 +74,7 @@ import { EM, MONO, failureLine, type Failure } from './rp-format';
 import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 import { NO_STRETCH, stretchSpan, stretchStep } from './rp-stretch';
+import { zoomAllLabel, zoomKey, zoomNote, zoomOffered, zoomSeries, zoomSpan } from './rp-zoom';
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
 
@@ -234,6 +235,8 @@ function Plot({
   held = false,
   keys = true,
   stretch,
+  zoom,
+  settled = false,
 }: {
   children: ReactNode;
   label: string;
@@ -245,8 +248,20 @@ function Plot({
   keys?: boolean;
   /** The till's "Read a stretch" (r108 g3): its readout slot, always reserved when offered. */
   stretch?: Stretch;
+  /** Full screen's "Draw only these days" (r110 g1): its 44 px row, always reserved when offered. */
+  zoom?: PlotZoom;
+  /** Paint at rest: a drawing replaced by a zoom never replays `rp-grow` (MOTIONS, drawing changes). */
+  settled?: boolean;
 }) {
-  const { ref, state } = useDrawIn();
+  const { ref, state: drawState } = useDrawIn();
+  const state = settled ? 'settled' : drawState;
+  const allRef = useRef<HTMLButtonElement>(null);
+  const focusAll = zoom?.all?.focus === true;
+  useEffect(() => {
+    if (focusAll) allRef.current?.focus();
+  }, [focusAll]);
+  const span = stretch?.state === 'read' ? stretch.span : null;
+  const drawOnly = zoom?.onDraw && span && span[1] > span[0] ? span : null;
   const [said, setSaid] = useState('');
   const [hidden, setHidden] = useState(false);
   const tip = useMemo(() => ({ say: setSaid, hidden }), [hidden]);
@@ -302,7 +317,125 @@ function Plot({
           {stretch.words}
         </p>
       )}
+      {zoom && (
+        <div className="rp-zoom rp-no-drag" {...(stretch ? { 'data-stretch-id': stretch.id } : {})}>
+          {zoom.all && (
+            <button ref={allRef} type="button" className="rp-zoom__all rp-chip rp-focus" onClick={zoom.all.onAll}>
+              {zoom.all.label}
+            </button>
+          )}
+          {drawOnly && (
+            <button
+              type="button"
+              className="rp-zoom__draw rp-ink rp-focus"
+              onClick={() => zoom.onDraw?.(drawOnly[0], drawOnly[1])}
+            >
+              {`Draw only these ${drawOnly[1] - drawOnly[0] + 1} days`}
+            </button>
+          )}
+        </div>
+      )}
     </>
+  );
+}
+
+/* ─────────────────────────────────────── draw only these days (r110 g1) ───── */
+
+/** What a full-screen drawing hands its plot for "Draw only these days". */
+export interface PlotZoom {
+  /** Offered: a read stretch of two days or more shows the button, which calls this with its slots. */
+  onDraw?: (a: number, b: number) => void;
+  /** Zoomed: the caption's tail ("41 of 365 days, Oct 3 to Nov 12"). */
+  note?: string;
+  /** Zoomed: the way back, and whether it takes focus (it does, right after the zoom). */
+  all?: { label: string; onAll: () => void; focus: boolean };
+}
+
+type FlatKind = 'line' | 'area' | 'bars' | 'combo';
+
+/**
+ * A full-screen till drawing that can be zoomed to a marked stretch. The zoom
+ * is view-only (never in the URL) and is dropped by anything that changes the
+ * drawing under it: a window, a grain, a Draw as, a withheld read (`zoomKey`).
+ * A step to another cutting mounts another of these, so it starts unzoomed.
+ * Escape inside it, with no stretch marked, goes back to every day; with one
+ * marked, it clears the stretch and keeps full screen up.
+ */
+export function FlatCats({
+  series,
+  kind,
+  pick,
+  onPick,
+}: {
+  series: CatSeries;
+  kind: FlatKind;
+  pick?: Partial<ComboPick>;
+  onPick?: (p: ComboPick) => void;
+}) {
+  const key = zoomKey(series, kind);
+  const [z, setZ] = useState<{ key: string; lo: number; hi: number } | null>(null);
+  // Changed once a zoom has been drawn: every later drawing in this view is a replacement, painted at rest.
+  const [replaced, setReplaced] = useState<string | null>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const backFocus = useRef(false);
+  if (z && z.key !== key) setZ(null);
+  if (replaced != null && replaced !== key) setReplaced(null);
+  const zoom = z && z.key === key ? z : null;
+  useEffect(() => {
+    if (zoom || !backFocus.current) return;
+    backFocus.current = false;
+    wrap.current?.focus();
+  }, [zoom]);
+  if (!zoomOffered(series)) return kind === 'combo' ? <ComboPlot series={series} pick={pick} onPick={onPick} /> : <CatPlot series={series} kind={kind} />;
+  const drawOnly = (base: number) => (a: number, b: number) => {
+    const s = zoomSpan(series, base + a, base + b);
+    if (!s) return;
+    setZ({ key, lo: s[0], hi: s[1] });
+    setReplaced(key);
+  };
+  const shown = zoom ? zoomSeries(series, zoom.lo, zoom.hi) : series;
+  const plotZoom: PlotZoom = zoom
+    ? {
+        onDraw: drawOnly(zoom.lo),
+        note: zoomNote(series, zoom.lo, zoom.hi),
+        all: {
+          label: zoomAllLabel(series),
+          focus: true,
+          onAll: () => {
+            backFocus.current = true;
+            setZ(null);
+          },
+        },
+      }
+    : { onDraw: drawOnly(0) };
+  const settled = replaced === key;
+  const plotKey = zoom ? `${zoom.lo}:${zoom.hi}` : 'all';
+  return (
+    <div
+      ref={wrap}
+      className="rp-zoom-wrap"
+      tabIndex={-1}
+      data-zoomed={zoom ? 'true' : 'false'}
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || e.defaultPrevented) return;
+        const marked = wrap.current?.querySelector('[data-stretching="true"]') != null;
+        // A marked stretch: its own listener clears it; full screen stays up.
+        if (marked) {
+          e.preventDefault();
+          return;
+        }
+        if (!zoom) return;
+        e.preventDefault();
+        backFocus.current = true;
+        setZ(null);
+      }}
+    >
+      {kind === 'combo' ? (
+        <ComboPlot key={plotKey} series={shown} pick={pick} onPick={onPick} zoom={plotZoom} settled={settled} />
+      ) : (
+        <CatPlot key={plotKey} series={shown} kind={kind} zoom={plotZoom} settled={settled} />
+      )}
+    </div>
   );
 }
 
@@ -728,7 +861,18 @@ export function thinCats<T extends { label: string; value?: number | null; proje
 /** More drawn points than this (a 365-day till: 124 bars) mount a frame after the tap, not in it. */
 export const HOLD_OVER = 100;
 
-export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
+export function CatPlot({
+  series,
+  kind,
+  zoom,
+  settled,
+}: {
+  series: CatSeries;
+  kind: 'line' | 'area' | 'bars';
+  /** Full screen only (`FlatCats`). */
+  zoom?: PlotZoom;
+  settled?: boolean;
+}) {
   const { data: all, xLabel, yLabel, unit, format, refs, projectedLabel, priorLabel } = series;
   const data = thinCats(all, refs);
   const slots = new Map(all.map((d, i) => [d as object, i]));
@@ -750,8 +894,8 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     unit,
   )}`;
   const caption = `${titled(yLabel, unit)} · by ${xLabel}${
-    thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''
-  }`;
+    zoom?.note ? ` · ${zoom.note}` : ''
+  }${thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''}`;
   const gutter = gutterFor(
     tickLabels(
       [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
@@ -821,7 +965,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     }));
     const labelled = rows.length <= LABEL_BARS_MAX;
     return (
-      <Plot label={label} caption={caption} held={held} stretch={stretch}>
+      <Plot label={label} caption={caption} held={held} stretch={stretch} zoom={zoom} settled={settled}>
         <BarChart accessibilityLayer data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN} {...stretch?.on}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -859,7 +1003,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   if (kind === 'area')
     return (
-      <Plot label={label} caption={caption} held={held} stretch={stretch}>
+      <Plot label={label} caption={caption} held={held} stretch={stretch} zoom={zoom} settled={settled}>
         <AreaChart accessibilityLayer data={data} margin={MARGIN} {...stretch?.on}>
           {axes}
           <Area
@@ -904,7 +1048,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot label={label} caption={caption} held={held} stretch={stretch}>
+    <Plot label={label} caption={caption} held={held} stretch={stretch} zoom={zoom} settled={settled}>
       <LineChart accessibilityLayer data={data} margin={MARGIN} {...stretch?.on}>
         {axes}
         <Line
@@ -972,10 +1116,15 @@ export function ComboPlot({
   series,
   pick,
   onPick,
+  zoom,
+  settled,
 }: {
   series: CatSeries;
   pick?: Partial<ComboPick>;
   onPick?: (p: ComboPick) => void;
+  /** Full screen only (`FlatCats`). */
+  zoom?: PlotZoom;
+  settled?: boolean;
 }) {
   const [own, setOwn] = useState<Partial<ComboPick> | undefined>(pick);
   const plan = planCombo(series, onPick ? pick : own);
@@ -991,9 +1140,10 @@ export function ComboPlot({
   const shared = split ? null : bars.unit;
   const barGutter = gutterFor(tickLabels(rows.map((r) => r.bar), bars.format));
   const lineGutter = split ? gutterFor(tickLabels(rows.map((r) => r.line), line.format)) : 0;
+  const zoomed = zoom?.note ? ` · ${zoom.note}` : '';
   const caption = split
-    ? `${titled(bars.label, bars.unit)} (bars, left) · ${titled(line.label, line.unit)} (line, right) · by ${series.xLabel}`
-    : `${titled(bars.label, shared ?? undefined)} · by ${series.xLabel}`;
+    ? `${titled(bars.label, bars.unit)} (bars, left) · ${titled(line.label, line.unit)} (line, right) · by ${series.xLabel}${zoomed}`
+    : `${titled(bars.label, shared ?? undefined)} · by ${series.xLabel}${zoomed}`;
   const words = split
     ? `Bars: ${named(bars)}, on the left scale. Line: ${named(line)}, on the right scale.`
     : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
@@ -1041,6 +1191,8 @@ export function ComboPlot({
         )}`}
         caption={caption}
         stretch={stretch}
+        zoom={zoom}
+        settled={settled}
       >
         <ComposedChart
           accessibilityLayer

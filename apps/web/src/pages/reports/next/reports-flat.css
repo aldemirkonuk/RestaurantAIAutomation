@@ -167,6 +167,39 @@
 .rp-flat__slot .rp-plot {
   min-height: 0;
 }
+/* "Draw only these days" (r110 g1): the drawing and its 44 px row share the
+   slot's column, so the row is reserved whether or not a button is in it and
+   a stretch that offers the zoom moves nothing. No transition: the zoomed
+   drawing replaces the whole one outright (MOTIONS.md, deliberate non-motions). */
+.rp-zoom-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rp-zoom-wrap:focus {
+  outline: none;
+}
+.rp-zoom {
+  flex: 0 0 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rp-zoom__all,
+.rp-zoom__draw {
+  min-height: 44px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+.rp-zoom__draw {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+}
 .rp-flat__slot .rp-table-wrap {
   overflow-x: auto;
 }
