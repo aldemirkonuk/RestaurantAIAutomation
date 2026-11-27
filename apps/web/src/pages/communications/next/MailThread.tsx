@@ -226,7 +226,7 @@ export function MailThread({
 }) {
   const q = useMailThread(threadKey, withKey);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const again = useReadAgain(q, headingRef);
+  const again = useReadAgain(q, headingRef, `${threadKey}|${withKey}`);
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
   // Pages are held newest-first; the reader joins them oldest-first.
