@@ -454,6 +454,28 @@ export type SaleVolume =
 export type ResolvedSaleVolume = Exclude<SaleVolume, { mode: "unresolved" }>;
 
 /**
+ * The unit price a till line's consumption row books (r56).
+ *
+ * The price the till rang is the price, and a rung zero is a zero: a comped
+ * glass took no money (ADR 0105 D5), so its row says none. This used to read
+ * `Number(price) || menuPrice`, which turned every comp into a sale at the
+ * item's full BOTTLE price, and a comped glass into a bottle's worth of revenue.
+ * Only a price that is not a number falls back, and only for a whole bottle:
+ * the bottle's menu price is not what a pour sells for.
+ */
+export function consumptionUnitPrice(
+  price: unknown,
+  mode: "whole_bottle" | "volume",
+  menuPrice: number | null,
+): number | null {
+  if (price !== null && price !== undefined && price !== "") {
+    const n = Number(price);
+    if (Number.isFinite(n)) return n;
+  }
+  return mode === "whole_bottle" ? menuPrice : null;
+}
+
+/**
  * Resolve one line's depletion, in the order locked by ADR 0011:
  * `sale_volume_ml` → `sale_unit` + the inventory row → fail closed.
  *
@@ -1538,6 +1560,18 @@ export class PosHubService {
             }
           } else {
             booked();
+            // A voided line never happened (r56): the sale's consumption row
+            // goes to nothing along with its stock, or velocity, revenue and
+            // top sellers keep counting a glass nobody drank.
+            if (!(await this.voidConsumption(restaurantId, idem))) {
+              tally.consumptionNotWritten++;
+              report.noteFailure(
+                "consumption",
+                it.name,
+                "the stock came back; the sale's consumption row could not be cleared, see the gateway log",
+                check.externalCheckId,
+              );
+            }
           }
         }
       } catch (err: any) {
@@ -1648,6 +1682,45 @@ export class PosHubService {
   }
 
   /**
+   * Zero the consumption row a voided line booked when it sold (r56).
+   *
+   * Zeroed, not deleted: the partial unique index on (restaurant_id, notes)
+   * keeps the key, so a replay of the sale after its void finds the row
+   * (23505, "already") instead of booking the line a second time. A void
+   * with no earlier sale row matches nothing and is not an error. Every
+   * reader sums quantity, volume and revenue, so a zero row counts as nothing.
+   * Returns false only when the database refused the write.
+   */
+  private async voidConsumption(
+    restaurantId: string,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    try {
+      const { error } = await this.dbService
+        .getClient()
+        .from("wine_consumption_log")
+        .update({ quantity: 0, volume_ml: 0, total_revenue: 0 })
+        .eq("restaurant_id", restaurantId)
+        .eq("source", "pos")
+        .eq("notes", idempotencyKey);
+      if (error) {
+        this.logger.error(
+          `wine_consumption_log void FAILED for key=${idempotencyKey} ` +
+            `(r=${restaurantId}): ${error.message} [${error.code ?? "no-code"}] — ` +
+            `the voided sale still counts as consumption.`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `Consumption void failed for key=${idempotencyKey}: ${err?.message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * Mirror a depleting POS sale into `wine_consumption_log`.
    *
    * That table is the demand series behind essentially all of the
@@ -1696,7 +1769,11 @@ export class PosHubService {
           ? resolved.ml * qty
           : (inv?.bottleMl ?? RPC_DEFAULT_BOTTLE_ML) * qty;
       const unit = resolved.mode === "volume" ? "glass" : "bottle";
-      const unitPrice = Number(item.price) || inv?.menuPrice || null;
+      const unitPrice = consumptionUnitPrice(
+        item.price,
+        resolved.mode,
+        inv?.menuPrice ?? null,
+      );
 
       // Idempotent from 2026-08-24, matching the stock write it follows.
       //
