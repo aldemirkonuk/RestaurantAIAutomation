@@ -284,7 +284,7 @@ export function Register() {
       <button
         type="button"
         onClick={() => navigate('/register')}
-        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6'}
+        className={on ? 'flex min-h-11 items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6' : 'flex min-h-11 items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
@@ -499,7 +499,7 @@ export function Register() {
       <button
         type="button"
         onClick={() => setPathAStep(1)}
-        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
+        className={on ? 'flex min-h-11 items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex min-h-11 items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
@@ -660,7 +660,7 @@ export function Register() {
       <button
         type="button"
         onClick={() => navigate('/register')}
-        className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
+        className={on ? 'flex min-h-11 items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex min-h-11 items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>

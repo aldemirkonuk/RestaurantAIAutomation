@@ -33,6 +33,7 @@ function fileBase64(file: File): Promise<string> {
     reader.readAsDataURL(file)
   })
 }
+import { countryByName } from '../lib/countries'
 
 /** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
 function proofSaid(standing: ProofStanding): string {
@@ -98,14 +99,17 @@ export default function HouseContents() {
   const [savedAs, setSavedAs] = useState<{ name: string; email: string } | null>(null)
   // g13: the supplier ask meets the curated catalogue as the name is typed.
   // Curated rows only (the gateway's match never returns registry rows or
-  // another house's custom providers); a failed match resolves to [] and shows no list.
+  // another house's custom providers). A match that could not be asked (null) says so (ADR 0020);
+  // it is never shown as "no match".
   const [matches, setMatches] = useState<VendorMatchCandidate[]>([])
+  const [matchFailed, setMatchFailed] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const countryRead = useRef<Promise<string | undefined> | null>(null)
   useEffect(() => {
     const typed = supplier.trim()
     if (typed.length < 2) {
       setMatches([])
+      setMatchFailed(false)
       return
     }
     let live = true
@@ -113,7 +117,8 @@ export default function HouseContents() {
       countryRead.current ??= (async () => {
         try {
           const money = await settingsApi.houseCurrency()
-          return money?.country ?? undefined
+          // The house stores its country as written ("Turkey"); the catalogue keys on the ISO code ("TR").
+          return countryByName(money?.country)?.code ?? undefined
         } catch {
           return undefined
         }
@@ -122,11 +127,16 @@ export default function HouseContents() {
         .then((country) => matchVendorCatalogue(typed, undefined, country))
         .then((rows) => {
           if (!live) return
+          setMatchFailed(!Array.isArray(rows))
           setMatches(Array.isArray(rows) ? rows.slice(0, 5) : [])
           setListOpen(true)
         })
         .catch(() => {
-          if (live) setMatches([])
+          if (live) {
+            setMatches([])
+            setMatchFailed(true)
+            setListOpen(true)
+          }
         })
     }, 250)
     return () => {
@@ -336,7 +346,7 @@ export default function HouseContents() {
             ) : (
               <p className="mt-2 font-serif text-2xl text-[#6d685f]">
                 No menu read yet.{' '}
-                <Link to="/get-started" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                <Link to="/get-started" className="inline-flex min-h-11 items-center font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
                   Read your menu
                 </Link>
               </p>
@@ -404,12 +414,21 @@ export default function HouseContents() {
                       }
                     }}
                     placeholder="Their name"
-                    className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
+                    className="mt-3 block min-h-11 w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                   />
                 </label>
                 {/* An overlay, not an in-flow list: a list landing after the keystroke would shift the form (CLS).
                     It fades in under motion, appears at once under reduced motion, and has no exit (ADR 0112). */}
-                {listOpen && matches.length > 0 && (
+                {listOpen && matchFailed && (
+                  <p
+                    role="status"
+                    data-testid="house-vendor-match-failed"
+                    className="absolute left-0 right-0 top-full z-10 flex min-h-11 items-center border border-[#211f1b]/15 bg-white px-3 py-2 text-base text-[#6d685f] shadow-sm"
+                  >
+                    We could not check the catalogue. Type it as your own.
+                  </p>
+                )}
+                {listOpen && !matchFailed && matches.length > 0 && (
                   <ul
                     id="house-vendor-matches"
                     role="listbox"
@@ -448,7 +467,7 @@ export default function HouseContents() {
                   value={supplierEmail}
                   onChange={(event) => setSupplierEmail(event.target.value)}
                   placeholder="orders@vendor.com"
-                  className="mt-2 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
+                  className="mt-2 block min-h-11 w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                 />
               </label>
               {email === null && (
@@ -539,7 +558,7 @@ export default function HouseContents() {
             )}
             <span className="mt-2 block">
               Costs come from the invoices you check. Read your last one on{' '}
-              <Link to="/receipts" className="underline underline-offset-4">
+              <Link to="/receipts" className="inline-flex min-h-11 items-center underline underline-offset-4">
                 Receipts
               </Link>
               .
@@ -566,7 +585,7 @@ export default function HouseContents() {
             <button
               type="button"
               onClick={() => navigate('/settings?tab=cellar')}
-              className="mt-2 font-sans text-sm underline underline-offset-4"
+              className="mt-2 inline-flex min-h-11 items-center font-sans text-sm underline underline-offset-4"
             >
               Set it in Settings
             </button>
