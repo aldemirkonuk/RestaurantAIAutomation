@@ -11,6 +11,7 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import {
   ApiOperation,
@@ -25,6 +26,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { withoutCost } from "./ledger-cost-view";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InventoryLedgerService } from "./inventory-ledger.service";
+import { WithholdCostFromStaffInterceptor } from "../inventory/inventory-cost-for-role";
 import {
   CreateInventoryTransactionDto,
   GetTransactionsQueryDto,
@@ -42,6 +44,9 @@ import {
 @ApiTags("inventory-ledger")
 @Controller("inventory-ledger")
 @UseGuards(JwtAuthGuard, RolesGuard)
+// A ledger line's unit and total cost are an owner's and a manager's; staff
+// read the movements (inventory-cost-for-role.ts).
+@UseInterceptors(WithholdCostFromStaffInterceptor)
 export class InventoryLedgerController {
   private readonly logger = new Logger(InventoryLedgerController.name);
 
