@@ -48,7 +48,7 @@ import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
-import { readEveryPage, summariseChanges, type RestatementRow, type RevaluationRow } from "./sealed-changes";
+import { readEveryPage, summariseChanges, type RestatementRow, type RevaluationRow, type SettlementRow } from "./sealed-changes";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1545,47 +1545,114 @@ export class DocumentsController {
       .eq("restaurant_id", rid);
     if (linkErr) throw fail("The paper's orders", linkErr);
     const orders = [...new Set(((links ?? []) as { order_id: string | null }[]).map((l) => l.order_id).filter((x): x is string => !!x))];
+    // The deliveries the paper is linked to, and the lots they booked: a door
+    // delivery with no order books its lots with a null source_order_id, so the
+    // order is not the only way to a lot (and its revaluations and settlements).
+    const { data: dd, error: ddErr } = await client.from("document_deliveries").select("delivery_id").eq("document_id", id);
+    if (ddErr) throw fail("The paper's deliveries", ddErr);
+    const deliveries = [...new Set(((dd ?? []) as { delivery_id: string }[]).map((r) => r.delivery_id))];
     const empty = summariseChanges([], []);
-    if (!orders.length) return { status: (paper as { status: string }).status, currency, orders, otherPapers: 0, ...empty };
+    // "No order" is only said when there is no delivery either.
+    if (!orders.length && !deliveries.length)
+      return { status: (paper as { status: string }).status, currency, orders, deliveries: 0, otherPapers: 0, ...empty };
     // The receipts carry an order, not a paper: an order another paper also
     // priced shows the order's figures, and says how many papers share them.
-    const { data: shared, error: sharedErr } = await client
-      .from("procurement_document_links")
-      .select("document_id")
-      .eq("restaurant_id", rid)
-      .in("order_id", orders)
-      .neq("document_id", id);
-    if (sharedErr) throw fail("The order's other papers", sharedErr);
-    const otherPapers = new Set(((shared ?? []) as { document_id: string }[]).map((l) => l.document_id)).size;
-    let revaluations: RevaluationRow[];
-    let restatements: RestatementRow[];
+    let otherPapers = 0;
+    if (orders.length) {
+      const { data: shared, error: sharedErr } = await client
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", rid)
+        .in("order_id", orders)
+        .neq("document_id", id);
+      if (sharedErr) throw fail("The order's other papers", sharedErr);
+      otherPapers = new Set(((shared ?? []) as { document_id: string }[]).map((l) => l.document_id)).size;
+    }
+    const CHUNK = 100;
+    const chunks = <T,>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / CHUNK) }, (_, i) => xs.slice(i * CHUNK, (i + 1) * CHUNK));
+    let revaluations: RevaluationRow[] = [];
+    let restatements: RestatementRow[] = [];
+    let settlements: SettlementRow[] = [];
     try {
-      [revaluations, restatements] = await Promise.all([
-        readEveryPage<RevaluationRow>((from, to) =>
-          client
-            .from("inventory_lot_revaluations")
-            .select("id, qty_at_revaluation, prior_unit_cost, new_unit_cost, created_at")
-            .eq("restaurant_id", rid)
-            .in("source_order_id", orders)
-            .order("created_at", { ascending: true })
-            .order("id", { ascending: true })
-            .range(from, to),
+      const lotRows = deliveries.length
+        ? (
+            await Promise.all(
+              chunks(deliveries).map((ds) =>
+                readEveryPage<{ id: string }>((from, to) =>
+                  client.from("inventory_lots").select("id").eq("restaurant_id", rid).in("delivery_id", ds).order("id", { ascending: true }).range(from, to),
+                ),
+              ),
+            )
+          ).flat()
+        : [];
+      const lotIds = [...new Set(lotRows.map((l) => l.id))];
+      const byOrder = orders.length
+        ? await Promise.all([
+            readEveryPage<RevaluationRow>((from, to) =>
+              client
+                .from("inventory_lot_revaluations")
+                .select("id, qty_at_revaluation, prior_unit_cost, new_unit_cost, created_at")
+                .eq("restaurant_id", rid)
+                .in("source_order_id", orders)
+                .order("created_at", { ascending: true })
+                .order("id", { ascending: true })
+                .range(from, to),
+            ),
+            readEveryPage<RestatementRow>((from, to) =>
+              client
+                .from("wine_consumption_cost_restatements")
+                .select("id, consumption_id, prior_cost_at_sale, new_cost_at_sale, created_at")
+                .eq("restaurant_id", rid)
+                .in("source_order_id", orders)
+                .order("created_at", { ascending: true })
+                .order("id", { ascending: true })
+                .range(from, to),
+            ),
+          ])
+        : ([[], []] as [RevaluationRow[], RestatementRow[]]);
+      const byLot = await Promise.all(
+        chunks(lotIds).map((ls) =>
+          Promise.all([
+            readEveryPage<RevaluationRow>((from, to) =>
+              client
+                .from("inventory_lot_revaluations")
+                .select("id, qty_at_revaluation, prior_unit_cost, new_unit_cost, created_at")
+                .eq("restaurant_id", rid)
+                .in("lot_id", ls)
+                .order("created_at", { ascending: true })
+                .order("id", { ascending: true })
+                .range(from, to),
+            ),
+            readEveryPage<SettlementRow>((from, to) =>
+              client
+                .from("inventory_lot_draw_settlements")
+                .select("id, txn_id, prior_total, difference")
+                .eq("restaurant_id", rid)
+                .in("lot_id", ls)
+                .order("seq", { ascending: true })
+                .order("id", { ascending: true })
+                .range(from, to),
+            ),
+          ]),
         ),
-        readEveryPage<RestatementRow>((from, to) =>
-          client
-            .from("wine_consumption_cost_restatements")
-            .select("id, consumption_id, prior_cost_at_sale, new_cost_at_sale, created_at")
-            .eq("restaurant_id", rid)
-            .in("source_order_id", orders)
-            .order("created_at", { ascending: true })
-            .order("id", { ascending: true })
-            .range(from, to),
-        ),
-      ]);
+      );
+      // A revaluation reached by both its order and its lot is one row.
+      const seen = new Map<string, RevaluationRow>();
+      for (const r of [...byOrder[0], ...byLot.flatMap(([v]) => v)]) seen.set(r.id ?? `${seen.size}`, r);
+      revaluations = [...seen.values()];
+      restatements = byOrder[1];
+      settlements = byLot.flatMap(([, st]) => st);
     } catch (e) {
       throw fail("The cost receipts", e as Error);
     }
-    return { status: (paper as { status: string }).status, currency, orders, otherPapers, ...summariseChanges(revaluations, restatements) };
+    return {
+      status: (paper as { status: string }).status,
+      currency,
+      orders,
+      deliveries: deliveries.length,
+      otherPapers,
+      ...summariseChanges(revaluations, restatements, settlements),
+    };
   }
 
   @Get(":id/price-moves")
