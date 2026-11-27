@@ -286,3 +286,61 @@ describe('MenuVersions', () => {
     expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/the menu read is waiting: nothing was sent/);
   });
 });
+
+// r102 menu-func-2 / menu-critic-3: the sentence for a cut-off carry finished, and the settle.
+describe('makeCurrentSentence -- a finished carry, and the result row settles', () => {
+  const base = { menuId: 'm1', previousMenuIds: [], madeCurrentAt: null, priceSync: {}, flagged: 0, failed: [], held: [], returned: [] };
+
+  it('says a menu already current that carried nothing changed nothing, and one that carried lines says so', async () => {
+    const { makeCurrentSentence } = await import('./MenuVersions');
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 0 } as never)).toBe('That menu was already the current one. Nothing changed.');
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3, priceSync: { changed: 3 } } as never)).toBe(
+      "That menu was already the current one. 3 lines had not reached the house's prices and were carried now.",
+    );
+  });
+
+  it('never says a line was carried when its price was set by hand after the choice', async () => {
+    const { makeCurrentSentence } = await import('./MenuVersions');
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { stale: 2 } } as never)).toBe(
+      'That menu was already the current one. No line was carried. 2 lines kept their price, set by hand after this menu was chosen or held by a lock.',
+    );
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3, priceSync: { changed: 1, stale: 1, locked: 1 } } as never)).toBe(
+      "That menu was already the current one. 1 line had not reached the house's prices and was carried now. 2 lines kept their price, set by hand after this menu was chosen or held by a lock.",
+    );
+  });
+
+  it('a carry that cut off again is never said as settled: failed, held, unpriced and flagged lines are told (r103 review)', async () => {
+    const { makeCurrentSentence } = await import('./MenuVersions');
+    const failed = [{ name: 'Opus One', error: 'the house could not be reached' }, { name: 'Barolo', error: 'timed out' }];
+    const said = makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { failed: 2 }, failed } as never);
+    expect(said).toBe(
+      'That menu was already the current one. No line was carried. 2 could not be priced: Opus One (the house could not be reached); Barolo (timed out).',
+    );
+    // A count with no names is still a count.
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { failed: 2 } } as never)).toContain('2 could not be priced.');
+    const held = [{ name: 'Barolo', kind: 'bottle', lockedPrice: 80 }];
+    const rest = makeCurrentSentence({ ...base, outcome: 'already_current', lines: 4, priceSync: { changed: 1, no_price: 1, not_linked: 2 }, flagged: 1, held } as never);
+    // The held price is said as 80.00 and the outcomes by their counts; the nouns and the money style
+    // (a currency note after the amount) are the shared ones (formatMoney, oneNounFor), so only the facts are pinned.
+    expect(rest).toMatch(/Held by a lock, not changed: Barolo \(bottle, locked at 80\.00[^)]*\)*\./);
+    expect(rest).toMatch(/Also: 1 (line )?with no price.*2 (lines )?not matched.*so no price.*1 flagged for a blank price\./);
+    // The sentence that was already right is unchanged.
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 2, priceSync: { stale: 2 } } as never)).not.toContain('Also');
+  });
+
+  it('the sentence a choice from the kept list says settles too, not only the one under a fresh read', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const src = readFileSync(resolve(__dirname, 'MenuVersions.tsx'), 'utf8');
+    expect(src).toMatch(/className="cl-said mdv-settle"[^>]*data-testid="menu-list-choice-said"/);
+  });
+
+  it('the settle is the house settle, 320 ms, never a new 280 ms, and stops for reduced motion', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const css = readFileSync(resolve(__dirname, 'menu-settle.css'), 'utf8');
+    expect(css).toMatch(/\.mdv-settle\s*\{[^}]*animation: mdv-settle 320ms/);
+    expect(css.replace(/\/\*[\s\S]*?\*\//g, '')).not.toMatch(/280ms/);
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.mdv-settle\s*\{\s*animation: none/);
+  });
+});

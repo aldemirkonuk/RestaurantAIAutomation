@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, kindWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, kindWords, largestMove, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 
@@ -115,7 +115,7 @@ describe('the plan in one sentence', () => {
     expect(
       planSentence(plan({ lines: [unmatched, unpriced], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 2, new_wine: 0 }, dormantLocks: [] })),
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either (flagged); 1 line is not matched to a wine, so no price.');
-    expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
+    expect(planSentence(plan({ current: true, counts: { change: 0, unchanged: 2, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 0 } }))).toBe('This is already the current menu. Choosing it again changes nothing.');
   });
 });
 
@@ -163,6 +163,36 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
   });
 
+  it('a choice that got no answer is not reported as "Nothing has changed": it may have gone through, and the plan is read again (r102 menu-func-2)', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ code: 'ECONNABORTED', message: 'timeout of 30000ms exceeded' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(said.textContent).toBe(
+      'Mudavym did not answer in time, so the menu may now be current. Look at the menu again before choosing it a second time.',
+    );
+    expect(said.textContent).not.toMatch(/Nothing has changed/);
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it('a menu already current with prices still to carry offers to finish the carry, and says so (r102 menu-func-2)', async () => {
+    const pending = plan({ current: true, counts: { change: 2, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 1 } });
+    expect(planSentence(pending)).toBe('This is already the current menu, but 3 prices have not reached the house yet. Choosing it again carries them.');
+    mockPlan.mockResolvedValue(pending);
+    mockMake.mockResolvedValue({ outcome: 'already_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 3, priceSync: { changed: 3 }, flagged: 0, failed: [] });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish carrying 3 prices' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1'));
+  });
+
+  it('a current menu with nothing to carry offers no button', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true, counts: { change: 0, unchanged: 3, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 0 } }));
+    mount(true);
+    await screen.findByTestId('menu-plan');
+    expect(screen.queryByRole('button', { name: /Make it current|Finish carrying/ })).not.toBeInTheDocument();
+  });
+
   it('a plan that moved (409) is said, nothing is changed, and it is read again', async () => {
     mockPlan.mockResolvedValue(plan());
     mockMake.mockRejectedValue({ response: { status: 409, data: { message: 'changed since it was shown' } } });
@@ -171,6 +201,23 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(await screen.findByTestId('menu-plan-moved')).toHaveTextContent('A price or a lock changed since this was shown, so nothing was changed.');
     await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('a refusal that already says nothing was changed is not followed by a second "nothing" or a doubled stop', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ response: { status: 400, data: { message: 'A menu with no lines cannot be the current menu. Nothing was changed.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(said.textContent).toBe('It was not made current: A menu with no lines cannot be the current menu. Nothing was changed.');
+  });
+
+  it('a refusal that does not say it gets the one closing sentence', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ response: { status: 500, data: { message: 'The write failed' } } });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('It was not made current: The write failed. Nothing has changed.');
   });
 
   it('a plan that cannot be worked out says so, and offers no choice', async () => {
@@ -292,5 +339,42 @@ describe('L2 on the plan: nothing to keep where the house has no price', () => {
     const rows = await screen.findAllByTestId('menu-plan-row');
     expect(within(rows[0]).getByText('Nothing to keep yet')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Keep the bottle price of Vermentino' })).not.toBeInTheDocument();
+  });
+});
+
+// r102 menu-critic-3: the act that moves house prices says how much it moves.
+describe('the price-change summary above Make it current (r102 menu-critic-3)', () => {
+  const big = line({
+    menuItemId: 'n7',
+    name: 'Amarone',
+    bottle: { kind: 'bottle', menuPrice: 120, housePrice: 90, result: 'change', lastSet: null, lock: null },
+  });
+
+  it('counts the prices that move, names the largest in the house money, and counts locked prices kept', () => {
+    const move = largestMove(plan({ lines: [line(), BAROLO, big], counts: { ...plan().counts, change: 2 } }));
+    expect(move).toEqual({ moved: 2, kept: 1, name: 'Amarone', kind: 'bottle', from: 90, to: 120 });
+    expect(largestMove(plan({ lines: [BAROLO], counts: { ...plan().counts, change: 0 } }))).toBeNull();
+  });
+
+  it('shows it above the button, to a manager only, with a lock in the way or not', async () => {
+    mockPlan.mockResolvedValue(plan({ lines: [line(), BAROLO, big], counts: { ...plan().counts, change: 2 } }));
+    mount(true);
+    const said = await screen.findByTestId('menu-plan-change-summary');
+    expect(said).toHaveTextContent('2 prices move. The largest is Amarone, bottle: 90.00 to 120.00, 30.00 more. 1 locked price stays as it is.');
+    expect(said.compareDocumentPosition(screen.getByRole('button', { name: 'Make it current' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('says a price that falls falls, and no lock in the way', async () => {
+    const cut = line({ bottle: { kind: 'bottle', menuPrice: 40, housePrice: 50, result: 'change', lastSet: null, lock: null } });
+    mockPlan.mockResolvedValue(plan({ lines: [cut], counts: { ...plan().counts, change: 1, held_by_lock: 0 } }));
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-change-summary')).toHaveTextContent('1 price moves. The largest is Chianti, bottle: 50.00 to 40.00, 10.00 less. No locked price is in the way.');
+  });
+
+  it('a person who cannot choose is not shown a summary of a choice they cannot make', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mount(false);
+    await screen.findAllByTestId('menu-plan-row');
+    expect(screen.queryByTestId('menu-plan-change-summary')).toBeNull();
   });
 });

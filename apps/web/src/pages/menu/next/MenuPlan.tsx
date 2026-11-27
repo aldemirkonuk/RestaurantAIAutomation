@@ -61,13 +61,30 @@ function reasonOf(err: unknown): string {
   return e?.message || 'no reason was given';
 }
 
+/** No answer came back (a timeout, a dropped connection): the choice may still have been made. */
+function noAnswer(err: unknown): boolean {
+  const e = err as { code?: unknown; response?: unknown; message?: unknown };
+  if (e?.response) return false;
+  return e?.code === 'ECONNABORTED' || e?.code === 'ETIMEDOUT' || e?.code === 'ERR_NETWORK' || /timeout/i.test(String(e?.message ?? ''));
+}
+
+/** Prices of a menu that are still to reach the house (a choice made, a carry cut off). */
+function toCarry(plan: Pick<Plan, 'counts'>): number {
+  return plan.counts.change + plan.counts.new_wine;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
 /** The plan in one sentence, in the order a person reads a menu change. */
 export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'>): string {
-  if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
+  if (plan.current) {
+    const left = toCarry(plan);
+    return left > 0
+      ? `This is already the current menu, but ${plural(left, 'price has', 'prices have')} not reached the house yet. Choosing it again carries ${left === 1 ? 'it' : 'them'}.`
+      : 'This is already the current menu. Choosing it again changes nothing.';
+  }
   const c = plan.counts;
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
@@ -87,6 +104,35 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
     );
   return more.length ? `${lead} ${more.join('; ')}.` : lead;
+}
+
+/**
+ * The move that matters most when a menu is chosen: how many prices move, the
+ * largest one (by the size of the change, in the house's money) and how many
+ * locked prices stay. Null when no price moves (r102 menu-critic-3).
+ */
+export function largestMove(plan: Pick<Plan, 'lines' | 'counts'>): {
+  moved: number;
+  kept: number;
+  name: string;
+  kind: 'bottle' | 'glass';
+  from: number;
+  to: number;
+} | null {
+  let best: { name: string; kind: 'bottle' | 'glass'; from: number; to: number } | null = null;
+  let moved = 0;
+  for (const line of plan.lines) {
+    for (const k of [line.bottle, line.glass]) {
+      if (k.result !== 'change') continue;
+      moved += 1;
+      if (k.menuPrice === null || k.housePrice === null) continue;
+      if (!best || Math.abs(k.menuPrice - k.housePrice) > Math.abs(best.to - best.from)) {
+        best = { name: line.name, kind: k.kind, from: k.housePrice, to: k.menuPrice };
+      }
+    }
+  }
+  if (moved === 0) return null;
+  return { moved, kept: plan.counts.held_by_lock ?? 0, name: best?.name ?? '', kind: best?.kind ?? 'bottle', from: best?.from ?? 0, to: best?.to ?? 0 };
 }
 
 /** Who set the price that would be replaced, in words. */
@@ -212,6 +258,11 @@ export function MenuPlan({
       onDone(r);
     },
     onError: (e) => {
+      if (noAnswer(e)) {
+        // The switch commits before the carry runs: look again at what is true now.
+        void queryClient.invalidateQueries({ queryKey: ['menu'] });
+        return;
+      }
       const status = (e as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         setMoved(true);
@@ -240,6 +291,7 @@ export function MenuPlan({
   const typedAfter = replacing.filter((r) => r.k.setAfterRead === true).length;
   const returned = plan.lines.filter((l) => l.returned);
   const mismatched = plan.lines.filter((l) => l.vintageMismatch);
+  const move = largestMove(plan);
 
   return (
     <section className="cl-panel" style={{ marginTop: 12 }} aria-labelledby={`plan-h-${menuId}`} data-testid="menu-plan">
@@ -387,15 +439,27 @@ export function MenuPlan({
         </p>
       ) : null}
 
+      {canManage && !plan.current && move ? (
+        <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-plan-change-summary">
+          {plural(move.moved, 'price moves', 'prices move')}.{' '}
+          {move.name
+            ? `The largest is ${move.name}, ${move.kind}: ${money(move.from)} to ${money(move.to)}, ${money(Math.abs(move.to - move.from))} ${move.to >= move.from ? 'more' : 'less'}. `
+            : ''}
+          {move.kept > 0 ? `${plural(move.kept, 'locked price stays', 'locked prices stay')} as ${move.kept === 1 ? 'it is' : 'they are'}.` : 'No locked price is in the way.'}
+        </p>
+      ) : null}
+
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
-        {canManage && !plan.current ? (
+        {canManage && (!plan.current || toCarry(plan) > 0) ? (
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
             disabled={choose.isPending}
             onClick={() => choose.mutate(plan.fingerprint)}
           >
-            {choose.isPending ? 'Making it current…' : 'Make it current'}
+            {plan.current
+              ? choose.isPending ? 'Carrying…' : `Finish carrying ${plural(toCarry(plan), 'price', 'prices')}`
+              : choose.isPending ? 'Making it current…' : 'Make it current'}
           </button>
         ) : null}
         {onCancel ? (
@@ -411,7 +475,13 @@ export function MenuPlan({
       )}
       {choose.isError && !moved ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-          It was not made current: {reasonOf(choose.error)}. Nothing has changed.
+          {(() => {
+            // The gateway's own sentence may already say nothing was changed.
+            if (noAnswer(choose.error))
+              return 'Mudavym did not answer in time, so the menu may now be current. Look at the menu again before choosing it a second time.';
+            const why = reasonOf(choose.error).trim().replace(/\.+$/, '');
+            return `It was not made current: ${why}.${/nothing (was|has) changed$/i.test(why) ? '' : ' Nothing has changed.'}`;
+          })()}
         </p>
       ) : null}
     </section>
