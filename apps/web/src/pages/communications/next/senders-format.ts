@@ -91,17 +91,52 @@ export function fmtCount(n: unknown): string {
  * Why a stranger's mail was kept, in words. `capture_reason` is the bridge's
  * own `attachment` / `promotional` joined by `+` (rabbitmq-bridge.service.ts);
  * none recorded reads as plain vendor outreach — the legacy page's fallback.
+ * A held letter (QA round 24) says first why it was not filed with a vendor.
  */
-export function strangerChips(p: Pick<ProspectDto, 'capture_reason' | 'attachments' | 'has_attachments' | 'message_count'>): string[] {
+export function strangerChips(
+  p: Pick<ProspectDto, 'capture_reason' | 'attachments' | 'has_attachments' | 'message_count' | 'held_reason' | 'sender_email' | 'domain'>,
+): string[] {
   const reasons = (p.capture_reason ?? '').split('+').filter(Boolean);
   const chips: string[] = [];
+  const held = heldWord(p);
+  if (held) chips.push(held);
   if (reasons.includes('promotional')) chips.push('looks promotional');
   const n = p.attachments?.length ?? 0;
   if (n > 0) chips.push(`${n} attachment${n === 1 ? '' : 's'}`);
   else if (reasons.includes('attachment') || p.has_attachments) chips.push('has an attachment');
   if (chips.length === 0) chips.push('vendor outreach');
+  if (held) {
+    const i = chips.indexOf('vendor outreach');
+    if (i >= 0) chips.splice(i, 1);
+  }
   if (p.message_count > 1) chips.push(`${p.message_count} emails`);
   return chips;
+}
+
+/**
+ * The chip for a held letter, or null for a stranger's introduction. Says
+ * what is not known, never a guess at who wrote it.
+ */
+export function heldWord(p: Pick<ProspectDto, 'held_reason' | 'sender_email' | 'domain'>): string | null {
+  if (p.held_reason === 'sender_unconfirmed') return `could not confirm it came from ${p.sender_email || p.domain || 'its sender'}`;
+  if (p.held_reason === 'sender_unreadable') return 'could not read who sent it';
+  return null;
+}
+
+/**
+ * The sentence under a held letter, in place of "Add as a vendor": it was not
+ * filed with any vendor, and an unconfirmed one is checked another way first.
+ */
+export function heldNote(p: Pick<ProspectDto, 'held_reason'>): string | null {
+  if (p.held_reason === 'sender_unconfirmed')
+    return 'Not filed with any vendor. Check with them another way before you pay or act on it.';
+  if (p.held_reason === 'sender_unreadable') return 'Not filed with any vendor.';
+  return null;
+}
+
+/** The name a stranger's row shows: its name, its address, its domain, or says it has none. */
+export function strangerName(p: Pick<ProspectDto, 'sender_name' | 'sender_email' | 'domain'>): string {
+  return p.sender_name || p.sender_email || p.domain || 'no sender named';
 }
 
 /**
