@@ -90,7 +90,27 @@ describe('the page strip', () => {
 describe('motion', () => {
   it('under reduced motion the rise and the turn are instant, and no opacity fade runs', () => {
     const block = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
-    expect(block).toMatch(/\.mdv-pages__page\s*\{[^}]*animation: none/);
+    expect(block).toMatch(/\.mdv-pages__page\[data-in='true'\]\s*\{[^}]*animation: none/);
     expect(block).toMatch(/\.mdv-pages__img\s*\{[^}]*transition: none/);
+  });
+});
+
+describe('a reorder is not a new arrival (r109 walk: the pointer drag, the replayed entry)', () => {
+  it('a thumbnail is not natively draggable, so a pointer drag is not cancelled by the browser', () => {
+    mount();
+    for (const img of document.querySelectorAll('.mdv-pages__img')) expect((img as HTMLImageElement).draggable).toBe(false);
+    expect(css).toMatch(/\.mdv-pages__img\s*\{[^}]*-webkit-user-drag: none/);
+  });
+
+  it('only a page new to the strip carries the entry; a moved page does not replay it', () => {
+    const { onFiles } = mount();
+    const first = screen.getAllByTestId('menu-page');
+    expect(first.every((li) => li.getAttribute('data-in') === 'true')).toBe(true);
+    cleanup();
+    const view = render(<DropZone files={[p1, p2, p3]} onFiles={onFiles} accept="image/*" multiple inputLabel="Menu to read" />);
+    view.rerender(<DropZone files={[p1, p3, p2]} onFiles={onFiles} accept="image/*" multiple inputLabel="Menu to read" />);
+    expect(screen.getAllByTestId('menu-page').every((li) => li.getAttribute('data-in') === null)).toBe(true);
+    view.rerender(<DropZone files={[p1, p3, p2, page(4)]} onFiles={onFiles} accept="image/*" multiple inputLabel="Menu to read" />);
+    expect(screen.getAllByTestId('menu-page').map((li) => li.getAttribute('data-in'))).toEqual([null, null, null, 'true']);
   });
 });

@@ -47,7 +47,7 @@ function PageThumb({ file, turn }: { file: File; turn: Turn }) {
     return () => URL.revokeObjectURL?.(url);
   }, [file]);
   return src ? (
-    <img className="mdv-pages__img" src={src} alt="" style={{ transform: `rotate(${turn}deg)` }} />
+    <img className="mdv-pages__img" src={src} alt="" draggable={false} style={{ transform: `rotate(${turn}deg)` }} />
   ) : (
     <span className="mdv-pages__img mdv-pages__img--doc" aria-hidden>
       {(file.name.split('.').pop() ?? '').slice(0, 4).toUpperCase()}
@@ -61,6 +61,8 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
   const before = useRef(new Map<number, DOMRect>());
   const lifted = useRef<{ id: number; rect: DOMRect } | null>(null);
   const count = useRef(files.length);
+  // Pages already drawn: only a page new to the strip plays its entry (a node React moves on a reorder would replay a CSS animation).
+  const entered = useRef(new Set<number>());
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
 
   // FLIP on transform only: remember where every page was, and after a change
@@ -84,6 +86,7 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
       }
     }
     lifted.current = null;
+    for (const f of files) entered.current.add(idOf(f));
     const next = new Map<number, DOMRect>();
     for (const f of files) {
       const el = items.current.get(idOf(f));
@@ -169,6 +172,7 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
               }}
               style={{ ['--mdv-pg-delay' as string]: `${Math.min(i, 5) * 30}ms` }}
               data-testid="menu-page"
+              data-in={entered.current.has(id) ? undefined : 'true'}
             >
               <div
                 className="mdv-pages__thumb"
