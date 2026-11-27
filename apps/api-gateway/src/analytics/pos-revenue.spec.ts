@@ -341,6 +341,26 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.dailySeries).toEqual([]);
   });
 
+  it("[REVERT-FAILS] names the house day of the first check, asked for oldest first, so a prior from before the till is not read as quiet days", async () => {
+    // Opened 20:00 LA on Aug 1 = 03:00 UTC Aug 2: the house's first day is Aug 1.
+    const first = { id: "c0", opened_at: "2026-08-02T03:00:00Z", closed_at: "2026-08-02T04:00:00Z" };
+    const { service, client } = makeGoals({
+      pos_checks: (call) => (call === 0 ? [first] : []),
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 30);
+
+    expect(result.firstCheckDay).toBe("2026-08-01");
+    const probe = client.calls.filter((c: any) => c.table === "pos_checks").slice(0, 8);
+    expect(probe.find((c: any) => c.method === "order")?.args).toEqual(["opened_at", { ascending: true }]);
+    expect(probe.find((c: any) => c.method === "limit")?.args).toEqual([1]);
+  });
+
+  it("has no first check day when no POS is connected", async () => {
+    const { service } = makeGoals({ pos_checks: [] });
+    expect((await service.getPosRevenueWindow("r1", 30)).firstCheckDay).toBeNull();
+  });
+
   it("sums pos_checks.total over the window and excludes voided checks in SQL", async () => {
     // 12:00 in Los Angeles on the house's today.
     const day = `${LA_TODAY}T19:00:00Z`;
