@@ -152,7 +152,12 @@ export function guardrailsFrom(e: unknown): GuardrailHit[] {
   return Array.isArray(hits) ? (hits as GuardrailHit[]) : [];
 }
 
-export function useComposeData() {
+/**
+ * `enabled` is false while the composer is shut: a page that mounts the sheet
+ * closed (Mail does) asks for the sender, the book, the templates and the queue
+ * only when someone opens it (r108 mail-r108-2).
+ */
+export function useComposeData(enabled = true) {
   const { user, activeRestaurantId } = useAuth();
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
   const queryClient = useQueryClient();
@@ -163,6 +168,7 @@ export function useComposeData() {
       const { data } = await apiClient.get<SenderIdentity>('/communications/letters/sender');
       return data;
     },
+    enabled,
     staleTime: 60_000,
     // Ask once the house is known: the key carries it, so a read made before
     // the session answered was a second request under a new key (perf-p1-5).
@@ -177,6 +183,7 @@ export function useComposeData() {
       );
       return data.entries;
     },
+    enabled,
     staleTime: 60_000,
     enabled: Boolean(restaurantId),
   });
@@ -189,6 +196,7 @@ export function useComposeData() {
       );
       return data.templates;
     },
+    enabled,
     staleTime: 60_000,
     enabled: Boolean(restaurantId),
   });
@@ -196,13 +204,14 @@ export function useComposeData() {
   const queuedQ = useQuery<QueuedLetter[]>({
     queryKey: ['house-letter-queued', restaurantId],
     queryFn: readQueued,
+    enabled,
     staleTime: 15_000,
     enabled: Boolean(restaurantId),
   });
 
   const insightsQ = useQuery<InsightSentence[]>({
     queryKey: ['house-letter-insights', restaurantId],
-    enabled: Boolean(restaurantId),
+    enabled: enabled && Boolean(restaurantId),
     queryFn: async () => {
       const { data } = await apiClient.get<
         | { insights?: Record<string, unknown>[] }
