@@ -156,6 +156,21 @@ describe('Read again', () => {
     expect(hits('/mail/thread')).toBe(2);
   });
 
+  it('a failed people read is not claimed of a different search still being read', async () => {
+    failures['/mail/people'] = 1;
+    mount('/communications?tab=mail');
+    await screen.findByTestId('people-unread');
+    const base = api.get.getMockImplementation()!;
+    // The next people read (the new search) stays in flight.
+    api.get.mockImplementation((url: string, cfg?: unknown) =>
+      url === '/mail/people' ? new Promise(() => {}) : base(url, cfg),
+    );
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search mail' }), { target: { value: 'fikri' } });
+    await waitFor(() => expect(hits('/mail/people')).toBe(2));
+    expect(screen.queryByTestId('people-unread')).toBeNull();
+    expect(screen.queryByText(/The people this house has mail with could not be read/)).toBeNull();
+  });
+
   it('a read that succeeded has no button', async () => {
     mount('/communications?tab=mail');
     await screen.findByTestId('mail-person');

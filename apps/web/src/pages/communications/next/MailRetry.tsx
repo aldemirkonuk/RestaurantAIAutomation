@@ -51,14 +51,21 @@ export function RetryRead({
  * and its "Reading…" button stay until the answer lands, so the page does not
  * jump. Focus stays on the button until it unmounts, then moves to `target`,
  * only after a press: a read that recovers by itself takes nothing.
+ *
+ * The failure belongs to the read that failed. `key` names it (the query's own
+ * identity: the search, the filter, the thread); a read under a different key,
+ * which starts with no data and no error while it is in flight, is not that
+ * failure, and the page must not go on saying the old one about it.
  */
 export function useReadAgain(
   q: { data: unknown; isError: boolean; isFetching: boolean; error: unknown },
   target: RefObject<HTMLElement | null>,
+  key = '',
 ) {
-  const held = useRef<{ error: unknown } | null>(null);
+  const held = useRef<{ key: string; error: unknown } | null>(null);
   if (q.data) held.current = null;
-  else if (q.isError) held.current = { error: q.error };
+  else if (q.isError) held.current = { key, error: q.error };
+  else if (held.current && held.current.key !== key) held.current = null;
   const pressed = useRef(false);
   const ready = Boolean(q.data);
   useEffect(() => {

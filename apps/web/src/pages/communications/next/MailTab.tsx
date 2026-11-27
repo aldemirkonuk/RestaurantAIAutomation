@@ -465,7 +465,7 @@ function PersonThreads({
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
-  const again = useReadAgain(q, headingRef);
+  const again = useReadAgain(q, headingRef, withKey);
   const arrive = useArriveFocus();
   return (
     <section aria-label="Threads" className="grid gap-3" style={{ fontFamily: SANS }}>
@@ -651,7 +651,7 @@ function People({
   const [roving, setRoving] = useState<string | null>(null);
   const tabStopKey = people.some((p) => p.key === roving) ? roving : (people[0]?.key ?? null);
   const listRef = useRef<HTMLElement>(null);
-  const again = useReadAgain(q, listRef);
+  const again = useReadAgain(q, listRef, listIdentity);
   return (
     <section ref={listRef} tabIndex={-1} aria-label="People" className="grid gap-2" style={{ fontFamily: SANS, outline: 'none' }}>
       <MailMotionStyles />

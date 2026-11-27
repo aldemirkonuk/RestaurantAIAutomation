@@ -306,7 +306,7 @@ export function MailThread({
   const house = { address: houseAddress, zone: houseZone };
   const q = useMailThread(threadKey, withKey);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
-  const again = useReadAgain(q, headingRef);
+  const again = useReadAgain(q, headingRef, `${threadKey}|${withKey}`);
   const arrive = useArriveFocus();
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
