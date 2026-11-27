@@ -445,6 +445,24 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     expect(w.dailySeries[w.dailySeries.length - 1].date).toBe(newest);
   });
 
+  it("getPosRevenueWindow(365) at the till's measured pace reads a year whole, and pins its round trips", async () => {
+    // The /reports till offers 365 days (#1052). 3,313 checks in 90 days is
+    // the pace A-005 measured; a year of it is 13,436 checks. The read is
+    // keyset-paged at PostgREST's 1,000 rows, one page after another, so the
+    // year costs this many SEQUENTIAL round trips to the database — the figure
+    // its latency scales with. A page size or a column added here moves it.
+    const year = checks(13436, 364, 0);
+    const { db, requests } = cappedDb({ pos_checks: year, restaurants });
+    const w = await goalsOver(db).getPosRevenueWindow("r1", 365);
+    expect(w.days).toBe(365);
+    expect(w.checkCount).toBe(13436);
+    expect(w.revenue).toBe(sum(year.map((r) => r.total)));
+    expect(w.dailySeries).toHaveLength(365);
+    const pages = requests.filter((r) => r.table === "pos_checks" && r.order === "id");
+    expect(pages).toHaveLength(14);
+    for (const p of pages) expect(p.select).toBe("id, total, opened_at, closed_at");
+  });
+
   it("asks for `items` only for the metrics that read them", async () => {
     const { db, requests } = cappedDb({ pos_checks: rows, restaurants });
     await goalsOver(db).getPosRevenueWindow("r1", 90);
