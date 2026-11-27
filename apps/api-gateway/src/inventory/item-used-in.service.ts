@@ -133,14 +133,12 @@ export class ItemUsedInService {
       this.inDrinkRecipes(client, restaurantId, item),
     ]);
 
-    // A cocktail with a versioned recipe is shown once, from that recipe (the
-    // real source for cost and taste); its old lines stay only for a cocktail
-    // that has none. If the versioned read failed we cannot tell, so keep both.
-    const versioned = new Set((inDrinkRecipes.lines ?? []).map((l) => l.cocktailId));
-    const legacy: Group<CocktailLine> =
-      inCocktails.readable && inCocktails.lines && inDrinkRecipes.readable
-        ? { ...inCocktails, lines: inCocktails.lines.filter((l) => !versioned.has(l.cocktailId)) }
-        : inCocktails;
+    // A cocktail that has a versioned recipe is shown only from that recipe
+    // (the real source for cost and taste), whether or not the recipe still
+    // uses this good: its old lines are history, and listing them would say the
+    // drink uses a good its current recipe dropped. A cocktail with no versioned
+    // recipe keeps its old lines. If that read failed we cannot tell, so keep both.
+    const legacy = await this.dropVersioned(client, restaurantId, inCocktails);
 
     return {
       item: { id: item.id, kind: item.kind, displayName: item.displayName },
@@ -149,6 +147,27 @@ export class ItemUsedInService {
       inDrinkRecipes,
       namedNotLinked: menu.namedNotLinked,
     };
+  }
+
+  /** The old-recipe group without the cocktails that now have a current versioned recipe. */
+  private async dropVersioned(
+    client: SupabaseClient,
+    restaurantId: string,
+    group: Group<CocktailLine>,
+  ): Promise<Group<CocktailLine>> {
+    if (!group.readable || !group.lines || group.lines.length === 0) return group;
+    const ids = [...new Set(group.lines.map((l) => l.cocktailId))];
+    const versioned = new Set<string>();
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_current")
+        .select("cocktail_id")
+        .eq("restaurant_id", restaurantId)
+        .in("cocktail_id", ids.slice(i, i + CHUNK));
+      if (error) return group;
+      for (const r of (data ?? []) as Array<Record<string, any>>) versioned.add(String(r.cocktail_id));
+    }
+    return { ...group, lines: group.lines.filter((l) => !versioned.has(l.cocktailId)) };
   }
 
   /** The current menu's lines linked to the item, then the lines that only carry its name. */

@@ -218,6 +218,26 @@ describe("the legacy cocktail group (cocktail_ingredients has no restaurant_id)"
     expect(out.inDrinkRecipes.lines!.map((l) => l.cocktailId)).toEqual(["c-new"]);
     expect(out.inCocktails.lines!.map((l) => l.cocktailId)).toEqual(["c-old"]);
   });
+  it("a cocktail whose versioned recipe dropped this good lists in neither group, however old its lines", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.tables.cocktails = [{ id: "c-old", restaurant_id: H, name: "Old", display_name: null, deleted_at: null }];
+    db.tables.cocktail_ingredients = [{ cocktail_id: "c-old", beverage_id: "bev-1", quantity: 90, unit: "ml" }];
+    // v2 is current and has a line, but not one linked to this item.
+    db.tables.recipe_current = [{ restaurant_id: H, cocktail_id: "c-old", version_id: "v2" }];
+    db.tables.recipe_lines = [{ id: "l9", version_id: "v2", restaurant_id: H, inventory_id: "other", position: 1, label: "Soda", qty_entered: 90, unit_code: "ml" }];
+    const out = await svc.usedIn(H, I);
+    expect(out.inDrinkRecipes.lines).toEqual([]);
+    expect(out.inCocktails.readable).toBe(true);
+    expect(out.inCocktails.lines).toEqual([]);
+  });
+  it("keeps the old lines when the current-recipe read failed, since it cannot say which cocktails it covers", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.tables.cocktails = [{ id: "c-old", restaurant_id: H, name: "Old", display_name: null, deleted_at: null }];
+    db.tables.cocktail_ingredients = [{ cocktail_id: "c-old", beverage_id: "bev-1", quantity: 90, unit: "ml" }];
+    db.failures.recipe_current = "boom";
+    const out = await svc.usedIn(H, I);
+    expect(out.inCocktails.lines!.map((l) => l.cocktailId)).toEqual(["c-old"]);
+  });
   it("keeps both groups when the versioned read failed, since it cannot say which cocktails it covers", async () => {
     const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
     db.tables.cocktails = [{ id: "c-new", restaurant_id: H, name: "New", display_name: null, deleted_at: null }];
