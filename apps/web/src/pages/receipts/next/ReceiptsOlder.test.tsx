@@ -94,15 +94,18 @@ describe('the verified lane past its first window', () => {
   it('drops an Older page that comes back after a search changed the lane (r105)', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openLane();
-    let release!: (rows: ProcurementDocument[]) => void;
-    api.list.mockImplementationOnce(() => new Promise<ProcurementDocument[]>((r) => (release = r)));
+    // Older pages are read with listPage (#2453); hold that read, not the search's.
+    let release!: (page: { items: ProcurementDocument[]; hasMore: boolean }) => void;
+    api.listPage.mockImplementationOnce(
+      () => new Promise<{ items: ProcurementDocument[]; hasMore: boolean }>((r) => (release = r)),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
     fireEvent.change(await screen.findByLabelText('Search verified papers by vendor or number'), {
       target: { value: 'acme' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Find' }));
     expect(await screen.findByText(/V-150/)).toBeTruthy();
-    release([paper(101)]);
+    release({ items: [paper(101)], hasMore: false });
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText(/V-101/)).toBeNull();
   });
@@ -112,6 +115,11 @@ describe('the verified lane past its first window', () => {
     await openLane();
     fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
     expect(await screen.findByText(/V-101/)).toBeTruthy();
+    // #2453 scopes Older pages to the first window's ids: the re-read must move
+    // the window (a paper sealed into it) for a paper to be at risk of falling out.
+    api.list.mockImplementation((o: { status?: string; q?: string }) =>
+      Promise.resolve(o.status !== 'verified' ? [] : o.q ? [paper(150)] : [paper(0), ...newest.slice(0, 99)]),
+    );
     await act(async () => {
       await client.invalidateQueries({ queryKey: ['receipts-next', 'verified'] });
     });
@@ -235,6 +243,10 @@ describe('the search keeps its lane (r104 reviewer)', () => {
     await openLane();
     fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
     expect(await screen.findByText(/V-101/)).toBeTruthy();
+    // The verification seals a paper into the first window (#2453's id scope).
+    api.list.mockImplementation((o: { status?: string; q?: string }) =>
+      Promise.resolve(o.status !== 'verified' ? [] : o.q ? [paper(150)] : [paper(0), ...newest.slice(0, 99)]),
+    );
     await act(async () => {
       await client.invalidateQueries({ queryKey: ['receipts-next'] });
     });

@@ -147,7 +147,9 @@ describe('the check card, another vendor\'s price', () => {
     api.role.current = 'staff';
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    await vi.waitFor(() => expect(api.moves).toHaveBeenCalled());
+    // The price-moves read is gated by role since #2167/#2356, so it is not a
+    // sync point that every role reaches; wait for the card to settle instead.
+    await new Promise((r) => setTimeout(r, 30));
     expect(api.vendor).not.toHaveBeenCalled();
     expect(screen.queryByTestId('vendor-prices')).toBeNull();
   });

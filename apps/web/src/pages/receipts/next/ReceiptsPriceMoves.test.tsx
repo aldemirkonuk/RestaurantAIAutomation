@@ -230,15 +230,18 @@ describe('the check card on a cost that moved', () => {
     api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/none were compared against earlier costs/)).toBeTruthy();
+    // r108 (merged after this r105 test): a paper in another money says so once,
+    // in the verdict, so the money card draws nothing on the old money.
+    await waitFor(() => expect(api.moves).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('list', { name: 'Costs that moved' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
     fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), { target: { value: 'TRY' } });
     const control = screen.getByRole('button', { name: /Hold to file this invoice in TRY/ });
     fireEvent.keyDown(control, { key: 'Enter' });
     fireEvent.keyDown(control, { key: 'Enter' });
     await waitFor(() => expect(api.restate).toHaveBeenCalled());
-    expect(await screen.findByText(/was 10\.00, now 11\.80, up 18 percent, against its last invoiced cost/)).toBeTruthy();
-    expect(screen.queryByText(/none were compared against earlier costs/)).toBeNull();
+    // #2236 compares printed papers: "against its last paper".
+    expect(await screen.findByText(/was 10\.00, now 11\.80, up 18 percent, against its last paper/)).toBeTruthy();
   });
 });
 
