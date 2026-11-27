@@ -50,7 +50,7 @@
  * header for why the ground lives on the page and not on the gate.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
@@ -249,8 +249,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const startArranging = useCallback(() => {
     if (!data.sheetKnown) return;
     setSaveFailed(false);
-    setDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
-    setArranging(true);
+    /* The tap's own work (the button answering) stays urgent; the ten cards re-rendering with their controls is a
+       transition, so React yields to input between slices instead of holding one 160 ms frame (r104). */
+    startTransition(() => {
+      setDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
+      setArranging(true);
+    });
   }, [data.sheet, data.sheetKnown]);
 
   const ruleOff = useCallback(async () => {
