@@ -34,6 +34,7 @@ import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
 import { formatHousePercent } from '../../../../lib/house-number';
 import { recipeWords, type RecipeWords } from './recipeWords';
+import { lineShares, type ShareInput } from './lineShare';
 
 interface Card {
   id: string;
@@ -47,6 +48,19 @@ interface Card {
 
 function count(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+/** 78 not 78.0: a whole-number share in the house's own form (the form's trailing zero decimal is dropped). */
+const whole = (say: SayPercent, points: number) => say(points).replace(/([.,])0(?!\d)/, '');
+
+/** Each line of the cost card with its share of the serve's cost; none when nothing is priced. */
+function shareLines(items: ShareInput[], say: SayPercent): { shares: string[]; sharesNote?: string } | null {
+  const r = lineShares(items);
+  if (!r) return null;
+  return {
+    shares: r.lines.map((l) => (l.pct == null ? `${l.label} not priced` : `${l.label} ${whole(say, l.pct)}`)),
+    sharesNote: r.ofPricedPart ? 'Shares are of the priced part of the serve.' : undefined,
+  };
 }
 
 const unpricedNames = (lines: RecipeLine[]) =>
@@ -383,6 +397,15 @@ export default function DrinkCards({
       : data.current
         ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, words, data.current.lines.length, data.current.lines.map((l) => l.costPerServe))
         : null;
+  // Which line drives the cost (r107 g5): from the lines the cost card was made from.
+  const shareItems: ShareInput[] = draft
+    ? draft.cost.lines.map((l, i) => ({ label: draft.labels[i] ?? 'A line', cost: l.costPerServe, counted: l.status !== 'untracked' }))
+    : (data.current?.lines ?? []).map((l) => ({
+        label: l.itemName ?? l.label,
+        cost: l.costPerServeExact ?? l.costPerServe,
+        counted: l.role === 'stocked',
+      }));
+  const shared = cost && sayMoney ? shareLines(shareItems, sayPct) : null;
   const cards = [
     cost,
     sayMoney ? priceCard(data, sayMoney, words) : null,
@@ -432,6 +455,17 @@ export default function DrinkCards({
           </li>
         ))}
       </ul>
+      {shared ? (
+        <div className="cl-rcp-card-said" data-testid="line-shares-block" style={{ marginTop: 8 }}>
+          <span>Share of the cost a {words.unit}</span>
+          <ul data-testid="line-shares" style={{ listStyle: 'none', padding: 0, margin: '2px 0 0' }}>
+            {shared.shares.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ul>
+          {shared.sharesNote ? <span>{shared.sharesNote}</span> : null}
+        </div>
+      ) : null}
     </section>
   );
 }
