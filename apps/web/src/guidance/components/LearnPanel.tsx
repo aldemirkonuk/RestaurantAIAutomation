@@ -191,6 +191,22 @@ export function LearnPanel({
             onClick: go(`/authorize/gmail_send?returnPath=${encodeURIComponent('/communications')}`),
           },
         },
+        // r36 onboarding gap 6: with no money set, an invoice that names none
+        // and comes with no order puts no cost on. Shown only when the house
+        // answered that it states none (never on a failed read or an older
+        // gateway), and before the invoice it holds up.
+        ...(next.money_set === false
+          ? [
+              {
+                id: 'money',
+                label: "Set the house's money",
+                why: 'An invoice that names no money waits for it before its costs go on.',
+                done: false,
+                unread: false,
+                cta: { label: 'Set it', onClick: go('/settings?tab=currency') },
+              },
+            ]
+          : []),
         {
           id: 'invoice',
           label: next.invoice === 'waiting' ? 'Check the invoice that came in' : 'Check your first invoice',
