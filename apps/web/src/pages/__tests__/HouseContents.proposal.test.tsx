@@ -39,7 +39,18 @@ const canonical = (seller: string | null, currency: string | null = null) => ({
 })
 const metro = { id: 'cat-1', name: 'Metro Gross', name_similarity: 0.82, address_similarity: null }
 
-const page = () => render(<MemoryRouter><HouseContents /></MemoryRouter>)
+// The page holds its rows until the setup read lands (#2354), so a test starts
+// from the settled page: wait for the closing link, which shows with the rows.
+const page = async () => {
+  const view = render(<MemoryRouter><HouseContents /></MemoryRouter>)
+  if (vi.isFakeTimers()) {
+    // findBy* polls on timers, which are faked here: flush the read by hand.
+    for (let i = 0; i < 10; i++) await act(async () => { await Promise.resolve() })
+  } else {
+    await screen.findAllByRole('link', { name: 'Go to the desk' })
+  }
+  return view
+}
 const keep = (houseId: string, docId = 'doc-1') =>
   sessionStorage.setItem(LAST_INVOICE_KEY, JSON.stringify({ houseId, docId }))
 const beat = async (ms: number) => {
@@ -70,7 +81,7 @@ afterEach(() => {
 describe('/house: the last invoice proposes its vendor', () => {
   it('the upload keeps {houseId, docId} for this tab', async () => {
     h.upload.mockResolvedValue({ documentId: 'doc-9' })
-    page()
+    await page()
     fireEvent.change(screen.getByLabelText('Your last invoice'), {
       target: { files: [new File(['X'], 'inv.pdf', { type: 'application/pdf' })] },
     })
@@ -84,7 +95,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     h.detail.mockResolvedValueOnce(status('extracting')).mockResolvedValue(status('needs_review'))
     h.matchVendorCatalogue.mockResolvedValue([metro])
     keep('h1')
-    page()
+    await page()
     await beat(0)
     expect(screen.getByText('Reading the seller off your invoice…')).toBeInTheDocument()
     expect(h.canonical).not.toHaveBeenCalled()
@@ -104,7 +115,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     vi.useFakeTimers()
     h.matchVendorCatalogue.mockResolvedValue([{ ...metro, name_similarity: 0.3 }])
     keep('h1')
-    page()
+    await page()
     await beat(0)
     await beat(0)
     expect(screen.queryByRole('button', { name: /your vendor$/ })).not.toBeInTheDocument()
@@ -118,7 +129,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     vi.useFakeTimers()
     h.getOnboardingProgress.mockResolvedValue({ vendor_added: false, next_steps: { money_set: false } })
     keep('h1')
-    page()
+    await page()
     await beat(0)
     await beat(0)
     expect(screen.getByText(/Metro Gross/, { selector: 'span' })).toBeInTheDocument()
@@ -130,7 +141,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     h.getOnboardingProgress.mockResolvedValue({ vendor_added: false, next_steps: { money_set: false } })
     h.canonical.mockResolvedValue(canonical('Metro Gross', 'eur'))
     keep('h1')
-    page()
+    await page()
     await beat(0)
     await beat(0)
     expect(screen.getByTestId('house-invoice-currency')).toHaveTextContent('This invoice is in EUR.')
@@ -145,7 +156,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     h.getOnboardingProgress.mockResolvedValue({ vendor_added: true, next_steps: { money_set: true } })
     h.matchVendorCatalogue.mockResolvedValue([metro])
     keep('h1')
-    page()
+    await page()
     await beat(0)
     await beat(0)
     expect(screen.getByText(/From your invoice of/)).toBeInTheDocument()
@@ -157,13 +168,13 @@ describe('/house: the last invoice proposes its vendor', () => {
     vi.useFakeTimers()
     h.canonical.mockRejectedValue(new Error('down'))
     keep('h1')
-    const first = page()
+    const first = await page()
     await beat(0)
     await beat(0)
     expect(screen.getByText(/We could not read the seller off that invoice\./)).toBeInTheDocument()
     first.unmount()
     h.canonical.mockResolvedValue(canonical(null))
-    page()
+    await page()
     await beat(0)
     await beat(0)
     expect(screen.getByText(/We could not read the seller off that invoice\. Add the vendor above\./)).toBeInTheDocument()
@@ -172,7 +183,7 @@ describe('/house: the last invoice proposes its vendor', () => {
   it('stops reading at a terminal state', async () => {
     vi.useFakeTimers()
     keep('h1')
-    page()
+    await page()
     await beat(0)
     await beat(0)
     const calls = h.detail.mock.calls.length
@@ -185,7 +196,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     vi.useFakeTimers()
     h.detail.mockResolvedValue(status('extracting'))
     keep('h1')
-    page()
+    await page()
     await beat(0)
     expect(h.detail).toHaveBeenCalledTimes(1)
     setVisibility('hidden')
@@ -204,7 +215,7 @@ describe('/house: the last invoice proposes its vendor', () => {
 
   it('a paper kept under another house is ignored', async () => {
     keep('h2')
-    page()
+    await page()
     expect(screen.getByLabelText('Your last invoice')).toBeInTheDocument()
     expect(screen.queryByTestId('house-invoice-proposal')).not.toBeInTheDocument()
     expect(h.detail).not.toHaveBeenCalled()
@@ -213,7 +224,7 @@ describe('/house: the last invoice proposes its vendor', () => {
   it('the swap fades only under motion (motion-safe), with no exit', async () => {
     vi.useFakeTimers()
     keep('h1')
-    page()
+    await page()
     await beat(0)
     await beat(0)
     const slot = screen.getByTestId('house-invoice-proposal')
