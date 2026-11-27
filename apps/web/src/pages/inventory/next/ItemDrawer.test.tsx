@@ -424,6 +424,25 @@ describe('the item drawer', () => {
     expect(screen.getByTestId('ivd-used-slot').textContent).toBe('Where it is used could not be read.');
   });
 
+  it('counts what the wine list sells as, and says an unread sold-as group is unread, not none (r102 review)', async () => {
+    const sold = { readable: true, lines: [{ name: 'House Red', bottlePrice: 40, byGlassPrice: 9 }], source: 's' };
+    const none = { readable: true, lines: [], source: 's' };
+    const base = { item: { id: 'i1', kind: 'wine', displayName: 'x' }, soldAs: sold, inCocktails: none, inDrinkRecipes: none, namedNotLinked: none };
+    api.dishes.mockResolvedValue({ dishes: [] });
+    api.drinks.mockResolvedValue({ drinks: [] });
+    // On the list, no recipe use: the block below shows "Sold as", so the line must not say none.
+    api.usedIn.mockResolvedValue(base);
+    open(row());
+    const chip = await screen.findByTestId('ivd-used-chip');
+    expect(chip.textContent).toBe('Used in 1 on the menu');
+    cleanup();
+    // The sold-as group unread: an unread group is not none.
+    api.usedIn.mockResolvedValue({ ...base, soldAs: { readable: false, lines: null, source: 's' } });
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-used-slot').getAttribute('data-state')).toBe('unread'));
+    expect(screen.getByTestId('ivd-used-slot').textContent).toBe('Where it is used could not be read.');
+  });
+
   it('the used-in slot holds 44 px in the stylesheet (r103)', () => {
     const css = readFileSync(resolve(__dirname, 'item-drawer.css'), 'utf8');
     expect(css).toMatch(/\.ivd-usedslot \{[^}]*min-height: 44px;/);

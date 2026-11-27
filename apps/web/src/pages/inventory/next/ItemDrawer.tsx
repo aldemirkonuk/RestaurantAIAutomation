@@ -224,11 +224,14 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const drinkIds = new Set<string>();
   if (drinks.status === 'ready') for (const d of drinks.data.drinks) drinkIds.add(d.cocktailId);
   if (usedIn.status === 'ready' && cardsRead) for (const c of usedIn.data.inCocktails.lines ?? []) drinkIds.add(c.cocktailId);
+  // The block's first group is what the good is sold as (the wine list); an unread group is not none.
+  const soldRead = usedIn.status === 'ready' && usedIn.data.soldAs.readable && usedIn.data.soldAs.lines !== null;
+  const nSold = usedIn.status === 'ready' ? (usedIn.data.soldAs.lines?.length ?? 0) : 0;
   const nDishes = dishes.status === 'ready' ? dishes.data.dishes.length : 0;
   const nDrinks = drinkIds.size;
   const usedChip =
-    dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && nDishes + nDrinks > 0
-      ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : ''].filter(Boolean).join(', ')}`
+    dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && soldRead && nDishes + nDrinks + nSold > 0
+      ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : '', nSold > 0 ? `${nSold} on the menu` : ''].filter(Boolean).join(', ')}`
       : null;
   // The line's 44 px is held from first paint, under the cards so the taste line stays first (r103 review): the chip lands after three reads, and a
   // conditional line pushed the taste line, the cards and the acts down 44 px under the finger. Pending says
@@ -236,7 +239,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const usedReads = [usedIn.status, dishes.status, drinks.status];
   const usedSlot: { state: 'reading' | 'unread' | 'none' | 'chip'; words: string } = usedReads.includes('reading')
     ? { state: 'reading', words: 'Reading where it is used…' }
-    : usedReads.includes('failed') || !cardsRead
+    : usedReads.includes('failed') || !cardsRead || !soldRead
       ? { state: 'unread', words: 'Where it is used could not be read.' }
       : usedChip
         ? { state: 'chip', words: usedChip }
