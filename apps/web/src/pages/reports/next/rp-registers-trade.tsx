@@ -121,6 +121,13 @@ export interface TillWindow {
    * and then the till offers no bars and a line.
    */
   dailySeries: Array<{ date: string; revenue: number | null; checks: number | null }>;
+  /** Only when asked for (`compare=prior`): the same-length window just before. Null when not sent. */
+  prior: {
+    from: string;
+    to: string;
+    revenue: number | null;
+    dailySeries: Array<{ date: string; revenue: number | null }>;
+  } | null;
 }
 
 /**
@@ -191,12 +198,41 @@ export function daysBetween(from: string, to: string): string[] {
   return out;
 }
 
+function priorOf(raw: unknown): TillWindow['prior'] {
+  if (raw == null || typeof raw !== 'object') return null;
+  const p = obj(raw);
+  const from = str(p.from);
+  const to = str(p.to);
+  if (!from || !to) return null;
+  return {
+    from,
+    to,
+    revenue: num(p.revenue),
+    dailySeries: arr(p.dailySeries).map((r) => ({ date: str(r.date), revenue: num(r.revenue) })),
+  };
+}
+
+/**
+ * The prior window laid beside the shown one, day for day: slot i of the
+ * prior is the day `days` before slot i of the window. A day the till rang
+ * nothing on is null (a gap), never 0; a prior that does not line up with the
+ * window slot for slot is not drawn at all.
+ */
+export function priorSlots(w: TillWindow, shown: string[]): Array<number | null> | null {
+  if (!w.prior) return null;
+  const span = daysBetween(w.prior.from, w.prior.to);
+  if (span.length === 0 || span.length !== shown.length) return null;
+  const byDate = new Map(w.prior.dailySeries.map((d) => [d.date, d.revenue]));
+  return span.map((date) => byDate.get(date) ?? null);
+}
+
 const till = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
   answers: 'What guests actually paid, day by day',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
-  path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
+  path: (rid, ctx) =>
+    `/analytics/pos-revenue/${rid}?days=${ctx.days}${ctx.compare ? '&compare=prior' : ''}`,
   graphs: ['area', 'line', 'bars', 'combo', 'heatmap', 'table', 'figure'],
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
@@ -218,6 +254,7 @@ const till = analysis<TillWindow>({
         revenue: num(r.revenue),
         checks: num(r.checks),
       })),
+      prior: priorOf(d.prior),
     };
   },
   view: (w, ctx) => {
@@ -291,13 +328,30 @@ const till = analysis<TillWindow>({
     const span = daysBetween(w.from, w.to);
     const counted = w.dailySeries.every((d) => d.checks != null);
     const shown = span.length > 0 ? span : w.dailySeries.map((d) => d.date);
+    const prior = ctx.compare ? priorSlots(w, shown) : null;
+    if (ctx.compare && w.prior) {
+      const pct =
+        w.revenue != null && w.prior.revenue != null && w.prior.revenue > 0
+          ? ((w.revenue - w.prior.revenue) / w.prior.revenue) * 100
+          : null;
+      figures.push(
+        { label: `Prior ${w.days} days`, value: money(w.prior.revenue), note: 'No POS revenue recorded' },
+        {
+          label: 'Against the prior window',
+          value: pct == null ? EM : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`,
+          note: 'Needs takings in both windows, and takings before to measure against',
+        },
+      );
+    }
     return {
       cats: {
-        data: shown.map((date) => ({
+        data: shown.map((date, i) => ({
           label: shortDay(date),
           value: byDate.get(date) ?? null,
+          ...(prior ? { prior: prior[i] } : {}),
           full: byDate.has(date) ? shortDay(date) : `${shortDay(date)} · no check`,
         })),
+        ...(prior ? { priorLabel: `the prior ${w.days} days` } : {}),
         xLabel: 'day',
         yLabel: 'taken',
         unit: 'taken',
