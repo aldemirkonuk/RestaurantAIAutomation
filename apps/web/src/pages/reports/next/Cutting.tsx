@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -62,7 +62,7 @@ import { cannotDraw, drawnRegister, type LastRead } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
 import RuledOff from './RuledOff';
-import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
+import CuttingFlat, { FLAT_PARAM, type FlatStep } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
 import type { ComboPick } from './rp-combo';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
@@ -356,6 +356,8 @@ export interface CuttingProps {
   strip?: boolean;
   /** Warms a window's read ahead of the click (perf-p6-4). */
   onWarmDays?: (d: number) => void;
+  /** The cuttings that can lay flat, in the sheet's read order (the one-column order); steps move along it. */
+  flatOrder?: AnalysisId[];
 }
 
 /** What the router half hands the body: whether the link lays this card flat, and the two moves. */
@@ -363,6 +365,10 @@ interface CuttingBodyProps extends CuttingProps {
   flat: boolean;
   onOpenFlat: () => void;
   onCloseFlat: () => void;
+  /** Previous / Next along the sheet's read order, while this card lies flat (the shell builds it). */
+  flatStep?: FlatStep;
+  /** Which step button the last step came from, so focus lands back on it. */
+  flatFocus?: 'prev' | 'next';
 }
 
 function CuttingBody({
@@ -388,6 +394,8 @@ function CuttingBody({
   flat: flatAsked,
   onOpenFlat: openFlat,
   onCloseFlat: closeFlat,
+  flatStep,
+  flatFocus,
 }: CuttingBodyProps) {
   const spec = CATALOGUE[id];
   // While a window just picked is still being read, the figures on screen are
@@ -530,7 +538,8 @@ function CuttingBody({
   // Focus goes back to the control that opened the view, however it closed.
   const wasFlat = useRef(flat);
   useEffect(() => {
-    if (wasFlat.current && !flat) openerRef.current?.focus();
+    // A step lays the neighbour flat: its dialog takes focus, this opener must not.
+    if (wasFlat.current && !flat && !params.get(FLAT_PARAM)) openerRef.current?.focus();
     wasFlat.current = flat;
   }, [flat]);
 
@@ -551,6 +560,8 @@ function CuttingBody({
       }
       anchorRef={openerRef}
       onClose={closeFlat}
+      step={flatStep}
+      initialFocus={flatFocus}
     />
   );
 
@@ -703,12 +714,43 @@ export default function Cutting(props: CuttingProps) {
     next.delete(FLAT_PARAM);
     r.setParams(next, { replace: true });
   }, [id]);
+  // Previous and Next in the sheet's read order (#2297). A step replaces this entry, never adds one, so Back
+  // still leaves full screen in one press; the marker rides along only when the opener's entry was ours.
+  // Built here, where the link is read, and only for the card lying flat: the page hands a fresh order array
+  // on every render, so the body never sees it and its memo holds.
+  const { flatOrder, ...bodyProps } = props;
+  const flat = params.get(FLAT_PARAM) === id;
+  const orderKey = flat && flatOrder ? flatOrder.join(',') : '';
+  const stepState = location.state as { rpFlat?: unknown; rpStep?: 'prev' | 'next' } | null;
+  const flatFocus = flat ? stepState?.rpStep : undefined;
+  const flatStep = useMemo((): FlatStep | undefined => {
+    const order = orderKey ? (orderKey.split(',') as AnalysisId[]) : [];
+    const at = order.indexOf(id);
+    if (at === -1 || order.length < 2) return undefined;
+    return {
+      position: at + 1,
+      total: order.length,
+      prevTitle: at > 0 ? CATALOGUE[order[at - 1]].title : null,
+      nextTitle: at < order.length - 1 ? CATALOGUE[order[at + 1]].title : null,
+      go: (dir) => {
+        const to = order[at + (dir === 'next' ? 1 : -1)];
+        if (!to) return;
+        const r = router.current;
+        const next = new URLSearchParams(r.params);
+        next.set(FLAT_PARAM, to);
+        const ours = (r.location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
+        r.setParams(next, { replace: true, state: ours ? { rpFlat: to, rpStep: dir } : { rpStep: dir } });
+      },
+    };
+  }, [orderKey, id]);
   return (
     <CuttingBodyMemo
-      {...props}
-      flat={params.get(FLAT_PARAM) === id}
+      {...bodyProps}
+      flat={flat}
       onOpenFlat={onOpenFlat}
       onCloseFlat={onCloseFlat}
+      flatStep={flatStep}
+      flatFocus={flatFocus}
     />
   );
 }

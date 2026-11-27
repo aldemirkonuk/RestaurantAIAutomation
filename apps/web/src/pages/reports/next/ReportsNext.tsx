@@ -58,8 +58,9 @@ import AskTheBook from './AskTheBook';
 import { compareOffered, tillAnswersCompare } from './rp-registers-trade';
 import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
-import { useArrange } from './rp-arrange';
+import { useArrange, projectCuttings } from './rp-arrange';
 import { isUndoKey, pushStep, undoLabel, undoneWords, type UndoStep } from './rp-undo';
+import { readsRegister } from './rp-spec';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { READING, failureLine, type MoneyIn } from './rp-format';
 import { warmWords } from './rp-warm';
@@ -711,6 +712,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // The hold follows what the till card draws, stand-in included (Cutting's own rule).
   const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast);
   const tillHeld = tillAnswersCompare(tillRead.data, tillRead.ctx);
+  // Full screen steps along the sheet as the phone reads it: the one-column order, only what has a register.
+  const flatOrder = projectCuttings(view.cuttings, 1)
+    .map((c) => c.id)
+    .filter((id) => readsRegister(CATALOGUE[id]));
+
   const cuttings: SheetCutting[] = view.cuttings.map((c) => {
     const fit = !editing && FIT_IDS.includes(c.id);
     // A cutting whose honest answer is a sentence folds to a strip while the
@@ -732,6 +738,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       <Cutting
         id={c.id}
         strip={strip}
+        flatOrder={flatOrder}
         onFit={FIT_IDS.includes(c.id) ? onFit : undefined}
         onControls={onControls}
         graph={c.graph}
