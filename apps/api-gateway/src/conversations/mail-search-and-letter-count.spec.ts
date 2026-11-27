@@ -26,7 +26,7 @@ let threadRows: any[] = [];
 
 function chain(r: Read): any {
   const c: any = {};
-  for (const m of ["select", "eq", "or", "not", "order", "limit", "maybeSingle"]) {
+  for (const m of ["select", "eq", "in", "ilike", "or", "not", "order", "limit", "maybeSingle"]) {
     c[m] = () => c;
   }
   c.then = (ok: any, bad: any) =>
