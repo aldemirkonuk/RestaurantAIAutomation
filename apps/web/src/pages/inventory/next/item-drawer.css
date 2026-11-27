@@ -38,11 +38,14 @@
   }
 }
 
-.ivd-card {
-  /* A card holds its answered height from the first paint, at every width (94 px: the two-column sheet and
-     the one-column phone sheet alike), so a card that says "Reading…" and then fills in does not push the
-     acts and "Used in" down (r97 M6; r98 walk: the 375 sheet shifted 0.02-0.045 without it). */
+/* A figure card holds its answered height from the first paint, at every width (94 px: the two-column sheet and
+   the one-column phone sheet alike), so a card that says "Reading…" and then fills in does not push the
+   acts and "Used in" down (r97 M6; r98 walk: the 375 sheet shifted 0.02-0.045 without it). Only the figure grid
+   (ItemCards.tsx) is held: the static "Used in" recipe cards share .ivd-card and never say "Reading…" (r103). */
+.ivd-cards[data-testid='ivd-cards'] > .ivd-card {
   min-height: 94px;
+}
+.ivd-card {
   display: flex;
   flex-direction: column;
   gap: 2px;
