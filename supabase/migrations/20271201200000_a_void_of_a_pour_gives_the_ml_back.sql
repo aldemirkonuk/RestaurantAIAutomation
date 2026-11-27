@@ -1,19 +1,7 @@
--- r57 table side, decision D1: a void of a pour returns the poured ml.
---
--- SUPERSEDED BEFORE IT REACHED main (r109, DD-r108-21/69). This version
--- created a second, ml-based public.return_glass_pour (10 arguments: p_pours *
--- p_pour_ml back, capped only per void key) beside #1263's sale-keyed one from
--- 20270307121700, which gives back what the named sale BOOKED, at most once
--- across every void of it (QA 8c). Merged, the two overloads made this file's
--- own COMMENT ON FUNCTION and its "exactly one" check fail (42725), and gave
--- "void" two meanings under one name. The founder-delegated call
--- (BUILD-invoices-fix-r108 D3) keeps the sale-keyed function; r57's
--- whole/fraction split is voided part by part under each part's own sale key
--- in pos-hub.service.ts.
---
--- The version is kept, as a no-op, so a database that applied the old body
--- still finds its file; 20271230100000_one_void_of_a_pour.sql drops the old
--- overload wherever it exists. The old body is in git history
--- (feat/r105-inv-pour-cost-basis).
-
+-- r57 D1, SUPERSEDED before it reached main (r109, DD-r108-21/69). Its
+-- ml-based return_glass_pour clashed with #1263's sale-keyed one
+-- (20270307121700): merged, this file failed its own COMMENT and
+-- "exactly one" check (42725). The sale-keyed one stays (BUILD-invoices-fix-r108
+-- D3). Kept as a no-op for its version; 20271230100000 drops the old overload
+-- wherever it was applied. The old body is in git history.
 SELECT 1;
