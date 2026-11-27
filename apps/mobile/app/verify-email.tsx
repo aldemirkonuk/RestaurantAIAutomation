@@ -9,11 +9,14 @@ import {
   AuthShell,
 } from "@/components/auth/AuthShell";
 import { haptic } from "@/design/haptics";
+import { api } from "@/api/client";
 import { requestThenAdopt, useSession } from "@/state/session";
+import { readHouseAnswer } from "@/auth/houseChoice";
 import { verifyTokenFromPaste } from "@/auth/deepLink";
 import {
   authErrorMessage,
   routeAfterVerification,
+  routeAfterVerificationFromHouses,
   statusOf,
 } from "@/auth/outcomes";
 import {
@@ -57,6 +60,9 @@ export default function VerifyEmailScreen() {
   const [resendNote, setResendNote] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const autoAttempted = useRef(false);
+  // The address is verified but the houses could not be read (ADR 0020: a
+  // failed read says it failed); the link is spent, so "Try again" re-reads.
+  const [housesUnread, setHousesUnread] = useState(false);
 
   const linkToken = verifyTokenFromPaste(params.token ?? "");
 
@@ -65,6 +71,31 @@ export default function VerifyEmailScreen() {
     const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
+
+  // Where a verified person goes is decided from what the server says they
+  // hold, not from the phone's copy of the person (see
+  // `routeAfterVerificationFromHouses`).
+  const goOn = useCallback(async () => {
+    setHousesUnread(false);
+    let read: ReturnType<typeof readHouseAnswer> = null;
+    try {
+      read = readHouseAnswer(await api("/auth/houses"));
+    } catch {
+      read = null;
+    }
+    if (!read) {
+      setHousesUnread(true);
+      return;
+    }
+    const sessionHasHouse = Boolean(useSession.getState().user?.restaurantId);
+    const route = routeAfterVerificationFromHouses(read, sessionHasHouse);
+    if (route) {
+      router.replace(route as never);
+      return;
+    }
+    const progress = await fetchOnboardingProgress().catch(() => null);
+    router.replace(routeAfterVerification(progress, true) as never);
+  }, [router]);
 
   const redeem = useCallback(
     async (candidate: string) => {
@@ -79,11 +110,7 @@ export default function VerifyEmailScreen() {
         if (outcome === "superseded") return;
         if (outcome === "noTokens") await refreshUser();
         haptic.confirm();
-        const hasHouse = Boolean(useSession.getState().user?.restaurantId);
-        const progress = hasHouse
-          ? await fetchOnboardingProgress().catch(() => null)
-          : null;
-        router.replace(routeAfterVerification(progress, hasHouse) as never);
+        await goOn();
       } catch (e) {
         // ADR 0229 fork 12 (the founder, 2026-09-28, item 81, "Link needs
         // sign-in (Recommended)"): the link verifies only for someone signed
@@ -103,7 +130,7 @@ export default function VerifyEmailScreen() {
         setBusy(false);
       }
     },
-    [refreshUser, router],
+    [refreshUser, goOn],
   );
 
   // A token on the URL is acted on once, without a tap: the user already
@@ -174,6 +201,19 @@ export default function VerifyEmailScreen() {
           <AppText variant="footnote" tone="danger">
             {error}
           </AppText>
+        </AuthNotice>
+      ) : null}
+
+      {housesUnread ? (
+        <AuthNotice tone="warning">
+          <AppText variant="footnote">
+            Your address is verified, but we couldn't read your houses just now.
+          </AppText>
+          <AuthLink
+            label="Try again"
+            onPress={() => void goOn()}
+            align="left"
+          />
         </AuthNotice>
       ) : null}
 

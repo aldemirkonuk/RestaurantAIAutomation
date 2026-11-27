@@ -5,6 +5,7 @@ import {
   orderHouses,
   parseEmailIndex,
   parseMemory,
+  readHouseAnswer,
   remember,
 } from "@/auth/houseChoice";
 
@@ -107,5 +108,42 @@ describe("houseChoice", () => {
       expect(indexEmail(base, null, U)).toBe(base);
       expect(indexEmail(base, "known@example.com", "not-a-uuid")).toBe(base);
     });
+  });
+});
+
+describe("readHouseAnswer", () => {
+  it("reads houses and the memberships waiting to be accepted", () => {
+    expect(
+      readHouseAnswer({
+        houses: [{ id: A, name: "Meyhane", city: "Antalya" }],
+        held: [
+          { membershipId: "m1", id: B, name: "Kitchenette", city: null, role: "staff" },
+        ],
+      }),
+    ).toEqual({
+      houses: [{ id: A, name: "Meyhane", city: "Antalya" }],
+      held: [
+        { membershipId: "m1", id: B, name: "Kitchenette", city: null, role: "staff" },
+      ],
+    });
+  });
+
+  it("an older gateway that sends no `held` has nothing waiting", () => {
+    expect(readHouseAnswer({ houses: [] })).toEqual({ houses: [], held: [] });
+  });
+
+  it("an answer that is not the shape is an unread, never an empty list (ADR 0020)", () => {
+    expect(readHouseAnswer(null)).toBeNull();
+    expect(readHouseAnswer("nope")).toBeNull();
+    expect(readHouseAnswer({})).toBeNull();
+    expect(readHouseAnswer({ houses: "x" })).toBeNull();
+  });
+
+  it("drops a held row that names no membership to accept", () => {
+    const read = readHouseAnswer({
+      houses: [],
+      held: [{ id: B, name: "Kitchenette" }],
+    });
+    expect(read?.held).toEqual([]);
   });
 });
