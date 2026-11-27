@@ -145,7 +145,8 @@ export function perBottlePrinted(line: PrintedLine): PerBottle | "no_price" | "u
   if (!(bottles > 0) && BOTTLE_UNITS.test((line.uom ?? "").trim())) {
     const qty = Number(line.qty);
     // A case or pack with no pack size is not a count of bottles: counting it
-    // as one would price a whole case as a bottle (r108 g14). Only a bottle is 1.
+    // as one would price a whole case as a bottle ("up 1100 percent"). Only a
+    // bottle is 1.
     const single = /^(bottle|btl|bt)$/i.test((line.uom ?? "").trim());
     const pack = line.pack_size == null || line.pack_size === "" ? (single ? 1 : NaN) : Number(line.pack_size);
     bottles = Number.isFinite(qty) && Number.isFinite(pack) ? qty * pack : NaN;

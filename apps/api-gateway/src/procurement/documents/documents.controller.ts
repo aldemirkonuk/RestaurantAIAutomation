@@ -1874,7 +1874,7 @@ export class DocumentsController {
     // that reads as "nothing moved" (ADR 0020).
     const { data: paper, error: paperErr } = await client
       .from("procurement_documents")
-      .select("id, currency, created_at")
+      .select("id, currency, status, doc_date, verified_at")
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -1930,7 +1930,7 @@ export class DocumentsController {
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     // r108 g15: against the newest OTHER verified paper's printed price, not a
     // lot cost (landed, tax basis, FX and revaluations; maybe this paper's own).
-    const last = currencyReason ? new Map<string, Earlier>() : await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId);
+    const last = currencyReason ? new Map<string, Earlier>() : await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId, paper);
     return {
       thresholdPct: threshold,
       // Carried so the page can say WHY nothing was compared (r106): the two
@@ -1955,17 +1955,28 @@ export class DocumentsController {
    * Each good's printed price per bottle on the newest other verified paper of
    * this house in this money (r108 g15): one bounded read, then limit(1) per
    * good it missed, so a quarterly good is never lost off a row cap.
+   *
+   * "Last" is last BEFORE this paper, never "newest of all": opening an old
+   * verified paper must not compare it with a later one ("was 7.00, now 5.00"
+   * reverses history). A verified paper is bounded by its own verified_at; any
+   * paper that carries a doc_date is bounded by it (an earlier paper with no
+   * date stays eligible). Papers order by doc_date, then verified_at, because a
+   * paper read and verified late for an old delivery is not the newest one.
    */
   private async lastPrintedPrices(
     paperId: string,
     currency: string,
     goods: string[],
     restaurantId: string,
+    paper: { status?: string | null; doc_date?: string | null; verified_at?: string | null },
     other?: { providerId: string; sinceIso: string },
   ): Promise<Map<string, Earlier>> {
     const last = new Map<string, Earlier>();
     if (!goods.length) return last;
     const client = this.db.getClient();
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    const thisDate = typeof paper.doc_date === "string" && ISO_DATE.test(paper.doc_date.slice(0, 10)) ? paper.doc_date.slice(0, 10) : null;
+    const thisVerified = paper.status === "verified" && paper.verified_at ? paper.verified_at : null;
     const read = async (only: string[], limit: number) => {
       let q = client
         .from("procurement_documents")
@@ -1980,10 +1991,14 @@ export class DocumentsController {
       // `<>` leaves a paper with no vendor out, which is wanted: a price with
       // no vendor to name is no price to point at.
       if (other) q = q.neq("provider_id", other.providerId).gte("verified_at", other.sinceIso);
-      const { data, error } = await q
+      q = q
         .eq("procurement_document_lines.restaurant_id", restaurantId)
         .in("procurement_document_lines.inventory_id", only)
-        .gt("procurement_document_lines.line_total", 0)
+        .gt("procurement_document_lines.line_total", 0);
+      if (thisVerified) q = q.lt("verified_at", thisVerified);
+      if (thisDate) q = q.or(`doc_date.is.null,doc_date.lte.${thisDate}`);
+      const { data, error } = await q
+        .order("doc_date", { ascending: false, nullsFirst: false })
         .order("verified_at", { ascending: false, nullsFirst: false })
         .limit(limit);
       if (error)
@@ -2071,7 +2086,16 @@ export class DocumentsController {
     const rows = (lines ?? []) as Line[];
     const goods = [...new Set(rows.map((l) => l.inventory_id))];
     const sinceIso = new Date(Date.now() - OTHER_VENDOR_DAYS * 86_400_000).toISOString();
-    const last = await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId, { providerId, sinceIso });
+    const last = await this.lastPrintedPrices(
+      id,
+      paperCurrency,
+      goods,
+      user.restaurantId,
+      // Another vendor's price is not bounded by this paper's date (#2269 as
+      // built); only the price-move "was" is (#2370).
+      {},
+      { providerId, sinceIso },
+    );
     const vendorIds = [...new Set([...last.values()].map((e) => e.providerId).filter((x): x is string => !!x))];
     const names = new Map<string, string>();
     if (vendorIds.length) {
