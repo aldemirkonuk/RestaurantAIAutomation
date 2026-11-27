@@ -29,6 +29,7 @@
 import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
+import { useDataTermsSignInBusy } from '@/hooks/queries/useDataTerms';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
 import { TeamGoalsSettings } from '@/components/team/TeamGoalsSettings';
 import { ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
@@ -46,6 +47,10 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
   // `?invite=1` (the first-menu page's "Invite your people") opens the sheet on arrival.
   const [searchParams] = useSearchParams();
   const [inviting, setInviting] = useState(() => canManage && searchParams.get('invite') === '1');
+  // ADR 0112, one topmost overlay: the sign-in data-terms sheet cannot be
+  // dismissed, so the invite intent waits under it and the sheet opens once the
+  // terms are no longer busy (DD-r108-13). The terms are never skipped.
+  const termsBusy = useDataTermsSignInBusy();
   const [labourOpen, setLabourOpen] = useState(false);
   const inviteAnchor = useRef<HTMLButtonElement>(null);
 
@@ -193,7 +198,7 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
       </Register>
 
       <InviteTeamDialog
-        open={inviting}
+        open={inviting && !termsBusy}
         onClose={() => { setInviting(false); team.reload(); }}
         restaurantId={restaurantId}
         anchorRef={inviteAnchor}
