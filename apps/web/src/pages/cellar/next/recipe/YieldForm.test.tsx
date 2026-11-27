@@ -36,6 +36,21 @@ beforeEach(() => {
 
 const button = () => screen.getByRole('button', { name: /save what a batch makes/i });
 
+describe('YieldForm keeps every cost it moved in step (r106 review 3)', () => {
+  it('invalidates the house\'s recipes and the drinks list, so the list and the drawer name one cost', async () => {
+    h.patch.mockResolvedValue({ data: { id: ID, name: 'House Sour Mix', yield: { amount: 1500, unit: 'ml', qtyBase: 15000, baseUnit: 'ml10' } } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    render(<YieldForm dishId={ID} current={null} />, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+    fireEvent.change(screen.getByLabelText(/one batch makes/i), { target: { value: '1500' } });
+    fireEvent.click(button());
+    await screen.findByTestId('yield-said');
+    const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey);
+    expect(keys).toContainEqual(['recipes', RID]);
+    expect(keys).toContainEqual(['cellar', 'cocktails', RID, 'figures']);
+  });
+});
+
 describe('YieldForm', () => {
   it('sends the amount and unit to the yield route and says every recipe is priced again', async () => {
     h.patch.mockResolvedValue({ data: { id: ID, name: 'House Sour Mix', yield: { amount: 700, unit: 'ml', qtyBase: 7000, baseUnit: 'ml10' } } });

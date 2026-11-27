@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { dishesApi, type DishYield } from '../../../../services/api/recipes';
-import { dishesKey, recipeKey } from './useRecipe';
+import { drinkFiguresKey } from './useRecipe';
 import { RECIPE_UNITS, UNIT_LABEL, qtyText, readQty, readsAsThousandAmbiguous, type RecipeUnit } from './units';
 
 /** The unit a stored batch is read back in. */
@@ -68,8 +68,11 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
     try {
       const out = await dishesApi.setYield(activeRestaurantId, dishId, { amount, unit });
       setSaid({ ok: true, text: `One batch makes ${qtyText(out.yield.amount)} ${out.yield.unit}. Every recipe that draws it is priced again.` });
-      void qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, { kind: 'dish', id: dishId }) });
-      void qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
+      // The told "priced again" is every recipe of the house: the dish's own sheet, the
+      // dish list, every parent's sheet (all under ['recipes', house]) and the drinks
+      // list, whose figures stay fresh for a minute and would keep the old cost.
+      void qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId] });
+      void qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) });
     } catch (e) {
       setSaid({ ok: false, text: refusal(e) });
     } finally {
