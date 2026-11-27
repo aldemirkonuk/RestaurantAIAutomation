@@ -864,9 +864,11 @@ describe('day 1, before any letter has arrived', () => {
 
 describe('lettersLast30 (r104 mail-gap g5)', () => {
   it('never reads below today', () => {
-    expect(lettersLast30({ inLast30: 18, inToday: 8997 })).toBe(8997);
     expect(lettersLast30({ inLast30: 9000, inToday: 8997 })).toBe(9000);
     expect(lettersLast30({ inLast30: 4, inToday: 4 })).toBe(4);
+  });
+  it('is unknown, never today\'s count, when the 30-day count is below today\'s', () => {
+    expect(lettersLast30({ inLast30: 18, inToday: 8997 })).toBeNull();
   });
   it('is unknown, never 0, when the server sent no count; and the count alone when there is no today', () => {
     expect(lettersLast30({ inToday: 5 })).toBeNull();
