@@ -933,6 +933,21 @@ describe('ReportsNext — money in the house’s currency (audit G5)', () => {
   });
 });
 
+describe('ReportsNext — a warm start says it is one (r108 g8)', () => {
+  it('[REVERT-FAILS] a kept read on screen is said on the date line, with when it was read', () => {
+    const at = new Date(2026, 10, 27, 9, 5).getTime();
+    hook.current = { ...base(), warmAt: at } as never;
+    paint();
+    expect(screen.getByTestId('rp-warm')).toHaveTextContent('Read at 09:05, reading again');
+  });
+
+  it('[REVERT-FAILS] a sheet read this load says nothing', () => {
+    hook.current = { ...base(), warmAt: null } as never;
+    paint();
+    expect(screen.queryByTestId('rp-warm')).not.toBeInTheDocument();
+  });
+});
+
 describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   it('prints an em dash for a COGS the server withheld, never $0', () => {
     hook.current = withRegister(
