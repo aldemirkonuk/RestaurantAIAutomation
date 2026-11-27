@@ -6175,6 +6175,39 @@ export class ProcurementService {
           bottlesRevalued: (receipt as any)?.bottles_revalued ?? 0,
         });
       }
+
+      // THE SALES ALREADY RUNG UP FROM THIS DELIVERY (r102). A pour sold
+      // before the paper was checked kept the delivery's estimate on its own
+      // row, and revaluing the lot does not reach it. Restate those rows to
+      // the invoice's cost, keeping the old figure in an audit row. It runs
+      // even when no live lot is left: that is exactly the case where every
+      // bottle was already poured and sold. Idempotent, so a retry is safe.
+      const { data: restated, error: restateError } =
+        await this.databaseService.supabase.rpc("restate_sale_cost", {
+          p_restaurant_id: restaurantId,
+          p_inventory_id: inventoryId,
+          p_source_order_id: orderId,
+          p_unit_cost: unitCost,
+          p_performed_by: userId ?? null,
+        });
+      if (restateError) {
+        this.logger.error(
+          `verifyReceipt could not restate sales for ${inventoryId} on order ${orderId}: ${restateError.message}`,
+        );
+        throw new UnprocessableEntityException(
+          `The price was corrected but the sales already rung up from this delivery were not restated, for item ${inventoryId}: ${restateError.message}`,
+        );
+      }
+      const salesRestated = (restated as any)?.rows_restated ?? 0;
+      if (salesRestated > 0) {
+        this.logger.log({
+          message: "Receipt verification restated sales",
+          orderId,
+          inventoryId,
+          unitCost,
+          salesRestated,
+        });
+      }
     }
   }
 

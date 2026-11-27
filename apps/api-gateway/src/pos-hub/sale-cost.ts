@@ -16,6 +16,9 @@ export type SaleCostBasis =
   | "invoice_lot_wac_partial"
   | "last_purchase_price";
 
+/** Written only by restate_sale_cost, when a verified invoice moves a sale's cost. */
+export const RESTATED_BASIS = "invoice_restated";
+
 /** The unit (one bottle) cost a sale was costed at, and where it came from. */
 export interface SaleCostSource {
   unitCost: number;
@@ -30,6 +33,8 @@ export interface SaleCostSource {
 export interface CostSnapshot {
   cost_at_sale: number | null;
   cost_basis: SaleCostBasis | null;
+  /** One whole bottle's cost the line was costed at; a verified invoice restates from it. */
+  cost_unit_at_sale: number | null;
   cost_source_lot_id: string | null;
   cost_source_order_id: string | null;
 }
@@ -37,6 +42,7 @@ export interface CostSnapshot {
 export const NO_COST_SNAPSHOT: CostSnapshot = {
   cost_at_sale: null,
   cost_basis: null,
+  cost_unit_at_sale: null,
   cost_source_lot_id: null,
   cost_source_order_id: null,
 };
@@ -68,7 +74,10 @@ export function pickSaleCostSource(
   if (unitCost === null || costBasis === "unknown") return null;
   let lotId: string | null = null;
   let orderId: string | null = null;
-  if (costBasis !== "last_purchase_price") {
+  {
+    // The oldest live costed lot is named whatever the basis: a line costed at
+    // the last price paid still came off a delivery, and the invoice that
+    // verifies that delivery restates the line (r102).
     const live = (lots ?? [])
       .filter(
         (l) =>
@@ -114,6 +123,7 @@ export function snapshotLineCost(
   return {
     cost_at_sale: round4(cost),
     cost_basis: source.basis,
+    cost_unit_at_sale: source.unitCost,
     cost_source_lot_id: source.lotId,
     cost_source_order_id: source.orderId,
   };
@@ -141,6 +151,8 @@ export interface CheckMarginLine {
   costKept: boolean;
   /** Why this line has no cost in the totals, in words; null when it has one. */
   costNote: string | null;
+  /** A verified invoice moved this line's cost off the delivery's estimate. */
+  restated: boolean;
 }
 
 export interface CheckMargin {
@@ -153,6 +165,8 @@ export interface CheckMargin {
   margin: number | null;
   marginPct: number | null;
   linesWithoutCost: number;
+  /** Lines whose cost a verified invoice restated. */
+  restatedLines: number;
   /** What the owner reads; says outright when part of the check is unknown. */
   sentence: string;
 }
@@ -176,6 +190,7 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
   let revenue = 0;
   let cost = 0;
   let linesWithoutCost = 0;
+  let restatedLines = 0;
   for (const r of rows) {
     if (Number(r.quantity) === 0 && Number(r.volume_ml) === 0) {
       voidedLines++;
@@ -185,11 +200,15 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
     const rev = num(r.total_revenue);
     const costKept = c !== null;
     let costNote: string | null = null;
+    const restated = costKept && r.cost_basis === RESTATED_BASIS;
+    if (restated) restatedLines++;
     if (!costKept) {
       linesWithoutCost++;
       costNote = "cost not kept";
     } else if (rev === null) {
       costNote = "price not kept";
+    } else if (restated) {
+      costNote = "cost restated to the invoice";
     }
     if (costKept && rev !== null) {
       revenue += rev;
@@ -202,6 +221,7 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
       cost: c,
       costKept,
       costNote,
+      restated,
     });
   }
   const counted = lines.filter((l) => l.costKept && l.revenue !== null).length;
@@ -211,12 +231,16 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
       ? Math.round((margin / revenue) * 1000) / 10
       : null;
   const unknown = lines.length - counted;
-  const sentence =
+  const base =
     lines.length === 0
       ? "No wine lines on this check."
       : unknown === 0
         ? "Every line's cost was kept when it sold."
         : `Cost or price was not kept for ${unknown} of ${lines.length} line${lines.length === 1 ? "" : "s"}; the margin covers only the other ${counted}.`;
+  const sentence =
+    restatedLines > 0
+      ? `${base} ${restatedLines} line${restatedLines === 1 ? "" : "s"} ${restatedLines === 1 ? "was" : "were"} restated to the invoice cost once the invoice was checked.`
+      : base;
   return {
     lines,
     voidedLines,
@@ -225,6 +249,7 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
     margin,
     marginPct,
     linesWithoutCost,
+    restatedLines,
     sentence,
   };
 }
