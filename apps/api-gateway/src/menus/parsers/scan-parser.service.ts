@@ -15,6 +15,7 @@ import {
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
 import { menuScanVerdict } from "./menu-scan-verdict";
+import { keepPrintedSizes } from "./printed-sizes";
 import {
   MENU_CATEGORY_VOCABULARY,
   MenuReadWarning,
@@ -94,15 +95,28 @@ const PRINTED_MARKS_CLAUSE =
   "never work a mark out from the name or the ingredients, and omit printed_marks when the line prints none. " +
   "On a line that prints a mark, and only then, also return raw_text: the line exactly as printed. ";
 
+/**
+ * r109 menu-g3. A line that prints more than one size or portion (a rakı at
+ * 20/35/70 cl) returns every one in sizes, as printed, and raw_text so the
+ * gateway can check each label is on the line (printed-sizes.ts). The two
+ * house prices are filled exactly as before: sizes never move them.
+ */
+const PRINTED_SIZES_CLAUSE =
+  "When a line prints more than one size or portion with its own price, also return sizes: " +
+  "[{ label, ml, price }] for every one, exactly as printed (label as printed such as '20 cl' or 'half', " +
+  "ml only when the size is a volume, price as printed), and raw_text: the line exactly as printed. " +
+  "Still fill by_glass_price and bottle_price exactly as you would without sizes. Omit sizes on a line with one price. ";
+
 const WINE_EXTRACTION_PROMPT =
   "You are analyzing a restaurant beverage menu image. " +
   "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
   "them. For each item return JSON: " +
-  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, description, printed_marks }. " +
+  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, description, printed_marks, sizes }. " +
   CATEGORY_VOCABULARY_CLAUSE +
   PRINTED_MARKS_CLAUSE +
+  PRINTED_SIZES_CLAUSE +
   "producer is the winery/estate/château name, or the brewery/distillery for " +
   "a beer or a spirit. " +
   "vintage, region and grape_variety describe wine — omit all three on a " +
@@ -136,7 +150,27 @@ const WINE_EXTRACTION_PROMPT =
   "Return ONLY a JSON array with no surrounding text. " +
   "If a field is not visible, omit it. " +
   'Examples: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120},' +
-  '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
+  '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9},' +
+  '{"name":"Yeni Rakı","category":"spirit","bottle_price":1250,"raw_text":"Yeni Rakı 20 cl 450 / 35 cl 700 / 70 cl 1250",' +
+  '"sizes":[{"label":"20 cl","ml":200,"price":450},{"label":"35 cl","ml":350,"price":700},{"label":"70 cl","ml":700,"price":1250}]}]';
+
+/**
+ * Each line's sizes, as kept by printed-sizes.ts (a line keeps none when
+ * fewer than two read). Sizes whose price did not read are counted into one
+ * read note, so the house is told some were left off. Exported for the spec.
+ */
+export function keepSizesOf(items: WineExtractItem[], warnings: MenuReadWarning[]): WineExtractItem[] {
+  let unread = 0;
+  const out = items.map((item) => {
+    if (item.sizes === undefined) return item;
+    const kept = keepPrintedSizes(item.sizes, item.raw_text);
+    unread += kept.unread;
+    const { sizes: _dropped, ...rest } = item;
+    return kept.sizes ? { ...rest, sizes: kept.sizes } : rest;
+  });
+  if (unread > 0) warnings.push({ kind: "size_price_unread", pages: null, count: unread });
+  return out;
+}
 
 /** What a house is told when this gateway has no menu reader switched on. */
 export const MENU_READER_OFF =
@@ -179,6 +213,16 @@ export class ScanParserService {
    * stop_reason rather than an estimate derived from it.
    */
   async parse(
+    imageBase64: string,
+    restaurantId?: string,
+    arrival = false,
+    warnings: MenuReadWarning[] = [],
+  ): Promise<WineExtractItem[]> {
+    const items = await this.parseRaw(imageBase64, restaurantId, arrival, warnings);
+    return keepSizesOf(items, warnings);
+  }
+
+  private async parseRaw(
     imageBase64: string,
     restaurantId?: string,
     arrival = false,

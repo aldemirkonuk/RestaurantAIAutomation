@@ -29,6 +29,7 @@ import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
 import { keepDescription, keepPrintedMarks } from "./parsers/printed-marks";
+import { keepPrintedSizes, type PrintedSize } from "./parsers/printed-sizes";
 import {
   setHouseMenuPrice,
   setHouseMenuPrices,
@@ -530,7 +531,7 @@ function menusUnreadable(error: { message?: string }): InternalServerErrorExcept
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, description, printed_marks";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, description, printed_marks, printed_sizes";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -720,6 +721,8 @@ export interface MenuImportReviewItem {
   grapeVariety: string | null;
   byGlassPrice: number | null;
   bottlePrice: number | null;
+  /** r109 menu-g3: every size the line prints, as printed; never carried to a house price. */
+  printedSizes?: PrintedSize[] | null;
   rawText: string | null;
   matched: boolean;
   needsReview: boolean;
@@ -1103,6 +1106,7 @@ export class MenusService {
         grapeVariety: line.grape_variety ?? null,
         byGlassPrice: money(line.by_glass_price),
         bottlePrice: money(line.bottle_price),
+        printedSizes: keepPrintedSizes(line.printed_sizes, null).sizes,
         priceFlag: line.price_flag ?? null,
         priceFlagNote: line.price_flag_note ?? null,
       };
@@ -2883,6 +2887,8 @@ export class MenusService {
       // r108 menu-g10: a mark is stored only when it is on the line's raw text.
       description: keepDescription(item.description),
       printed_marks: keepPrintedMarks(item.printed_marks, item.raw_text),
+      // r109 menu-g3: every size the line prints, beside it; never a house price.
+      printed_sizes: keepPrintedSizes(item.sizes, item.raw_text).sizes,
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
@@ -2975,6 +2981,7 @@ export class MenusService {
         grapeVariety: r.item.grape_variety ?? null,
         byGlassPrice: r.item.by_glass_price ?? null,
         bottlePrice: r.item.bottle_price ?? null,
+        printedSizes: keepPrintedSizes(r.item.sizes, r.item.raw_text).sizes,
         rawText: r.item.raw_text ?? null,
         matched: r.matched,
         needsReview: itemNeedsPencil({
