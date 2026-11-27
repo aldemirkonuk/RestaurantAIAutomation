@@ -64,8 +64,11 @@ describe('folio 0 on /house', () => {
     h.upload.mockReturnValue(new Promise((resolve) => { land = resolve }))
     page()
     const zone = screen.getByTestId('house-paper-drop')
-    fireEvent.drop(zone, { dataTransfer: { files: [invoice()] } })
-    fireEvent.drop(zone, { dataTransfer: { files: [invoice()] } })
+    // Both land in one frame, before the zone gives way to "Sending…".
+    act(() => {
+      fireEvent.drop(zone, { dataTransfer: { files: [invoice()] } })
+      fireEvent.drop(zone, { dataTransfer: { files: [invoice()] } })
+    })
     await waitFor(() => expect(h.upload).toHaveBeenCalledTimes(1))
     await act(async () => { land({ documentId: 'doc-1' }) })
     expect(await screen.findByText(/Your last invoice is on Receipts\./)).toBeInTheDocument()
