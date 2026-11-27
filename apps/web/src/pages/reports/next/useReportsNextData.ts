@@ -38,6 +38,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { readsRegister } from './rp-spec';
+import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
 import {
@@ -112,6 +113,8 @@ interface StoredBlock {
   g?: unknown;
   /** v2: on the sheet at all. */
   on?: unknown;
+  /** The bars-and-line pick, `{ b, l }` (measure keys). Optional in v4. */
+  c?: unknown;
   /** v1: taken off the sheet. */
   hidden?: unknown;
 }
@@ -162,7 +165,8 @@ export function decodeSheet(stored: unknown): SheetState {
         ? { x, y, w: Math.max(2, w), h: Math.max(2, h) }
         : DEFAULT_SLOTS[id];
     const graph = isGraphType(b?.g) ? graphOrDefault(id, b.g) : defaultGraph(id);
-    cuttings.push({ id, slot, graph });
+    const combo = decodeCombo(b?.c);
+    cuttings.push(combo ? { id, slot, graph, combo } : { id, slot, graph });
   }
   if (seen.size === 0) return defaultSheet();
 
@@ -184,6 +188,14 @@ export function decodeSheet(stored: unknown): SheetState {
   return { cuttings };
 }
 
+/** A stored bars-and-line pick, or nothing: two short, different keys. */
+function decodeCombo(c: unknown): ComboPick | undefined {
+  const o = c as { b?: unknown; l?: unknown } | null | undefined;
+  const key = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 64;
+  if (!o || typeof o !== 'object' || !key(o.b) || !key(o.l) || o.b === o.l) return undefined;
+  return { bars: o.b as string, line: o.l as string };
+}
+
 export function encodeSheet(state: SheetState): StoredSheet {
   const on = new Set(state.cuttings.map((c) => c.id));
   return {
@@ -200,6 +212,7 @@ export function encodeSheet(state: SheetState): StoredSheet {
         ...c.slot,
         g: c.graph,
         on: true,
+        ...(c.combo ? { c: { b: c.combo.bars, l: c.combo.line } } : {}),
       })),
       ...ANALYSIS_IDS.filter((id) => !on.has(id)).map((id) => ({
         i: id,
