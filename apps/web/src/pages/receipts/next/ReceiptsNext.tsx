@@ -176,8 +176,12 @@ function VerifiedCsvLink() {
       const a = document.createElement('a');
       a.href = url;
       a.download = 'verified-papers.csv';
+      // WebKit cancels a blob download whose anchor is detached or whose URL is
+      // revoked in the same task: attach, click, remove, revoke on a timer.
+      document.body.append(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       setError(serverMessage(e, 'The file could not be made, so nothing was downloaded.'));
     } finally {

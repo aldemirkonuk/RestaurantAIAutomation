@@ -101,6 +101,26 @@ describe('the verified CSV link', () => {
     expect(screen.queryByTestId('verified-csv-error')).toBeNull();
   });
 
+  it('clicks an attached anchor and revokes the file later, so WebKit does not cancel the download', async () => {
+    api.allowed.mockResolvedValue(true);
+    api.csv.mockResolvedValue('doc_number,total\nV-1,10.00\n');
+    let attached = false;
+    let revokedAtClick = -1;
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      attached = this.isConnected;
+      revokedAtClick = revokeObjectURL.mock.calls.length;
+    });
+    revokeObjectURL.mockClear();
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: 'Export verified papers (CSV)' }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(attached).toBe(true);
+    expect(revokedAtClick).toBe(0);
+    expect(document.querySelector('a[download="verified-papers.csv"]')).toBeNull();
+    expect(revokeObjectURL).not.toHaveBeenCalled();
+    await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:verified'), { timeout: 2500 });
+  });
+
   it('staff the gateway says no to get no link, though the web role reads manager', async () => {
     api.allowed.mockResolvedValue(false);
     render(<ReceiptsNext />, { wrapper });
