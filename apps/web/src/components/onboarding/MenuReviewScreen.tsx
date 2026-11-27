@@ -171,7 +171,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   const row = (item: MenuImportReviewItem) => (
     <div
       key={item.menuItemId}
-      className="grid grid-cols-[1fr_1fr_90px_1fr] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
+      className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px_minmax(0,1fr)] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
     >
       <EditableCell
         value={item.name}
@@ -198,7 +198,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
 
   return (
     <div
-      className={embedded ? 'bg-white flex flex-col items-center px-4 py-6' : 'min-h-screen bg-white flex flex-col items-center px-4 pt-10 pb-16'}
+      className={embedded ? 'bg-white text-gray-900 rounded-2xl border border-gray-200 flex flex-col items-center px-4 py-6' : 'min-h-screen bg-white flex flex-col items-center px-4 pt-10 pb-16'}
       data-testid="menu-read-review"
     >
       <div className="w-full max-w-2xl">
@@ -283,7 +283,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
           </button>
         )}
 
-        <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
           <button onClick={onSkip} className="text-sm text-gray-400 hover:text-gray-600">
             Skip review
           </button>
@@ -292,8 +292,8 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
               Continue
             </Button>
           ) : canChoose ? (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => onConfirm(false)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => onConfirm(false)} className="border-gray-300 bg-white text-gray-900 hover:bg-gray-50">
                 Keep it, not current
               </Button>
               <Button onClick={() => setPlanning(true)} disabled={planning} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
