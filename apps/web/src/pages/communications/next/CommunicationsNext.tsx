@@ -366,10 +366,55 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
   );
 }
 
+/* perf-p10-1 — the book holds its height from the first paint.
+   Before its read lands the book is one line; when the rows arrive (up to 100, ~42 px each) they
+   push "Write to a vendor" and "Who is writing" down (a layout shift of 0.3-0.5 on a phone). The
+   page keeps how many rows the book settled at, per house, for this tab, and holds that room
+   (at most a dozen rows) while the read is out; a first-ever visit holds six. The hold ends the
+   moment rows land, the read fails, or the house turns out to have none — it is a min-height,
+   never a fade (ADR 0112). Storage may be blocked: then the first-visit guess is used. */
+const BOOK_ROW_PX = 42;
+const BOOK_ROWS_FIRST_VISIT = 6;
+const BOOK_ROWS_MAX = 12;
+const bookRowsKey = (house: string) => `comms-book-rows:${house}`;
+
+export function readLastBookRows(house: string | null): number | null {
+  try {
+    const raw = house ? window.sessionStorage.getItem(bookRowsKey(house)) : null;
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isInteger(n) && n >= 0 ? Math.min(n, BOOK_ROWS_MAX) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberBookRows(house: string | null, rows: number): void {
+  if (!house) return;
+  try {
+    window.sessionStorage.setItem(bookRowsKey(house), String(Math.min(rows, BOOK_ROWS_MAX)));
+  } catch {
+    /* blocked storage: the next cold visit holds the first-visit room */
+  }
+}
+
+/** The room, in px, the unread book holds: the last known row count, or six on a first visit; none for a house known to be empty. */
+export function bookHoldPx(house: string | null): number {
+  return (readLastBookRows(house) ?? BOOK_ROWS_FIRST_VISIT) * BOOK_ROW_PX;
+}
+
 export default function CommunicationsNext() {
   const data = useCommsNextData();
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
   const letterStanding = useLetterSenderStanding();
+  const bookHouse = letterStanding.restaurantId ?? null;
+  // Fixed for the life of the wait: read once at mount-or-house-change, so the hold cannot move while it holds.
+  const [bookHold, setBookHold] = useState(() => bookHoldPx(bookHouse));
+  useEffect(() => {
+    setBookHold(bookHoldPx(bookHouse));
+  }, [bookHouse]);
+  useEffect(() => {
+    if (data.hasData && !data.isError) rememberBookRows(bookHouse, data.rows.length);
+  }, [bookHouse, data.hasData, data.isError, data.rows.length]);
   const [compose, setCompose] = useState(false);
   const [library, setLibrary] = useState(false);
   /* Which drafted reply is open. One panel for the page, keyed off the row the
@@ -852,9 +897,11 @@ export default function CommunicationsNext() {
               </p>
             )}
             {!data.hasData && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reading the conversation book…
-              </p>
+              <div data-testid="book-reading" style={{ minHeight: bookHold }}>
+                <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
+                  Reading the conversation book…
+                </p>
+              </div>
             ) : data.rows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
                 The book is open and empty — no vendor exchanges yet.
