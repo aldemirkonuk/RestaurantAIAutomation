@@ -64,7 +64,7 @@ export class ItemUseCountsService {
       for (let i = 0; i < houseCocktails.length; i += 200) {
         const chunk = houseCocktails.slice(i, i + 200);
         legacy.push(
-          ...(await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", undefined, (q) =>
+          ...(await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", null, (q) =>
             q.in("cocktail_id", chunk),
           )),
         );
@@ -111,7 +111,7 @@ export class ItemUseCountsService {
     client: SupabaseClient,
     table: string,
     columns: string,
-    restaurantId: string | undefined,
+    restaurantId: string | null,
     narrow?: (q: any) => any,
     key = "id",
   ): Promise<Row[]> {
@@ -119,8 +119,9 @@ export class ItemUseCountsService {
     let after: string | null = null;
     for (;;) {
       let q: any = client.from(table).select(columns);
-      // cocktail_ingredients has no house column; its rows are scoped by the live house cocktails.
-      if (restaurantId) q = q.eq("restaurant_id", restaurantId);
+      // null only for cocktail_ingredients, which has no house column; its rows are scoped by the
+      // live house cocktails. Never a falsy test: an empty id must not read every house.
+      if (restaurantId !== null) q = q.eq("restaurant_id", restaurantId);
       if (narrow) q = narrow(q);
       if (after) q = q.gt(key, after);
       const { data, error } = await q.order(key, { ascending: true }).limit(PAGE);
