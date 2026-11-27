@@ -173,6 +173,10 @@ function UnsentChip({ status }: { status: string | null | undefined }) {
  * collapse to one line and jump when the people arrive. The bars are for the
  * eye only; the words are what is read aloud.
  */
+/** The search box's hint: the all-kinds view finds a person by the name the row shows (r104 walk finding 2). */
+const SEARCH_PLACEHOLDER_ALL = 'Find someone by name, address, subject, order number or word';
+const SEARCH_PLACEHOLDER_VENDOR = 'Find a vendor, subject, order number or word';
+
 /** A person's row measured at 60 px at 375, 768 and 1280 wide (r54 walk); a long snippet wraps to 83 at 375. */
 const PERSON_ROW_MIN = 60;
 
@@ -952,7 +956,7 @@ export function MailTab({
               type="search"
               data-testid="mail-search"
               aria-label="Search mail"
-              placeholder="Find a vendor, subject, order number or word"
+              placeholder={readAll.reads ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
               value={typed}
               maxLength={MAIL_SEARCH_MAX}
               onChange={(e) => setTyped(e.target.value)}
