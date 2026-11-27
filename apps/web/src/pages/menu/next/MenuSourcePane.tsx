@@ -11,6 +11,7 @@
  * The link is signed and short-lived (`getMenuSourceUrl`); it is asked for only once the pane
  * is opened. A link that could not be had says why and offers to ask again (ADR 0020).
  */
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getMenuSourceUrl } from '../../../services/api/menus';
 import { reasonOf } from './MenuVersions';
@@ -23,34 +24,34 @@ export function MenuSourcePane({
   open,
   onToggle,
   canManage,
+  fold = false,
 }: {
   menuId: string;
   mime: string | null;
   open: boolean;
   onToggle: () => void;
   canManage: boolean;
+  /** Fold the room open and shut with the house fold (the review's narrow layout) instead of mounting it. */
+  fold?: boolean;
 }) {
+  // A folded pane stays mounted once opened, so closing folds the page away rather than blanking it.
+  const [shown, setShown] = useState(open);
+  useEffect(() => {
+    if (open) setShown(true);
+  }, [open]);
   const link = useQuery({
     queryKey: ['menu', 'source-link', menuId],
     enabled: open && canManage,
     queryFn: () => getMenuSourceUrl(menuId),
-    staleTime: 60_000,
+    // Every call signs a fresh token, so a new link changes the src and reloads the file (a PDF back to page 1).
+    // Keep one until it is nearly out of date, and never refetch just because the window came back into focus.
+    staleTime: (q) => Math.max(0, (q.state.data?.expiresInSeconds ?? 300) - 30) * 1000,
+    refetchOnWindowFocus: false,
     retry: false,
   });
   if (!canManage) return null;
   const kind = mime === 'application/pdf' ? 'pdf' : mime?.startsWith('image/') ? 'image' : 'other';
-  return (
-    <div data-testid="menu-source-pane" style={{ marginTop: 12 }}>
-      <button
-        type="button"
-        className="cl-btn cl-focus"
-        aria-expanded={open}
-        aria-controls="menu-source-view"
-        onClick={onToggle}
-      >
-        {open ? 'Hide the kept menu' : 'Show the kept menu with the lines'}
-      </button>
-      {open ? (
+  const region = (
         <div
           id="menu-source-view"
           role="region"
@@ -78,6 +79,25 @@ export function MenuSourcePane({
             </p>
           )}
         </div>
+  );
+  return (
+    <div data-testid="menu-source-pane" style={{ marginTop: 12 }}>
+      <button
+        type="button"
+        className="cl-btn cl-focus"
+        aria-expanded={open}
+        aria-controls="menu-source-view"
+        onClick={onToggle}
+      >
+        {fold ? <span className="mdv-rsrc__chev" aria-hidden /> : null}
+        {open ? 'Hide the kept menu' : 'Show the kept menu with the lines'}
+      </button>
+      {fold ? (
+        <div className="mdv-rsrc__fold" data-open={open}>
+          <div className="mdv-rsrc__fold-in">{shown ? region : null}</div>
+        </div>
+      ) : open ? (
+        region
       ) : null}
     </div>
   );

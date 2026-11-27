@@ -13,6 +13,8 @@ import {
 import { makeCurrentSentence, MenuReadChecks } from '../../pages/menu/next/MenuVersions'
 import { checkLinesFromReview, showLineById } from '../../pages/menu/next/menu-read-checks'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
+import { MenuSourcePane } from '../../pages/menu/next/MenuSourcePane'
+import './menu-review-source.css'
 import { useHouseCurrencyCode } from '../../hooks/queries/useHouseCurrencyCode'
 import { formatMoney } from '../../lib/currency'
 import { isKitchenLine } from '../../lib/firstProof'
@@ -28,6 +30,8 @@ interface MenuReviewScreenProps {
   embedded?: boolean
   /** The host's own word on who may choose the current menu; without it, the signed-in role decides. */
   canChoose?: boolean
+  /** The kept file this read came from, to keep beside the lines (owner or manager only). */
+  source?: { menuId: string; mime: string | null } | null
 }
 
 type LineKind = 'wine' | 'dish' | 'line'
@@ -116,7 +120,7 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
   )
 }
 
-export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, canChoose: hostCanChoose }: MenuReviewScreenProps) {
+export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, canChoose: hostCanChoose, source = null }: MenuReviewScreenProps) {
   // ADR 0193 (menu versions, founder 2026-09-21): a read menu is KEPT as a
   // draft; after the extraction the person chooses whether it becomes the
   // current menu. That choice is an owner's or a manager's; the gateway
@@ -144,6 +148,9 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
     onConfirm(true)
   }
   const [items, setItems] = useState<MenuImportReviewItem[]>(result.items)
+  // A photo or a PDF opens beside the lines; a sheet cannot be shown, so it waits to be asked.
+  const showSource = embedded && canChoose && source !== null
+  const [sourceOpen, setSourceOpen] = useState(source?.mime === 'application/pdf' || source?.mime?.startsWith('image/') === true)
   const [showClean, setShowClean] = useState(false)
   const [addingRow, setAddingRow] = useState(false)
   const [newWineName, setNewWineName] = useState('')
@@ -266,7 +273,13 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
       className={embedded ? 'bg-paper-0 text-inkm-1 rounded-2xl border border-paper-2 flex flex-col items-center px-4 py-6' : 'min-h-screen bg-paper-0 flex flex-col items-center px-4 pt-10 pb-16'}
       data-testid="menu-read-review"
     >
-      <div className="w-full max-w-2xl">
+      <div className={showSource ? 'mdv-rsrc' : 'contents'}>
+      {showSource && source ? (
+        <aside className="mdv-rsrc__pane" aria-label="The menu it was read from">
+          <MenuSourcePane fold menuId={source.menuId} mime={source.mime} open={sourceOpen} onToggle={() => setSourceOpen((o) => !o)} canManage />
+        </aside>
+      ) : null}
+      <div className="w-full max-w-2xl mdv-rsrc__lines">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-inkm-1 mb-2">Review &amp; confirm</h1>
           {flagged.length > 0 ? (
@@ -407,6 +420,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
             {madeNote}
           </p>
         )}
+      </div>
       </div>
     </div>
   )

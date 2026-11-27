@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MenuSourcePane, SOURCE_PANE_HEIGHT } from './MenuSourcePane';
 import { getMenuSourceUrl } from '../../../services/api/menus';
 
@@ -25,6 +25,7 @@ function mount(mime: string | null, canManage = true) {
 }
 
 beforeEach(() => mockUrl.mockReset());
+afterEach(() => vi.useRealTimers());
 
 describe('MenuSourcePane -- the kept menu beside the lines (r107 menu-8)', () => {
   it('asks for no link until it is opened, then shows a photo as a photo', async () => {
@@ -35,6 +36,31 @@ describe('MenuSourcePane -- the kept menu beside the lines (r107 menu-8)', () =>
     const img = await screen.findByAltText('The kept menu, as it was read');
     expect(img).toHaveAttribute('src', 'https://files.example/m-1.jpg');
     expect(mockUrl).toHaveBeenCalledWith('m-1');
+  });
+
+  it('keeps the link while it is fresh and does not re-sign it when the window regains focus, so the file is not reloaded', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.pdf?t=1', expiresInSeconds: 300, mime: 'application/pdf' });
+    mount('application/pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'Show the kept menu with the lines' }));
+    const frame = await screen.findByTitle('The kept menu, as it was read');
+    const away = (ms: number) => {
+      vi.setSystemTime(Date.now() + ms);
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    };
+    // Past the old 60 s window, inside the 300 s the link lives: hiding and showing again reuses it.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide the kept menu' }));
+    vi.setSystemTime(Date.now() + 120_000);
+    fireEvent.click(screen.getByRole('button', { name: 'Show the kept menu with the lines' }));
+    await Promise.resolve();
+    expect(mockUrl).toHaveBeenCalledTimes(1);
+    away(0);
+    // Even once it is stale, coming back to the tab is not a reason to re-sign it.
+    away(400_000);
+    await Promise.resolve();
+    expect(mockUrl).toHaveBeenCalledTimes(1);
+    expect(frame).toHaveAttribute('src', 'https://files.example/m-1.pdf?t=1');
   });
 
   it('holds the room before the link comes back, and shows a PDF in a frame', async () => {
