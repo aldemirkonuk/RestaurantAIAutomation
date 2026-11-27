@@ -67,7 +67,8 @@ import type { ArrangeApi } from './rp-arrange';
 import type { ComboPick } from './rp-combo';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
-import type { Register } from './useReportsNextData';
+import { TILL_WINDOWS, type Register } from './useReportsNextData';
+export { TILL_WINDOWS };
 
 /**
  * The drawing the cutting is currently set to, as a mark rather than a word.
@@ -95,7 +96,6 @@ function GraphIcon({ graph }: { graph: GraphType }) {
  * 1–365, but the page offers these four, so a window in the link that is not
  * one of them reads as the default rather than as a picker with no chip held.
  */
-export const TILL_WINDOWS = [7, 30, 90, 365] as const;
 export const DEFAULT_TILL_DAYS = 30;
 /** The page link's name for the till window: `/reports?days=90`. */
 export const DAYS_PARAM = 'days';

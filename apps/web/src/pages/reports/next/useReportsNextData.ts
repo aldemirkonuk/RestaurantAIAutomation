@@ -112,6 +112,18 @@ export function withheldByGateway(raw: unknown): boolean {
   const d = raw as { withheldForRole?: unknown; salesWithheld?: unknown };
   return (Array.isArray(d.withheldForRole) && d.withheldForRole.length > 0) || d.salesWithheld === true;
 }
+/**
+ * The till windows the chips offer (one list: the chips, `tillDaysOf` and the
+ * warm-up all read it). A year is the window an owner reads a season against
+ * (audit G19); the gateway allows 1–365 house days.
+ */
+export const TILL_WINDOWS = [7, 30, 90, 365] as const;
+/**
+ * The idle warm-up stops here: a year is a whole read of every check in it, too
+ * heavy to spend on a visit that may never ask for it. Its chip still warms on
+ * hover, focus or touch (`onWarm`), so the year is read only on a sign of intent.
+ */
+export const IDLE_WARM_MAX_DAYS = 90;
 
 /* ────────────────────────────────────────────────── the sheet itself ───── */
 
@@ -593,13 +605,16 @@ export function useReportsNextData(
     })),
   });
 
-  const warmTillWindow = useCallback(
-    (days: number) => {
-      if (!rid || days === tillDays) return;
+  /** Starts one till window's reads; resolves when they have all landed or failed. */
+  const warmWindow = useCallback(
+    (days: number): Promise<unknown> => {
+      if (!rid || days === tillDays) return Promise.resolve();
+      const reads: Promise<unknown>[] = [];
       for (const id of active) {
         if (!CATALOGUE[id].takesWindow || heldBack.has(id)) continue;
-        void qc.prefetchQuery({ ...readOf(id, days), retry: 1 });
+        reads.push(qc.prefetchQuery({ ...readOf(id, days), retry: 1 }));
       }
+      return Promise.all(reads);
     },
     [rid, tillDays, active, heldBack, qc, readOf],
   );
@@ -610,6 +625,40 @@ export function useReportsNextData(
    * memoised on it does not redraw for another cutting's read (perf-p4-5,
    * r108): a till-window click changes the till's register and no other.
    */
+  const warmTillWindow = useCallback((days: number) => void warmWindow(days), [warmWindow]);
+
+  // Once the cold read has settled, and the browser is idle, read the other
+  // till windows the chips offer, one window at a time, under the very keys the
+  // click uses — so the click is a redraw, not a round trip. Never on a
+  // data-saver connection, and never before the reads the page is waiting on.
+  const settled = results.length > 0 && results.every((q) => !q.isFetching);
+  useEffect(() => {
+    if (!rid || !settled) return;
+    if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return;
+    let cancelled = false;
+    const idle = (fn: () => void): (() => void) => {
+      if (typeof requestIdleCallback === 'function') {
+        const h = requestIdleCallback(fn);
+        return () => cancelIdleCallback(h);
+      }
+      const h = setTimeout(fn, 200);
+      return () => clearTimeout(h);
+    };
+    let cancel = () => {};
+    const rest = TILL_WINDOWS.filter((d) => d !== tillDays && d <= IDLE_WARM_MAX_DAYS);
+    const next = (i: number) => {
+      if (cancelled || i >= rest.length) return;
+      cancel = idle(() => {
+        void warmWindow(rest[i]).then(() => next(i + 1));
+      });
+    };
+    next(0);
+    return () => {
+      cancelled = true;
+      cancel();
+    };
+  }, [rid, settled, tillDays, warmWindow]);
+
   const kept = useRef<
     Partial<Record<AnalysisId, { reg: Register<unknown>; from: readonly unknown[] }>>
   >({});
