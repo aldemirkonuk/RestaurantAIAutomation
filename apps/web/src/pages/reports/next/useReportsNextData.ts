@@ -42,7 +42,7 @@ import { defaultIdsFor } from './rp-readable';
 import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
-import { warmRead, warmWrite, type WarmOwner } from './rp-warm';
+import { sameOwner, warmRead, warmWrite, type WarmOwner } from './rp-warm';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -527,16 +527,24 @@ export function useReportsNextData(
   const readOf = useCallback(
     (id: AnalysisId, days: number) => {
       const warmKey = warmKeyOf(id, days);
-      /** Keep the read only when it is whole: every source it reads answered (r108 g8). */
-      const keep = <T,>(out: T, whole: boolean): T => {
-        if (whole) warmWrite(ownerRef.current, warmKey, out);
-        return out;
-      };
+      /** Keep the read only when it is whole: every source it reads answered (r108 g8), and
+          the reader is still who, and in the house, it was asked for: a read that lands
+          after a house switch is that house's and never the new one's (#2353). */
+      const keepFor =
+        (started: WarmOwner | null) =>
+        <T,>(out: T, whole: boolean): T => {
+          const now = ownerRef.current;
+          if (whole && started && now && started.restaurantId === rid && sameOwner(started, now))
+            warmWrite(now, warmKey, out);
+          return out;
+        };
       const spec = CATALOGUE[id];
       return {
         queryKey: [ROOT, id, rid, spec.takesWindow ? days : null, spec.takesWindow && tillCompare ? 'prior' : null],
         staleTime: REGISTER_FRESH_MS,
         queryFn: async () => {
+          // The owner is captured when the read starts, not when it lands (#2353).
+          const keep = keepFor(ownerRef.current);
           const ctx = { days, compare: tillCompare };
           // The gateway withheld a lens for this reader's role, though the
           // page thought it could read it (a role changed since the session's
@@ -712,8 +720,11 @@ export function useReportsNextData(
     // The house's money is kept with its reads, so a warm sheet is not all dashes.
     placeholderData: () => warmFor('currency') as Awaited<ReturnType<typeof settingsApi.houseCurrency>> | undefined,
     queryFn: async () => {
+      const started = ownerRef.current;
       const c = await settingsApi.houseCurrency();
-      if (c?.readable) warmWrite(ownerRef.current, 'currency', c);
+      const now = ownerRef.current;
+      if (c?.readable && started && now && started.restaurantId === rid && sameOwner(started, now))
+        warmWrite(now, 'currency', c);
       return c;
     },
   });
