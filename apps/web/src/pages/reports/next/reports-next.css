@@ -1177,11 +1177,13 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   .rp-page__inner {
     overflow-x: clip;
   }
-  /* A figure the drawing does not show keeps its row's space, invisible, so Draw as does not move the card's content (r103). */
-  .rp-fig[data-held] {
-    display: flex;
-    visibility: hidden;
-  }
+}
+/* A figure the drawing does not show keeps its row's space, invisible, so Draw as does not move the card's content (r103).
+   Keyed to the sheet's own layout (its box under 768 px), not the viewport: with the sidebar a tablet's sheet is a
+   one-column stack at viewports well over 768. */
+.rp-sheet[data-layout='stack'] .rp-fig[data-held] {
+  display: flex;
+  visibility: hidden;
 }
 
 /* The opening sentence is the page's headline: 40 px Fraunces on a desk,
