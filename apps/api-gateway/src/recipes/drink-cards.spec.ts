@@ -111,7 +111,11 @@ describe("the spec book (drinks/cards)", () => {
   it("reads only the house's own rows: another house's drink, line, good and version never appear", async () => {
     const r = rows();
     // A pointer of this house naming another house's version is not read as a recipe.
-    r.recipe_current.push({ cocktail_id: NO_RECIPE, version_id: V_B, restaurant_id: HOUSE_A });
+    // Even one that claims this drink as its own (a corrupt row), with its own B-SECRET line.
+    const V_B2 = "e0000000-0000-4000-8000-0000000000c8";
+    r.recipe_current.push({ cocktail_id: NO_RECIPE, version_id: V_B2, restaurant_id: HOUSE_A });
+    r.recipe_versions.push({ id: V_B2, restaurant_id: HOUSE_B, cocktail_id: NO_RECIPE, version: 1, yield_serves: 1, method: "B-SECRET method", glass: null, garnish: null, created_at: "2026-11-02T10:00:00Z" });
+    r.recipe_lines.push(lineRow("l9", V_B2, HOUSE_B, 1, "B-SECRET rum", B_GIN));
     const out = JSON.stringify(await service(r).svc.drinkCards(HOUSE_A));
     expect(out).not.toMatch(/B-ONLY|B-SECRET/);
     expect((await service(r).svc.drinkCards(HOUSE_A)).drinks.map((d) => d.cocktailId)).not.toContain(NO_RECIPE);
