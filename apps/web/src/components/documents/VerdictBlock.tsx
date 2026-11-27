@@ -152,9 +152,16 @@ export interface VerdictBlockProps {
   doc: CanonicalDocument
   /** The delivery states this document's event is in, for the clock chip. */
   states?: string[]
+  /**
+   * The sentence that says why prices were not compared when the paper is in
+   * another money than the house costs in. When nothing was compared, it
+   * replaces the "no order or door count" line, which would stack a second
+   * negative on the real cause.
+   */
+  foreignMoney?: string | null
 }
 
-export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
+export function VerdictBlock({ doc, states = [], foreignMoney = null }: VerdictBlockProps) {
   const currency = doc.layer1.currency.value
   const exceptions = exceptionSentences(doc)
   const atRisk = exceptions.reduce((sum, e) => sum + (e.money ?? 0), 0)
@@ -218,7 +225,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
         {nothingRead
           ? 'Nothing was read from this document, so nothing could be compared.'
           : nothingCompared
-            ? 'Not compared — no order or door count to compare against.'
+            ? foreignMoney || 'Not compared — no order or door count to compare against.'
             : clean
               ? 'Nothing on this document differs from the delivery.'
               : `${differing.length} ${differing.length === 1 ? 'line differs' : 'lines differ'} from the delivery.`}
@@ -232,7 +239,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
         </p>
       )}
 
-      {nothingCompared && (
+      {nothingCompared && !foreignMoney && (
         <p
           data-testid="not-compared-note"
           style={{ margin: '3px 0 0', fontSize: 11.5, lineHeight: 1.35 }}

@@ -164,12 +164,18 @@ export const documentsApi = {
     status?: string
     docType?: string
     limit?: number
+    /** Part of a vendor's name or a document number (r104 g2). */
+    q?: string
+    /** Only papers created before this time: the older page (r104 g2). */
+    before?: string
   } = {}): Promise<ProcurementDocument[]> {
     const { data } = await apiClient.get('/procurement/documents', {
       params: {
         status: opts.status,
         docType: opts.docType,
         limit: opts.limit ?? 100,
+        q: opts.q || undefined,
+        before: opts.before,
       },
     })
     return data.items ?? []
@@ -182,6 +188,35 @@ export const documentsApi = {
   }> {
     const { data } = await apiClient.get(`/procurement/documents/${id}`)
     return data
+  },
+
+  /**
+   * Lines whose cost moved against the good's last invoiced cost (r104 g4).
+   * Information only: it never blocks a verification and never changes a cost.
+   */
+  async priceMoves(id: string): Promise<{
+    thresholdPct: number
+    paperCurrency?: string | null
+    houseCurrency?: string | null
+    lines: Array<
+      | { lineId: string; lineNo: number; description: string | null; compared: false; reason: string }
+      | {
+          lineId: string
+          lineNo: number
+          description: string | null
+          compared: true
+          moved: boolean
+          pct: number
+          sentence: string | null
+        }
+    >
+  }> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/price-moves`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**
