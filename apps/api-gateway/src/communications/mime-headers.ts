@@ -356,3 +356,37 @@ export function base64Body(text: string): string {
   for (let i = 0; i < b64.length; i += 76) lines.push(b64.slice(i, i + 76));
   return lines.join("\r\n");
 }
+
+/**
+ * The header block of a house letter, as it leaves (r109 mail-gap g6). One builder, called by the
+ * send (`sendThroughGrant`) and by "See it as it leaves", so the preview cannot say what the send
+ * does not do. `From` is written only when the address is known: a grant that carries no address
+ * lets Gmail stamp the mailbox. Every value goes through the encoders above, so a header that cannot
+ * be written throws `MimeHeaderError` here, before anything is sent, with the sentence the send gives.
+ * Returns the encoded lines, in the order they are written.
+ */
+export function buildLetterHeaders(options: {
+  from?: string;
+  to: string | string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  replyTo?: string;
+  inReplyTo?: string;
+  references?: string;
+}): string[] {
+  const from = (options.from ?? "").trim();
+  const to = Array.isArray(options.to) ? options.to : [options.to];
+  const inReplyTo = threadingHeader("In-Reply-To", options.inReplyTo);
+  const references = threadingHeader("References", options.references);
+  return [
+    ...(from ? [addressListHeader("From", [from])] : []),
+    addressListHeader("To", to),
+    ...(options.cc?.length ? [addressListHeader("Cc", options.cc)] : []),
+    ...(options.bcc?.length ? [addressListHeader("Bcc", options.bcc)] : []),
+    unstructuredHeader("Subject", options.subject),
+    ...(options.replyTo ? [addressListHeader("Reply-To", [options.replyTo])] : []),
+    ...(inReplyTo ? [inReplyTo] : []),
+    ...(references ? [references] : []),
+  ];
+}
