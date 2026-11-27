@@ -18,7 +18,7 @@ describe("verified papers CSV: exact decimals (r106 g5)", () => {
       const expected = rows.reduce((a, r) => a + (toCents(r.total) ?? 0), 0);
       const csv = verifiedCsv(rows).trim().split("\r\n");
       const totalLine = csv[csv.length - 1].split(",");
-      expect(totalLine[0]).toBe("Total");
+      expect(totalLine[0]).toBe("Total invoice");
       expect(totalLine[8]).toBe(formatCents(expected));
       const summed = csv.slice(1, -1).reduce((a, l) => a + (toCents(l.split(",")[8]) ?? 0), 0);
       expect(summed).toBe(expected);
@@ -30,7 +30,26 @@ describe("verified papers CSV: exact decimals (r106 g5)", () => {
   it("an unprinted figure is empty, never 0; currencies never share a total; basis says not stated", () => {
     const csv = verifiedCsv([row({ freight: null }), row({ currency: "TRY", total: "5.00" })]);
     expect(csv).toContain("A-1,2026-11-01,invoice,Acme,USD,10.10,,0.30,10.40,not stated");
-    expect(csv.match(/^Total,/gm)?.length).toBe(2);
+    expect(csv.match(/^Total invoice,/gm)?.length).toBe(2);
+  });
+  it("papers of different types are never added into one total (r106 fz)", () => {
+    const csv = verifiedCsv([
+      row({ doc_number: "I-1", doc_type: "invoice", total: "1000.00" }),
+      row({ doc_number: "P-1", doc_type: "packing_slip", total: "1000.00" }),
+      row({ doc_number: "S-1", doc_type: "statement", total: "1000.00" }),
+      row({ doc_number: "C-1", doc_type: "credit_memo", total: "200.00" }),
+    ]);
+    const totals = csv.split("\r\n").filter((l) => l.startsWith("Total "));
+    expect(totals.map((l) => l.split(",")[0])).toEqual(["Total invoice", "Total packing_slip", "Total statement", "Total credit_memo"]);
+    expect(totals.map((l) => l.split(",")[8])).toEqual(["1000.00", "1000.00", "1000.00", "200.00"]);
+    expect(csv).not.toContain("3200.00");
+  });
+  it("a column no paper printed totals empty, and one some left out says how many (r106 fz)", () => {
+    const none = verifiedCsv([row({ freight: null }), row({ freight: null })]).split("\r\n").find((l) => l.startsWith("Total "))!.split(",");
+    expect(none[6]).toBe("");
+    const some = verifiedCsv([row({ total: "5.00" }), row({ total: null }), row({ total: "7.00" })]).split("\r\n").find((l) => l.startsWith("Total "))!.split(",");
+    expect(some[8]).toBe("12.00");
+    expect(some[9]).toBe("1 of 3 papers printed no total");
   });
   it("a vendor name cannot open as a formula", () => {
     expect(verifiedCsv([row({ vendor: "=HYPERLINK(1)" })])).toContain("'=HYPERLINK(1)");
@@ -46,7 +65,8 @@ describe("DocumentsController.exportVerified (r106 g5)", () => {
     eq: jest.fn((k: string, v: unknown) => (calls.push([k, v]), chain)),
     order: jest.fn(() => chain),
     in: jest.fn(() => chain),
-    range: jest.fn(() => Promise.resolve(result)),
+    or: jest.fn(() => chain),
+    limit: jest.fn(() => Promise.resolve(result)),
   };
   const ctrl = () =>
     new DocumentsController(
@@ -65,6 +85,19 @@ describe("DocumentsController.exportVerified (r106 g5)", () => {
     expect(calls).toEqual(expect.arrayContaining([["restaurant_id", "r1"], ["status", "verified"]]));
     expect(out).toContain("A-1");
     expect(out).toContain("1.05");
+  });
+  it("pages by (created_at, id) with the raw timestamp, never an offset or a Date (r106 fz)", async () => {
+    const mk = (i: number) => ({ id: `d${String(i).padStart(4, "0")}`, created_at: "2026-11-01T10:00:00.123456+00:00", currency: "USD", total: "1.00", provider_id: null, extracted: {} });
+    const pages = [Array.from({ length: 1000 }, (_, i) => mk(i)), [mk(1000)]];
+    chain.limit.mockImplementation(() => Promise.resolve({ data: pages.shift(), error: null }));
+    chain.or.mockClear(); chain.order.mockClear();
+    await ctrl().exportVerified({ userId: "u", restaurantId: "r1", role: "manager" } as any);
+    expect(chain.order).toHaveBeenCalledWith("id", { ascending: true });
+    expect(chain.or).toHaveBeenCalledTimes(1);
+    expect(chain.or.mock.calls[0][0]).toBe(
+      'created_at.gt."2026-11-01T10:00:00.123456+00:00",and(created_at.eq."2026-11-01T10:00:00.123456+00:00",id.gt."d0999")',
+    );
+    chain.limit.mockImplementation(() => Promise.resolve(result));
   });
   it("a failed read throws a 500 in words, never an empty file", async () => {
     result = { data: null, error: { message: "boom" } };

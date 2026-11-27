@@ -9,6 +9,10 @@
  * The currency/tax-basis column says "not stated" because main stores no tax
  * basis per paper yet (#2029 / #1813 carry it); the column exists now so the
  * file's shape does not change when they land.
+ *
+ * Totals are keyed by (currency, paper type) and never net one type against
+ * another; a Total column no paper printed is empty, and one some papers left
+ * out says "n of m papers printed no <column>" in the basis cell.
  */
 export interface ExportRow {
   doc_number: string | null;
@@ -64,19 +68,28 @@ export function cell(v: string | null): string {
   return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+const MONEY_COLUMNS = ["subtotal", "freight", "tax", "total"] as const;
+
 export function verifiedCsv(rows: ExportRow[]): string {
   const lines: string[] = [EXPORT_COLUMNS.join(",")];
-  // One total per currency: adding lira to dollars is not a total.
-  const sums = new Map<string, { sub: number; fr: number; tax: number; tot: number }>();
+  // One total per (currency, paper type): adding lira to dollars is not a
+  // total, and neither is adding an invoice to its packing slip, the vendor's
+  // statement of it and a credit memo (r106: 3200.00 printed where the house
+  // owed 800.00). A type is never netted against another type.
+  type Acc = { cur: string; type: string; n: number; sum: number[]; nulls: number[] };
+  const sums = new Map<string, Acc>();
   for (const r of rows) {
     const cur = (r.currency ?? "").trim();
-    const [sub, fr, tax, tot] = [r.subtotal, r.freight, r.tax, r.total].map(toCents);
-    const s = sums.get(cur) ?? { sub: 0, fr: 0, tax: 0, tot: 0 };
-    s.sub += sub ?? 0;
-    s.fr += fr ?? 0;
-    s.tax += tax ?? 0;
-    s.tot += tot ?? 0;
-    sums.set(cur, s);
+    const type = (r.doc_type ?? "").trim();
+    const cents = [r.subtotal, r.freight, r.tax, r.total].map(toCents);
+    const key = `${cur}\u0000${type}`;
+    const s = sums.get(key) ?? { cur, type, n: 0, sum: [0, 0, 0, 0], nulls: [0, 0, 0, 0] };
+    s.n += 1;
+    cents.forEach((c, i) => {
+      if (c === null) s.nulls[i] += 1;
+      else s.sum[i] += c;
+    });
+    sums.set(key, s);
     lines.push(
       [
         cell(r.doc_number),
@@ -84,17 +97,21 @@ export function verifiedCsv(rows: ExportRow[]): string {
         cell(r.doc_type),
         cell(r.vendor),
         cell(cur || null),
-        formatCents(sub),
-        formatCents(fr),
-        formatCents(tax),
-        formatCents(tot),
+        ...cents.map(formatCents),
         "not stated",
       ].join(","),
     );
   }
-  for (const [cur, s] of sums)
-    lines.push(
-      ["Total", "", "", "", cell(cur || null), formatCents(s.sub), formatCents(s.fr), formatCents(s.tax), formatCents(s.tot), ""].join(","),
+  for (const s of sums.values()) {
+    // An empty cell is never 0: a column no paper printed stays empty; a column
+    // some papers left out says how many, so the total does not read as the book.
+    const figures = s.sum.map((v, i) => (s.nulls[i] === s.n ? "" : formatCents(v)));
+    const notes = MONEY_COLUMNS.flatMap((name, i) =>
+      s.nulls[i] > 0 && s.nulls[i] < s.n ? [`${s.nulls[i]} of ${s.n} papers printed no ${name}`] : [],
     );
+    lines.push(
+      [`Total ${s.type || "unlabelled"}`, "", "", "", cell(s.cur || null), ...figures, cell(notes.join("; ") || null)].join(","),
+    );
+  }
   return lines.join("\r\n") + "\r\n";
 }

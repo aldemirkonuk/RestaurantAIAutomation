@@ -1335,24 +1335,36 @@ export class DocumentsController {
         HttpStatus.FORBIDDEN,
       );
     // Paged past the list's 200-row cap so the file holds the whole book.
+    // Keyset on (created_at, id): an offset page shifts when a paper is verified
+    // mid-read and writes the boundary row twice. The cursor is the raw
+    // timestamptz string the database gave, never a JS Date (milliseconds only).
     const PAGE = 1000;
     const rows: Record<string, unknown>[] = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await this.db
+    let after: { at: string; id: string } | null = null;
+    for (;;) {
+      let q = this.db
         .getClient()
         .from("procurement_documents")
         .select("*")
         .eq("restaurant_id", user.restaurantId)
         .eq("status", "verified")
         .order("created_at", { ascending: true })
-        .range(from, from + PAGE - 1);
+        .order("id", { ascending: true });
+      if (after)
+        q = q.or(
+          `created_at.gt."${after.at}",and(created_at.eq."${after.at}",id.gt."${after.id}")`,
+        );
+      const { data, error } = await q.limit(PAGE);
       if (error)
         throw new HttpException(
           `The verified papers could not be read, so no file was made: ${error.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
-      rows.push(...((data ?? []) as Record<string, unknown>[]));
-      if ((data ?? []).length < PAGE) break;
+      const page = (data ?? []) as Record<string, unknown>[];
+      rows.push(...page);
+      if (page.length < PAGE) break;
+      const last = page[page.length - 1];
+      after = { at: String(last.created_at), id: String(last.id) };
     }
     const names = await this.vendorNamesFor(rows);
     const out: ExportRow[] = rows.map((r) => ({
