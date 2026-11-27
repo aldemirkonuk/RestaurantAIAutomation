@@ -34,6 +34,10 @@ type SessionPair = { accessToken: string; refreshToken: string }
 import { WrongAddress } from '../components/auth/WrongAddress'
 
 const POLL_FIRST_MS = 5_000
+// DD-r108-14: a session read that failed after the address verified asks again
+// by itself 2 s, then 4 s, then 8 s later (only while the tab is visible), then
+// stops; "Try again" and "Sign in" stay on the plate either way.
+const SESSION_RETRY_MS = [2000, 4000, 8000] as const
 /**
  * Reads in a row that may fail before the waiting tab says so (ADR 0020). A
  * 429 is said on the first one: the sentence already says the page keeps trying.
@@ -110,6 +114,9 @@ export function VerifyEmail() {
   // The address is verified but the session read after it failed (ADR 0020:
   // a failed read says it failed). The pair is kept for "Try again".
   const [sessionReadFailed, setSessionReadFailed] = useState(false)
+  // Counts failed reads, so each one schedules the next automatic ask even
+  // when React batches the false/true pair of a fast failure into one render.
+  const [sessionFailures, setSessionFailures] = useState(0)
   const verifiedPair = useRef<SessionPair | null>(null)
   // The plate's height while the page still waits. The verified state is a
   // single line and would shrink the column and let the shell re-centre it, a
@@ -148,6 +155,7 @@ export function VerifyEmail() {
       await signInWithSession(pair)
     } catch {
       setSessionReadFailed(true)
+      setSessionFailures((n) => n + 1)
       return
     }
     // Verified: the sign-up's mail note (OB-6) has nothing left to say, and
@@ -306,6 +314,32 @@ export function VerifyEmail() {
   const retrySession = () => {
     if (verifiedPair.current) void finishVerified(verifiedPair.current)
   }
+
+  // The failed read asks again by itself (SESSION_RETRY_MS). A hidden tab
+  // holds its turn until it is shown; nothing moves on screen (ADR 0112).
+  const sessionAutoRetries = useRef(0)
+  useEffect(() => {
+    if (!sessionReadFailed) return
+    const n = sessionAutoRetries.current
+    if (n >= SESSION_RETRY_MS.length) return
+    let live = true
+    const fire = () => {
+      if (!live) return
+      if (document.visibilityState === 'hidden') {
+        document.addEventListener('visibilitychange', fire, { once: true })
+        return
+      }
+      sessionAutoRetries.current = n + 1
+      retrySession()
+    }
+    const timer = window.setTimeout(fire, SESSION_RETRY_MS[n])
+    return () => {
+      live = false
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', fire)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionReadFailed, sessionFailures])
 
   const signOutThenSignIn = () =>
     void logout().then((out) => {
@@ -521,6 +555,9 @@ export function VerifyEmail() {
                 <button className="mdv-btn mdv-btn--seal" onClick={retrySession}>
                   Try again
                 </button>
+                <Link className="mdv-link mdv-pub__verified" to="/login">
+                  Sign in
+                </Link>
               </>
             ) : (
               <p role="status">Your address is verified. Opening your workspace…</p>
@@ -675,6 +712,12 @@ export function VerifyEmail() {
               <Button className="w-full" size="lg" onClick={retrySession}>
                 Try again
               </Button>
+              <Link
+                to="/login"
+                className="inline-flex min-h-[44px] items-center justify-center text-sm font-medium text-wine-700 underline"
+              >
+                Sign in
+              </Link>
             </>
           )}
         </AuthCard>
