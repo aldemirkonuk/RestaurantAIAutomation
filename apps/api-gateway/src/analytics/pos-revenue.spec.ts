@@ -639,6 +639,9 @@ describe("GoalsService.getPosRevenueWindow", () => {
 });
 
 describe("GoalsService goal progress on the house's days (j)", () => {
+  // These read as an owner: since ADR 0348 item 3 an absent gate withholds a
+  // money or till goal's reading (goal-readings-withheld-from-staff.spec.ts).
+  const OWNER = { withSales: true };
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(NOW));
@@ -678,7 +681,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       ],
     });
 
-    const progress: any = await service.getGoalProgress("r1", "g1");
+    const progress: any = await service.getGoalProgress("r1", "g1", undefined, OWNER);
 
     const since = client.calls.find(
       (c) =>
@@ -701,7 +704,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       pos_checks: [],
     });
 
-    const list: any = await service.listGoalsWithProgress("r1");
+    const list: any = await service.listGoalsWithProgress("r1", "active", OWNER);
 
     expect(list.goals).toHaveLength(1);
     expect(list.goals[0]).toMatchObject({
@@ -717,7 +720,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       { pos_checks: "statement timeout" },
     );
 
-    const list: any = await service.listGoalsWithProgress("r1");
+    const list: any = await service.listGoalsWithProgress("r1", "active", OWNER);
 
     expect(list.goals[0].unreadable).toBe(true);
     expect(list.goals[0].reason).not.toBe(HOUSE_ZONE_UNSET);
@@ -764,7 +767,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       shelf,
     );
 
-    const list: any = await service.listGoalsWithProgress("r1");
+    const list: any = await service.listGoalsWithProgress("r1", "active", OWNER);
     expect(list.goals[0].unreadable).toBeUndefined();
     expect(list.goals[0]).toMatchObject({
       current: 42,
@@ -775,14 +778,14 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       paceUnread: HOUSE_ZONE_UNSET_PACE,
     });
     // The one-goal route says the same.
-    const one: any = await service.getGoalProgress("r1", "g-stock");
+    const one: any = await service.getGoalProgress("r1", "g-stock", undefined, OWNER);
     expect(one.paceUnread).toBe(HOUSE_ZONE_UNSET_PACE);
   });
 
   it("(k2) paces the same goal in a house with a zone, and sends no reason", async () => {
     const { service } = makeGoals({ analytics_goals: [stock] }, {}, shelf);
 
-    const progress: any = await service.getGoalProgress("r1", "g-stock");
+    const progress: any = await service.getGoalProgress("r1", "g-stock", undefined, OWNER);
 
     expect(progress.paceUnread).toBeNull();
     // 42 days of stock against "at most 30" from 45, 31 d 20 h into a 60-day
@@ -801,7 +804,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
       shelf,
     );
 
-    const progress: any = await service.getGoalProgress("r1", "g-stock");
+    const progress: any = await service.getGoalProgress("r1", "g-stock", undefined, OWNER);
 
     expect([progress.onTrack, progress.paceUnread]).toEqual([null, null]);
   });

@@ -85,9 +85,13 @@ describe("a goal's reading is recorded with when, and a refusal with why", () =>
     expect(updates[0].patch).not.toHaveProperty("current_value");
   });
 
-  it("a refusal about the caller (no sales) records nothing", async () => {
+  it("a reading withheld from the caller (no sales) records nothing", async () => {
+    // Since ADR 0348 item 3 the caller is answered the goal with its reading
+    // withheld, rather than refused with the gate's sentence.
     const { service, updates } = harness(null);
-    await expect(service.getGoalProgress("r1", "g1")).rejects.toThrow(/owners and managers only/);
+    const out: any = await service.getGoalProgress("r1", "g1");
+    expect(out.withheldForRole).toEqual(["money", "sales"]);
+    expect(out.current).toBeNull();
     expect(updates).toHaveLength(0);
   });
 
