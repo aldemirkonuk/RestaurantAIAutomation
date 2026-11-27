@@ -55,6 +55,9 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
       label: l.label,
       qty: l.qtyEntered,
       unit: l.unitCode,
+      // A stated share is carried, or the copy would cost less than its source. With none, the key is
+      // left off: the save reads a missing share as null (all of it), which is what the source has.
+      ...(l.role === 'stocked' && l.usablePct != null ? { usablePct: l.usablePct } : {}),
     })),
   };
   if (cur.method) body.method = cur.method;

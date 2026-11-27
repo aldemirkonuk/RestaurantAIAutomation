@@ -372,7 +372,7 @@ describe('RecipeSheet', () => {
     expect(url).toBe(`/recipes/${RID}/cocktails/${CID}`);
     expect(body.expectedVersionId).toBeNull();
     expect(body.lines).toEqual([
-      { role: 'stocked', inventoryId: GIN, label: 'Tanqueray gin', qty: 30, unit: 'ml' },
+      { role: 'stocked', inventoryId: GIN, label: 'Tanqueray gin', qty: 30, unit: 'ml', usablePct: null },
     ]);
   });
 
@@ -675,7 +675,7 @@ describe('RecipeSheet', () => {
     const [url, body] = h.put.mock.calls[0];
     expect(url).toBe(`/recipes/${RID}/cocktails/${CID2}`);
     expect(body.expectedVersionId).toBe(V9);
-    expect(body.lines).toEqual([{ role: 'stocked', inventoryId: TEQ, label: 'tequila', qty: 50, unit: 'ml' }]);
+    expect(body.lines).toEqual([{ role: 'stocked', inventoryId: TEQ, label: 'tequila', qty: 50, unit: 'ml', usablePct: null }]);
   });
 
   it('a new recipe typed for one drink does not appear on another drink with none', async () => {
@@ -819,7 +819,7 @@ describe('RecipeSheet', () => {
     fireEvent.click(save);
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
     expect(h.put.mock.calls[0][1].lines).toEqual([
-      { role: 'stocked', inventoryId: null, label: 'gin', qty: 2, unit: 'oz' },
+      { role: 'stocked', inventoryId: null, label: 'gin', qty: 2, unit: 'oz', usablePct: null },
       { role: 'untracked', inventoryId: null, label: 'Orange twist garnish', qty: 1, unit: 'each' },
     ]);
   });
@@ -1363,9 +1363,9 @@ describe('RecipeSheet: the cost of unsaved lines', () => {
     expect(body).toEqual({
       yieldServes: 1,
       lines: [
-        { role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml' },
-        { role: 'stocked', inventoryId: '55555555-5555-4555-8555-555555555555', qtyEntered: 22.5, unitCode: 'ml' },
-        { role: 'stocked', inventoryId: '66666666-6666-4666-8666-666666666666', qtyEntered: 30, unitCode: 'ml' },
+        { role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml', usablePct: null },
+        { role: 'stocked', inventoryId: '55555555-5555-4555-8555-555555555555', qtyEntered: 22.5, unitCode: 'ml', usablePct: null },
+        { role: 'stocked', inventoryId: '66666666-6666-4666-8666-666666666666', qtyEntered: 30, unitCode: 'ml', usablePct: null },
       ],
     });
     await waitFor(() => expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("Your unsaved lines, at today's prices."));
@@ -1446,7 +1446,7 @@ describe('RecipeSheet: the cost of unsaved lines', () => {
     await waitFor(() => expect(h.post).toHaveBeenCalledTimes(1));
     const [url, body] = h.post.mock.calls[0];
     expect(url).toBe(PREVIEW_URL);
-    expect(body).toEqual({ yieldServes: 1, lines: [{ role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml' }] });
+    expect(body).toEqual({ yieldServes: 1, lines: [{ role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml', usablePct: null }] });
     await waitFor(() => expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("Your unsaved lines, at today's prices."));
     expect(screen.getByTestId('drink-card-cost')).toHaveTextContent('30');
     expect(screen.getByTestId('drink-cards')).toHaveTextContent('Nothing else is counted until the recipe is saved.');

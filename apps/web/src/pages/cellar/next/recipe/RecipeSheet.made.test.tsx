@@ -79,7 +79,7 @@ describe('a drink with a made line, amended on the web', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
     expect(h.put.mock.calls[0][1].lines).toEqual([
-      { role: 'stocked', inventoryId: GIN, label: 'Gin', qty: 50, unit: 'ml' },
+      { role: 'stocked', inventoryId: GIN, label: 'Gin', qty: 50, unit: 'ml', usablePct: null },
       { role: 'made', inventoryId: null, componentId: MIX, label: 'House Sour Mix', qty: 40, unit: 'ml' },
     ]);
   });
