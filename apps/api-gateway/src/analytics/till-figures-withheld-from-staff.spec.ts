@@ -10,6 +10,11 @@
  * caller's access row from the stub database. The services are jest stubs, so
  * a withheld answer is one whose service never ran.
  *
+ * The second slice (2026-11-13) adds the money lenses: menu engineering,
+ * cashflow, the vendor scorecard and wine 360 answer a staff login
+ * `withheldForRole` with the classes they are made of, and are never read;
+ * the overview is told the caller's classes.
+ *
  * Tests marked [REVERT-FAILS] fail against the controller before this change.
  */
 import "reflect-metadata";
@@ -87,7 +92,14 @@ const tables = {
     pairs: [{ a: "Rakı", b: "Meze", count: 31 }],
   })),
 };
-const STUBS = [goals, analytics, tables];
+const advanced = {
+  getMenuEngineering: jest.fn(async () => ({ items: [{ name: "Rakı", margin: 410 }] })),
+  getCashflow: jest.fn(async () => ({ spendLast30d: 9330 })),
+  getVendorScorecard: jest.fn(async () => ({ vendors: [{ name: "Grand River", spend: 9330 }] })),
+  getWine360: jest.fn(async () => ({ margin: 410 })),
+  getOverview: jest.fn(async () => ({ financial: null })),
+};
+const STUBS = [goals, analytics, tables, advanced];
 
 let app: INestApplication;
 let base: string;
@@ -138,7 +150,7 @@ beforeAll(async () => {
         useValue: { isBlacklisted: async () => false },
       },
       { provide: AnalyticsService, useValue: analytics },
-      { provide: AdvancedAnalyticsService, useValue: {} },
+      { provide: AdvancedAnalyticsService, useValue: advanced },
       { provide: TableAnalyticsService, useValue: tables },
       { provide: GoalsService, useValue: goals },
       { provide: ConsultantsService, useValue: {} },
@@ -235,5 +247,42 @@ describe.each(["owner", "manager"] as const)("as %s of the house", (who) => {
     expect(res.body.salesWithheld).toBeUndefined();
     expect(res.body.pairs).toHaveLength(1);
     expect(tables.getBasketAffinity).toHaveBeenCalledWith(HOUSE);
+  });
+});
+
+const LENSES = [
+  ["menu-engineering", `/analytics/menu-engineering/${HOUSE}`, ["money", "sales"]],
+  ["cashflow", `/analytics/cashflow/${HOUSE}`, ["money", "suppliers"]],
+  ["vendor-scorecard", `/analytics/vendor-scorecard/${HOUSE}`, ["money", "suppliers"]],
+  ["wine 360", `/analytics/wine/${HOUSE}/w1`, ["money", "sales"]],
+] as const;
+
+describe.each(WITHOUT_SALES)("the money lenses as %s of the house", (who) => {
+  it.each(LENSES)(
+    "[REVERT-FAILS] %s answers 200 withheld for the role, and the lens is never read",
+    async (_name, path, classes) => {
+      const res = await get(path, who);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ restaurantId: HOUSE, withheldForRole: classes });
+      expect(serviceCalls()).toEqual([]);
+    },
+  );
+
+  it("[REVERT-FAILS] the overview is told the role's classes", async () => {
+    await get(`/analytics/overview/${HOUSE}`, who);
+    expect(advanced.getOverview).toHaveBeenCalledWith(HOUSE, { withSales: false }, [
+      "stock",
+      "receiving",
+      "todays_deliveries",
+    ]);
+  });
+});
+
+describe.each(["owner", "manager"] as const)("the money lenses as %s of the house", (who) => {
+  it.each(LENSES)("%s is read", async (_name, path) => {
+    const res = await get(path, who);
+    expect(res.status).toBe(200);
+    expect(res.body.withheldForRole).toBeUndefined();
+    expect(serviceCalls()).toHaveLength(1);
   });
 });

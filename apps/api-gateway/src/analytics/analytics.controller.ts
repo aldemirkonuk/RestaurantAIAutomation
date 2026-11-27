@@ -52,6 +52,7 @@ import {
 } from "./insights/insight-implementations";
 import { DataRequirement } from "./insights/insight-catalog";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
+import { lensHidden, seesFor, withheldLens } from "./role-reads";
 import { Persona } from "./metric-registry";
 
 /**
@@ -1170,7 +1171,12 @@ export class AnalyticsController {
     description:
       "Stars / Plowhorses / Puzzles / Dogs from margin (unit_price − WAC) × velocity, with a concrete action per quadrant.",
   })
-  async getMenuEngineering(@Param("restaurantId") restaurantId: string) {
+  async getMenuEngineering(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("menuEngineering", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getMenuEngineering(restaurantId);
   }
 
@@ -1180,7 +1186,12 @@ export class AnalyticsController {
     description:
       "Per-vendor lead-time distribution (mean/median/p90/σ), on-time rate, unit-price trend, spend share + HHI.",
   })
-  async getVendorScorecard(@Param("restaurantId") restaurantId: string) {
+  async getVendorScorecard(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("vendorScorecard", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getVendorScorecard(restaurantId);
   }
 
@@ -1200,7 +1211,12 @@ export class AnalyticsController {
     description:
       "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
   })
-  async getCashflow(@Param("restaurantId") restaurantId: string) {
+  async getCashflow(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    const hidden = lensHidden("cashflow", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getCashflow(restaurantId);
   }
 
@@ -1213,7 +1229,10 @@ export class AnalyticsController {
   async getWine360(
     @Param("restaurantId") restaurantId: string,
     @Param("masterWineId") masterWineId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
+    const hidden = lensHidden("wine360", seesFor(user));
+    if (hidden.length) return withheldLens(restaurantId, hidden);
     return this.advanced.getWine360(restaurantId, masterWineId);
   }
 
@@ -1293,7 +1312,11 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.advanced.getOverview(restaurantId, salesGateFor(user));
+    return this.advanced.getOverview(
+      restaurantId,
+      salesGateFor(user),
+      seesFor(user),
+    );
   }
 
   @Get("recommendations/:restaurantId")

@@ -74,3 +74,12 @@ empty days. Still open from the list above: `insights` (`peer_rank`),
 the till, `inventory-science`, `risk`, `consult`, `menu-engineering`,
 `vendor-scorecard`, `cashflow`, `wine`, `overview`, the four writes, and
 `/toast/sales`. The entry stays OPEN.
+
+**2026-11-13, r30 slice 2 (`fix/money-lenses-withheld-from-staff`, on
+#1362).** `analytics/role-reads.ts` reads the caller's ROLE_POLICY row
+(`seesFor`). GET `menu-engineering`, `cashflow`, `vendor-scorecard` and `wine`
+answer a role that does not see their classes `{ restaurantId,
+withheldForRole }` and never ask their service; GET `overview` does not read
+menu engineering or cashflow for it. An export reads the overview as a
+manager. New claim `A-MONEY-LENSES-WITHHELD-FROM-STAFF`. Bottle volumes
+(seasonality, forecast) stay open: ADR 0348 item 3 does not name them.
