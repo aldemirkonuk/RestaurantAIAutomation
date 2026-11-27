@@ -3,7 +3,7 @@
  * the house is on screen. Rendered for real against a stubbed gateway.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -135,5 +135,36 @@ describe('a long thread folds', () => {
     await screen.findAllByTestId('mail-letter');
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe('a letter that was open stays open when a newer one arrives', () => {
+  it('keeps the house\'s own reply open under the vendor letter that arrives after it', async () => {
+    let live: MailMessage[] = [L(1), OUT(2), L(3), OUT(4), OUT(5), OUT(6)];
+    let waiting = false;
+    api.get.mockImplementation(async (url: string) =>
+      url === '/mail/thread'
+        ? { data: { key: 'gm:t1', subject: 'Friday', person: { key: 'vendor:p1', kind: 'vendor', name: 'Bodega' }, order: null, messages: live, before: null, waiting } }
+        : { data: {} },
+    );
+    window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <MailThread threadKey="gm:t1" onBack={vi.fn()} backLabel="Back" onOpenPerson={vi.fn()} canReply draftedOrderIds={new Set()} onOpenReply={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    // m6 is the newest, so it is the one letter drawn open.
+    expect((await screen.findAllByTestId('mail-letter')).map((e) => e.getAttribute('data-letter-id'))).toEqual(['m6']);
+    live = [...live, L(7)];
+    waiting = true;
+    await act(async () => {
+      await qc.invalidateQueries();
+    });
+    await waitFor(() => expect(document.querySelector('[data-letter-id="m7"]')).not.toBeNull());
+    expect(screen.getAllByTestId('mail-letter').map((e) => e.getAttribute('data-letter-id'))).toEqual(['m6', 'm7']);
+    expect(screen.getByTestId('mail-letter-stack')).toHaveTextContent('5 earlier letters');
   });
 });

@@ -283,7 +283,12 @@ export function MailThread({
   const [opened, setOpened] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
   const unfoldedIds = opened.key === threadKey ? opened.ids : new Set<string>();
   const focusAfter = useRef<string | null>(null);
-  const open = openLettersOf(letters, head);
+  // A letter that was drawn open stays open for as long as this thread is on screen: the
+  // newest one folding when a newer one arrives would collapse the letter the reader is on.
+  const shownOpen = useRef<{ key: string; ids: Set<string> }>({ key: threadKey, ids: new Set() });
+  if (shownOpen.current.key !== threadKey) shownOpen.current = { key: threadKey, ids: new Set() };
+  const open = new Set([...openLettersOf(letters, head), ...shownOpen.current.ids]);
+  open.forEach((id) => shownOpen.current.ids.add(id));
   const unfold = (ids: string[]) => {
     focusAfter.current = ids[0] ?? null;
     setOpened({ key: threadKey, ids: new Set([...unfoldedIds, ...ids]) });
