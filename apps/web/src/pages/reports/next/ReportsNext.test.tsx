@@ -593,7 +593,8 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
       'Area',
       'Line',
       'Bars',
-      'Bars and a line',
+      // No "Bars and a line": this fixture's days carry no count of checks, so
+      // the till cannot draw it and does not offer it (r100 M1).
       'Heat map',
       'Table',
       'One figure',
