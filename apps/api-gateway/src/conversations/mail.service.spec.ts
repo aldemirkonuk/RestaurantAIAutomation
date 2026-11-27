@@ -547,6 +547,30 @@ describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
     expect(by(d.id)).toMatchObject({ senderCheck: "passed", signedBy: null });
   });
 
+  it("passes on what a checked delivery notice wrote on the house's own letter, and nothing on any other (r109 g1)", async () => {
+    const out = letter(1);
+    const delayed = { ...letter(3), id: "d0000000-0000-4000-8000-000000000881" };
+    const odd = { ...letter(5), id: "d0000000-0000-4000-8000-000000000882" };
+    const inbound = letter(0);
+    const mark = { state: "did_not_arrive", at: "2026-11-27T11:02:00.000Z", recipient: "v@x.com", status: "5.1.1", said: "550 5.1.1 no such user" };
+    resolve = details([inbound, out, delayed, odd], [
+      { id: out.id, kind: "vendor", delivery: mark },
+      { id: delayed.id, kind: "vendor", delivery: { ...mark, state: "delayed", status: "4.4.7", said: null } },
+      // Not the written shape: no status, or a state of no meaning.
+      { id: odd.id, kind: "vendor", delivery: { state: "bounced", at: mark.at, recipient: "v@x.com", status: "5.1.1" } },
+      // An inbound letter never carries one, whatever its headers hold.
+      { id: inbound.id, kind: "vendor", delivery: mark },
+    ], []);
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    const read = queries.find((q) => q.kind === "from" && q.name === "procurement_conversations" && JSON.stringify(q.calls).includes("delivery:email_headers->delivery"));
+    expect(read?.calls).toContainEqual({ method: "eq", args: ["restaurant_id", HOUSE] });
+    const by = (id: string) => page.messages.find((m) => m.id === id)!;
+    expect(by(out.id).delivery).toEqual(mark);
+    expect(by(delayed.id).delivery).toEqual({ ...mark, state: "delayed", status: "4.4.7", said: null });
+    expect(by(odd.id).delivery).toBeNull();
+    expect(by(inbound.id).delivery).toBeNull();
+  });
+
   it("says a failed check failed, and a letter stored with none is not recorded, never 'failed'", async () => {
     const a = letter(0);
     const b = { ...letter(2), id: "d0000000-0000-4000-8000-000000000777" };
