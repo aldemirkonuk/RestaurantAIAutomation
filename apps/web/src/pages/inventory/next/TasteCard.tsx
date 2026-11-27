@@ -113,6 +113,8 @@ function Marks({ axis, a }: { axis: AxisKey; a: TasteAxis }) {
 
 function Row({ axis, a, e }: { axis: AxisKey; a: TasteAxis; e: TasteEffective }) {
   const [open, setOpen] = useState(false);
+  // Once the detail has been opened it stays mounted (closed, it is hidden), so closing can tween.
+  const [opened, setOpened] = useState(false);
   const band = bandOf(a.v);
   const range = rangeWords(a);
   const next = nextAction(axis, e);
@@ -140,15 +142,22 @@ function Row({ axis, a, e }: { axis: AxisKey; a: TasteAxis; e: TasteEffective })
         className="tc-more iv-focus"
         aria-expanded={open}
         aria-label={`Details for ${label}`}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setOpened(true); setOpen((v) => !v); }}
       >
         {open ? 'Less' : 'More'}
       </button>
-      {open ? (
-        <p className="tc-detail iv-note" data-testid={`taste-detail-${axis}`}>
-          {a.bandOnly ? 'Not sure enough to say more than the word. ' : ''}
-          Source: {provenanceWords(a)}. {range ?? ''} {next ?? ''}
-        </p>
+      {/* The detail keeps its place once opened, so Less can close it over 140 ms
+          instead of removing it; closed it is hidden from sight and from a screen reader
+          (visibility), never drawn in the row's height. */}
+      {opened ? (
+        <div className="tc-detail-wrap" data-open={open ? 'true' : 'false'} data-testid={`taste-detail-wrap-${axis}`}>
+          <div className="tc-detail-clip">
+            <p className="tc-detail iv-note" data-testid={`taste-detail-${axis}`}>
+              {a.bandOnly ? 'Not sure enough to say more than the word. ' : ''}
+              Source: {provenanceWords(a)}. {range ?? ''} {next ?? ''}
+            </p>
+          </div>
+        </div>
       ) : null}
     </li>
   );
