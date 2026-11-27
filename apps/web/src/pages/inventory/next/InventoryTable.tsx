@@ -17,7 +17,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, useWarmRow, type InvRow, type SortId } from './useInventoryNextData';
+import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
 import { listFigure, listPace, listUnitTail } from './ItemCards';
 import PhoneRows from './PhoneRows';
@@ -40,6 +40,8 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   onToggle: (id: string) => void;
   advice: AdviceLoad;
   onPriceChanged: () => void;
+  /** Start a row's reads on intent (the page's `useWarmRow`). Absent: nothing is warmed, so the table needs no providers. */
+  warm?: (row: { id: string; name: string | null; kind: string | null }) => void;
   /** The sort in force, and how a sortable header sets one. Absent = plain headers. */
   sort?: SortId;
   onSort?: (sort: SortId) => void;
@@ -297,13 +299,12 @@ export default function InventoryTable(props: InventoryTableProps) {
   const stableHidden = useMemo(() => hidden, [hiddenKey]);
   // The page hands new function objects every render; rows read the latest
   // through this ref and take a toggle whose identity never changes.
-  const warmRow = useWarmRow();
   const resting = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const cool = useCallback(() => clearTimeout(resting.current), []);
   useEffect(() => cool, [cool]);
   const warm = (row: InvRow, now: boolean) => {
     clearTimeout(resting.current);
-    const go = () => warmRow({ id: row.id, name: row.name });
+    const go = () => props.warm?.({ id: row.id, name: row.name, kind: row.kind });
     if (now) go();
     else resting.current = setTimeout(go, WARM_REST_MS);
   };

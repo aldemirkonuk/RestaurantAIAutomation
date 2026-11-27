@@ -90,6 +90,7 @@ import {
   sortWords,
   fmtCount,
   useInventoryNextData,
+  useWarmRow,
   type ChipId,
   type InvRow,
   type SortId,
@@ -195,6 +196,7 @@ function QuietLine({
 
 export default function InventoryNext() {
   const data = useInventoryNextData();
+  const warmRow = useWarmRow(data.canManage);
   const queryClient = useQueryClient();
   // INV-W38: the view is the URL (iv-url.ts), so a reload, Back or a sent
   // link keeps it, and the links other pages send here land where they say.
@@ -1188,6 +1190,7 @@ export default function InventoryNext() {
                   openItem(id);
                 }}
                 canManage={data.canManage}
+                warm={warmRow}
                 currency={data.currency}
                 zoneName={zoneName}
                 locations={locs.list}
