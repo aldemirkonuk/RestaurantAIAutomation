@@ -610,3 +610,172 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
     padding-left: 0;
   }
 }
+
+/* ── the spread: get-started (AuthSpread) ───
+   The same endpaper and ruled leaf, plus one Fraunces H1 and one field
+   grammar (52px fields on a hairline, 52px plates). The leaf's contents rise
+   in on transform and opacity, never under reduced motion. */
+
+.mdv-spread-main {
+  display: block;
+  outline: none;
+}
+.mdv-spread-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: var(--ink-1);
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+  background-size: 100% 40px;
+}
+.mdv-spread-lede {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 28px;
+  margin: 0 0 28px;
+  color: var(--ink-2);
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--mdv-ep-rule) calc(100% - 1px));
+  background-size: 100% 28px;
+}
+.mdv-spread-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.mdv-spread-stack > p:not(.mdv-alert):not(.mdv-note) {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--ink-2);
+}
+.mdv-spread-foot {
+  margin-top: 28px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+html .mudavym.mdv-endpaper .mdv-spread :is(input:not([type]), input[type='text'], input[type='email'], input[type='password'], input[type='tel'], input[type='search'], input[type='url'], input[type='number']) {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  font-size: 16px;
+  line-height: 24px;
+}
+.mdv-spread .mdv-btn,
+.mdv-spread button[type='submit'] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 52px;
+  justify-content: center;
+  transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), opacity 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mdv-spread .mdv-btn:active:not(:disabled),
+.mdv-spread button[type='submit']:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+@keyframes mdv-spread-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mdv-spread > *,
+.mdv-spread-stack > * {
+  animation: mdv-spread-rise 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.mdv-spread > :nth-child(2),
+.mdv-spread-stack > :nth-child(1) { animation-delay: 50ms; }
+.mdv-spread > :nth-child(3),
+.mdv-spread-stack > :nth-child(2) { animation-delay: 100ms; }
+.mdv-spread > :nth-child(4),
+.mdv-spread-stack > :nth-child(3) { animation-delay: 150ms; }
+.mdv-spread-stack > :nth-child(n + 4) { animation-delay: 200ms; }
+@media (prefers-reduced-motion: reduce) {
+  .mdv-spread > *,
+  .mdv-spread-stack > * {
+    animation: none;
+  }
+  .mdv-spread .mdv-btn,
+  .mdv-spread button[type='submit'] {
+    transition: none;
+  }
+  .mdv-spread .mdv-btn:active:not(:disabled),
+  .mdv-spread button[type='submit']:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* get-started's own parts, in the same grammar */
+.mdv-spread .mdv-label {
+  display: block;
+  font: 500 10.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  padding: 0;
+}
+.mdv-spread-textlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--seal);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.mdv-spread-links,
+.mdv-spread-facts-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+.mdv-spread-facts-line {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.mdv-spread-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  width: 100%;
+  padding: 0 24px;
+  text-align: center;
+  border: 1px dashed var(--mdv-ep-line);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+.mdv-spread-drop[data-dropping] {
+  border-color: var(--seal);
+  background: var(--seal-tint);
+}
+.mdv-spread-drop-title {
+  font: 600 26px/1.2 'Fraunces', Georgia, serif;
+  color: var(--ink-1);
+}
+.mdv-spread-drop-sub {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--ink-3);
+}
