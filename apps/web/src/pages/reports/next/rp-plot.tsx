@@ -188,6 +188,8 @@ export interface TipLine {
   name?: string;
   value: string | null;
   tail: string;
+  /** What a null value says when it is a stated absence (a day with no check), not an unstated figure. */
+  absent?: string;
 }
 export interface TipModel {
   head: string;
@@ -197,7 +199,7 @@ export interface TipModel {
 /** The tip as words, in the order the eye reads it. The visible tooltip and the live line both come from the model. */
 export function tipSentence(m: TipModel): string {
   const lines = m.lines.map(
-    (l) => `${l.name ? `${l.name}: ` : ''}${l.value === null ? 'not stated' : `${l.value}${l.tail}`}`,
+    (l) => `${l.name ? `${l.name}: ` : ''}${l.value === null ? (l.absent ?? 'Not stated').toLowerCase() : `${l.value}${l.tail}`}`,
   );
   return `${m.head}. ${lines.join('; ')}`;
 }
@@ -302,7 +304,7 @@ function Tip({
   projectedLabel?: string;
   priorLabel?: string;
 }) {
-  const row = payload?.[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
+  const row = payload?.[0]?.payload as { full?: string; isProjected?: boolean; noCheck?: boolean } | undefined;
   const numeric = (payload ?? []).filter((p) => typeof p.value === 'number');
   const model: TipModel | null =
     !active || !payload || payload.length === 0
@@ -312,7 +314,7 @@ function Tip({
           // A day with no figure says so; it is never drawn as 0 (ADR 0020).
           lines:
             numeric.length === 0
-              ? [{ value: null, tail: '' }]
+              ? [{ value: null, tail: '', ...(row?.noCheck ? { absent: 'No check' } : {}) }]
               : numeric.map((p) => {
                   // A bar drawing carries one series, so a projected bar says so itself.
                   const projected =
@@ -333,7 +335,7 @@ function Tip({
       {model.lines.map((l, i) =>
         l.value === null ? (
           <span key={i} className="rp-tip__row">
-            Not stated
+            {l.absent ?? 'Not stated'}
           </span>
         ) : (
           <span key={i} className="rp-tip__row">
