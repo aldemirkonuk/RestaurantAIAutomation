@@ -1529,23 +1529,33 @@ export class DocumentsController {
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     const last = new Map<string, number>();
     if (goods.length) {
-      const { data: lots, error: lotErr } = await client
-        .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
-        .eq("restaurant_id", user.restaurantId)
-        .eq("cost_provenance", "invoice")
-        .in("inventory_id", goods)
-        .not("unit_cost", "is", null)
-        .order("received_at", { ascending: false })
-        .limit(1000);
-      if (lotErr)
-        throw new HttpException(
-          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+      // ONE NEWEST LOT PER GOOD. A single read capped across every good together
+      // (the old limit of 1000) let a good with many newer lots push another
+      // good's only lot out of the answer, and that good then read as "no
+      // earlier cost": absence reported as health (ADR 0020).
+      const reads = await Promise.all(
+        goods.map(async (good) => {
+          const { data, error: lotErr } = await client
+            .from("inventory_lots")
+            .select("inventory_id, unit_cost, received_at")
+            .eq("restaurant_id", user.restaurantId)
+            .eq("cost_provenance", "invoice")
+            .eq("inventory_id", good)
+            .not("unit_cost", "is", null)
+            .order("received_at", { ascending: false })
+            .limit(1);
+          return { good, data, lotErr };
+        }),
+      );
+      for (const { good, data, lotErr } of reads) {
+        if (lotErr)
+          throw new HttpException(
+            `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        const newest = ((data ?? []) as { unit_cost: number | string }[])[0];
+        if (newest) last.set(good, Number(newest.unit_cost));
+      }
     }
     const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
     return {
