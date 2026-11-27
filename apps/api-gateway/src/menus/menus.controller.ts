@@ -163,7 +163,15 @@ export class MenusController {
     // correction is on the line's override trail, and on the current menu the
     // house price change is a menu_price_versions row naming the person).
     // Checked before anything is written. Other fields are unchanged.
-    if (MENU_PRICE_FIELDS.has(dto.fieldName)) {
+    //
+    // Any other field on a line of the CURRENT menu is the same act: a name
+    // change also renames the linked inventory good house-wide. A draft line
+    // stays open to staff (the onboarding review).
+    const onCurrentMenu =
+      !MENU_PRICE_FIELDS.has(dto.fieldName) && user.restaurantId
+        ? await this.menusService.lineIsOnCurrentMenu(id, user.restaurantId)
+        : false;
+    if (MENU_PRICE_FIELDS.has(dto.fieldName) || onCurrentMenu) {
       if (!user.userId || !user.restaurantId) {
         throw new ForbiddenException(
           "A price correction names the person and the house, and this session names neither. Nothing was changed.",
@@ -172,7 +180,7 @@ export class MenusController {
       await this.organizations.assertCanManageRestaurant(
         user.userId,
         user.restaurantId,
-        "correct a price on the menu",
+        MENU_PRICE_FIELDS.has(dto.fieldName) ? "correct a price on the menu" : "correct a line on the current menu",
       );
     }
     return this.menusService.reviewMenuItem(

@@ -1776,6 +1776,41 @@ export class MenusService {
   }
 
   /**
+   * Whether a menu line sits on the house's CURRENT menu. The controller asks
+   * before a non-price correction: renaming a current-menu line also renames the
+   * linked inventory good house-wide, so it is an owner's or a manager's act;
+   * a draft line stays open to staff for the onboarding review. An unknown line
+   * is false (reviewMenuItem answers its 404); an unreadable one is said.
+   */
+  async lineIsOnCurrentMenu(menuItemId: string, restaurantId: string): Promise<boolean> {
+    const { data: line, error } = await this.dbService.supabase
+      .from("menu_items")
+      .select("menu_id")
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The menu line could not be looked up just now, so the correction was not saved. Nothing was changed. Try again (${error.message}).`,
+      );
+    }
+    const menuId = (line as { menu_id?: string } | null)?.menu_id;
+    if (!menuId) return false;
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("status")
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (menuErr) {
+      throw new InternalServerErrorException(
+        `The line's menu could not be looked up just now, so the correction was not saved. Nothing was changed. Try again (${menuErr.message}).`,
+      );
+    }
+    return (menu as { status?: string } | null)?.status === "active";
+  }
+
+  /**
    * Applies a manager's inline correction to one menu_items field.
    *
    * The edit takes effect immediately for this restaurant's own inventory
