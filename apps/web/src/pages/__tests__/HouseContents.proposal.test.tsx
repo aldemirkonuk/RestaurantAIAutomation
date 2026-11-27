@@ -68,7 +68,7 @@ beforeEach(() => {
   sessionStorage.clear()
   setVisibility('visible')
   h.getOnboardingProgress.mockResolvedValue({ vendor_added: false, next_steps: { money_set: true } })
-  h.houseCurrency.mockResolvedValue(null)
+  h.houseCurrency.mockResolvedValue({ readable: true, code: 'EUR', country: 'DE' })
   h.matchVendorCatalogue.mockResolvedValue([])
   h.detail.mockResolvedValue(status('needs_review'))
   h.canonical.mockResolvedValue(canonical('Metro Gross'))
@@ -100,9 +100,12 @@ describe('/house: the last invoice proposes its vendor', () => {
     expect(screen.getByText('Reading the seller off your invoice…')).toBeInTheDocument()
     expect(h.canonical).not.toHaveBeenCalled()
     await beat(4000)
+    await beat(0) // the house's country is read before the catalogue is asked
     expect(screen.getByText(/From your invoice of 12 November 2026:/)).toBeInTheDocument()
     const offer = screen.getByRole('button', { name: 'Make Metro Gross your vendor' })
     expect(offer).toHaveClass('min-h-11')
+    // Asked inside the house's own country: another country's 'Metro' is never offered.
+    expect(h.matchVendorCatalogue).toHaveBeenCalledWith('Metro Gross', undefined, 'DE')
     expect(h.addProviderFromCatalogue).not.toHaveBeenCalled()
     expect(h.addCustomProvider).not.toHaveBeenCalled()
     fireEvent.click(offer)
@@ -111,7 +114,7 @@ describe('/house: the last invoice proposes its vendor', () => {
     expect(h.addCustomProvider).not.toHaveBeenCalled()
   })
 
-  it('a weak catalogue hit is not offered; the seller fills the vendor box and takes the focus', async () => {
+  it('a weak catalogue hit is not offered; the seller fills the vendor box and takes the focus when nothing holds it', async () => {
     vi.useFakeTimers()
     h.matchVendorCatalogue.mockResolvedValue([{ ...metro, name_similarity: 0.3 }])
     keep('h1')
@@ -122,7 +125,58 @@ describe('/house: the last invoice proposes its vendor', () => {
     const box = screen.getByLabelText('Vendor') as HTMLInputElement
     expect(box.value).toBe('Metro Gross')
     expect(document.activeElement).toBe(box)
+    // The prefill does not open the typeahead with the rows the proposal just declined.
+    h.matchVendorCatalogue.mockClear()
+    await beat(400)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(h.matchVendorCatalogue).not.toHaveBeenCalled()
     expect(h.addCustomProvider).not.toHaveBeenCalled()
+  })
+
+  it('a prefill that lands while the owner types elsewhere neither takes the focus nor changes what they type', async () => {
+    vi.useFakeTimers()
+    h.detail.mockResolvedValueOnce(status('extracting')).mockResolvedValue(status('needs_review'))
+    h.matchVendorCatalogue.mockResolvedValue([])
+    keep('h1')
+    await page()
+    await beat(0)
+    const email = screen.getByLabelText(/Their email/i) as HTMLInputElement
+    email.focus()
+    fireEvent.change(email, { target: { value: 'orders@' } })
+    await beat(4000)
+    await beat(0)
+    await beat(0)
+    expect(document.activeElement).toBe(email)
+    expect((screen.getByLabelText('Vendor') as HTMLInputElement).value).toBe('Metro Gross')
+    expect(email.value).toBe('orders@')
+  })
+
+  it('a vendor the owner already typed is kept: the prefill leaves the box alone', async () => {
+    vi.useFakeTimers()
+    h.detail.mockResolvedValueOnce(status('extracting')).mockResolvedValue(status('needs_review'))
+    h.matchVendorCatalogue.mockResolvedValue([])
+    keep('h1')
+    await page()
+    await beat(0)
+    const box = screen.getByLabelText('Vendor') as HTMLInputElement
+    fireEvent.change(box, { target: { value: 'My own' } })
+    await beat(4000)
+    await beat(0)
+    await beat(0)
+    expect(box.value).toBe('My own')
+  })
+
+  it('with the house country unknown, no catalogue row is offered: the seller only prefills the box', async () => {
+    vi.useFakeTimers()
+    h.houseCurrency.mockResolvedValue(null)
+    h.matchVendorCatalogue.mockResolvedValue([metro])
+    keep('h1')
+    await page()
+    await beat(0)
+    await beat(0)
+    expect(screen.queryByRole('button', { name: /your vendor$/ })).not.toBeInTheDocument()
+    expect((screen.getByLabelText('Vendor') as HTMLInputElement).value).toBe('Metro Gross')
+    expect(h.matchVendorCatalogue).not.toHaveBeenCalled()
   })
 
   it('names the money only from the extracted currency, never from the row column', async () => {
