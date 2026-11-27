@@ -1,7 +1,10 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -9,6 +12,7 @@ import { DatabaseService } from "../database/database.service";
 import { readHouseZone, type HouseZone } from "../common/house-day";
 import type {
   MailMessage,
+  MailNoReplyAnswer,
   MailOrderRef,
   MailPeoplePage,
   MailPersonRow,
@@ -61,8 +65,18 @@ function emptyThread(key: string): MailThreadPage {
     order: null,
     messages: [],
     before: null,
+    waiting: false,
   };
 }
+
+/** Said to anyone who is not the house's owner or manager. */
+export const NO_REPLY_NOT_YOURS =
+  "Only the house's owner or a manager can say a letter needs no reply.";
+export const NO_REPLY_NOT_FOUND = "That letter is not in this house's mail.";
+export const NO_REPLY_NOT_RECEIVED =
+  "Only a letter the house received can be marked as needing no reply.";
+export const NO_REPLY_FAILED =
+  "The mark could not be saved just now, so nothing changed. Try again.";
 
 @Injectable()
 export class MailService {
@@ -296,13 +310,73 @@ export class MailService {
             rawDeletedAt: m.raw_deleted_at ?? null,
             door: mailDoorOf(m),
             automatic: m.automatic === true,
+            noReplyMarkedAt:
+              typeof m.no_reply_marked_at === "string"
+                ? m.no_reply_marked_at
+                : null,
           }),
         ),
       before:
         rows.length > MAIL_THREAD_PAGE && oldest
           ? encodeMailCursor(oldest.at, oldest.id)
           : null,
+      // Every row carries the same thread-wide answer; the newest is read.
+      waiting: head.thread_waiting === true,
     };
+  }
+
+  /**
+   * "This letter needs no reply" (r28 mail gap 4), or taking that back. Only
+   * the house's owner or manager may: the same line as the reply acts. The SQL
+   * decides what may be marked (a letter of THIS house that it received) and
+   * the house is the token's, never the request's. A mark settles the letter
+   * and every earlier one of its thread; a later letter waits again.
+   */
+  async setNoReply(
+    houseId: string,
+    callerRole: string | null | undefined,
+    userId: string | null | undefined,
+    letterId: unknown,
+    marked: boolean,
+  ): Promise<MailNoReplyAnswer> {
+    if (withholdsHouseLetters(callerRole)) {
+      throw new ForbiddenException(NO_REPLY_NOT_YOURS);
+    }
+    const id = typeof letterId === "string" ? letterId.trim().toLowerCase() : "";
+    if (!UUID_RE.test(id)) {
+      throw new BadRequestException(NO_REPLY_NOT_FOUND);
+    }
+    const { data, error } = marked
+      ? await this.db.rpc("mail_letter_mark_no_reply", {
+          p_restaurant_id: houseId,
+          p_conversation_id: id,
+          p_marked_by:
+            typeof userId === "string" && UUID_RE.test(userId) ? userId : null,
+        })
+      : await this.db.rpc("mail_letter_unmark_no_reply", {
+          p_restaurant_id: houseId,
+          p_conversation_id: id,
+        });
+    if (error) {
+      this.logger.error(`mail no-reply mark failed: ${error.message}`);
+      throw new ServiceUnavailableException(NO_REPLY_FAILED);
+    }
+    const outcome = Array.isArray(data) ? data[0] : data;
+    switch (outcome) {
+      case "marked":
+        return { id, marked: true };
+      case "unmarked":
+      case "not_marked":
+        return { id, marked: false };
+      case "not_found":
+        throw new NotFoundException(NO_REPLY_NOT_FOUND);
+      case "not_received":
+        throw new ConflictException(NO_REPLY_NOT_RECEIVED);
+      default:
+        // An answer this code does not know is not a success.
+        this.logger.error(`mail no-reply mark: unknown outcome ${String(outcome)}`);
+        throw new ServiceUnavailableException(NO_REPLY_FAILED);
+    }
   }
 
   async summary(
