@@ -63,6 +63,7 @@ export const mockAuthValue: AuthContextType = {
   setActiveRestaurantId: async () => true,
   login: noop,
   register: noop,
+  refreshUser: async () => true,
   registerAccount: async () => ({ detailsLoaded: true }),
   registerAccountWithGoogle: async () => ({ detailsLoaded: true }),
   createFirstHouse: async () => ({

@@ -260,6 +260,13 @@ export interface AuthContextType {
    */
   logout: () => Promise<boolean>;
   refreshToken: () => Promise<void>;
+  /**
+   * Read `/auth/me` again for the session already stored, and set the user.
+   * True when it read; false when there is no stored session or the read
+   * failed again (429, network). For a page that holds a session whose first
+   * read failed, e.g. /verify-email after an account was created.
+   */
+  refreshUser: () => Promise<boolean>;
   refreshBranches: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -883,6 +890,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    if (!localStorage.getItem("accessToken")) return false;
+    try {
+      const userResponse = await api.get("/api/v1/auth/me");
+      setUser(
+        userFrom(userResponse.data.user, localStorage.getItem("accessToken")),
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const registerAccount = useCallback(
     async (data: RegisterAccountData) => {
       try {
@@ -1183,6 +1203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearError = useCallback(() => setError(null), []);
 
   const value: AuthContextType = {
+    refreshUser,
     user,
     loading,
     error,
