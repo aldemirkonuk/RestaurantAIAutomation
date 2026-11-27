@@ -96,6 +96,18 @@ describe('Sidebar — Get started is for the people who run setup', () => {
     expect(screen.getByText('2/4')).toBeInTheDocument()
   })
 
+  // r36 onboarding gap 12: "No team yet" settles the team step, as the
+  // panel counts it.
+  it('an owner who answered "No team yet" counts the team step as done', () => {
+    role = 'owner'
+    progress = { ...unfinished, team_member_invited: false, no_team_yet: true }
+    renderSidebar()
+    expect(screen.getByText('2/4')).toBeInTheDocument()
+    progress = { ...unfinished, team_member_invited: false, no_team_yet: false }
+    renderSidebar()
+    expect(screen.getByText('1/4')).toBeInTheDocument()
+  })
+
   it('a manager who put the checklist away sees Learn & Help', () => {
     role = 'manager'
     progress = { ...unfinished, checklist_dismissed: true }

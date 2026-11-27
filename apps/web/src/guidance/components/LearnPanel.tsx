@@ -1,4 +1,6 @@
 import { createPortal } from 'react-dom'
+import { useContext, useState } from 'react'
+import { QueryClientContext } from '@tanstack/react-query'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -11,7 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import type { RefObject } from 'react'
-import type { OnboardingProgress } from '../../services/api/menus'
+import { updateOnboardingProgress, type OnboardingProgress } from '../../services/api/menus'
 import { cn } from '../../lib/utils'
 import { useGuidanceOptional } from '../GuidanceProvider'
 import { PAGE_TOUR_IDS, PAGE_TOUR_ROUTES, type PageTourId } from '../types'
@@ -71,12 +73,36 @@ export function LearnPanel({
     onClose()
   }
 
-  const tasks = [
+  // "No team yet" (r36 onboarding gap 12): a house run by its owner alone
+  // never finished setup, which waited for an invite. Saved here, not
+  // through a prop, so the Sidebar and the shell's rail both offer it.
+  const queryClient = useContext(QueryClientContext)
+  const [noTeamSaving, setNoTeamSaving] = useState<'idle' | 'saving' | 'failed'>('idle')
+  const sayNoTeamYet = async () => {
+    setNoTeamSaving('saving')
+    try {
+      await updateOnboardingProgress({ no_team_yet: true })
+      setNoTeamSaving('idle')
+      await queryClient?.invalidateQueries({ queryKey: ['onboarding-progress'] })
+    } catch {
+      setNoTeamSaving('failed')
+    }
+  }
+  const noTeamYet = !progress?.team_member_invited && progress?.no_team_yet === true
+
+  const tasks: Array<{
+    id: string
+    label: string
+    done: boolean
+    note?: string
+    cta: null | { label: string; onClick: () => void }
+    alt?: { label: string; onClick: () => void; busy: boolean; failed: boolean }
+  }> = [
     {
       id: 'account',
       label: 'Create your account',
       done: true,
-      cta: null as null | { label: string; onClick: () => void },
+      cta: null,
     },
     // Done = a CURRENT menu (OB-1: a read menu kept as a draft gives no
     // stock and no prices). A read-but-not-current menu names that step and
@@ -121,7 +147,10 @@ export function LearnPanel({
     {
       id: 'team',
       label: 'Invite a team member',
-      done: !!progress?.team_member_invited,
+      done: !!progress?.team_member_invited || noTeamYet,
+      ...(noTeamYet
+        ? { note: 'You said there is no team yet. Invite someone in Settings › Team when they join.' }
+        : {}),
       cta: {
         label: 'Send Invite',
         onClick: () => {
@@ -129,6 +158,17 @@ export function LearnPanel({
           onClose()
         },
       },
+      // Only offered when the gateway knows the answer.
+      ...(progress && 'no_team_yet' in progress
+        ? {
+            alt: {
+              label: 'No team yet',
+              onClick: () => void sayNoTeamYet(),
+              busy: noTeamSaving === 'saving',
+              failed: noTeamSaving === 'failed',
+            },
+          }
+        : {}),
     },
   ]
 
@@ -338,6 +378,9 @@ export function LearnPanel({
                   >
                     {task.label}
                   </p>
+                  {task.done && task.note && (
+                    <p className="text-xs text-gray-500 mt-0.5">{task.note}</p>
+                  )}
                   {!task.done && task.cta && (
                     <button
                       onClick={task.cta.onClick}
@@ -345,6 +388,23 @@ export function LearnPanel({
                     >
                       {task.cta.label} →
                     </button>
+                  )}
+                  {!task.done && task.alt && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={task.alt.onClick}
+                        disabled={task.alt.busy}
+                        className="ml-3 text-xs text-gray-500 hover:text-gray-700 font-medium mt-0.5 disabled:opacity-60"
+                      >
+                        {task.alt.busy ? 'Keeping your answer…' : task.alt.label}
+                      </button>
+                      {task.alt.failed && (
+                        <p role="alert" className="text-xs text-red-600 mt-0.5">
+                          Your answer was not kept. Try again.
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

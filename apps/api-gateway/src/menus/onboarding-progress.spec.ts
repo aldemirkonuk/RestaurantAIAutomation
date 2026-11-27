@@ -315,6 +315,119 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
     expect(a.completed_at).toBeNull();
   });
 
+  // r36 onboarding gap 12.
+  describe("\"No team yet\" settles the team step while the house has no invite", () => {
+    const noInvite = () => {
+      const tables = twoHouses();
+      tables.organization_invites = [];
+      return tables;
+    };
+
+    it("with no answer and no invite, setup is not finished", async () => {
+      const a = await serviceOn(noInvite()).service.getOnboardingProgress("u-1", houseA);
+      expect(a.team_member_invited).toBe(false);
+      expect(a.no_team_yet).toBe(false);
+      expect(a.completed_at).toBeNull();
+    });
+
+    it("the person's answer finishes it, at the later of the answer and the other steps", async () => {
+      const tables = noInvite();
+      tables.user_onboarding_progress[0].no_team_yet_at = "2026-01-05T00:00:00+00:00";
+      const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+      expect(a.no_team_yet).toBe(true);
+      expect(a.team_member_invited).toBe(false);
+      expect(a.completed_at).toBe("2026-01-05T00:00:00+00:00");
+      tables.user_onboarding_progress[0].no_team_yet_at = "2025-12-01T00:00:00+00:00";
+      const b = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+      // The supplier came last (2026-01-02).
+      expect(b.completed_at).toBe("2026-01-02T00:00:00+00:00");
+    });
+
+    it("the answer never stands in for the supplier", async () => {
+      const tables = noInvite();
+      tables.user_onboarding_progress[0].no_team_yet_at = "2026-01-05T00:00:00+00:00";
+      tables.providers = [];
+      expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).completed_at).toBeNull();
+    });
+
+    it("an invite, once there, is the team step: the answer is no longer said and the invite's time counts", async () => {
+      const tables = twoHouses();
+      tables.user_onboarding_progress[0].no_team_yet_at = "2026-01-09T00:00:00+00:00";
+      const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+      expect(a.team_member_invited).toBe(true);
+      expect(a.no_team_yet).toBe(false);
+      expect(a.completed_at).toBe("2026-01-03T00:00:00+00:00");
+    });
+
+    it("another person's answer, or one taken back, settles nothing", async () => {
+      const tables = noInvite();
+      tables.user_onboarding_progress.push({ id: "uop-2", user_id: "u-2", restaurant_id: houseA, no_team_yet_at: "2026-01-05T00:00:00+00:00" });
+      const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+      expect(a.no_team_yet).toBe(false);
+      expect(a.completed_at).toBeNull();
+      tables.user_onboarding_progress[0].no_team_yet_at = null;
+      expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).no_team_yet).toBe(false);
+      // A person with no row of their own reads no one else's answer.
+      tables.user_onboarding_progress = [tables.user_onboarding_progress[1]];
+      const invitee = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+      expect(invitee.no_team_yet).toBe(false);
+      expect(invitee.completed_at).toBeNull();
+    });
+
+    it("an answer that cannot be read is no answer, and the setup still answers", async () => {
+      const tables = noInvite();
+      tables.user_onboarding_progress[0].no_team_yet_at = "2026-01-05T00:00:00+00:00";
+      const { service } = serviceOn(tables);
+      const db = (service as any).dbService.supabase;
+      const from = db.from;
+      let rows = 0;
+      db.from = (table: string) => {
+        // The person's row is read twice: the setup row, then the answer.
+        if (table === "user_onboarding_progress" && ++rows === 2) throw new Error("column does not exist");
+        return from(table);
+      };
+      const a = await service.getOnboardingProgress("u-1", houseA);
+      expect(a.no_team_yet).toBe(false);
+      expect(a.completed_at).toBeNull();
+      expect(a.activated).toBe(true);
+    });
+
+    it("PATCH {no_team_yet:true} stamps the person's own row, and false takes it back", async () => {
+      const tables = noInvite();
+      const { service, writes } = serviceOn(tables);
+      const said = await service.updateOnboardingProgress("u-1", houseA, { no_team_yet: true });
+      expect(writes).toHaveLength(1);
+      expect(writes[0].table).toBe("user_onboarding_progress");
+      expect(Object.keys(writes[0].value)).toEqual(["no_team_yet_at"]);
+      expect(typeof writes[0].value.no_team_yet_at).toBe("string");
+      expect(said.no_team_yet).toBe(true);
+      expect(said.completed_at).toBe(tables.user_onboarding_progress[0].no_team_yet_at);
+      const back = await service.updateOnboardingProgress("u-1", houseA, { no_team_yet: false });
+      expect(writes[1].value).toEqual({ no_team_yet_at: null });
+      expect(back.no_team_yet).toBe(false);
+      expect(back.completed_at).toBeNull();
+    });
+
+    it("a person with no row gets one in the session's house, and a failed write is said in words", async () => {
+      const tables = noInvite();
+      tables.user_onboarding_progress = [];
+      const { service, writes } = serviceOn(tables);
+      await service.updateOnboardingProgress("owner-2", houseA, { no_team_yet: true });
+      expect(writes.map((w) => w.kind)).toEqual(["update", "insert"]);
+      expect(writes[1].value).toMatchObject({ user_id: "owner-2", restaurant_id: houseA });
+      const failing = serviceOn(noInvite(), {}, { user_onboarding_progress: { code: "42501", message: "permission denied" } });
+      failing.tables.user_onboarding_progress = [];
+      await expect(
+        failing.service.updateOnboardingProgress("owner-3", houseA, { no_team_yet: true }),
+      ).rejects.toThrow(/"No team yet" was not kept: permission denied/);
+    });
+
+    it("an answer from a session in no house is a 404 said in words", async () => {
+      const { service } = serviceOn(noInvite());
+      await expect(service.updateOnboardingProgress("u-1", undefined, { no_team_yet: true })).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   it("putting the checklist away with no row writes one row in the session's house", async () => {
     const tables = twoHouses();
     tables.user_onboarding_progress = [];
