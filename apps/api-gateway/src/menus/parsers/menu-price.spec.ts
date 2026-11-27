@@ -118,3 +118,21 @@ describe("readMenuPrice: a price the price column cannot hold gets no amount (r5
     expect(readMenuPrice(raw)).toEqual({ amount, raw, reason: null });
   });
 });
+
+describe("readMenuPrice: a minus is refused by ONE rule, not two applied in turn (integration 2026-11-27)", () => {
+  it("the source returns 'negative' from one place only", () => {
+    // #1774 (a leading minus) and #2098 (a dash touching the number) each added a rule that
+    // returns 'negative'; run one after the other they disagree on nothing but order. One rule.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const src = readFileSync(`${__dirname}/menu-price.ts`, "utf8");
+    expect(src.match(/none\(raw, "negative"\)/g)).toHaveLength(1);
+  });
+
+  it.each(["-45", "−45", "-₺45", "- 45", "–45", "Glass –12", "-12 / 45"])("%s is negative", (raw) => {
+    expect(readMenuPrice(raw)).toMatchObject({ amount: null, reason: "negative" });
+  });
+
+  it.each([["45-", 45], ["45,-", 45], ["Glass – 12", 12]])("%s is still read", (raw, amount) => {
+    expect(readMenuPrice(raw)).toMatchObject({ amount, reason: null });
+  });
+});

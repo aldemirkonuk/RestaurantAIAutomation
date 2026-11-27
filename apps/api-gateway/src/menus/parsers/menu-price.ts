@@ -57,27 +57,29 @@ export function readMenuPrice(input: string): MenuPriceRead {
   return doesNot ? none(read.raw, doesNot) : read;
 }
 
+/** The one negative rule: see `readMenuPriceAsWritten`. */
+function isNegative(raw: string): boolean {
+  const at = raw.search(/\d/);
+  if (at < 0) return false;
+  return /^[-\u2212]\s*\D{0,3}$|[-\u2212\u2013]\p{Sc}?$/u.test(raw.slice(0, at));
+}
+
 function readMenuPriceAsWritten(input: string): MenuPriceRead {
   const raw = (input ?? "").trim();
   if (!raw) return none(raw, "empty");
 
-  // A minus in front (also after a money mark's slot: `-$45`) is a discount
-  // or a credit, never a price. A mark behind (`45-`, `45,-`) is only the
-  // way a menu writes a whole amount, and is still read.
-  if (/^[-\u2212]\s*\D{0,3}\d/.test(raw)) return none(raw, "negative");
+  // A minus is a discount or a credit, never a price: in front of the cell (also
+  // after a money mark's slot: `-$45`, and spaced: `- 45`), or touching the number
+  // or the currency mark before it (hyphen, U+2212, en dash). ONE rule, decided on
+  // the text before the first digit. A mark behind (`45-`, `45,-`) is only the way a
+  // menu writes a whole amount, and a spaced dash (`Glass – 12`) is a separator: both read.
+  if (isNegative(raw)) return none(raw, "negative");
 
   // Number tokens: digits joined by single `.` or `,` marks. A space ends a
   // token, so `1 250,50` and `12 / 45` are two numbers, read two ways.
   const tokens = raw.match(/\d(?:[.,]?\d)*/g);
   if (!tokens) return none(raw, "no_number");
   if (tokens.length > 1) return none(raw, "two_readings");
-
-  // A minus (hyphen, U+2212, en dash) touching the number, or the currency
-  // symbol before it, is a negative amount. Never read it as its absolute
-  // value: `-45` is not 45. A spaced dash (`Glass – 12`) is a separator, and
-  // a trailing `45,-` is the Dutch/German "no cents" form, so both still read.
-  if (/[-−–]\p{Sc}?$/u.test(raw.slice(0, raw.search(/\d/))))
-    return none(raw, "negative");
 
   const token = tokens[0];
   const dots = (token.match(/\./g) ?? []).length;
