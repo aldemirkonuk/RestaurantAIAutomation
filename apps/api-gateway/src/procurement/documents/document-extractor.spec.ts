@@ -1,10 +1,12 @@
 import { ConfigService } from "@nestjs/config";
 import {
   DocumentExtractorService,
+  SYSTEM_PROMPT,
   settledEventId,
   stripJsonFence,
 } from "./document-extractor.service";
 import { isDocumentLike } from "./document-intake.service";
+import { snapshotLineRates } from "../canonical/paper-tax-facts";
 import { NfEventRef } from "../../common/model-client/model-client.service";
 
 const svc = new DocumentExtractorService(
@@ -305,6 +307,16 @@ describe("DocumentExtractorService — printed price base (BT-149/BT-150)", () =
     );
     expect(d.lines[0].priceBaseUom).toBeNull();
     expect(d.warnings.join(" ")).toMatch(/magnum/);
+    // Audit D1: the glyph stays on the line, so the cost seam can refuse it.
+    expect(d.lines[0].printed?.priceBaseUom).toBe("magnum");
+  });
+
+  it("keeps an unmapped unit's glyph beside the `each` it counts as (audit D1)", () => {
+    const line = { qty: 2, uom: "kutu", packSize: 12, unitPrice: 264, lineTotal: 528 };
+    const d = svc.normalize(json({ docType: "invoice", lines: [line, { ...line, printed: { uom: "KUTU" } }] }), "test");
+    expect(d.lines.map((l) => [l.uom, l.printed?.uom])).toEqual([["each", "kutu"], ["each", "KUTU"]]);
+    // A unit that maps keeps no invented glyph.
+    expect(svc.normalize(json({ docType: "invoice", lines: [{ ...line, uom: "case" }] }), "test").lines[0].printed).toBeUndefined();
   });
 });
 
@@ -723,5 +735,37 @@ describe("the contract carries what the paper prints (findings 3, 4, 6, 7)", () 
     expect(doc.computedLinesTotal).toBe(1704);
     expect(doc.tieOutDelta).toBe(0);
     expect(doc.tiesOut).toBe(true);
+  });
+});
+
+describe("DocumentExtractorService.normalize — the tax rate printed beside a line (r35)", () => {
+  it("keeps a line's own rate as printed, reads '%01' as 1, and drops a figure that is not a rate, saying so", () => {
+    const d = svc.normalize(
+      json({
+        ...INVOICE,
+        lines: [
+          { ...INVOICE.lines[0], vatRatePercent: 10 },
+          { ...INVOICE.lines[1], vatRatePercent: "%01" },
+          { ...INVOICE.lines[0], vatRatePercent: 120 },
+          { ...INVOICE.lines[0] },
+        ],
+      }),
+      "test",
+    );
+    expect(d.lines.map((l) => l.vatRatePercent)).toEqual([10, 1, undefined, undefined]);
+    expect("vatRatePercent" in d.lines[3]).toBe(false);
+    expect(d.warnings).toContain("Line 3: a tax rate of 120 % is not a rate — it was not kept.");
+    // What intake stores as `extracted` is what the landed cost reads back.
+    expect([...snapshotLineRates(JSON.parse(JSON.stringify(d))).entries()]).toEqual([
+      [1, 10],
+      [2, 1],
+    ]);
+  });
+
+  it("asks the model for the rate printed on the line, and never for one worked out", () => {
+    const prompt = SYSTEM_PROMPT;
+    expect(prompt).toContain('"vatRatePercent":null');
+    expect(prompt).toMatch(/vatRatePercent: the tax rate printed ON THE LINE ITSELF/);
+    expect(prompt).toMatch(/never work one out from the amounts/);
   });
 });
