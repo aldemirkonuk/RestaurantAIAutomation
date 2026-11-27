@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { till, daysBetween, type TillWindow } from './rp-registers-trade';
 import { planCombo } from './rp-combo';
+import type { Grain } from './rp-grain';
 
 // 90 house days to Fri 2026-11-27, every one rang up 7 checks for 700.
 const span = daysBetween('2026-08-30', '2026-11-27');
@@ -27,7 +28,7 @@ const raw = (extra: object = {}) => ({
   ...extra,
 });
 const read = (r: unknown) => till.select(r) as TillWindow;
-const keys = (grain?: string, extra: object = {}) =>
+const keys = (grain?: Grain, extra: object = {}) =>
   till.view(read(raw(extra)), { days: 90, currency: 'TRY', ...(grain ? { grain } : {}) }).cats?.measures?.map((m) => m.key);
 
 describe('the 7-day average is a Day-grain measure only', () => {
