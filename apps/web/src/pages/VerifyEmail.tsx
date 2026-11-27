@@ -9,7 +9,7 @@ import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
-import { tokenHouse } from '../lib/houseMemory'
+import { tokenClaims, tokenHouse } from '../lib/houseMemory'
 import { afterVerifyIn } from '../lib/afterVerifyIn'
 import {
   CODE_REFUSAL_SENTENCE,
@@ -27,6 +27,10 @@ import {
 } from '../lib/verificationMail'
 
 type SessionPair = { accessToken: string; refreshToken: string }
+
+const POLL_FIRST_MS = 5_000
+const POLL_SLOWEST_MS = 30_000
+const POLL_GIVE_UP_MS = 10 * 60_000
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -123,13 +127,23 @@ export function VerifyEmail() {
   // and after a reload it had no code box, no way on, and a Resend that the
   // gateway answers 409. Once the house says the address is verified, this
   // tab moves on by itself through the same finish as the link and the code.
-  // Only this page's own session is used: the pair already stored here.
+  // Only a session of the person waiting here is used: the pair already
+  // stored, and only when its token names this tab's own user. Another tab can
+  // store a different account's pair, and that one must neither be moved on
+  // with nor be reported as this address verified.
   const movedOn = useRef(false)
   const moveOnWithThisSession = () => {
     if (movedOn.current || verified) return
     const accessToken = localStorage.getItem('accessToken')
     const refreshToken = localStorage.getItem('refreshToken')
     if (!accessToken || !refreshToken) return
+    const storedFor = tokenClaims(accessToken)?.sub
+    if (!user?.userId || storedFor !== user.userId) {
+      setError(
+        'You signed in to a different account in another tab. This one is still waiting: sign in to it again to finish verifying.',
+      )
+      return
+    }
     movedOn.current = true
     void finishVerified({ accessToken, refreshToken })
   }
@@ -140,11 +154,16 @@ export function VerifyEmail() {
   }, [verifiedElsewhere])
 
   // While this tab waits (signed in, no link, not verified), it asks again
-  // when it is looked at, and every 30 s while it is shown.
+  // when it is looked at, when another tab stores a session, and on a timer:
+  // first after 5 s, then slower (x1.5, never past 30 s), and it gives up the
+  // timer after 10 minutes. A hidden tab asks nothing. No motion is added.
   const waiting = !token && !loading && Boolean(user) && user?.emailVerified !== true && !verified
   useEffect(() => {
     if (!waiting) return
     let live = true
+    const began = Date.now()
+    let delay = POLL_FIRST_MS
+    let timer: number | undefined
     const ask = async () => {
       if (!live || document.visibilityState === 'hidden') return
       try {
@@ -154,15 +173,29 @@ export function VerifyEmail() {
         // Not read just now: the tab keeps waiting, and says nothing new.
       }
     }
+    const tick = () => {
+      void ask()
+      delay = Math.min(delay * 1.5, POLL_SLOWEST_MS)
+      schedule()
+    }
+    const schedule = () => {
+      if (Date.now() - began + delay > POLL_GIVE_UP_MS) return
+      timer = window.setTimeout(tick, delay)
+    }
     const onShown = () => void ask()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'accessToken' || e.key === 'refreshToken') void ask()
+    }
     window.addEventListener('focus', onShown)
+    window.addEventListener('storage', onStorage)
     document.addEventListener('visibilitychange', onShown)
-    const timer = window.setInterval(onShown, 30_000)
+    schedule()
     return () => {
       live = false
       window.removeEventListener('focus', onShown)
+      window.removeEventListener('storage', onStorage)
       document.removeEventListener('visibilitychange', onShown)
-      window.clearInterval(timer)
+      window.clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting])

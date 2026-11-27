@@ -14,7 +14,8 @@ const h = vi.hoisted(() => ({
   post: vi.fn(),
   toastSuccess: vi.fn(),
   auth: {
-    user: { email: 'owner@house.test', emailVerified: false } as null | {
+    user: { userId: 'u1', email: 'owner@house.test', emailVerified: false } as null | {
+      userId: string
       email: string
       emailVerified: boolean
     },
@@ -53,7 +54,7 @@ beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   localStorage.setItem('mudavym.design.public', 'true')
-  h.auth.user = { email: 'owner@house.test', emailVerified: false }
+  h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: false }
   h.auth.loading = false
 })
 afterEach(() => {
@@ -69,7 +70,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('QA r19 (#914): an account already verified is never told its mail did not leave', () => {
-    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: true }
     sessionStorage.setItem(KEY, kept('not_sent'))
     mount()
     expect(screen.queryByText(/We could not send the verification email/)).not.toBeInTheDocument()
