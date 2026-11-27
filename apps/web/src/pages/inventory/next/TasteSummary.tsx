@@ -4,23 +4,15 @@
  * card. It reads the same query as the card (same key), so the two never
  * disagree and the good is read once.
  *
- * Rules: nothing when no profile exists (and nothing while it is being read,
+ * Rules: no sentence when no profile exists (its slot stays held, r101; and nothing while it is being read,
  * or when taste notes are not switched on: the card says so); a failed read
  * says so in words and shows nothing as known (ADR 0020). No number from the
  * 0..10 scale, no confidence figure (ADR 0104).
  */
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getTaste, tasteKeys, type ProvKind, type TasteRead } from '../../../services/api/taste';
 import { Glyph } from './TasteCard';
 import { PROV_MARK, leadLine } from './taste-words';
-
-/** The sheet's slide is 300 ms: an empty answer gives its room back only after it, so the two never overlap (r97 M6). */
-export const HOLD_GRACE_MS = 340;
-/** The room is given back over this long (grid/height ease, not a jump). */
-export const HOLD_COLLAPSE_MS = 200;
-
-const reducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const TASTE_LINE_FAILED = 'How it tastes could not be read just now.';
 
@@ -35,10 +27,9 @@ export interface TasteSummaryProps {
    * 'foot' (default) is the line under the acts. 'head' is the phone's copy under the
    * header line, above the cards: CSS shows exactly one of the two, the other is
    * display:none (out of the tab order and the reading order). Both read the same query.
-   * While the read is pending either copy holds its one-line slot (44 px head, 23 px foot) so
-   * what is under it does not move; an answer with nothing to say gives the room back over
-   * 200 ms, started no earlier than 340 ms after the line mounted (after the sheet's slide).
-   * Under reduced motion the room goes at that time with no tween.
+   * Either copy holds its one-line slot (44 px head, 23 px foot) while the read is pending and
+   * keeps it when the answer has nothing to say: a stable sheet beats a reclaimed 44 px (r101;
+   * releasing it during the slide still shifted the cards for reduced-motion readers).
    */
   placement?: 'head' | 'foot';
 }
@@ -46,16 +37,6 @@ export interface TasteSummaryProps {
 export default function TasteSummary({ id, restaurantId, open, onOpen, placement = 'foot' }: TasteSummaryProps) {
   const head = placement === 'head';
   const tid = head ? 'taste-line-head' : 'taste-line';
-  const [phase, setPhase] = useState<'grace' | 'collapsing' | 'gone'>('grace');
-  useEffect(() => {
-    const t = setTimeout(() => setPhase(reducedMotion() ? 'gone' : 'collapsing'), HOLD_GRACE_MS);
-    return () => clearTimeout(t);
-  }, []);
-  useEffect(() => {
-    if (phase !== 'collapsing') return;
-    const t = setTimeout(() => setPhase('gone'), HOLD_COLLAPSE_MS);
-    return () => clearTimeout(t);
-  }, [phase]);
   const q = useQuery<TasteRead>({
     queryKey: tasteKeys.subject(restaurantId ?? '', 'good', id),
     queryFn: () => getTaste('good', id, restaurantId ?? undefined),
@@ -72,17 +53,7 @@ export default function TasteSummary({ id, restaurantId, open, onOpen, placement
     if (line) ({ sentence, kinds } = line);
   }
   if (!failed && sentence === null) {
-    if (q.isLoading || phase !== 'gone') {
-      return (
-        <p
-          className={`tc-line tc-line--${placement} tc-line--hold`}
-          aria-hidden="true"
-          data-testid={`${tid}-hold`}
-          data-collapsing={!q.isLoading && phase === 'collapsing' ? 'true' : undefined}
-        />
-      );
-    }
-    return null;
+    return <p className={`tc-line tc-line--${placement} tc-line--hold`} aria-hidden="true" data-testid={`${tid}-hold`} />;
   }
   const said = failed ? TASTE_LINE_FAILED : (sentence as string);
   return (

@@ -1,5 +1,5 @@
 /**
- * r98 (motion needs M6, M8): the taste line holds its slot and gives it back after the sheet's slide;
+ * r98 (motion needs M6, M8): the taste line holds its slot (r101: for good, even with nothing to say);
  * a taste row's "More" opens by height and opacity and "Less" closes the same detail; a drawer card
  * holds its answered height. jsdom has no layout or animation, so the states and the rules (read from
  * the stylesheets) are pinned. Reduced motion draws no tween: the rules say none, and the slot goes at once.
@@ -14,7 +14,7 @@ import type { TasteAxis } from '../../../services/api/taste';
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../services/api/taste', async (orig) => ({ ...(await orig<Record<string, unknown>>()), getTaste: api.get }));
 
-import TasteSummary, { HOLD_COLLAPSE_MS, HOLD_GRACE_MS } from './TasteSummary';
+import TasteSummary from './TasteSummary';
 import TasteCard from './TasteCard';
 
 const css = (f: string) => readFileSync(resolve(__dirname, f), 'utf8');
@@ -40,29 +40,19 @@ describe('the taste line holds its slot (M6)', () => {
     expect(hold.className).toContain('tc-line--foot');
   });
 
-  it('an empty answer keeps the room until the sheet has slid, gives it back over 200 ms, then removes it', async () => {
+  it('an empty answer keeps the slot for good: no timer, no collapse step, with or without reduced motion (r101)', async () => {
     vi.useFakeTimers();
     api.get.mockResolvedValue(empty);
     wrap(<TasteSummary id="i1" restaurantId="r1" open={false} onOpen={() => {}} />);
     await settle();
-    // answered empty at ~0 ms: still held, not collapsing (the slide is running)
+    await act(async () => { vi.advanceTimersByTime(5000); });
     expect(screen.getByTestId('taste-line-hold')).not.toHaveAttribute('data-collapsing');
-    await act(async () => { vi.advanceTimersByTime(HOLD_GRACE_MS - 1); });
-    expect(screen.getByTestId('taste-line-hold')).not.toHaveAttribute('data-collapsing');
-    await act(async () => { vi.advanceTimersByTime(2); });
-    expect(screen.getByTestId('taste-line-hold')).toHaveAttribute('data-collapsing', 'true');
-    await act(async () => { vi.advanceTimersByTime(HOLD_COLLAPSE_MS + 1); });
-    expect(screen.queryByTestId('taste-line-hold')).toBeNull();
-  });
-
-  it('under reduced motion the room goes at the same time with no collapse step', async () => {
-    vi.useFakeTimers();
+    cleanup();
     vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
-    api.get.mockResolvedValue(empty);
-    wrap(<TasteSummary id="i1" restaurantId="r1" open={false} onOpen={() => {}} />);
+    wrap(<TasteSummary id="i1" restaurantId="r1" open={false} onOpen={() => {}} placement="head" />);
     await settle();
-    await act(async () => { vi.advanceTimersByTime(HOLD_GRACE_MS + 1); });
-    expect(screen.queryByTestId('taste-line-hold')).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByTestId('taste-line-head-hold')).toBeInTheDocument();
   });
 
   it('a line with something to say replaces the hold (one on the page, never both)', async () => {
@@ -72,11 +62,19 @@ describe('the taste line holds its slot (M6)', () => {
     expect(screen.queryByTestId('taste-line-hold')).toBeNull();
   });
 
-  it('the stylesheets hold 23 px on the foot, tween the give-back, stop under reduced motion, and a card keeps 94 px', () => {
+  it('the answered foot line is the held slot: one line, 44 px on touch and narrow screens, 23 px otherwise (r101)', () => {
+    const t = css('taste-card.css');
+    const foot = t.slice(t.indexOf('.tc-line--foot {'));
+    expect(foot).toMatch(/\.tc-line--foot \{\s*flex-wrap: nowrap;\s*min-height: 23px;\s*max-height: 23px;/);
+    expect(foot).toMatch(/\.tc-line--foot \.tc-line-btn > span:first-child \{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+    expect(foot).toMatch(/@media \(max-width: 767px\), \(pointer: coarse\) \{\s*\.tc-line--foot,\s*\.tc-line--foot\.tc-line--hold \{\s*min-height: 44px;\s*max-height: 44px;/);
+  });
+
+  it('the stylesheets hold 23 px on the foot and never give the slot back, and a card keeps 94 px', () => {
     const t = css('taste-card.css');
     expect(t).toMatch(/\.tc-line--foot\.tc-line--hold \{\s*min-height: 23px;/);
-    expect(t).toMatch(/\.tc-line--hold \{[^}]*transition: min-height 200ms ease-in-out/);
-    expect(t).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.tc-line--hold \{\s*transition: none;/);
+    expect(t).not.toMatch(/data-collapsing/);
+    expect(t).not.toMatch(/\.tc-line--hold[^{]*\{[^}]*transition/);
     // At every width, the one-column phone sheet included (r98 walk finding 2): no media guard on the hold.
     const drawer = css('item-drawer.css');
     expect(drawer).toMatch(/\n\.ivd-card \{[^}]*min-height: 94px;/);

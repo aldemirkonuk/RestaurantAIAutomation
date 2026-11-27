@@ -246,25 +246,44 @@
   }
 }
 
-/* The held slot of the taste line (TasteSummary.tsx): 23 px on the desktop foot, 44 px on the phone head. An
-   empty answer gives it back over 200 ms (after the sheet's slide); reduced motion gives it back at once. */
+/* The held slot of the taste line (TasteSummary.tsx): 23 px on the desktop foot, 44 px on the phone head. It is
+   kept for a good with no taste answer too: a stable sheet beats a reclaimed 44 px (r101). */
 .tc-line--foot.tc-line--hold {
   min-height: 23px;
   max-height: 23px;
 }
 .tc-line--hold {
   overflow: hidden;
-  transition: min-height 200ms ease-in-out, max-height 200ms ease-in-out, margin 200ms ease-in-out;
 }
-.tc-line--hold[data-collapsing='true'] {
-  min-height: 0;
-  max-height: 0;
-  margin-top: 0;
-  margin-bottom: 0;
+/* The answered foot line is exactly the slot it replaces (r101 walk): one line, cut with an ellipsis like the
+   head copy, never taller than the hold. On a tablet or a touch screen the tap target is 44 px, so the hold and
+   the answer are both 44 px there. */
+.tc-line--foot {
+  flex-wrap: nowrap;
+  min-height: 23px;
+  max-height: 23px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .tc-line--hold {
-    transition: none;
+.tc-line--foot .tc-line-k {
+  flex: none;
+}
+.tc-line--foot .tc-line-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tc-line--foot .tc-line-btn > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tc-line--foot .tc-marks {
+  flex: none;
+}
+@media (max-width: 767px), (pointer: coarse) {
+  .tc-line--foot,
+  .tc-line--foot.tc-line--hold {
+    min-height: 44px;
+    max-height: 44px;
   }
 }
 
