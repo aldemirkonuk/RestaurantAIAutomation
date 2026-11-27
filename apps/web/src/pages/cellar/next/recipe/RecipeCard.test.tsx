@@ -26,6 +26,7 @@ vi.mock('../../../../services/api/taste', async (orig) => ({ ...(await orig<Reco
 
 import RecipeSheet from './RecipeSheet';
 import { forgetDrafts } from './drafts';
+import { ALLERGEN_KEYS } from './ListAllergens';
 
 const gin: RecipeLine = {
   id: 'l-gin', position: 0, role: 'stocked', inventoryId: GIN, label: 'gin', itemName: 'Plymouth gin', itemKind: 'spirit',
@@ -77,6 +78,52 @@ beforeEach(() => {
 afterEach(() => {
   document.documentElement.removeAttribute('data-print-card');
   house.code = 'GBP';
+});
+
+/**
+ * r109 drinks-2 (DD-r107-40): with item_allergens missing (#2119, schema gap #922) every allergen read fails.
+ * A failed read prints that it failed: never free, never blank, never "none".
+ */
+describe('the card when the allergen read failed', () => {
+  const serving = (whatIsIn: CocktailRecipe['whatIsIn']) =>
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'GBP', country: null, readable: true, reason: null, statedAt: null } };
+      if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: { ...negroni, whatIsIn } };
+      if (url === `/recipes/${RID}/shelf`) return { data: [] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+  const allergenLine = () => Array.from(card().querySelectorAll('p')).map((p) => p.textContent ?? '').find((t) => /allergen/i.test(t));
+
+  it('a failed read prints "Allergens could not be read.", never free, blank or none', async () => {
+    serving({ readable: false, sentence: 'Allergens could not be read just now.' } as never);
+    mount();
+    await screen.findByTestId('recipe-print');
+    expect(allergenLine()).toBe('Allergens could not be read.');
+    expect(card().textContent).not.toMatch(/free of|none recorded|Contains|May contain/i);
+  });
+
+  it('a read with no allergen read at all (an older gateway) prints the same', async () => {
+    serving(null as never);
+    mount();
+    await screen.findByTestId('recipe-print');
+    expect(allergenLine()).toBe('Allergens could not be read.');
+  });
+
+  it('a read whose lines state nothing is not known, never free of the 14', async () => {
+    const notStated = Object.fromEntries(ALLERGEN_KEYS.map((k) => [k, 'not_stated']));
+    serving({ ...negroni.whatIsIn, allergens: notStated, allergensUnstatedBy: [] } as never);
+    mount();
+    await screen.findByTestId('recipe-print');
+    expect(allergenLine()).toBe('Allergens not known: nothing is recorded.');
+    expect(card().textContent).not.toMatch(/free of/i);
+  });
+
+  it('free of the 14 only when every one of the 14 is stated free', async () => {
+    serving({ ...negroni.whatIsIn, allergens: Object.fromEntries(ALLERGEN_KEYS.map((k) => [k, 'free'])), allergensUnstatedBy: [] } as never);
+    mount();
+    await screen.findByTestId('recipe-print');
+    expect(allergenLine()).toBe('Every ingredient states it is free of the 14 allergens.');
+  });
 });
 
 describe('the printable recipe card', () => {

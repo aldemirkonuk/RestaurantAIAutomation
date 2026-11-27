@@ -265,6 +265,21 @@ describe('the cocktail list allergens', () => {
     fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'eggs' } });
     expect(screen.getByTestId(`allergens-${GT}`)).toBeInTheDocument();
   });
+
+  // r109 drinks-2 (DD-r107-40): with item_allergens missing (#2119, schema gap #922) every row's read fails.
+  it('a row whose allergen read failed says so: never free, blank, a dash or "none", and no check hides it', async () => {
+    h.role = 'staff';
+    const recipes = [GT, SOUR, PART];
+    serveWith(withAllergens.map((r) => (recipes.includes(r.cocktailId) ? { ...r, allergens: { readable: false } } : r)));
+    mount();
+    await waitFor(() => expect(text(`allergens-${GT}`)).toBe('Could not be read'));
+    for (const id of recipes) {
+      expect(text(`allergens-${id}`)).toBe('Could not be read');
+      expect(text(`allergens-${id}`)).not.toMatch(/free|none|^—$|^$/i);
+    }
+    fireEvent.change(screen.getByLabelText(/Check an allergen/), { target: { value: 'eggs' } });
+    for (const id of recipes) expect(screen.getByTestId(`allergens-${id}`)).toBeInTheDocument();
+  });
 });
 
 describe('the cocktail list: drinks with no recipe yet (r40)', () => {

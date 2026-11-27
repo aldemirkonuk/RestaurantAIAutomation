@@ -131,6 +131,35 @@ describe('the spec book', () => {
     expect(await screen.findByTestId('book-card')).toHaveTextContent('Allergens could not be read.');
   });
 
+  // r109 drinks-2 (DD-r107-40): with item_allergens missing (#2119, schema gap #922) every drink's read fails.
+  it('when every drink\'s allergen read failed, every page says so: none prints free, blank or "none"', async () => {
+    const failed = cards.map((c) => ({ ...c, allergens: { readable: false } as const }));
+    h.get.mockImplementation(async (url: string) => (url === '/settings/currency' ? { data: { readable: false } } : { data: { drinks: failed } }));
+    mount();
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    const pages = await screen.findAllByTestId('book-card');
+    expect(pages).toHaveLength(4);
+    for (const page of pages) {
+      const said = within(page).getAllByText(/allergen/i).map((p) => p.textContent);
+      expect(said).toEqual(['Allergens could not be read.']);
+      expect(page.textContent).not.toMatch(/free of|none recorded|Contains|May contain/i);
+    }
+  });
+
+  it('a drink whose lines state nothing prints not known, never free of the 14', async () => {
+    const notStated = Object.fromEntries(['gluten', 'milk', 'sulphites'].map((a) => [a, 'not_stated']));
+    h.get.mockImplementation(async (url: string) =>
+      url === '/settings/currency'
+        ? { data: { readable: false } }
+        : { data: { drinks: [card('c1', 'Negroni', 'Aperitivo', { allergens: { readable: true, status: notStated as never, unstatedBy: [] } })] } },
+    );
+    mount();
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    const page = await screen.findByTestId('book-card');
+    expect(page).toHaveTextContent('Allergens not known: nothing is recorded.');
+    expect(page.textContent).not.toMatch(/free of/i);
+  });
+
   it('draws only on paper, one card per page, without animation or transition', () => {
     const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8');
     expect(css).toMatch(/\.cl-print-book \{ display: none; \}/);

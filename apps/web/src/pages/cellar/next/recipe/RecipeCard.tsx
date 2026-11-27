@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { Printer } from 'lucide-react';
 import type { CocktailRecipe } from '../../../../services/api/recipes';
 import { marginPerServe, pourCostShare } from './DrinkCards';
+import { ALLERGEN_KEYS } from './ListAllergens';
 import type { ListTax } from './listTax';
 import type { SayPercent } from './useHousePercent';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -67,14 +68,20 @@ function keepMake(key: string, text: string): void {
 }
 
 /** What the card says of allergens, from what the gateway stated for the saved version. */
+/**
+ * The card's (and the spec book's) allergen sentence. A failed read says so and is never free or blank;
+ * "free of the 14" only when every one of the 14 is stated free (as the list's rule, ListAllergens), so a
+ * recipe whose lines state nothing never prints as allergen-free (r109 drinks-2, DD-r107-40).
+ */
 export function cardAllergens(w: CocktailRecipe['whatIsIn']): string {
   if (!w || !w.readable) return 'Allergens could not be read.';
   const stated = Object.entries(w.allergens).filter(([, s]) => s === 'contains' || s === 'may_contain');
   const unstated = w.allergensUnstatedBy ?? [];
   const parts = stated.map(([a, s]) => `${s === 'contains' ? 'Contains' : 'May contain'} ${a.replace('_', ' ')}`);
   if (unstated.length > 0) parts.push(`Not ruled out: ${[...new Set(unstated)].join(', ')} ${unstated.length === 1 ? 'does' : 'do'} not say`);
-  else if (w.allergensUnstatedBy && stated.length === 0) parts.push('Every ingredient states it is free of the 14 allergens');
-  return parts.length ? `${parts.join('. ')}.` : 'Allergens: none recorded.';
+  else if (w.allergensUnstatedBy && stated.length === 0 && ALLERGEN_KEYS.every((k) => w.allergens[k] === 'free'))
+    parts.push('Every ingredient states it is free of the 14 allergens');
+  return parts.length ? `${parts.join('. ')}.` : 'Allergens not known: nothing is recorded.';
 }
 
 export default function RecipeCard({
