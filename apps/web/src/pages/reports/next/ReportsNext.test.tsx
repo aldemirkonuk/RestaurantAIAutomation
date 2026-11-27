@@ -33,6 +33,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
+import { ranked } from './rp-rank';
 import { DEFAULT_ON, DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
 import { isStrip, STRIP_ROWS } from './rp-strip';
@@ -1800,7 +1801,9 @@ describe('ReportsNext — the restock bars keep their ties (A-070, ADR 0272)', (
       reorderCount: list.length,
       reorderList: list,
     });
-    return spec.view(data, { days: 30 }).cats!.data.map((d) => d.full);
+    // The view hands over every ranked row; the drawing cuts it (r110 g2, rp-rank.ts).
+    const cats = spec.view(data, { days: 30 }).cats!;
+    return ranked(cats, 'high', cats.rank!.cap, 150).series.data.map((d) => d.full);
   };
 
   it('draws every wine tied with the 14th bar, not the first of them by row order', () => {

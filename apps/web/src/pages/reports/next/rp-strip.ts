@@ -7,6 +7,7 @@
  * a register that is loading or refused is neither "empty" nor a line.
  */
 
+import { ranked } from "./rp-rank";
 import { CATALOGUE, graphOrDefault } from "./rp-catalogue";
 import { readsRegister, type ViewCtx } from "./rp-spec";
 import type { AnalysisId, GraphType } from "./rp-sheet";
@@ -112,7 +113,9 @@ export function sparkOf(
   try {
     const view = spec.view(register.data, ctx);
     if (view.say || !view.cats) return null;
-    const values = view.cats.data
+    // A ranking's strip keeps the card's own cut (r110 g2), not every ranked row.
+    const cats = view.cats.rank ? ranked(view.cats, 'high', view.cats.rank.cap, view.cats.rank.cap).series : view.cats;
+    const values = cats.data
       .map((d) => d.value)
       .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
     if (values.length < 2) return null;
