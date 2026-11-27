@@ -453,7 +453,18 @@ describe('chips', () => {
 
   it('Price signals says its count is partial when only the newest settled deliveries were read', () => {
     mock.data = data({
-      rows: [row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true, settledCostsCapped: true })],
+      rows: [
+        row({
+          id: 'up',
+          lastSettledCost: 11.2,
+          previousSettledCost: 10,
+          settledCostsReadable: true,
+          settledCostsCapped: true,
+          // A move counts only when both points name the same tax basis (#2325),
+          // so the row states one. Not in this branch's InvRow yet, hence the cast.
+          ...({ settledCostTaxBasis: 'net' } as unknown as Partial<InvRow>),
+        }),
+      ],
     });
     renderPage();
     const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
