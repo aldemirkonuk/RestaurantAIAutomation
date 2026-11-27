@@ -9,8 +9,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import InventoryTable, { GROUP_PX, ROW_PX, type InventoryTableProps } from './InventoryTable';
 import { type InvRow } from './useInventoryNextData';
 
+const drawsOf = vi.hoisted(() => new Map<string, number>());
 vi.mock('../command/HousePriceCell', () => ({
-  HousePriceCell: ({ bottle }: { bottle: number | null }) => <span data-testid="price-cell">{bottle}</span>,
+  HousePriceCell: ({ bottle, inventoryId }: { bottle: number | null; inventoryId?: string }) => {
+    drawsOf.set(String(inventoryId), (drawsOf.get(String(inventoryId)) ?? 0) + 1);
+    return <span data-testid="price-cell">{bottle}</span>;
+  },
 }));
 vi.mock('./NameThisWine', () => ({ NameHint: () => null }));
 
@@ -185,6 +189,42 @@ describe('the table draws only the rows near the screen', () => {
     await waitFor(() => expect(screen.getByTestId('inv-row-i700')).toBeTruthy());
     const at = Number(screen.getByTestId('inv-row-i700').getAttribute('aria-rowindex'));
     expect(at).toBe(700 + heads + 2);
+  });
+});
+
+describe('a drawn row is redrawn only when its own figures change (r108-3, #2199 on the window)', () => {
+  beforeEach(() => {
+    setPhone(false);
+    drawsOf.clear();
+  });
+  // The same row objects each time, as the page's memoised list hands them.
+  const rows40 = many().slice(0, 40);
+  const mine = () => ({ ...base, canManage: true, rows: rows40 });
+
+  it('a page that hands new function objects each render redraws no row', () => {
+    const { rerender } = render(<InventoryTable {...mine()} />);
+    const first = new Map(drawsOf);
+    expect(first.size).toBeGreaterThan(10);
+    rerender(<InventoryTable {...mine()} onToggle={() => undefined} onPriceChanged={() => undefined} zoneName={() => 'Cellar'} />);
+    expect([...drawsOf].filter(([id, n]) => n !== first.get(id))).toEqual([]);
+  });
+
+  it('opening one good redraws that good and the one it replaces, and no other', () => {
+    const { rerender } = render(<InventoryTable {...mine()} openId="i3" />);
+    const before = new Map(drawsOf);
+    rerender(<InventoryTable {...mine()} openId="i7" />);
+    const redrawn = [...drawsOf].filter(([id, n]) => n !== before.get(id)).map(([id]) => id).sort();
+    expect(redrawn).toEqual(['i3', 'i7']);
+  });
+
+  it('a click still reaches the page\'s newest toggle', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(<InventoryTable {...mine()} onToggle={first} />);
+    rerender(<InventoryTable {...mine()} onToggle={second} />);
+    fireEvent.click(screen.getByTestId('inv-row-i2'));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith('i2');
   });
 });
 
