@@ -292,6 +292,11 @@ export type HouseMoney =
   | { state: 'unstated'; code: null }
   | { state: 'unread'; code: null; pending: boolean };
 
+/** The till's own answer that its takings are kept from this role (r106). */
+function windowWithheld(data: unknown): boolean {
+  return (data as { salesWithheld?: unknown } | null | undefined)?.salesWithheld === true;
+}
+
 export function useReportsNextData(
   tillDays: number,
   setTillDays: (d: number) => void,
@@ -387,16 +392,36 @@ export function useReportsNextData(
       staleTime: 60_000,
     });
 
+  /**
+   * A till the gateway kept from this reader (staff, `salesWithheld`) is kept
+   * whatever the window: the role decides it, not the days. Once a read has
+   * said so for this house and role, a window click keeps that read's key, so
+   * it fires no request and draws no "Reading the last N days" stand-in on a
+   * card holding one sentence (r109, the walk's 425-1520 ms staff switch). It
+   * is asked again when the house or the role moves, or that read stops
+   * saying withheld.
+   */
+  const heldWindow = useRef<{ rid: string; role: string | null; days: number; compare: boolean } | null>(null);
+  const windowKey = (id: AnalysisId, days: number, compare: boolean) => [ROOT, id, rid, days, compare ? 'prior' : null];
+  const hw = heldWindow.current;
+  const win =
+    hw &&
+    hw.rid === rid &&
+    hw.role === activeRole &&
+    active.some((id) => CATALOGUE[id].takesWindow && windowWithheld(qc.getQueryData(windowKey(id, hw.days, hw.compare))))
+      ? { days: hw.days, compare: hw.compare }
+      : { days: tillDays, compare: tillCompare };
+
   const results = useQueries({
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null, spec.takesWindow && tillCompare ? 'prior' : null],
+        queryKey: spec.takesWindow ? windowKey(id, win.days, win.compare) : [ROOT, id, rid, null, null],
         enabled: !!rid && !heldBack.has(id),
         staleTime: 60_000,
         retry: (n: number, e: unknown) => !(e instanceof RegisterWithheld) && n < 1,
         queryFn: async () => {
-          const ctx = { days: tillDays, compare: tillCompare };
+          const ctx = { days: win.days, compare: win.compare };
           if (spec.sources) {
             // A composed register (the bench): each source read once per
             // minute however many cuttings share it; a failed source is null,
@@ -443,6 +468,12 @@ export function useReportsNextData(
         },
       };
     }),
+  });
+
+  active.forEach((id, i) => {
+    const d = results[i]?.data;
+    if (!CATALOGUE[id].takesWindow || d === undefined || !rid) return;
+    heldWindow.current = windowWithheld(d) ? { rid, role: activeRole, ...win } : null;
   });
 
   /**
