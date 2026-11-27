@@ -2154,6 +2154,24 @@ export class DocumentsController {
     }
   }
 
+  @Get(":id/held-costs")
+  @ApiOperation({
+    summary: "Which items on this paper could not be costed, and whether the house's tax basis is why",
+    description:
+      "The items whose landed cost the delivery holds (the lot stays provisional), each with its sentence, and `taxBasisKnown`: false when the house has not said how it treats the tax it pays. Owners and managers only: a cost is desk work. A document that is not this house's is a 404, the same as one that does not exist; an unreadable step is a 500 in words, never an empty list.",
+  })
+  async heldCosts(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    requireUuid(id, "document id");
+    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
+      throw new HttpException(
+        "What a paper's cost is held for is desk work, so it is an owner's or a manager's to read. Ask a manager or an owner of this house.",
+        HttpStatus.FORBIDDEN,
+      );
+    const read = await this.deliveryStock.heldCostsOfDocument(user.restaurantId, id);
+    if (!read.ok) throw new HttpException(read.error, read.status);
+    return read.value;
+  }
+
   @Get(":id/line-mappings")
   @ApiOperation({
     summary: "Who linked which line to which shelf on this document, and when",

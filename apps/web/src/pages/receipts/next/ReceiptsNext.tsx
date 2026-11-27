@@ -151,6 +151,41 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
 }
 
 /**
+ * A paper whose cost is held because the house has not said how it treats tax
+ * says so (r107, DD-r106-23): the lots stay provisional and nothing else on the
+ * page told the reader why. Shown only to who may read it (the gateway refuses
+ * anyone else). A FAILED read says it could not read, never "nothing held".
+ */
+function HeldCostNote({ docId }: { docId: string }) {
+  const { activeRole, user } = useAuth();
+  const mayRead = canSeeCreditLedger(activeRole, user?.role);
+  const q = useQuery({
+    queryKey: ['receipts-next', 'held-costs', docId],
+    queryFn: () => documentsApi.heldCosts(docId),
+    enabled: mayRead,
+    staleTime: 60_000,
+    retry: false,
+  });
+  if (!mayRead) return null;
+  if (q.isError)
+    return (
+      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+        Whether this paper&rsquo;s cost is held could not be read.
+      </p>
+    );
+  if (!q.data || q.data.held.length === 0 || q.data.taxBasisKnown) return null;
+  return (
+    <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+      Tax basis unknown &mdash;{' '}
+      {q.data.held.length === 1
+        ? 'one item on this paper keeps a provisional cost'
+        : `${q.data.held.length} items on this paper keep a provisional cost`}{' '}
+      until the house says how it treats the tax it pays.
+    </p>
+  );
+}
+
+/**
  * RULE 3 — what money this invoice is in, and the house's deliberate change.
  *
  * Founder, 2026-09-06 (batch 63): *"take the houses own currency, but AI needs
@@ -1457,6 +1492,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
           }}
         />
         <PriceMovesNote docId={doc.id} />
+        <HeldCostNote docId={doc.id} />
       </CardPart>
 
       {/*

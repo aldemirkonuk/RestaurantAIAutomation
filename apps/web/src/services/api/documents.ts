@@ -264,6 +264,24 @@ export const documentsApi = {
    * guarantees the timing, and a mint that fails or returns null does NOT
    * verify.
    */
+  /**
+   * Which items on this paper could not be costed (their lots stay provisional),
+   * and whether the house has said how it treats tax (r107, DD-r106-23).
+   * Owners and managers only: anyone else gets a refusal, which the page treats
+   * as "not shown to you", never as "nothing held".
+   */
+  async heldCosts(id: string): Promise<{
+    taxBasisKnown: boolean
+    held: Array<{ deliveryId: string; inventoryId: string; why: string }>
+  }> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/held-costs`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
   async mintVerifySeal(id: string): Promise<string | null> {
     try {
       const { data } = await apiClient.post<{ challenge?: string }>(
