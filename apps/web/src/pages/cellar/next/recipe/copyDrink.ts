@@ -41,7 +41,7 @@ export const copyRefused = (why: string | null) => `Nothing was copied${why ? ` 
 export const COPY_RECIPE_FAILED = 'The drink was made but its recipe was not copied. Open it and add the lines.';
 
 /** Said when a line cannot be carried; nothing is written. */
-export const COPY_CANNOT_CARRY = 'This drink has a line a copy cannot carry yet, so nothing was copied.';
+export const COPY_CANNOT_CARRY = 'This drink has a line a copy cannot carry yet (a kind of line it does not know, or an item that was archived or deleted), so nothing was copied.';
 
 /** The new drink's own row: the source's section, glass, method and garnish, never its price. */
 export function copyFields(src: CopySource): CocktailInput {
@@ -60,6 +60,8 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
   const carried = (l: RecipeLine) =>
     l.role === 'stocked' || l.role === 'untracked' || (l.role === 'made' && Boolean(l.componentId));
   if (!cur.lines.every(carried)) return 'cannot';
+  // The gateway refuses to save a line whose item was archived or deleted until it is relinked, and the drink is POSTed first: refuse here so no recipe-less duplicate is left on the list.
+  if (cur.lines.some((l) => l.role === 'stocked' && l.itemGone)) return 'cannot';
   const body: SaveRecipeBody = {
     expectedVersionId: null,
     yieldServes: cur.yieldServes,
@@ -72,6 +74,8 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
         unit: l.unitCode,
       };
       if (l.role === 'made') line.componentId = l.componentId as string;
+      // A line that is 45 % usable costs over what is bought; a copy that saved it as 100 % would cost less than its source (ADR 0051).
+      if (l.role === 'stocked' && l.usablePct != null) line.usablePct = l.usablePct;
       return line;
     }),
   };

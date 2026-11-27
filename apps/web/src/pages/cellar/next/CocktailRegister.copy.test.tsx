@@ -177,6 +177,16 @@ describe('Copy a drink', () => {
     expect(h.put).not.toHaveBeenCalled();
   });
 
+  it('writes nothing when a line points at an item that was archived since (r107f, #2173)', async () => {
+    h.get.mockResolvedValue({ data: source([L({}), L({ id: 'l2', label: 'Lemon', itemGone: 'archived' })]) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    save();
+    expect(await screen.findByText(/archived or deleted/)).toBeTruthy();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
   it('shows staff no Copy button', async () => {
     role.edit = false;
     mount();
