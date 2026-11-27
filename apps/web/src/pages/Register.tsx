@@ -21,6 +21,37 @@ const INVITE_CARD_ROOM_PX = 142
 /** ADR 0112 / DD-r102-3: reduced motion is no animation, opacity fades included. */
 const dur = (seconds: number) => (prefersReducedMotion() ? 0 : seconds)
 
+/**
+ * The line under the email field. Its slot is always there, one text line tall,
+ * so "Email is available" arriving 500 ms after blur moves nothing below it
+ * (r108 walk: it used to push the password box down 20 px). There is no exit
+ * animation, and the entrance is not drawn at all under reduced motion (ADR 0112).
+ * A taken email's longer line may wrap; the slot grows for it, which is a
+ * correction the person is waiting for, not a surprise.
+ */
+function EmailAvailabilityLine({ check, on }: { check: EmailAvailability; on: boolean }) {
+  const enter = prefersReducedMotion() ? false : { opacity: 0, y: -4 }
+  const to = { opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' as const } }
+  return (
+    <div className="mt-1 min-h-5" data-testid="email-availability-slot">
+      {check.available === false && check.error && (
+        <motion.div initial={enter} animate={to} className="flex items-center gap-2 text-sm text-red-600">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{check.error}</span>
+          <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+            Sign in
+          </Link>
+        </motion.div>
+      )}
+      {check.available === true && (
+        <motion.p initial={enter} animate={to} className={on ? 'text-xs leading-5 !text-seal' : 'text-xs leading-5 text-green-600'}>
+          Email is available
+        </motion.p>
+      )}
+    </div>
+  )
+}
+
 /*
  * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
  * door's one switch; off, every className in this file is today's string,
@@ -548,33 +579,7 @@ export function Register() {
               </div>
             )}
           </div>
-          {/* Availability message */}
-          <AnimatePresence mode="wait">
-            {joinEmailCheck.available === false && joinEmailCheck.error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
-                className="mt-2 flex items-center gap-2 text-sm text-red-600"
-              >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{joinEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
-                  Sign in
-                </Link>
-              </motion.div>
-            )}
-            {joinEmailCheck.available === true && (
-              <motion.p
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
-                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
-              >
-                Email is available
-              </motion.p>
-            )}
-          </AnimatePresence>
+          <EmailAvailabilityLine check={joinEmailCheck} on={on} />
         </div>
 
         {/* Password */}
@@ -731,33 +736,7 @@ export function Register() {
               </div>
             )}
           </div>
-          {/* Availability message */}
-          <AnimatePresence mode="wait">
-            {createEmailCheck.available === false && createEmailCheck.error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
-                className="mt-2 flex items-center gap-2 text-sm text-red-600"
-              >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{createEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
-                  Sign in
-                </Link>
-              </motion.div>
-            )}
-            {createEmailCheck.available === true && (
-              <motion.p
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: dur(0.18), ease: 'easeOut' } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: dur(0.13), ease: 'easeIn' } }}
-                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
-              >
-                Email is available
-              </motion.p>
-            )}
-          </AnimatePresence>
+          <EmailAvailabilityLine check={createEmailCheck} on={on} />
         </div>
 
         {/* Password */}
