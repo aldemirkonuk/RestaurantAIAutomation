@@ -438,3 +438,44 @@ describe('MenuNext — the table\'s room is held while it is read (r103 menu-7)'
     expect(css).toMatch(/@media \(min-width: 900px\)\s*\{\s*\.mdv-reserve\s*\{\s*min-height: var\(--mdv-reserve/);
   });
 });
+
+describe('MenuNext — a newer menu is due (menu r104 g1)', () => {
+  afterEach(() => {
+    role = 'manager';
+  });
+  const dueReply = (state: 'ok' | 'due' | 'overdue') => ({
+    current: null,
+    lastUsed: null,
+    versions: [],
+    due: { state, cadence: 'monthly' as const, daysSince: 35 },
+  });
+
+  it('says it, under the standing line, to an owner and a manager', async () => {
+    for (const r of ['owner', 'manager']) {
+      role = r;
+      mockGetMenu.mockResolvedValue(menu());
+      mockVersions.mockResolvedValue(dueReply('due') as never);
+      const { unmount } = mount();
+      const said = await screen.findByTestId('menu-due');
+      expect(said).toHaveTextContent('This menu was made current 5 weeks ago and you keep it monthly.');
+      expect(screen.getByRole('button', { name: 'Read the new one below.' })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('says nothing to staff, and nothing while the menu is not yet due', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu());
+    mockVersions.mockResolvedValue(dueReply('due') as never);
+    const a = mount();
+    await screen.findByTestId('menu-versions-standing');
+    expect(screen.queryByTestId('menu-due')).not.toBeInTheDocument();
+    a.unmount();
+
+    role = 'manager';
+    mockVersions.mockResolvedValue(dueReply('ok') as never);
+    mount();
+    await screen.findByTestId('menu-versions-standing');
+    expect(screen.queryByTestId('menu-due')).not.toBeInTheDocument();
+  });
+});

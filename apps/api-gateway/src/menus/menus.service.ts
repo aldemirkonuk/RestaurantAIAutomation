@@ -1,3 +1,4 @@
+import { menuDueState, type MenuDue } from "./menu-due-state";
 import { restoreArrivalEntry } from "../arrival/restore-entry";
 import * as crypto from "crypto";
 import {
@@ -1703,6 +1704,8 @@ export class MenusService {
     namesReason: string | null;
     timezone: string | null;
     timezoneReason: string | null;
+    /** Whether the current menu is due for a newer read by its own cadence (menu r104 g1); null = nothing to say. */
+    due: MenuDue | null;
   }> {
     await this.sweepStaleReads(restaurantId);
     const rows: Array<Record<string, any>> = [];
@@ -1730,13 +1733,24 @@ export class MenusService {
       versions
         .filter((v) => v.status === "archived" && v.retiredAt)
         .sort((a, b) => String(b.retiredAt).localeCompare(String(a.retiredAt)))[0] ?? null;
+    const zone = await this.houseZone(restaurantId);
+    // A newer read already kept as a draft, or still reading, answers the reminder: say nothing, never a second billed read (r104).
+    const madeAt = current?.madeCurrentAt ? Date.parse(current.madeCurrentAt) : NaN;
+    const newerRead = versions.some(
+      (v) =>
+        !v.current &&
+        v.status === "draft" &&
+        v.readState !== "failed" &&
+        Date.parse(String(v.extractedAt ?? v.createdAt)) > madeAt,
+    );
     return {
       current,
       lastUsed,
       versions,
       namesReadable: namesError === null,
       namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
-      ...(await this.houseZone(restaurantId)),
+      ...zone,
+      due: current && !newerRead ? menuDueState(current.cadence, current.madeCurrentAt, new Date(), zone.timezone) : null,
     };
   }
 

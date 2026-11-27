@@ -474,6 +474,8 @@ export interface MenuVersions {
   /** The house's IANA zone its menu dates are said in; null = none (the reason says why). Absent on an older gateway. */
   timezone?: string | null
   timezoneReason?: string | null
+  /** Whether the current menu is due for a newer read by its own cadence; null or absent = nothing to say. */
+  due?: { state: 'ok' | 'due' | 'overdue'; cadence: 'weekly' | 'monthly' | 'quarterly' | 'yearly'; daysSince: number } | null
 }
 
 /** A kind a price lock held, and the lock (ADR 0193 round 3). */
