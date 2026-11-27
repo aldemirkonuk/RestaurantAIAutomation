@@ -9,7 +9,8 @@ import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
-import { importMenu, type MenuImportResult } from '../services/api/menus'
+import { importMenu, readRefusalWords, type MenuImportResult } from '../services/api/menus'
+import { readDroppedMenu } from '../lib/menuDrop'
 import { currencyForCountry } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { writeProof } from '../lib/firstProof'
@@ -79,6 +80,7 @@ export default function GetStarted() {
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([])
 
   const currency = useMemo(() => currencyForCountry(country), [country])
   // The browser's own zone, or undefined if it will not say (item 62,
@@ -183,24 +185,27 @@ export default function GetStarted() {
     setStep('reading')
   }
 
-  const ingestDroppedImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setMenuMethod('file')
-      return
-    }
-    setSaving(true)
+  const ingestDropped = async (dropped: File[]) => {
     setError(null)
+    setSaving(true)
     try {
-      const image = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result))
-        reader.onerror = () => reject(new Error('Could not read that photo.'))
-        reader.readAsDataURL(file)
-      })
-      const result = await importMenu('scan', { imageBase64: image })
-      menuRead(result, { image })
+      const out = await readDroppedMenu(dropped)
+      if (out.kind === 'refused') {
+        setError(out.words)
+        return
+      }
+      if (out.kind === 'files') {
+        setDroppedFiles(out.files)
+        setMenuMethod('file')
+        return
+      }
+      const result = await importMenu(
+        'scan',
+        out.pages.length === 1 ? { imageBase64: out.pages[0] } : { images: out.pages },
+      )
+      menuRead(result, { image: out.pages[0] })
     } catch (cause: any) {
-      setError(cause?.response?.data?.message || cause?.message || 'We could not read that photo.')
+      setError(readRefusalWords(cause, 'We could not read that menu.'))
     } finally {
       setSaving(false)
     }
@@ -355,8 +360,8 @@ export default function GetStarted() {
           onDrop={(event) => {
             event.preventDefault()
             setDropping(false)
-            const file = event.dataTransfer.files?.[0]
-            if (file) void ingestDroppedImage(file)
+            const dropped = Array.from(event.dataTransfer.files ?? [])
+            if (dropped.length) void ingestDropped(dropped)
           }}
           className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
             dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
@@ -377,7 +382,7 @@ export default function GetStarted() {
         </div>
         <div className="mt-6">
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
-          {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
+          {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} initialFiles={droppedFiles} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} />}
         </div>
         <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-[#b7b2a8]">
