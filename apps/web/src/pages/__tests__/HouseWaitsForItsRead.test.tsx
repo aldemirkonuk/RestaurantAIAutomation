@@ -62,13 +62,27 @@ describe('/house waits for its setup read before asking for a vendor (gap 1)', (
     expect(screen.getByText('Looking at your menu…')).toBeInTheDocument()
   })
 
-  it('holds the height of the ask while the read is out, so a late read moves nothing', () => {
-    getOnboardingProgress.mockReturnValue(new Promise(() => undefined))
+  it('reserves no guessed height and holds the rows below while the read is out (r108)', async () => {
+    // jsdom has no layout. The 327 px pin fitted only the "ask" outcome: a house
+    // with a vendor (80 px) collapsed it and the rows below jumped up ~220 px.
+    const read = pending<unknown>()
+    getOnboardingProgress.mockReturnValue(read.promise)
     at(<HouseContents />)
-    // jsdom has no layout; the pin is the measured one (327 px at 375, 303 from 640).
-    const line = screen.getByTestId('house-vendor-reading')
-    expect(line.className).toContain('min-h-[327px]')
-    expect(line.className).toContain('sm:min-h-[303px]')
+    expect(screen.getByTestId('house-vendor-reading').className).not.toMatch(/min-h-/)
+    expect(screen.queryByText(/Costs come from the invoices/)).toBeNull()
+    expect(screen.queryByText(/Which drinks the house pours/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Go to the desk' })).toBeNull()
+    read.resolve({ vendor_added: true, menu_uploaded: true, menu_current: true })
+    expect(await screen.findByText(/Your vendor is saved\./)).toBeInTheDocument()
+    expect(screen.getByText(/Costs come from the invoices/)).toBeInTheDocument()
+    expect(screen.getByText(/Which drinks the house pours/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to the desk' })).toBeInTheDocument()
+  })
+
+  it('a failed read releases the rows below too', async () => {
+    getOnboardingProgress.mockRejectedValue(new Error('offline'))
+    at(<HouseContents />)
+    expect(await screen.findByText(/Costs come from the invoices/)).toBeInTheDocument()
   })
 
   it('a house with a vendor never shows the form, before or after the read', async () => {
