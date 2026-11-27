@@ -418,7 +418,9 @@
 }
 
 .mdv-counter__quiet {
-  margin: 4px 0 6px;
+  /* The room of one entry, so the first line of the log lands inside it. */
+  margin: 0;
+  min-height: 56px;
   font-size: 11.5px;
   line-height: 1.45;
   color: var(--ink-4);
@@ -428,6 +430,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  min-height: 56px;
 }
 
 .mdv-counter__saidlist li {

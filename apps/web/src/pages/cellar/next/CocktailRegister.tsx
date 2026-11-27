@@ -221,6 +221,12 @@ export default function CocktailRegister({
   registerLoading: boolean;
 }) {
   const { data, loading, error } = useCocktailRegister(true);
+  // The books below the list, and the page's signature (cellar-next.css), wait
+  // unseen while the list or the menu-and-till read is in flight. Unseen they
+  // hold their room, so the ledger growing from "Reading..." to its sentence and
+  // table is not a shift (CLS 0.235 at 375, perf-p9-4). A failed read is not
+  // "loading", so it still says it failed. No fade: reduced motion stays free.
+  const settling = loading || registerLoading;
   const { create, amend, retire } = useCocktailWrites();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -269,7 +275,7 @@ export default function CocktailRegister({
   };
 
   return (
-    <div data-testid="cocktail-register">
+    <div data-testid="cocktail-register" data-settling={settling ? 'true' : undefined}>
       <div className="cl-row-controls">
         <label htmlFor="cl-ck-search" className="cl-sr">Search this house’s cocktails</label>
         <input
@@ -376,7 +382,7 @@ export default function CocktailRegister({
             </p>
           ) : (
             <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
-              <table className="cl-table">
+              <table className="cl-table cl-table--drinks">
                 <thead>
                   <tr>
                     <th scope="col">Cocktail</th>
@@ -489,7 +495,7 @@ export default function CocktailRegister({
       )}
 
       {/* ── the other books ──────────────────────────────────────────────── */}
-      <section style={{ marginTop: 26 }} data-testid="cocktail-ledger">
+      <section style={{ marginTop: 26, visibility: settling ? 'hidden' : undefined }} data-testid="cocktail-ledger">
         <h2 className="cl-sec">What the rest of this house’s books say</h2>
         {registerLoading ? (
           <p className="cl-said" role="status">Reading the menu and the till…</p>
