@@ -97,6 +97,8 @@ export interface InventoryItem {
   /** The unit costs of the last two settled deliveries (a cost figure: it travels with `wac`). Absent = fewer than two settled. */
   lastSettledCost?: number;
   previousSettledCost?: number;
+  /** Whether both settled costs hold tax the same way (r108). Absent = mixed or not stated: not compared. */
+  settledCostTaxBasis?: 'net' | 'gross_cost';
   /** False = the settled-price read failed, so "no price move" is unknown, not none. Absent = from before this field. */
   settledCostsReadable?: boolean;
   /** False: the lot-rollup read failed, so openMl is unknown, not 0 (G15). Absent = true. */
