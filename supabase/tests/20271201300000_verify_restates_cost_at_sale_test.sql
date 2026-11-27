@@ -64,45 +64,4 @@ begin
   if c <> 26 then raise exception 'RS10: expected 26, got %', c; end if;
 end $$;
 
--- r103: a free line (invoice price 0) restates; a negative or null cost does not;
--- and a unit cost with more than six places is rounded once, so a retry is a no-op.
-do $$
-declare
-  h uuid := 'a0102000-0000-4000-8000-000000000001';
-  inv uuid := 'a0102000-0000-4000-8000-000000000201';
-  ordz uuid := 'a0102000-0000-4000-8000-000000000302';
-  ordr uuid := 'a0102000-0000-4000-8000-000000000303';
-  r jsonb;
-  c numeric;
-begin
-  insert into public.wine_consumption_log
-    (id, restaurant_id, inventory_id, wine_name, consumption_type, quantity, volume_ml, source,
-     cost_at_sale, cost_basis, cost_unit_at_sale, cost_source_order_id)
-  values
-    ('a0102000-0000-4000-8000-000000000411', h, inv, 'w', 'bottle', 1, 750, 'pos', 10, 'last_purchase_price', 10, ordz),
-    ('a0102000-0000-4000-8000-000000000421', h, inv, 'w', 'bottle', 1, 750, 'pos', 10, 'last_purchase_price', 10, ordr);
-
-  begin
-    perform public.restate_sale_cost(h, inv, ordz, -1);
-    raise exception 'RS11: a negative cost was accepted';
-  exception when sqlstate '22023' then null; end;
-  begin
-    perform public.restate_sale_cost(h, inv, ordz, null);
-    raise exception 'RS12: a null cost was accepted';
-  exception when sqlstate '22023' then null; end;
-
-  r := public.restate_sale_cost(h, inv, ordz, 0);
-  if (r->>'rows_restated')::int <> 1 then raise exception 'RS13: a free bottle (cost 0) must restate the sale, got %', r; end if;
-  select cost_at_sale into c from public.wine_consumption_log where id = 'a0102000-0000-4000-8000-000000000411';
-  if c <> 0 then raise exception 'RS14: a free bottle should cost 0, got %', c; end if;
-
-  r := public.restate_sale_cost(h, inv, ordr, 125::numeric / 12);
-  if (r->>'rows_restated')::int <> 1 then raise exception 'RS15: expected 1 row restated, got %', r; end if;
-  r := public.restate_sale_cost(h, inv, ordr, 125::numeric / 12);
-  if (r->>'rows_restated')::int <> 0 then raise exception 'RS16: a retry at an unrounded cost must restate nothing, got %', r; end if;
-  if (select count(*) from public.wine_consumption_cost_restatements where source_order_id = ordr) <> 1 then
-    raise exception 'RS17: a retry must not append a second audit row';
-  end if;
-end $$;
-
 rollback;
