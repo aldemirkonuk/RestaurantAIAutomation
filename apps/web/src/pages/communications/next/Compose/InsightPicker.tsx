@@ -42,9 +42,9 @@ export function ProvenanceChip({ insight }: { insight: InsightSentence }) {
         alignItems: 'center',
         gap: 5,
         fontFamily: MONO,
-        fontSize: 9,
+        fontSize: 11,
         fontWeight: 600,
-        letterSpacing: '0.06em',
+        letterSpacing: '0.04em',
         padding: '2px 7px',
         borderRadius: 4,
         background: 'var(--seal-tint, rgba(26,94,107,.10))',
@@ -91,16 +91,16 @@ export function InsightPicker({
         <span
           style={{
             fontFamily: MONO,
-            fontSize: 9,
+            fontSize: 11,
             fontWeight: 600,
-            letterSpacing: '0.14em',
+            letterSpacing: '0.08em',
             textTransform: 'uppercase',
             color: 'var(--ink-4, #665D50)',
           }}
         >
           What the house knows
         </span>
-        <span style={{ fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
           whole sentences, each saying where it came from
         </span>
       </div>
@@ -201,7 +201,7 @@ export function InsightPicker({
                       style={{
                         display: 'block',
                         fontFamily: MONO,
-                        fontSize: 9.5,
+                        fontSize: 11,
                         color: 'var(--ink-4, #665D50)',
                         marginTop: 2,
                       }}

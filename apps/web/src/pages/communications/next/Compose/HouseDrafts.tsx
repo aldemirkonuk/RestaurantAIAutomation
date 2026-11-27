@@ -99,7 +99,7 @@ export function HouseDrafts({
       <h3
         style={{
           fontFamily: MONO,
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: 600,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',

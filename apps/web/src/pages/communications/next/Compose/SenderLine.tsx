@@ -86,9 +86,9 @@ export function SenderLine({
         <span
           style={{
             fontFamily: MONO,
-            fontSize: 9,
+            fontSize: 11,
             fontWeight: 600,
-            letterSpacing: '0.14em',
+            letterSpacing: '0.08em',
             textTransform: 'uppercase',
             color: 'var(--ink-4, #665D50)',
           }}
