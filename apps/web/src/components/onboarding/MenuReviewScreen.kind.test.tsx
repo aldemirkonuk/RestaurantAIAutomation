@@ -94,6 +94,16 @@ describe('the review names each line by its kind', () => {
     expect(meta).toContain(`Glass ${money(150)}`)
   })
 
+  it('a clean read of wines says wines, and a read of spirits does not call them wines', () => {
+    const { unmount } = mount([{ ...wine, needsReview: false }])
+    expect(screen.getByText(/All 1 wine read cleanly/)).toBeInTheDocument()
+    expect(screen.getByText(/Add a wine/)).toBeInTheDocument()
+    unmount()
+    mount([item({ menuItemId: 'i5', name: 'Rakı', category: 'spirit' })])
+    expect(screen.getByText(/All 1 line read cleanly/)).toBeInTheDocument()
+    expect(screen.getByText(/Add a line/)).toBeInTheDocument()
+  })
+
   it('a mixed read says lines, and an unpriced line says so', () => {
     mount([dish, item({ menuItemId: 'i3', name: 'Rakı', category: 'spirit', bottlePrice: null, needsReview: true })])
     open()
