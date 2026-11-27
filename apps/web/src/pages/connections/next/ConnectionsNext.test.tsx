@@ -770,6 +770,30 @@ describe('no operator internals in front of a restaurant user', () => {
     expect(screen.queryByText(/OAuth/)).not.toBeInTheDocument();
     expect(screen.getAllByText('This connection is not available yet.').length).toBe(4);
   });
+
+  it('an available row\'s Connect yours opens the consent flow and comes back to its register (r12 walk)', () => {
+    const d = base();
+    d.catalog = reg([
+      { ...catalogRow('gmail_send', 'Gmail — sending only', 'Google'), available: true, unavailableReason: null },
+      catalogRow('gmail_read', 'Gmail — reading vendor replies only', 'Google'),
+    ]);
+    mockData.current = d;
+    render(
+      <>
+        <ConnectionsNext />
+        <Where />
+      </>,
+    );
+    const google = screen.getByRole('region', { name: 'Google' });
+    const [send, read] = within(google).getAllByRole('button', { name: 'Connect yours' });
+    expect(read).toBeDisabled();
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+    expect(screen.getByTestId('where').textContent).toBe(
+      '/authorize/gmail_send?returnPath=%2Fconnections%23grants',
+    );
+    expect(screen.getByText('You sign in to your own account, so the grant is yours, not the house’s.')).toBeInTheDocument();
+  });
 });
 
 describe('the one row, four columns and no fifth', () => {
