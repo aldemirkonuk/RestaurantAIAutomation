@@ -334,6 +334,8 @@ describe('full screen steps through the sheet (r108 g1)', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: `Previous: ${titleOf('till')}` }));
     expect(where()).toBe('/reports?flat=till');
     expect(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` })).toBeInTheDocument();
+    // Stepping to an EARLIER sibling: the cutting left behind must not pull focus back to its own opener.
+    expect(within(dialogNamed('till')).getByRole('button', { name: 'Back to the sheet' })).toHaveFocus();
     // The last one: no Next, no wrap, and focus falls back to Back, the one control it can offer.
     fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
     fireEvent.click(within(dialogNamed('week')).getByRole('button', { name: `Next: ${titleOf('seats')}` }));
