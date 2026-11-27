@@ -479,3 +479,31 @@ describe('foodCostShare for a drink', () => {
     expect(foodCostShare(null, null, 'drink')).toEqual({ missing: ['the cost is not complete', 'the drink has no price'] });
   });
 });
+
+describe('the Used in block while its reads are out (r108 g16)', () => {
+  const mountUsed = (l: Parameters<typeof ItemUsedIn>[0]['load'], d: DishesLoad, dr?: DrinksLoad) =>
+    render(
+      <MemoryRouter>
+        <ItemUsedIn load={l} dishes={d} drinks={dr} canManage currency={EUR} onRetry={vi.fn()} onRetryDishes={vi.fn()} />
+      </MemoryRouter>,
+    );
+  it('opts out of scroll anchoring until the used-in, dish and drink reads have all answered', () => {
+    const first = mountUsed({ status: 'reading' }, NO_DISHES, { status: 'ready', data: { drinks: [] } } as DrinksLoad);
+    expect(screen.getByTestId('ivd-used').getAttribute('data-settling')).toBe('true');
+    first.unmount();
+    const second = mountUsed(load(), { status: 'reading' }, { status: 'ready', data: { drinks: [] } } as DrinksLoad);
+    expect(screen.getByTestId('ivd-used').getAttribute('data-settling')).toBe('true');
+    second.unmount();
+    const third = mountUsed(load(), NO_DISHES, { status: 'reading' });
+    expect(screen.getByTestId('ivd-used').getAttribute('data-settling')).toBe('true');
+    third.unmount();
+    mountUsed(load(), NO_DISHES, { status: 'ready', data: { drinks: [] } } as DrinksLoad);
+    expect(screen.getByTestId('ivd-used').getAttribute('data-settling')).toBeNull();
+  });
+  it('the stylesheet sets overflow-anchor: none on the settling block, and only there', async () => {
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync('src/pages/inventory/next/item-drawer.css', 'utf8');
+    expect(css).toMatch(/\.ivd-used\[data-settling='true'\] \{\s*overflow-anchor: none;/);
+    expect(css.match(/overflow-anchor/g)).toHaveLength(1);
+  });
+});

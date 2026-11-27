@@ -428,7 +428,15 @@ export default function ItemUsedIn({
   }
 
   return (
-    <section id="ivd-used" className="ivd-used" aria-labelledby="ivd-used-title" data-testid="ivd-used">
+    <section
+      id="ivd-used"
+      className="ivd-used"
+      aria-labelledby="ivd-used-title"
+      data-testid="ivd-used"
+      // Until its three reads have answered the block changes height; scroll anchoring must not pick one of its
+      // groups as the anchor and move the page by the distance that group travels (r107 F9 tail, r108 g16).
+      data-settling={load.status === 'reading' || dishes.status === 'reading' || drinks?.status === 'reading' ? 'true' : undefined}
+    >
       <h3 id="ivd-used-title" className="iv-sec">
         Used in
       </h3>
