@@ -36,6 +36,8 @@ export interface Cat {
   prior?: number | null;
   /** Long form for the tooltip when `label` is abbreviated for the axis. */
   full?: string;
+  /** An edge week or month that does not hold its whole span: its bar is drawn lighter, and `full` says so. */
+  part?: boolean;
 }
 
 /** A rule drawn across a plot, and the words for why it is there. */

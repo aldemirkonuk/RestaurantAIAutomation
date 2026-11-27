@@ -37,6 +37,8 @@ export interface ComboRow {
   full: string;
   bar: number | null;
   line: number | null;
+  /** An edge week or month that is not whole (`Cat.part`): its bar is drawn lighter. */
+  part: boolean;
 }
 
 export interface ComboPlan {
@@ -99,6 +101,7 @@ export function planCombo(series: CatSeries, want?: Partial<ComboPick>): ComboPl
       full: d.full ?? d.label,
       bar: bars.values[i] ?? null,
       line: line.values[i] ?? null,
+      part: d.part === true,
     })),
   };
 }
