@@ -28,7 +28,7 @@
  */
 import { useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatHouseNumber } from '../../../lib/house-number';
+import { formatHouseNumber, houseNumberLocale } from '../../../lib/house-number';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
@@ -583,8 +583,28 @@ export function sold30(v: number): number {
 export function cellMoney(v: number | null, currency: HouseCurrency): string {
   if (v === null || !Number.isFinite(v)) return EM;
   if (currency.state === 'reading') return EM;
-  if (currency.state === 'recorded') return fmtMoney(v, currency.code);
+  if (currency.state === 'recorded') return houseMoney(v, currency.code);
   return houseNumber(v, 2);
+}
+
+/**
+ * Money in the same number form as the quantities beside it (houseNumber): a
+ * lira house reads "₺1.250,5" next to "1.250", never "₺1,250.50" next to it
+ * (r103 FAIL 12). Where no country owns the money, or Intl does not know the
+ * code, it is the fixed form `fmtMoney` has always written.
+ */
+function houseMoney(v: number, code: string): string {
+  const locale = houseNumberLocale(code);
+  if (locale === undefined) return fmtMoney(v, code);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: code,
+      maximumFractionDigits: v % 1 === 0 ? 0 : 2,
+    }).format(v);
+  } catch {
+    return fmtMoney(v, code);
+  }
 }
 
 /* ── the read sentence ───────────────────────────────────────────────────── */
