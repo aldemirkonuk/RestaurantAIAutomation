@@ -54,15 +54,20 @@ function make() {
     getClient: jest.fn(),
   };
   const svc: any = new (InventoryService as any)(db);
-  jest.spyOn(svc, "fetchLotRollup").mockResolvedValue(
-    new Map([["wine", { wac: 20, live_qty: 4, has_invoice_cost: true, open_ml: 100 }]]),
-  );
-  jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue(
-    new Map([["wine", [{ locationId: "l1", qty: 4, wac: 20 }]]]),
-  );
+  jest.spyOn(svc, "fetchLotRollup").mockResolvedValue({
+    ok: true,
+    data: new Map([["wine", { wac: 20, live_qty: 4, has_invoice_cost: true, open_ml: 100 }]]),
+  });
+  jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue({
+    ok: true,
+    data: new Map([["wine", [{ locationId: "l1", qty: 4, wac: 20 }]]]),
+  });
   jest
     .spyOn(svc, "fetchAnalytics")
     .mockResolvedValue({ map: new Map(), ok: true });
+  jest
+    .spyOn(svc, "fetchSettledMoves")
+    .mockResolvedValue({ map: new Map(), ok: true, capped: false });
   return svc as InventoryService;
 }
 
@@ -156,15 +161,26 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
         getRestaurantInventory: jest.fn().mockResolvedValue(data),
         getClient: jest.fn(),
       });
-      jest.spyOn(svc, "fetchLotRollup").mockResolvedValue(new Map());
-      jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue(new Map());
+      jest.spyOn(svc, "fetchLotRollup").mockResolvedValue({ ok: true, data: new Map() });
+      jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue({ ok: true, data: new Map() });
+      jest.spyOn(svc, "fetchSettledMoves").mockResolvedValue({ map: new Map(), ok: true, capped: false });
       jest
         .spyOn(svc, "fetchAnalytics")
         .mockResolvedValue({ map: new Map(), ok: true });
       return svc as InventoryService;
     }
 
-    it("drops the five dead keys and null-valued audited keys, keeps filled ones", async () => {
+    it("each key has one owner: the mapped-row drops never repeat a column the select already leaves out", () => {
+      const unread = new Set<string>(InventoryService.LIST_UNREAD_COLUMNS);
+      for (const k of [
+        ...InventoryService.LIST_DEAD_KEYS,
+        ...InventoryService.LIST_NULL_OMITTED_KEYS,
+      ]) {
+        expect(unread.has(k)).toBe(false);
+      }
+    });
+
+    it("drops the four dead keys and null-valued audited keys, keeps filled ones", async () => {
       const out: any[] = await makeWith(populated).getRestaurantInventory("r1", {
         lean: true,
       });

@@ -318,7 +318,8 @@ export class InventoryService {
    * glasses_per_bottle_override, markupRatio reads markup_ratio, so these cannot
    * go before mapping). Two kinds, both audited against apps/web/src and
    * apps/mobile on 2026-11-27:
-   *  - LIST_DEAD_KEYS: no reader at all, dropped always.
+   *  - LIST_DEAD_KEYS: no reader at all, dropped always. beverage_id is not here:
+   *    LIST_UNREAD_COLUMNS (#2241) owns it, and drops it before mapping.
    *  - LIST_NULL_OMITTED_KEYS: the raw column is only ever read through
    *    `normalizeInventoryItem` (`?? undefined`) or not at all, so absent and
    *    null read the same; dropped only when null, so a house that fills
@@ -329,7 +330,6 @@ export class InventoryService {
     "glasses_per_bottle_override",
     "expected_delivery_date",
     "storage_location_id",
-    "beverage_id",
     "max_price",
   ] as const;
 
