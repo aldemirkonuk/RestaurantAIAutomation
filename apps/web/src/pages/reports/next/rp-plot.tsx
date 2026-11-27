@@ -453,8 +453,14 @@ export const MAX_DRAWN = 150;
  * measurement stops (and any row a reference line names), and the highest row
  * of each stretch between. A row kept is a real row, never an average, so a
  * tooltip still tells a day that happened.
+ *
+ * With a prior drawn beside it, each stretch keeps BOTH lines' highest row:
+ * keeping only the current's would draw the current at its peaks and the prior
+ * at arbitrary days, so an equal prior would read as a fall (r104 review).
  */
-export function thinCats<T extends { label: string; value?: number | null; projected?: number | null }>(
+export function thinCats<
+  T extends { label: string; value?: number | null; projected?: number | null; prior?: number | null },
+>(
   data: readonly T[],
   refs: ReadonlyArray<{ x?: string | number | null }> = [],
   max: number = MAX_DRAWN,
@@ -467,12 +473,15 @@ export function thinCats<T extends { label: string; value?: number | null; proje
     if (edge || named.has(d.label)) must.add(i);
   });
   const rest = data.map((_, i) => i).filter((i) => !must.has(i));
-  const buckets = Math.max(max - must.size, 1);
+  const paired = data.some((d) => d.prior != null);
+  const buckets = Math.max(Math.floor((max - must.size) / (paired ? 2 : 1)), 1);
   const size = Math.ceil(rest.length / buckets);
   for (let at = 0; at < rest.length; at += size) {
     const chunk = rest.slice(at, at + size);
-    const top = (i: number) => data[i].value ?? data[i].projected ?? -Infinity;
-    must.add(chunk.reduce((best, i) => (top(i) > top(best) ? i : best), chunk[0]));
+    const highest = (top: (i: number) => number) =>
+      chunk.reduce((best, i) => (top(i) > top(best) ? i : best), chunk[0]);
+    must.add(highest((i) => data[i].value ?? data[i].projected ?? -Infinity));
+    if (paired) must.add(highest((i) => data[i].prior ?? -Infinity));
   }
   return [...must].sort((a, b) => a - b).map((i) => data[i]);
 }
@@ -499,7 +508,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     unit,
   )}`;
   const caption = `${titled(yLabel, unit)} · by ${xLabel}${
-    thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''
+    thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch${hasPrior ? ' of either line' : ''}; the table has every one` : ''
   }`;
   const gutter = gutterFor(
     tickLabels(

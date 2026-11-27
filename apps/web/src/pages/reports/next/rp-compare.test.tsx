@@ -7,7 +7,7 @@ import { cloneElement, type ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { CatPlot } from './rp-plot';
+import { CatPlot, MAX_DRAWN, thinCats } from './rp-plot';
 import { TillWindowPicker } from './Cutting';
 import { daysBetween, till } from './rp-registers-trade';
 import type { CatSeries } from './rp-view';
@@ -69,9 +69,46 @@ describe('till: compare to the previous period', () => {
 
   it('says the change in One figure, and a dash when there is nothing before to measure against', () => {
     const fig = (raw: unknown) => view(raw, true).figures.find((f) => f.label === 'Against the prior window')!;
-    expect(fig(payload()).value).toBe('+34.5%');
+    // Whole days only: the prior's last day (100) is left out, and the window has nothing rung on its last day:
+    // (3900 - 2800) / 2800.
+    expect(fig(payload()).value).toBe('+39.3%');
     const none = payload({ prior: { from: P_FROM, to: P_TO, revenue: 0, dailySeries: [] } });
     expect(fig(none).value).toBe('—');
+  });
+
+  it('[REVERT-FAILS] a flat window with today half-rung reads 0.0%, not a fall that has not happened', () => {
+    const days = daysBetween(FROM, TO);
+    const dailySeries = days.map((date) => ({ date, revenue: date === TO ? 50 : 100, checks: 1 }));
+    const priorSeries = daysBetween(P_FROM, P_TO).map((date) => ({ date, revenue: 100 }));
+    const raw = payload({
+      revenue: 29 * 100 + 50,
+      dailySeries,
+      prior: { from: P_FROM, to: P_TO, revenue: 3000, checkCount: 90, dailySeries: priorSeries },
+    });
+    const f = view(raw, true).figures.find((x) => x.label === 'Against the prior window')!;
+    expect(f.value).toBe('0.0%');
+  });
+
+  it('[REVERT-FAILS] a prior the till only partly covers shows a dash and says when the till began', () => {
+    // The gateway withholds the sum and names the first day; the days that were rung stay in the series.
+    const raw = payload({
+      revenue: 3000,
+      prior: {
+        from: P_FROM,
+        to: P_TO,
+        revenue: null,
+        checkCount: null,
+        since: '2026-08-23',
+        dailySeries: [{ date: '2026-08-25', revenue: 100 }],
+      },
+    });
+    const v = view(raw, true);
+    const pct = v.figures.find((x) => x.label === 'Against the prior window')!;
+    const prior = v.figures.find((x) => x.label === 'Prior 30 days')!;
+    expect(pct.value).toBe('—');
+    expect(prior.value).toBe('—');
+    expect(pct.note).toMatch(/The till began on Aug 23/);
+    expect(JSON.stringify(v.notes)).toMatch(/The till began on Aug 23/);
   });
 
   it('draws nothing of the prior when compare is off, or the gateway sent none', () => {
@@ -114,6 +151,29 @@ describe('CatPlot with a prior', () => {
     const { container } = wrap('bars', true);
     expect(container.querySelectorAll('.recharts-bar')).toHaveLength(2);
     expect(wrap('bars', false).container.querySelectorAll('.recharts-bar')).toHaveLength(1);
+  });
+});
+
+describe('thinning a long window with a prior beside it', () => {
+  // Equal means by construction: the same spike, on a different weekday for each line.
+  const long = Array.from({ length: 365 }, (_, i) => ({
+    label: `D${i}`,
+    value: 1000 + (i % 7 === 0 ? 500 : 0),
+    prior: 1000 + (i % 7 === 3 ? 500 : 0),
+  }));
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  it.each([MAX_DRAWN, 90])('[REVERT-FAILS] draws equal lines at equal heights, within the cap of %i', (max) => {
+    const kept = thinCats(long, [], max);
+    expect(kept.length).toBeLessThanOrEqual(max);
+    const now = mean(kept.map((d) => d.value));
+    const before = mean(kept.map((d) => d.prior));
+    expect(Math.abs(now - before) / before).toBeLessThan(0.02);
+  });
+
+  it('keeps the old rule, one row per stretch, when nothing is drawn beside it', () => {
+    const bare = long.map(({ label, value }) => ({ label, value }));
+    expect(thinCats(bare, [], 90).length).toBe(75);
   });
 });
 
