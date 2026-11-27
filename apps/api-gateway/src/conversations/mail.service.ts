@@ -18,6 +18,7 @@ import type {
   MailDelivery,
   MailMessage,
   MailNoReplyAnswer,
+  MailNotNowAnswer,
   MailOrderRef,
   MailPeoplePage,
   MailPersonKind,
@@ -27,6 +28,7 @@ import type {
   MailThreadRow,
   MailThreadsPage,
 } from "./mail.types";
+import { isNotNowChoice, needsHouseClock, notNowUntil } from "./mail.not-now";
 
 /**
  * The server read model behind the /communications Mail tab (founder /goal
@@ -94,6 +96,16 @@ export const ATTACHMENT_LINK_FAILED =
 export const NO_REPLY_NOT_YOURS =
   "Only the house's owner or a manager can say a letter needs no reply.";
 export const NO_REPLY_NOT_FOUND = "That letter is not in this house's mail.";
+/** "Not now" (r110 mail): said in the house's words. */
+export const NOT_NOW_NOT_YOURS =
+  "Only the house's owner or a manager can put a letter off with Not now.";
+export const NOT_NOW_NOT_FOUND = "That thread is not in this house's mail.";
+export const NOT_NOW_BAD_CHOICE =
+  "Choose when it comes back: in 3 hours, tomorrow at 09:00 or Monday at 09:00.";
+export const NOT_NOW_NO_CLOCK =
+  "This house's time zone isn't set, so 09:00 has no house clock to come back on. Choose \"In 3 hours\", or an owner or manager can set the zone in Settings, under Time zone.";
+export const NOT_NOW_FAILED =
+  "Not now could not be saved just now, so nothing changed. Try again.";
 export const NO_REPLY_NOT_RECEIVED =
   "Only a letter the house received can be marked as needing no reply.";
 export const NO_REPLY_FAILED =
@@ -995,6 +1007,67 @@ export class MailService {
         this.logger.error(`mail no-reply mark: unknown outcome ${String(outcome)}`);
         throw new ServiceUnavailableException(NO_REPLY_FAILED);
     }
+  }
+
+  /**
+   * POST / DELETE /mail/thread/not-now (r110 mail, DD-r109-13): put a vendor
+   * thread off until a time on the house's clock, or take that back. Owner and
+   * manager only; the thread must be this house's and this vendor's (SQL
+   * refuses any other with P0002, said here as not found).
+   */
+  async setNotNow(
+    houseId: string,
+    callerRole: string | null | undefined,
+    userId: string | null | undefined,
+    opts: { key?: unknown; with?: unknown; choice?: unknown },
+    on: boolean,
+    nowMs: number = Date.now(),
+  ): Promise<MailNotNowAnswer> {
+    if (withholdsHouseLetters(callerRole)) {
+      throw new ForbiddenException(NOT_NOW_NOT_YOURS);
+    }
+    const key = typeof opts.key === "string" ? opts.key.trim() : "";
+    const withKey = typeof opts.with === "string" ? opts.with.trim() : "";
+    const providerId = PERSON_KEY_RE.exec(withKey)?.[1]?.toLowerCase();
+    if (!key || key.length > 500 || !providerId || !UUID_RE.test(providerId)) {
+      throw new NotFoundException(NOT_NOW_NOT_FOUND);
+    }
+    const thread = { p_restaurant_id: houseId, p_provider_id: providerId, p_thread_key: key };
+    if (!on) {
+      const { error } = await this.db.rpc("clear_mail_thread_snooze", thread);
+      if (error) {
+        this.logger.error(`mail not now clear failed: ${error.message}`);
+        throw new ServiceUnavailableException(NOT_NOW_FAILED);
+      }
+      return { key, with: `vendor:${providerId}`, until: null };
+    }
+    if (!isNotNowChoice(opts.choice)) {
+      throw new BadRequestException(NOT_NOW_BAD_CHOICE);
+    }
+    let zone: string | null = null;
+    if (needsHouseClock(opts.choice)) {
+      try {
+        zone = (await readHouseZone(this.db, houseId)).zone;
+      } catch (e) {
+        this.logger.error(`mail not now zone failed: ${(e as Error)?.message}`);
+        throw new ServiceUnavailableException(NOT_NOW_FAILED);
+      }
+    }
+    const until = notNowUntil(opts.choice, nowMs, zone);
+    if (!until) throw new ConflictException(NOT_NOW_NO_CLOCK);
+    const { error } = await this.db.rpc("set_mail_thread_snooze", {
+      ...thread,
+      p_until: until,
+      p_set_by: typeof userId === "string" && UUID_RE.test(userId) ? userId : null,
+    });
+    if (error) {
+      if ((error as { code?: string }).code === "P0002") {
+        throw new NotFoundException(NOT_NOW_NOT_FOUND);
+      }
+      this.logger.error(`mail not now set failed: ${error.message}`);
+      throw new ServiceUnavailableException(NOT_NOW_FAILED);
+    }
+    return { key, with: `vendor:${providerId}`, until };
   }
 
   async summary(

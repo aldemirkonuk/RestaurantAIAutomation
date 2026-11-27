@@ -226,6 +226,14 @@ export interface MailThreadPage {
   attachmentsRead: boolean;
 }
 
+/** The answer to POST/DELETE /mail/thread/not-now. */
+export interface MailNotNowAnswer {
+  key: string;
+  with: string;
+  /** When it comes back; null once taken back. */
+  until: string | null;
+}
+
 /** The answer to POST/DELETE /mail/letters/:id/no-reply-needed. */
 export interface MailNoReplyAnswer {
   id: string;
