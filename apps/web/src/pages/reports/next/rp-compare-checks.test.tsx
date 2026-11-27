@@ -9,7 +9,8 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: 'r1', activeRole: 'owner' }) }));
+const auth = vi.hoisted(() => ({ role: 'owner' as string }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role }) }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 vi.mock('@/hooks/useUserPreferences', () => ({
   useUserPreferences: () => ({
@@ -182,5 +183,70 @@ describe('warm start keeps only a whole read (r108 g8)', () => {
     await waitFor(() => expect(result.current.registers.bench?.data).toBeDefined());
     flushWarm();
     expect(warmRead(OWNER, JSON.stringify(['bench', null, null]))).toBeUndefined();
+  });
+});
+
+describe('a staff till kept from the reader reads once, whatever the window (r109 reports-8)', () => {
+  const WITHHELD = {
+    restaurantId: 'r1', from: null, to: null, days: 30, timezone: null, zoneUnset: false,
+    posConnected: true, salesWithheld: true, revenue: null, checkCount: null, dailySeries: null,
+  };
+  const mount = (role: string) => {
+    auth.role = role;
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: role === 'staff' ? WITHHELD : N_READ };
+      return { data: { insights: [] } };
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return renderHook(
+      ({ days, r }: { days: number; r: string }) => {
+        auth.role = r;
+        return useReportsNextData(days, () => {}, ['till'], undefined, false);
+      },
+      { wrapper, initialProps: { days: 30, r: role } },
+    );
+  };
+  const tillReads = () => api.get.mock.calls.map((c) => String(c[0])).filter((p) => p.startsWith('/analytics/pos-revenue/'));
+  beforeEach(() => {
+    auth.role = 'owner';
+  });
+
+  it('[REVERT-FAILS] 30 to 90 to 7 days fires no read, and the card is never a loading stand-in', async () => {
+    const { result, rerender } = mount('staff');
+    // The integrated hook hands a gateway-withheld lens over as a written-for-someone-else failure (#1436).
+    await waitFor(() => expect(result.current.registers.till?.failure).toBeTruthy());
+    expect(tillReads()).toEqual(['/analytics/pos-revenue/r1?days=30']);
+    const held = result.current.registers.till;
+    for (const days of [90, 7, 365]) {
+      rerender({ days, r: 'staff' });
+      expect(result.current.registers.till?.loading).toBe(false);
+      expect(result.current.registers.till?.failure).toBeTruthy();
+      expect(result.current.registers.till?.data).toBeUndefined();
+    }
+    await new Promise((r) => setTimeout(r, 20));
+    expect(tillReads()).toEqual(['/analytics/pos-revenue/r1?days=30']);
+    expect(result.current.registers.till).toBe(held);
+  });
+
+  it('an owner still reads each window it picks', async () => {
+    const { result, rerender } = mount('owner');
+    await waitFor(() => expect(result.current.registers.till?.data).toBeDefined());
+    rerender({ days: 90, r: 'owner' });
+    await waitFor(() => expect(tillReads()).toContain('/analytics/pos-revenue/r1?days=90'));
+  });
+
+  it('a role that moves is asked again, at the window on screen', async () => {
+    const { result, rerender } = mount('staff');
+    // The integrated hook hands a gateway-withheld lens over as a written-for-someone-else failure (#1436).
+    await waitFor(() => expect(result.current.registers.till?.failure).toBeTruthy());
+    rerender({ days: 90, r: 'staff' });
+    api.get.mockImplementation(async (path: string) =>
+      path.startsWith('/analytics/pos-revenue/r1') ? { data: N_READ } : { data: { insights: [] } },
+    );
+    rerender({ days: 90, r: 'manager' });
+    await waitFor(() => expect(tillReads()).toContain('/analytics/pos-revenue/r1?days=90'));
+    await waitFor(() => expect(result.current.registers.till?.data).toMatchObject({ salesWithheld: false }));
   });
 });

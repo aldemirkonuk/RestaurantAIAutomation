@@ -380,6 +380,7 @@ export type HouseMoney =
   | { state: 'unstated'; code: null }
   | { state: 'unread'; code: null; pending: boolean };
 
+
 export function useReportsNextData(
   tillDays: number,
   setTillDays: (d: number) => void,
@@ -598,13 +599,39 @@ export function useReportsNextData(
   );
 
   const warmKeys = active.map((id) => warmKeyOf(id, tillDays));
+  /**
+   * A till the gateway kept from this reader (`salesWithheld`, read as
+   * WITHHELD) is kept whatever the window: the role decides it, not the days.
+   * Once a read has said so for this house, role and compare setting, a window
+   * click keeps that read's key, so it fires no request and draws no "Reading
+   * the last N days" stand-in over one sentence (#2358, r109: the walk's
+   * 425-1520 ms staff switch). It is asked again when the house, the role or
+   * the compare setting moves, or the cached read stops saying withheld.
+   */
+  const heldWindow = useRef<{ rid: string; role: string | null; days: number; compare: boolean } | null>(null);
+  const hw = heldWindow.current;
+  const readDays =
+    hw &&
+    hw.rid === rid &&
+    hw.role === activeRole &&
+    hw.compare === tillCompare &&
+    active.some((id) => CATALOGUE[id].takesWindow && qc.getQueryData(readOf(id, hw.days).queryKey) === WITHHELD)
+      ? hw.days
+      : tillDays;
+
   const results = useQueries({
     queries: active.map((id, at) => ({
-      ...readOf(id, tillDays),
+      ...readOf(id, readDays),
       enabled: !!rid && !heldBack.has(id),
       retry: 1,
       placeholderData: () => (heldBack.has(id) ? undefined : warmFor(warmKeys[at])),
     })),
+  });
+
+  active.forEach((id, i) => {
+    const d = results[i]?.data;
+    if (!CATALOGUE[id].takesWindow || d === undefined || !rid) return;
+    heldWindow.current = d === WITHHELD ? { rid, role: activeRole, days: readDays, compare: tillCompare } : null;
   });
 
   /** Starts one till window's reads; resolves when they have all landed or failed. */
