@@ -74,20 +74,37 @@ export interface Strip {
   /** Mean pour cost over the drinks that have one; null when none does. */
   averageShare: number | null;
   priced: number;
-  /** Has a recipe, but no pour cost: a cost or a price is missing. */
+  /** Has a recipe but no complete cost: the cost is what is missing. */
   unpriced: number;
+  /** Has a complete cost but no share: the list price (or its tax rate) is missing. */
+  noShare: number;
   noRecipe: number;
+  /** The basis is "prices include tax" with no rate recorded: no share can be taken for any drink. */
+  noTaxRate: boolean;
 }
 
-export function stripFor(all: DrinkNumbers[]): Strip {
+export function stripFor(all: DrinkNumbers[], tax?: ListTax): Strip {
   const shares = all.map((n) => n.share).filter((s): s is number => s != null);
   const avg = shares.length ? shares.reduce((a, b) => a + b, 0) / shares.length : null;
+  const costedNoShare = all.filter((n) => n.hasRecipe === true && n.cost != null && n.share == null).length;
   return {
     averageShare: avg == null ? null : Math.round(avg * 10) / 10,
     priced: shares.length,
-    unpriced: all.filter((n) => n.hasRecipe === true && n.share == null).length,
+    unpriced: all.filter((n) => n.hasRecipe === true && n.cost == null).length,
+    noShare: costedNoShare,
     noRecipe: all.filter((n) => n.hasRecipe === false).length,
+    noTaxRate: tax?.basis === 'prices_include_tax' && tax.ratePct == null && costedNoShare > 0,
   };
+}
+
+/** The strip's one line. "Not priced" counts only drinks with no cost; a costed drink is never called unpriced. */
+export function stripSaid(s: Strip, sayPct: (n: number) => string): string {
+  const drinks = `${s.priced} priced ${s.priced === 1 ? 'drink' : 'drinks'}`;
+  const head = s.noTaxRate
+    ? `Pour cost not known: no tax rate recorded for your list prices (${s.noShare} costed ${s.noShare === 1 ? 'drink' : 'drinks'})`
+    : `${s.averageShare == null ? 'Average pour cost: not known' : `Average pour cost ${sayPct(s.averageShare)}`} over ${drinks}`;
+  const noPrice = !s.noTaxRate && s.noShare > 0 ? ` · ${s.noShare} costed with no usable list price` : '';
+  return `${head} · ${s.unpriced} not priced${noPrice} · ${s.noRecipe} with no recipe`;
 }
 
 interface ExportRow {

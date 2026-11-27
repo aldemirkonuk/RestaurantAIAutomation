@@ -45,7 +45,7 @@ import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { ShareFigure, marginPerServe, pourCostShare } from './recipe/DrinkCards';
 import { ExportMenu } from '../../../components/ui/ExportMenu';
 import { exportTable, type TableExportFormat } from '../../../lib/tableExport';
-import { FIRST_DIR, drinkNumbers, exportColumns, sortDrinks, stripFor, type SortDir, type SortKey } from './registerFigures';
+import { FIRST_DIR, drinkNumbers, exportColumns, sortDrinks, stripFor, stripSaid, type SortDir, type SortKey } from './registerFigures';
 import { useListTax } from './recipe/useListTax';
 import type { ListTax } from './recipe/listTax';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
@@ -266,7 +266,7 @@ export default function CocktailRegister({
       return null;
     });
   const shown = sortDrinks(rows, sort?.key ?? null, sort?.dir ?? 'asc', numbersOf);
-  const strip = stripFor(rows.map(numbersOf));
+  const strip = stripFor(rows.map(numbersOf), tax);
   const sortHead = (key: SortKey, label: string) => (
     <th scope="col" style={{ textAlign: 'right' }} aria-sort={sort?.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button type="button" className="cl-sort cl-focus" onClick={() => pressSort(key)} data-testid={`sort-${key}`}>
@@ -552,7 +552,7 @@ export default function CocktailRegister({
                 {seesCost ? (
                   !figuresRead
                     ? 'Pour cost: not read just now.'
-                    : `${strip.averageShare == null ? 'Average pour cost: not known' : `Average pour cost ${sayPct(strip.averageShare)}`} over ${strip.priced} priced ${strip.priced === 1 ? 'drink' : 'drinks'} · ${strip.unpriced} not priced · ${strip.noRecipe} with no recipe`
+                    : stripSaid(strip, sayPct)
                 ) : (
                   `${rows.length} ${rows.length === 1 ? 'drink' : 'drinks'}`
                 )}
