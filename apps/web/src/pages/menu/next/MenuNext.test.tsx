@@ -597,10 +597,19 @@ describe('MenuNext — a newer menu is due (menu r104 g1)', () => {
       mockVersions.mockResolvedValue(dueReply('due') as never);
       const { unmount } = mount();
       const said = await screen.findByTestId('menu-due');
-      expect(said).toHaveTextContent('This menu was made current 5 weeks ago and you keep it monthly.');
+      expect(said).toHaveTextContent('This menu was made current 5 weeks ago and you keep it monthly, so a newer one is due.');
       expect(screen.getByRole('button', { name: 'Read the new one below.' })).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it('tells overdue from due, in words (DD-r108-17)', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    mockVersions.mockResolvedValue(dueReply('overdue') as never);
+    mount();
+    const said = await screen.findByTestId('menu-due');
+    expect(said).toHaveTextContent('This menu was made current 5 weeks ago and you keep it monthly, so a newer one is overdue.');
+    expect(said).not.toHaveTextContent(/is due\./);
   });
 
   it('says nothing to staff, and nothing while the menu is not yet due', async () => {
