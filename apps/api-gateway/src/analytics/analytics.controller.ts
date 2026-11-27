@@ -1274,7 +1274,8 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Sales revenue booked through the POS, over a day range",
     description:
-      "Sum of non-voided `pos_checks.total` plus the per-wine bottle/glass breakdown for the same window. " +
+      "Sum of non-voided `pos_checks.total` over the window, and, with `include=consumption`, the per-wine " +
+      "bottle/glass breakdown for the same window (`consumption`; absent when not asked for). " +
       "`posConnected: false` means this restaurant has never had a POS check land — `revenue` and `checkCount` " +
       "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
       "Reuses the same query goal progress runs on, so the two can never disagree. " +
@@ -1287,11 +1288,18 @@ export class AnalyticsController {
     required: false,
     description: "Window length in days (1–365, default 30).",
   })
+  @ApiQuery({
+    name: "include",
+    required: false,
+    description:
+      "`consumption` also reads the per-wine breakdown for the window. Not read otherwise: no page draws it.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @CurrentUser() user?: { role?: string | null },
+    @Query("include") include?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
@@ -1307,6 +1315,19 @@ export class AnalyticsController {
         restaurantId,
         span,
       );
+      // The breakdown is a whole-window read of the consumption log (every
+      // page of it, in sequence, after every page of the checks). No reader
+      // of this route draws it: /reports' till reads the figures and the
+      // daily series (rp-registers-trade.tsx `till.select`), /recommendations
+      // reads the daily series, and the till export reads the window alone
+      // (report-cutting-reader.service.ts). So it is read only when asked for
+      // (r41 /reports audit gap 8). At the one live house's measured rate of
+      // about 131 consumption lines a day, a 365-day till load no longer
+      // waits on 48 consumption pages after its 22 check pages; a 30-day load
+      // on 4 after 2. `undefined`, so the key is dropped from the JSON body
+      // and the response type stays one shape for every caller.
+      if (!wantsConsumption(include))
+        return { ...window, consumption: undefined };
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
       // trips to discover. Skipped too when the house has no zone: its days
@@ -1739,4 +1760,15 @@ export class AnalyticsController {
       timestamp: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * Whether `GET /analytics/pos-revenue` was asked for its per-wine breakdown:
+ * `include=consumption`, alone or in a comma list. Anything else is not asking.
+ */
+export function wantsConsumption(include: string | undefined): boolean {
+  return (include ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .includes("consumption");
 }

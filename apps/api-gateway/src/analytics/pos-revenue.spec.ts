@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { AnalyticsController } from "./analytics.controller";
+import { AnalyticsController, wantsConsumption } from "./analytics.controller";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
@@ -1208,7 +1208,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30", OWNER);
+    const body = await controller.getPosRevenue("r1", "30", OWNER, "consumption");
 
     expect(body.posConnected).toBe(false);
     expect(body.revenue).toBeNull();
@@ -1232,7 +1232,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       { wineName: "Malbec", bottlesSold: 2 },
     ]);
 
-    const body = await controller.getPosRevenue("r1", undefined, OWNER);
+    const body = await controller.getPosRevenue("r1", undefined, OWNER, "consumption");
 
     expect(body.revenue).toBe(4200);
     expect(body.consumption).toHaveLength(1);
@@ -1257,11 +1257,47 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30", OWNER);
+    const body = await controller.getPosRevenue("r1", "30", OWNER, "consumption");
 
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
     expect(analytics.getPosConsumptionBreakdown).not.toHaveBeenCalled();
+  });
+
+  it("reads no breakdown unless asked, and the body carries none (r41 gap 8)", async () => {
+    const window = {
+      from: "2026-07-28",
+      to: "2026-08-26",
+      days: 30,
+      timezone: LA,
+      zoneUnset: false,
+      posConnected: true,
+      revenue: 4200,
+      checkCount: 61,
+      dailySeries: [{ date: "2026-08-26", revenue: 4200 }],
+    };
+    goals.getPosRevenueWindow.mockResolvedValue(window);
+    analytics.getPosConsumptionBreakdown.mockResolvedValue([
+      { wineName: "Malbec", bottlesSold: 2 },
+    ]);
+
+    for (const include of [undefined, "", "daily", "consumptions"]) {
+      const body = await controller.getPosRevenue("r1", "365", include);
+      // What goes over the wire: the window, and nothing else.
+      expect(JSON.parse(JSON.stringify(body))).toStrictEqual(window);
+    }
+    expect(goals.getPosRevenueWindow).toHaveBeenCalledTimes(4);
+    expect(analytics.getPosConsumptionBreakdown).not.toHaveBeenCalled();
+  });
+
+  it("`include` asks for the breakdown by name, alone or in a list", () => {
+    expect(wantsConsumption("consumption")).toBe(true);
+    expect(wantsConsumption("Consumption")).toBe(true);
+    expect(wantsConsumption("daily, consumption")).toBe(true);
+    expect(wantsConsumption(undefined)).toBe(false);
+    expect(wantsConsumption("")).toBe(false);
+    expect(wantsConsumption("consumptions")).toBe(false);
+    expect(wantsConsumption("no-consumption")).toBe(false);
   });
 
   it("clamps an absurd or unparseable `days` to a sane window", async () => {
