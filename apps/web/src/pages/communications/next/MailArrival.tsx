@@ -9,8 +9,8 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import { MONO, failedReadWords } from './cm-format';
-import { shortSpan } from './mail-format';
+import { MONO } from './cm-format';
+import { setupFailWords, shortSpan } from './mail-format';
 import { ACT, ALERT, NOT_YOURS, Part, QUIET, TEXT } from './MailSetupParts';
 import { useMakeAddress, useStartTestLetter, waitingForTestLetter, type MailSetupView } from './useMailSetup';
 
@@ -93,7 +93,7 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
       )}
       {start.isError && (
         <p role="alert" data-testid="setup-test-failed" style={ALERT}>
-          {failedReadWords(start.error)}.
+          {setupFailWords(start.error, 'test')}
         </p>
       )}
       <p style={QUIET}>
@@ -143,7 +143,7 @@ export function MailArrival({ view, now }: { view: MailSetupView; now: number })
           )}
           {make.isError && (
             <p role="alert" data-testid="setup-make-failed" style={ALERT}>
-              {failedReadWords(make.error)}.
+              {setupFailWords(make.error, 'address')}
             </p>
           )}
         </div>

@@ -17,8 +17,8 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SANS, failedReadWords } from './cm-format';
-import { senderLine, type MailStatus, type SenderLineInput } from './mail-format';
+import { SANS } from './cm-format';
+import { senderLine, setupFailWords, type MailStatus, type SenderLineInput } from './mail-format';
 import { MailArrival } from './MailArrival';
 import { ACT, ALERT, LINK, NOT_YOURS, Part, QUIET, TEXT, TONE } from './MailSetupParts';
 import { useChooseSender, useMailSetup, type MailSenderChoice, type MailSetupView } from './useMailSetup';
@@ -131,7 +131,7 @@ function Senders({
           )}
           {choose.isError && (
             <p role="alert" data-testid="setup-save-failed" style={ALERT}>
-              {failedReadWords(choose.error)}.
+              {setupFailWords(choose.error, 'choose')}
             </p>
           )}
         </form>
@@ -165,7 +165,7 @@ export function MailSetup({
       </p>
       {q.isError && !q.data ? (
         <p role="alert" data-testid="setup-unread" style={ALERT}>
-          The mail setup could not be read ({failedReadWords(q.error)}). That does not mean nothing is set up.
+          {setupFailWords(q.error, 'read')}
         </p>
       ) : !q.data ? (
         <p style={QUIET}>Reading the mail setup…</p>
