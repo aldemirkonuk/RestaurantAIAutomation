@@ -36,7 +36,7 @@ describe('MenuScanUpload sends the photo fitted', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Take the photo' }))
     await waitFor(() => expect(onSuccess).toHaveBeenCalled())
     expect(fitPhotoForReading).toHaveBeenCalledWith('/9j/WHOLE')
-    expect(importMenu).toHaveBeenCalledWith('scan', { imageBase64: '/9j/FIT' })
+    expect(importMenu).toHaveBeenCalledWith('scan', { imageBase64: '/9j/FIT' }, expect.objectContaining({ onReading: expect.any(Function) }))
     expect(onSuccess).toHaveBeenCalledWith({ menuId: 'm-1', items: [] }, { image: 'data:image/jpeg;base64,/9j/FIT' })
   })
 })

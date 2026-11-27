@@ -826,7 +826,9 @@ export default function GetStarted() {
           </button>
         </div>
         <div>
-          {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
+          {menuMethod === 'photo' && (
+            <MenuScanUpload onSuccess={menuRead} onGoOn={() => navigate('/house', { replace: true })} />
+          )}
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} droppedFiles={droppedFiles} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={menuCurrency} />}
         </div>
