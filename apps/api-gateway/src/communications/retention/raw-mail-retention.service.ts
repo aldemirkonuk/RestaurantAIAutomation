@@ -550,7 +550,7 @@ export class RawMailRetentionService {
     // being skipped silently.
     const { data: rows, error: rowsError } = await this.db.supabase
       .from("procurement_conversations")
-      .select("id, received_at, created_at")
+      .select("id, received_at, created_at, kind, message_id")
       .eq("restaurant_id", restaurantId)
       .not("mirrored_by_grant_id", "is", null)
       .is("raw_deleted_at", null);
@@ -647,6 +647,35 @@ export class RawMailRetentionService {
       }
     }
 
+    // A TEAM OR GUEST LETTER IS DELETED WHOLE, AND THE HOUSE'S OWN REPLIES TO IT
+    // GO IN THE SAME PASS (r107). A reply names its letter only through
+    // `email_headers.answers` / `in_reply_to`; once the letter row is gone nothing
+    // can find the reply again, and the revoke that follows would leave a body
+    // that quotes the guest. Same provenance helper as the revoke. When the
+    // replies cannot be read the letter is HELD, not deleted, so the next sweep
+    // can still name them: a read that failed is said, and it is not a yes.
+    let repliesError: string | null = null;
+    let repliesWent = 0;
+    const wholeLetters = candidates.filter(
+      (r) => deletable.includes(String(r.id)) && (r.kind === "team" || r.kind === "guest"),
+    );
+    if (wholeLetters.length) {
+      const own = await this.repliesToLettersRead(
+        restaurantId,
+        wholeLetters.map((r) => ({ id: String(r.id), messageId: (r.message_id as string | null) ?? null })),
+        false,
+      );
+      repliesError = own.error;
+      if (own.failed) {
+        const held = new Set(wholeLetters.map((r) => String(r.id)));
+        deletable = deletable.filter((id) => !held.has(id));
+      } else {
+        const before = deletable.length;
+        deletable = [...new Set([...deletable, ...own.ids])];
+        repliesWent = deletable.length - before;
+      }
+    }
+
     const outcome = await this.deleteRawFor(deletable, "window_expired");
 
     const heldSentence =
@@ -667,8 +696,8 @@ export class RawMailRetentionService {
       notice: null,
       archiveMode: archive.mode,
       heldForExport,
-      error: [outcome.error, standingNote].filter(Boolean).join(" ") || null,
-      says: `${candidates.length} mirrored repl${candidates.length === 1 ? "y" : "ies"} still holding raw mail were looked at against a ${figureDays}-day window; ${outcome.deleted} were past it and had their body, headers and attachment bytes deleted.${heldSentence} The order's own facts on all ${candidates.length} are untouched.`,
+      error: [outcome.error, standingNote, repliesError].filter(Boolean).join(" ") || null,
+      says: `${candidates.length} mirrored repl${candidates.length === 1 ? "y" : "ies"} still holding raw mail were looked at against a ${figureDays}-day window; ${outcome.deleted} were past it and had their body, headers and attachment bytes deleted.${repliesWent ? ` ${repliesWent} of the house's own sent repl${repliesWent === 1 ? "y" : "ies"} to those letters went with them.` : ""}${repliesError ? ` ${repliesError}` : ""}${heldSentence} The order's own facts on all ${candidates.length} are untouched.`,
     });
   }
 
@@ -927,7 +956,8 @@ export class RawMailRetentionService {
   private async repliesToLettersRead(
     restaurantId: string,
     letters: Array<{ id: string; messageId: string | null }>,
-  ): Promise<{ ids: string[]; kept: number; error: string | null }> {
+    countStray = true,
+  ): Promise<{ ids: string[]; kept: number; error: string | null; failed: boolean }> {
     const out = new Set<string>();
     const CHUNK = 100;
     const PAGE = 1000;
@@ -955,6 +985,7 @@ export class RawMailRetentionService {
             return {
               ids: [],
               kept: 0,
+              failed: true,
               error: `The house's replies to the letters this connection read could NOT be read (${error.message}), so they were not deleted. They are still in the book.`,
             };
           }
@@ -964,6 +995,8 @@ export class RawMailRetentionService {
         }
       }
     }
+    // The window sweep has no sentence about kept replies, so it does not count them.
+    if (!countStray) return { ids: [...out], kept: 0, failed: false, error: null };
     const { data: stray, error: strayError } = await this.db.supabase
       .from("procurement_conversations")
       .select("id")
@@ -973,7 +1006,16 @@ export class RawMailRetentionService {
       .is("raw_deleted_at", null)
       .is("email_headers->>answers", null)
       .is("email_headers->>in_reply_to", null);
-    return { ids: [...out], kept: strayError ? 0 : (stray ?? []).length, error: null };
+    // A failed count is said, not turned into "none kept" (ADR 0020): the
+    // sentence would otherwise tell the owner nothing was left when it could not look.
+    return {
+      ids: [...out],
+      kept: strayError ? 0 : (stray ?? []).length,
+      failed: false,
+      error: strayError
+        ? `Which of the house's sent replies to a team member or a guest name no letter could NOT be read (${strayError.message}), so how many were kept is not known.`
+        : null,
+    };
   }
 
   // =========================================================================
