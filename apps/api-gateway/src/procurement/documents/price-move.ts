@@ -57,3 +57,38 @@ export function priceMove(
       : null,
   };
 }
+
+const BOTTLE = /^(bottle|btl|bt)$/i;
+
+export interface PricedLine {
+  uom: string | null;
+  unit_price: number | string | null;
+  /** The quantity the printed price is for (a price per 6), when the paper said. */
+  price_base_qty?: number | string | null;
+  /** The unit that quantity is in; null means the line's own unit. */
+  price_base_uom?: string | null;
+}
+
+/**
+ * The line's price per ONE bottle, or null when the price is not for bottles
+ * (per case, per litre, a unit this does not know). A price printed per 6
+ * bottles is divided by 6; it is never read as the price of one.
+ */
+export function perBottleCost(l: PricedLine): number | null {
+  const base = (l.price_base_uom ?? l.uom ?? "").trim();
+  if (!BOTTLE.test(base) || l.unit_price == null) return null;
+  const qty = l.price_base_qty == null ? 1 : Number(l.price_base_qty);
+  const price = Number(l.unit_price);
+  if (!Number.isFinite(price) || !Number.isFinite(qty) || qty <= 0) return null;
+  return price / qty;
+}
+
+/**
+ * True when a line's raw `unit_price` IS a per-bottle cost: lots store the
+ * invoice line's raw unit_price whatever its unit, so only a plain per-bottle
+ * source line makes a lot's cost comparable with a per-bottle price.
+ */
+export function isPlainPerBottle(l: PricedLine): boolean {
+  if (!BOTTLE.test((l.price_base_uom ?? l.uom ?? "").trim())) return false;
+  return l.price_base_qty == null || Number(l.price_base_qty) === 1;
+}

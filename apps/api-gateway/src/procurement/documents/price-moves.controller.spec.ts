@@ -1,7 +1,7 @@
 import { DocumentsController } from "./documents.controller";
 
 /** A thenable fake db: one canned answer per table, every call chains. */
-const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null }, document_deliveries: { data: [], error: null } };
+const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null }, document_deliveries: { data: [{ document_id: "src", delivery_id: "D0", role: "invoice" }], error: null } };
 function controllerWith(results: Record<string, { data: unknown; error: unknown }>) {
   results = { ...HOUSE, ...results };
   const db = {
@@ -22,6 +22,7 @@ function controllerWith(results: Record<string, { data: unknown; error: unknown 
 const user = { userId: "u1", restaurantId: "rest-1" } as any;
 const line = (over: Record<string, unknown>) => ({
   id: "l1",
+  document_id: "src",
   line_no: 1,
   description: "Albariño 2022",
   uom: "bottle",
@@ -29,7 +30,7 @@ const line = (over: Record<string, unknown>) => ({
   inventory_id: "g1",
   ...over,
 });
-const lot = (cost: number, at: string, good = "g1") => ({ inventory_id: good, unit_cost: cost, received_at: at });
+const lot = (cost: number, at: string, good = "g1") => ({ inventory_id: good, unit_cost: cost, received_at: at, delivery_id: "D0" });
 
 describe("DocumentsController.priceMoves — a cost that jumped with no PO to catch it (r104 g4)", () => {
   it("says what moved, against the good's NEWEST invoiced lot", async () => {

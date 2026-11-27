@@ -47,7 +47,7 @@ import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
-import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
+import { DEFAULT_MOVE_THRESHOLD_PCT, isPlainPerBottle, perBottleCost, priceMove, type PricedLine } from "./price-move";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1509,7 +1509,7 @@ export class DocumentsController {
           : null;
     const { data: lines, error } = await client
       .from("procurement_document_lines")
-      .select("id, line_no, description, uom, unit_price, inventory_id")
+      .select("id, line_no, description, uom, unit_price, price_base_qty, price_base_uom, inventory_id")
       .eq("document_id", id)
       .eq("restaurant_id", user.restaurantId)
       .order("line_no", { ascending: true });
@@ -1524,10 +1524,14 @@ export class DocumentsController {
       description: string | null;
       uom: string | null;
       unit_price: number | string | null;
+      price_base_qty: number | string | null;
+      price_base_uom: string | null;
       inventory_id: string | null;
     }[];
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     const last = new Map<string, number>();
+    // The delivery each good's last lot came from, to learn what unit that lot's cost is in.
+    const lastFrom = new Map<string, string | null>();
     if (goods.length) {
       // This paper's own lots are not its "last" cost: verifying it stamped them
       // cost_provenance 'invoice', so reopening a verified paper would compare
@@ -1548,7 +1552,7 @@ export class DocumentsController {
         goods.map(async (good) => {
           let q = client
             .from("inventory_lots")
-            .select("inventory_id, unit_cost, received_at")
+            .select("inventory_id, unit_cost, received_at, delivery_id")
             .eq("restaurant_id", user.restaurantId)
             .eq("cost_provenance", "invoice")
             .eq("inventory_id", good)
@@ -1564,11 +1568,52 @@ export class DocumentsController {
             `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
             HttpStatus.INTERNAL_SERVER_ERROR,
           );
-        for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-          if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+        for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string; delivery_id: string | null }[])
+          if (!last.has(lot.inventory_id)) {
+            last.set(lot.inventory_id, Number(lot.unit_cost));
+            lastFrom.set(lot.inventory_id, lot.delivery_id ?? null);
+          }
       }
     }
-    const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
+    // A lot stores its invoice line's RAW unit_price, so it is a per-bottle cost
+    // only when that source line was priced per plain bottle. Anything else (a
+    // case price, a price per 6, a lot with no source) is not compared (r106).
+    const plainBottleLots = new Set<string>();
+    const fromDeliveries = [...new Set([...lastFrom.values()].filter((x): x is string => !!x))];
+    if (fromDeliveries.length) {
+      const { data: dd, error: ddErr } = await client
+        .from("document_deliveries")
+        .select("document_id, delivery_id")
+        .in("delivery_id", fromDeliveries)
+        .eq("role", "invoice");
+      if (ddErr)
+        throw new HttpException(
+          `The papers behind the last costs could not be read, so no price was compared: ${ddErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const docsOf = new Map<string, Set<string>>();
+      for (const d of (dd ?? []) as { document_id: string; delivery_id: string }[])
+        docsOf.set(d.delivery_id, (docsOf.get(d.delivery_id) ?? new Set()).add(d.document_id));
+      const docIds = [...new Set([...docsOf.values()].flatMap((x) => [...x]))];
+      if (docIds.length) {
+        const { data: src, error: srcErr } = await client
+          .from("procurement_document_lines")
+          .select("document_id, inventory_id, uom, unit_price, price_base_qty, price_base_uom")
+          .eq("restaurant_id", user.restaurantId)
+          .in("document_id", docIds)
+          .in("inventory_id", goods);
+        if (srcErr)
+          throw new HttpException(
+            `The lines behind the last costs could not be read, so no price was compared: ${srcErr.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        const srcLines = (src ?? []) as (PricedLine & { document_id: string; inventory_id: string })[];
+        for (const [good, from] of lastFrom) {
+          const mine = srcLines.filter((l) => l.inventory_id === good && !!from && docsOf.get(from)?.has(l.document_id));
+          if (mine.length && mine.every(isPlainPerBottle)) plainBottleLots.add(good);
+        }
+      }
+    }
     return {
       thresholdPct: threshold,
       // Carried so the page can say WHY nothing was compared (r106): the two
@@ -1577,14 +1622,16 @@ export class DocumentsController {
       houseCurrency: houseCurrency || null,
       lines: rows.map((l) => {
         const prev = l.inventory_id ? last.get(l.inventory_id) : undefined;
-        const price = l.unit_price == null ? null : Number(l.unit_price);
-        // A lot's cost is per bottle. A line priced per case (or in a unit this
-        // does not know) is not converted here: it is not compared.
+        const bottleCost = perBottleCost(l);
+        const price = bottleCost ?? (l.unit_price == null ? null : Number(l.unit_price));
+        // Both sides are per bottle or neither is compared: a price per 6 is
+        // divided by 6, and a case price or a lot with no per-bottle source says
+        // the units differ.
         if (currencyReason)
           return { lineId: l.id, lineNo: l.line_no, description: l.description, compared: false as const, reason: currencyReason };
         const result = priceMove(
-          prev == null ? null : { cost: prev, unit: "bottle" },
-          { cost: price, unit: perBottle(l.uom) ? "bottle" : l.uom },
+          prev == null ? null : { cost: prev, unit: l.inventory_id && plainBottleLots.has(l.inventory_id) ? "bottle" : null },
+          { cost: price, unit: bottleCost != null ? "bottle" : (l.price_base_uom ?? l.uom ?? "").trim() || null },
           threshold,
         );
         return { lineId: l.id, lineNo: l.line_no, description: l.description, ...result };
