@@ -184,9 +184,11 @@ export interface TillWindow {
   /**
    * Sparse; a `null` revenue is a day the server could not state. `checks` is
    * that day's count of checks; `null` from a gateway that does not send it,
-   * and then the till offers no bars and a line.
+   * and then the till offers no bars and a line. `pricedChecks` is how many of
+   * them carry a total (revenue counts a check with none as 0); `null` from a
+   * gateway that does not send it, and then every check is taken as priced.
    */
-  dailySeries: Array<{ date: string; revenue: number | null; checks: number | null }>;
+  dailySeries: Array<{ date: string; revenue: number | null; checks: number | null; pricedChecks?: number | null }>;
   /** True when the gateway withheld the till from this reader (ADR 0298 decision 9). */
   salesWithheld: boolean;
   /**
@@ -232,6 +234,8 @@ export function tillMeasures(
   if (w.dailySeries.every((d) => d.checks != null)) {
     const taken = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
     const checks = new Map(w.dailySeries.map((d) => [d.date, d.checks as number]));
+    // A day's average is over the checks that carry a total, never the ones that do not (r101 review, ADR 0020).
+    const priced = new Map(w.dailySeries.map((d) => [d.date, pricedOf(d)]));
     out.push(
       {
         key: 'checks',
@@ -247,7 +251,7 @@ export function tillMeasures(
         format: (v) => money(v, 'compact'),
         values: shown.map((date) => {
           const r = taken.get(date);
-          const c = checks.get(date);
+          const c = priced.get(date);
           return r != null && c != null && c > 0 ? r / c : null;
         }),
       },
@@ -270,6 +274,35 @@ export function tillMeasures(
     });
   }
   return out.length > 0 ? out : undefined;
+}
+
+/** A day's checks that carry a total; every check from a gateway that does not say (an older one). */
+export const pricedOf = (d: { checks: number | null; pricedChecks?: number | null }): number | null =>
+  d.pricedChecks != null && d.checks != null ? Math.min(d.pricedChecks, d.checks) : d.checks;
+
+/** Σ priced checks over the series, or null when a day does not say (then the caller keeps the whole count). */
+export function pricedTotal(series: ReadonlyArray<{ checks: number | null; pricedChecks?: number | null }>): number | null {
+  if (series.length === 0 || series.some((d) => d.pricedChecks == null || d.checks == null)) return null;
+  return series.reduce((a, d) => a + (pricedOf(d) ?? 0), 0);
+}
+
+/**
+ * Said under the till when checks came with no total: each day's average check divides by the checks that
+ * carry one (ADR 0020). Empty from a gateway that does not say, and when every check was priced.
+ */
+export function unpricedNote(w: TillWindow): string[] {
+  let checks = 0;
+  let priced = 0;
+  for (const d of w.dailySeries) {
+    if (d.checks == null || d.pricedChecks == null) return [];
+    checks += d.checks;
+    priced += Math.min(d.pricedChecks, d.checks);
+  }
+  const none = checks - priced;
+  if (none <= 0) return [];
+  return [
+    `${none} of the window's ${checks} checks carried no total, so each day's average check is over the checks that did.`,
+  ];
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -440,6 +473,7 @@ const till = analysis<TillWindow>({
         date: str(r.date),
         revenue: num(r.revenue),
         checks: num(r.checks),
+        pricedChecks: num(r.pricedChecks),
       })),
       prior: null,
     };
@@ -482,9 +516,12 @@ const till = analysis<TillWindow>({
         notes: [],
         basis: [],
       };
+    // The same denominator as the Average check line and the week/month bars: the checks that carry a total
+    // (r101 review 4, ADR 0020); the gateway's whole count only when a day does not say how many were priced.
+    const priced = pricedTotal(w.dailySeries);
     const avg =
-      w.revenue != null && w.checkCount != null && w.checkCount > 0
-        ? w.revenue / w.checkCount
+      w.revenue != null && (priced ?? w.checkCount) != null && (priced ?? w.checkCount)! > 0
+        ? w.revenue / (priced ?? w.checkCount)!
         : null;
     const figures = [
       { label: 'Taken', value: money(w.revenue), note: 'No POS revenue recorded' },
@@ -653,7 +690,7 @@ const till = analysis<TillWindow>({
         return getTable();
       },
       figures,
-      notes,
+      notes: [...notes, ...unpricedNote(w)],
       basis,
     };
   },

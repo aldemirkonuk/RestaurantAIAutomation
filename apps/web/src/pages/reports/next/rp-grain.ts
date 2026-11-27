@@ -13,7 +13,7 @@
  *    present but unstated (revenue null) draws no bar: it says so instead.
  *    A bucket in which no day rang up a check is a gap, never a 0.
  *  - Checks are summed only when every trading day of the bucket carries them.
- *    Average check = Σ revenue ÷ Σ checks, never a mean of daily averages.
+ *    Average check = Σ revenue ÷ Σ priced checks (ADR 0020), never a mean of daily averages.
  *  - An edge bucket that does not hold its whole week or month is flagged
  *    `whole: false` and named ("part week: 3 days"), so a short week never
  *    reads as a slow one. It is drawn, not dropped (the window's takings must
@@ -47,6 +47,8 @@ export interface DayRow {
   date: string;
   revenue: number | null;
   checks?: number | null;
+  /** How many of `checks` carry a total; absent or null from a gateway that does not say (then every check counts). */
+  pricedChecks?: number | null;
 }
 
 export interface Bucket {
@@ -65,7 +67,7 @@ export interface Bucket {
   unstated: number;
   revenue: number | null;
   checks: number | null;
-  /** Σ revenue ÷ Σ checks, or null. */
+  /** Σ revenue ÷ Σ priced checks (Σ checks from a gateway that does not say), or null. */
   avg: number | null;
 }
 
@@ -105,6 +107,7 @@ export function bucketTill(span: readonly string[], series: readonly DayRow[], g
     let traded = 0;
     let unstated = 0;
     let checks = 0;
+    let priced = 0;
     let counted = true;
     for (const i of slots) {
       const row = byDate.get(span[i]);
@@ -115,7 +118,10 @@ export function bucketTill(span: readonly string[], series: readonly DayRow[], g
         traded += 1;
       }
       if (row.checks == null) counted = false;
-      else checks += row.checks;
+      else {
+        checks += row.checks;
+        priced += row.pricedChecks != null ? Math.min(row.pricedChecks, row.checks) : row.checks;
+      }
     }
     const present = traded + unstated;
     const revenue = unstated > 0 || traded === 0 ? null : sum;
@@ -136,7 +142,7 @@ export function bucketTill(span: readonly string[], series: readonly DayRow[], g
       unstated,
       revenue,
       checks: checkSum,
-      avg: revenue != null && checkSum != null && checkSum > 0 ? revenue / checkSum : null,
+      avg: revenue != null && checkSum != null && priced > 0 ? revenue / priced : null,
     };
   });
 }
