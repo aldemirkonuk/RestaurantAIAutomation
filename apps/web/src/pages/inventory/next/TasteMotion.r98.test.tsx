@@ -62,6 +62,14 @@ describe('the taste line holds its slot (M6)', () => {
     expect(screen.queryByTestId('taste-line-hold')).toBeNull();
   });
 
+  it('the answered foot line is the held slot: one line, 44 px on touch and narrow screens, 23 px otherwise (r101)', () => {
+    const t = css('taste-card.css');
+    const foot = t.slice(t.indexOf('.tc-line--foot {'));
+    expect(foot).toMatch(/\.tc-line--foot \{\s*flex-wrap: nowrap;\s*min-height: 23px;\s*max-height: 23px;/);
+    expect(foot).toMatch(/\.tc-line--foot \.tc-line-btn > span:first-child \{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+    expect(foot).toMatch(/@media \(max-width: 767px\), \(pointer: coarse\) \{\s*\.tc-line--foot,\s*\.tc-line--foot\.tc-line--hold \{\s*min-height: 44px;\s*max-height: 44px;/);
+  });
+
   it('the stylesheets hold 23 px on the foot and never give the slot back, and a card keeps 94 px', () => {
     const t = css('taste-card.css');
     expect(t).toMatch(/\.tc-line--foot\.tc-line--hold \{\s*min-height: 23px;/);

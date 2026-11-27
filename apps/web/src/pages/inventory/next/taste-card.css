@@ -255,6 +255,37 @@
 .tc-line--hold {
   overflow: hidden;
 }
+/* The answered foot line is exactly the slot it replaces (r101 walk): one line, cut with an ellipsis like the
+   head copy, never taller than the hold. On a tablet or a touch screen the tap target is 44 px, so the hold and
+   the answer are both 44 px there. */
+.tc-line--foot {
+  flex-wrap: nowrap;
+  min-height: 23px;
+  max-height: 23px;
+}
+.tc-line--foot .tc-line-k {
+  flex: none;
+}
+.tc-line--foot .tc-line-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tc-line--foot .tc-line-btn > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tc-line--foot .tc-marks {
+  flex: none;
+}
+@media (max-width: 767px), (pointer: coarse) {
+  .tc-line--foot,
+  .tc-line--foot.tc-line--hold {
+    min-height: 44px;
+    max-height: 44px;
+  }
+}
 
 /* "More" on a taste row: the detail opens by height and opacity (r97 M8), closes quicker; its room is the
    row's own, never the row under it. Reduced motion: no tween, the end state at once. */

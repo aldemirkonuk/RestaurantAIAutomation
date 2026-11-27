@@ -3,8 +3,8 @@
  * said as failed and never 0, no money for staff, a food in its own unit.
  * The page wiring (a row opens it, Back closes it) is in InventoryNext.test.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
@@ -599,18 +599,22 @@ describe('the first-screen taste line', () => {
     expect(api.taste).toHaveBeenCalledTimes(1);
   });
 
-  it('holds a one-line slot while the read is pending, then keeps it when it says no profile (r101)', async () => {
-    let answer: (v: unknown) => void = () => undefined;
-    api.taste.mockImplementation(() => new Promise((r) => (answer = r)));
-    open(row());
-    const hold = screen.getByTestId('taste-line-head-hold');
-    expect(hold.getAttribute('aria-hidden')).toBe('true');
-    expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(hold);
-    answer({ state: 'ready', data: { effective: null, layers: [] } });
-    await waitFor(() => expect(api.taste).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 700));
-    expect(screen.getByTestId('taste-line-head-hold')).toBe(hold);
-    expect(screen.queryByTestId('taste-line-head')).toBeNull();
+  it('holds a one-line slot while the read is pending, then keeps it for good when it says no profile (r101)', async () => {
+    vi.useFakeTimers();
+    try {
+      let answer: (v: unknown) => void = () => undefined;
+      api.taste.mockImplementation(() => new Promise((r) => (answer = r)));
+      open(row());
+      const hold = screen.getByTestId('taste-line-head-hold');
+      expect(hold.getAttribute('aria-hidden')).toBe('true');
+      expect(screen.getByTestId('ivd-head').nextElementSibling).toBe(hold);
+      await act(async () => { answer({ state: 'ready', data: { effective: null, layers: [] } }); await vi.advanceTimersByTimeAsync(5000); });
+      expect(api.taste).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('taste-line-head-hold')).toBe(hold);
+      expect(screen.queryByTestId('taste-line-head')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a supply holds no slot', async () => {
@@ -621,15 +625,22 @@ describe('the first-screen taste line', () => {
   });
 
   it('is not there when nobody has described the good, or the house has taste notes off', async () => {
-    api.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
-    open(row());
-    await waitFor(() => expect(api.taste).toHaveBeenCalled());
-    expect(screen.queryByTestId('taste-line')).toBeNull();
-    cleanup();
-    api.taste.mockResolvedValue({ state: 'absent' });
-    open(row());
-    await waitFor(() => expect(api.taste).toHaveBeenCalledTimes(2));
-    expect(screen.queryByTestId('taste-line')).toBeNull();
+    for (const reply of [{ state: 'ready', data: { effective: null, layers: [] } }, { state: 'absent' }]) {
+      let answer: (v: unknown) => void = () => undefined;
+      api.taste.mockImplementationOnce(() => new Promise((r) => (answer = r)));
+      open(row());
+      expect(screen.getByTestId('taste-line-head-hold')).toBeTruthy();
+      vi.useFakeTimers();
+      try {
+        await act(async () => { answer(reply); await vi.advanceTimersByTimeAsync(50); });
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(screen.queryByTestId('taste-line')).toBeNull();
+      expect(screen.queryByTestId('taste-line-head')).toBeNull();
+      expect(screen.getByTestId('taste-line-head-hold')).toBeTruthy();
+      cleanup();
+    }
   });
 
   it('says so when it could not be read', async () => {
