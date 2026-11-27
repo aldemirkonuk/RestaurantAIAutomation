@@ -91,9 +91,15 @@ export function fmtRecipeQty(n: number): string {
   return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
 }
 
+/**
+ * A recipe's card mounts from a read that has landed, so it has nothing to
+ * wait for: it holds no height (data-settled releases the 94 px floor the
+ * drawer's own cards keep while they read), and the room under a short card is
+ * not left blank (r106 walk, a ~40 px band at 375; r107 g3).
+ */
 function DishCard({ id, title, value, sub }: { id: string; title: string; value: string; sub?: string }) {
   return (
-    <div className="ivd-card" data-testid={id}>
+    <div className="ivd-card" data-testid={id} data-settled="true">
       <span className="ivd-card-k">{title}</span>
       <span className="ivd-card-v">{value}</span>
       {sub ? <span className="ivd-card-s">{sub}</span> : null}

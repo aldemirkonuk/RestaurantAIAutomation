@@ -55,6 +55,10 @@
   font: inherit;
   text-align: left;
 }
+/* A card drawn from a read that has landed holds nothing: no floor outlives its content (r107 g3). */
+.ivd-card[data-settled='true'] {
+  min-height: 0;
+}
 button.ivd-card {
   cursor: pointer;
   transition: border-color 120ms ease-out, background-color 120ms ease-out, transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
