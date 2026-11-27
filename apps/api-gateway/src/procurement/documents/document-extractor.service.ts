@@ -14,6 +14,7 @@ import {
   ParsedDocument,
   ParsedLine,
   ParsedTaxBreakdownRow,
+  ParsedStatementEntry,
 } from "./parsed-document";
 import {
   reconciliationVerdict,
@@ -121,9 +122,10 @@ RULES
 - "printed": alongside each line and alongside the document totals, return the LITERAL text the page shows for money and quantity fields, exactly as printed — keep the vendor's own grouping and decimal marks ("1.704,00" stays "1.704,00", "142,00 / KS(12)" stays whole). Line keys: qty, unitPrice, lineTotal, allowance, deposit. Document keys: subtotal, tax, freight, total. Omit a key you did not read; never write "" and never rewrite the number into our format.
 - vendorTaxId / buyerTaxId: transcribe, NEVER construct. If the page prints no tax number, return null — a resolved vendor keyed on a number you assembled would put a guess under every price we ever record for them. If you cannot tell which of two printed numbers belongs to the seller, return null for both and say so in "unreadable".
 - Anything illegible: null, and say so in "unreadable".
+- "statementEntries": ONLY when docType is "statement", one row per document the statement lists: {"docNumber": the invoice or credit number exactly as printed (keep leading zeros), "docDate": ISO, "amount": the amount printed for that row as a plain unsigned number, "kind": "invoice", "credit" or "payment"}. A balance, an ageing bucket or a total is not a row. Omit the key on every other document type.
 
 OUTPUT only valid JSON:
-{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"vendorTaxId":null,"vendorTaxOffice":null,"vendorAddress":null,"vendorCountry":null,"buyerName":null,"buyerTaxId":null,"currency":null,"currencySeen":null,"subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
+{"docType":"invoice","docNumber":null,"docDate":null,"deliveredDate":null,"poNumber":null,"referencesDocNumber":null,"vendorName":null,"vendorTaxId":null,"vendorTaxOffice":null,"vendorAddress":null,"vendorCountry":null,"buyerName":null,"buyerTaxId":null,"currency":null,"currencySeen":null,"subtotal":null,"freight":null,"fuelSurcharge":null,"splitCaseFee":null,"deliveryFee":null,"depositTotal":null,"tax":null,"otherCharges":null,"discountTotal":null,"total":null,"taxBreakdown":[],"statementEntries":[],"printed":{},"lines":[{"vendorSku":null,"description":null,"vintage":null,"formatMl":null,"qty":0,"uom":"bottle","packSize":null,"unitPrice":null,"priceBaseQty":null,"priceBaseUom":null,"lineTotal":null,"allowance":null,"deposit":null,"lineKind":"goods","printed":{}}],"unreadable":[]}`;
 
 /**
  * The fence-stripping `normalize` applies before `JSON.parse`.
@@ -457,6 +459,9 @@ export class DocumentExtractorService {
       discountTotal: num(parsed.discountTotal),
       total: num(parsed.total),
       taxBreakdown: normalizeTaxBreakdown(parsed.taxBreakdown, warnings),
+      ...(docType === "statement"
+        ? { statementEntries: normalizeStatementEntries(parsed.statementEntries, warnings) }
+        : {}),
       lines,
       ...docPrinted,
       computedLinesTotal: null,
@@ -768,4 +773,28 @@ function normalizeTaxBreakdown(
   // An EMPTY array is a real answer ("the model looked and the page printed no
   // rate"); `undefined` means the model returned no breakdown field at all.
   return rows;
+}
+
+/** r109 g5: a statement's rows, kept only when they name a number or an amount and a known kind. */
+function normalizeStatementEntries(v: unknown, warnings: string[]): ParsedStatementEntry[] {
+  if (!Array.isArray(v)) return [];
+  const out: ParsedStatementEntry[] = [];
+  let dropped = 0;
+  for (const raw of v) {
+    const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+    const kind = str(row?.kind);
+    const amount = num(row?.amount);
+    const docNumber = str(row?.docNumber);
+    if (!row || (kind !== "invoice" && kind !== "credit" && kind !== "payment") || (docNumber === null && amount === null)) {
+      dropped += 1;
+      continue;
+    }
+    // The span of the statement compares dates as text, so only an ISO day is kept.
+    const day = str(row.docDate);
+    const docDate = day && /^\d{4}-\d{2}-\d{2}/.test(day) ? day.slice(0, 10) : null;
+    out.push({ docNumber, docDate, amount: amount === null ? null : Math.abs(amount), kind });
+  }
+  if (dropped)
+    warnings.push(`Dropped ${dropped} statement row(s) that named no document and no amount, or no kind of invoice, credit or payment.`);
+  return out;
 }
