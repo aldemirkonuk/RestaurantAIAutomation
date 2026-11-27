@@ -20,7 +20,7 @@ interface QuickGmailModalProps {
 }
 
 /** Where the house writes its mail (CommunicationsNext's composer). */
-const COMPOSER_PATH = '/communications'
+const COMPOSER_PATH = '/communications?tab=letters'
 
 export function QuickGmailModal({
   onClose,

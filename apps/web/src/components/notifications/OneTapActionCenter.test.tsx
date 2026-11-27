@@ -391,8 +391,8 @@ describe('openRouteForAction', () => {
    * dumped the user on the dashboard. The comms surface is `/communications`.
    */
   it('routes gmail actions to the real communications page', () => {
-    expect(openRouteForAction(action({ type: 'gmail_send' }))).toBe('/communications')
-    expect(openRouteForAction(action({ type: 'gmail_contextual' }))).toBe('/communications')
+    expect(openRouteForAction(action({ type: 'gmail_send' }))).toBe('/communications?tab=letters')
+    expect(openRouteForAction(action({ type: 'gmail_contextual' }))).toBe('/communications?tab=letters')
   })
 
   it('keeps every route inside the app route table', () => {

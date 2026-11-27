@@ -138,7 +138,7 @@ export function RecurringOrders() {
    * house's composer instead of marking an inquiry "sent" that never left.
    */
   const handleSendPriceInquiry = (_order: RecurringOrder) => {
-    window.location.assign('/communications')
+    window.location.assign('/communications?tab=letters')
   }
 
   const handleOverridePrice = (orderId: string) => {
