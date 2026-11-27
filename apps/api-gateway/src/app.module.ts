@@ -43,6 +43,7 @@ import { StorageLocationsModule } from "./storage-locations/storage-locations.mo
 import { CellarModule } from "./cellar/cellar.module";
 import { BeveragesModule } from "./beverages/beverages.module";
 import { RecipesModule } from "./recipes/recipes.module";
+import { TasteModule } from "./taste/taste.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { UserPreferencesModule } from "./user-preferences/user-preferences.module";
 import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-templates.module";
@@ -132,6 +133,7 @@ import { HouseModule } from "./house/house.module";
     CellarModule, // Which cellar registers a house carries (inferred → confirmed)
     BeveragesModule, // Read-only lists over public.beverages / public.cocktails
     RecipesModule, // A cocktail's versioned recipe over house items, and its cost per serve (ADR 0360)
+    TasteModule, // How a good, cocktail or dish tastes: layered, append-only, fused on read
     CalendarModule, // Calendar with recurrence support
     CommunicationsModule, // Gmail, SMS, and scheduled communications
     ConversationsModule, // Procurement conversation history, threads, summaries

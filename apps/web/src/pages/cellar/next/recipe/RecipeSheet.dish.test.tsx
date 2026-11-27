@@ -95,4 +95,31 @@ describe('RecipeSheet on a dish', () => {
     await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(1));
     expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('77');
   });
+  it('says dish, not drink, under a line that is not linked to the shelf, and plates when save is blocked', async () => {
+    const row = { key: 'u', role: 'stocked' as const, inventoryId: null, itemName: null, itemKind: null, label: 'Flour', qtyText: '30', unit: 'g' as const, saved: null };
+    keepDraft(draftKey('u1', RID, `dish:${ID}`), { rows: [row], openedFrom: V1, dirty: true, setAside: null });
+    serve();
+    render(<RecipeSheet dishId={ID} />, { wrapper: wrapper() });
+    expect(await screen.findByText("This dish won't take stock until 'Flour' is linked to something on your shelf.")).toBeInTheDocument();
+    expect(screen.queryByText(/This drink/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Makes (plates)'), { target: { value: '0' } });
+    expect(await screen.findByText(/Say how many plates it makes/)).toBeInTheDocument();
+  });
+  it('says plate when a flour line is repeated, and for what an earlier version would cost', async () => {
+    const row = (key: string) => ({ key, role: 'stocked' as const, inventoryId: GIN, itemName: 'Flour', itemKind: 'food', label: 'Flour', qtyText: '30', unit: 'g' as const, saved: null });
+    keepDraft(draftKey('u1', RID, `dish:${ID}`), { rows: [row('a'), row('b')], openedFrom: V1, dirty: true, setAside: null });
+    serve({ ...DISH_ANSWER, versionCount: 2 });
+    const old = h.get.getMockImplementation() as (url: string) => Promise<unknown>;
+    const V0 = '55555555-5555-4555-8555-555555555555';
+    h.get.mockImplementation(async (url: string) => {
+      if (url === `/recipes/${RID}/dishes/${ID}/versions`) return { data: [{ versionId: V0, version: 0, createdAt: '2026-11-07T10:00:00Z', author: null, lineCount: 0 }] };
+      if (url === `/recipes/${RID}/dishes/${ID}/versions/${V0}`) return { data: { version: { ...CUR, versionId: V0, version: 0 }, cost: { perServe: 4, perServeExact: 4, priced: 0, of: 0, complete: true, partial: 0 } } };
+      return old(url);
+    });
+    render(<RecipeSheet dishId={ID} />, { wrapper: wrapper() });
+    expect(await screen.findByTestId('recipe-repeated')).toHaveTextContent('Flour is on 2 lines; a plate takes all of them.');
+    fireEvent.click(await screen.findByRole('button', { name: 'Earlier versions (1)' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Version 0/ }));
+    expect(await screen.findByTestId('recipe-past-version')).toHaveTextContent('a plate at today');
+  });
 });

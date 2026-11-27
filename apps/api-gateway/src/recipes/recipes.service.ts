@@ -9,9 +9,11 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
+import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
-import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
+import { PreviewCostDto, SaveRecipeDto, StateWeightsDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
+import { shelfSearchPattern } from "./name-fold";
 
 export const NOT_THIS_HOUSE = "This drink is not on this house's list.";
 export const STALE_SAVE = "Someone saved this recipe after you opened it. Nothing was changed.";
@@ -30,6 +32,9 @@ export interface RecipeOwner {
 }
 export const WHAT_IS_IN_UNREAD =
   "What is in a serve could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
+/** The same sentence for a dish: a plate, not a serve. */
+export const WHAT_IS_IN_UNREAD_DISH =
+  "What is in a plate could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
 
 /** item_nutrition column -> figure key. */
 const FIGURE_COLUMN: Record<(typeof FIGURE_KEYS)[number], string> = {
@@ -57,6 +62,23 @@ export type WhatIsIn = ({ readable: true } & ServeNutrition) | { readable: false
  */
 export const MAX_LINE_QTY = 100_000;
 export const MAX_YIELD_SERVES = 1_000;
+
+/**
+ * The most a stated weight may be (r28 gap 7): one piece up to 50 kg (a whole
+ * lamb, a wheel of cheese), one ml up to 5 g (honey is 1.4, syrups under 2).
+ * A figure past these is a slip, such as grams per litre typed as grams per ml.
+ */
+export const MAX_PIECE_GRAMS = 50_000;
+export const MAX_ML_GRAMS = 5;
+export const WEIGHT_NOT_THIS_HOUSE = "That good is not on this house's shelf.";
+export const WEIGHT_SAVE_FAILED = "We could not keep that weight just now. Nothing was changed.";
+
+/** A stated weight from the database (numeric arrives as a string), or null. */
+function grams(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 /**
  * A cocktail's recipe: the current version, its lines linked to house items,
@@ -113,8 +135,10 @@ export class RecipesService {
   async getDishRecipe(restaurantId: string, dishId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const dish = await this.houseDish(restaurantId, dishId);
-    const [pointer, count] = await Promise.all([
+    // The house check and the pointer reads go at once (gap 17). Both reads
+    // name the house, and the check's 404 is the answer when it refuses.
+    const [dish, pointer, count] = await Promise.all([
+      this.houseDish(restaurantId, dishId),
       client
         .from("recipe_current_dish")
         .select("version_id")
@@ -135,7 +159,7 @@ export class RecipesService {
     let whatIsIn: WhatIsIn | null = null;
     const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
     if (versionId) {
-      const body = await this.versionBody(restaurantId, versionId, money, true);
+      const body = await this.versionBody(restaurantId, versionId, money, true, undefined, "dish");
       current = body.version;
       cost = body.cost;
       whatIsIn = body.whatIsIn;
@@ -159,9 +183,11 @@ export class RecipesService {
   async getRecipe(restaurantId: string, cocktailId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const cocktail = await this.houseCocktail(restaurantId, cocktailId);
-
-    const [pointer, count, legacy] = await Promise.all([
+    // The house check and the pointer reads go at once (gap 17). When the
+    // check refuses another house's drink, what the other reads found is
+    // dropped with the 404 and never answered.
+    const [cocktail, pointer, count, legacy] = await Promise.all([
+      this.houseCocktail(restaurantId, cocktailId),
       client
         .from("recipe_current")
         .select("version_id")
@@ -194,7 +220,7 @@ export class RecipesService {
     let whatIsIn: WhatIsIn | null = null;
     const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
     if (versionId) {
-      const body = await this.versionBody(restaurantId, versionId, money, true);
+      const body = await this.versionBody(restaurantId, versionId, money, true, undefined, "cocktail");
       current = body.version;
       cost = body.cost;
       whatIsIn = body.whatIsIn;
@@ -223,20 +249,34 @@ export class RecipesService {
    * read for the saved version and for a draft, so the two can never price
    * differently. Scoped to the house on both tables: an id that is not this
    * house's is simply not found, and its line reads as an unknown item.
+   *
+   * What a unit of a good costs now is the inventory list's answer, not a
+   * second one (r23 walk: flour read ₺1,20 a kg in the drawer and "no price
+   * yet" on the dish). Both hand `resolveUnitCost` the rollup row with the
+   * settled cost from `inventory_lot_agreed_cost` merged in by
+   * `mergeAgreedLotCost`, and the invoice figures from
+   * `inventory_lot_invoice_cost` by `mergeInvoiceLotCost`, so the invoiced
+   * cost averages invoices only (r28 gap 3): invoiced lot WAC, then a cost settled without an
+   * invoice (a price the house entered, or one agreed at delivery), then the
+   * last purchase price, else unknown. Before this the recipe read the rollup
+   * alone, so a good costed only by hand read as unknown here and only here.
    */
   async readPricing(restaurantId: string, ids: string[], money: boolean) {
     const client = this.db.getClient();
     const items = new Map<string, any>();
     const lots = new Map<string, any>();
     if (ids.length) {
-      // Two literal column lists, so the read-columns guard can check both;
-      // a role without money never reads the price.
+      // Literal column lists, so the read-columns guard can check each; a
+      // role without money never reads the price or either cost view.
       const itemQuery = money
         ? client
             .from("restaurant_inventory")
-            .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
-        : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
-      const [itemRead, lotRead] = await Promise.all([
+            .select("id, display_name, kind, uom, bottle_size_ml, piece_grams, ml_grams, last_purchase_price, is_active, deleted_at")
+        : client
+            .from("restaurant_inventory")
+            .select("id, display_name, kind, uom, bottle_size_ml, piece_grams, ml_grams, is_active, deleted_at");
+      const none = Promise.resolve({ data: [], error: null });
+      const [itemRead, lotRead, agreedRead, invoiceRead] = await Promise.all([
         itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
         money
           ? client
@@ -244,12 +284,38 @@ export class RecipesService {
               .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
               .eq("restaurant_id", restaurantId)
               .in("inventory_id", ids)
-          : Promise.resolve({ data: [], error: null }),
+          : none,
+        // The same columns as AGREED_LOT_COST_SELECT, which the inventory
+        // list reads; written out for the guard.
+        money
+          ? client
+              .from("inventory_lot_agreed_cost")
+              .select("inventory_id, has_agreed_cost, agreed_wac")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : none,
+        // The invoice cost from invoices only: the rollup's `wac` averages
+        // estimated lots in and calls the result an invoice (r28 gap 3).
+        money
+          ? client
+              .from("inventory_lot_invoice_cost")
+              .select("inventory_id, invoice_wac, invoice_qty, settled_qty, stock_qty")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : none,
       ]);
       if (itemRead.error) this.failed("item read", itemRead.error);
       if (lotRead.error) this.failed("lot read", lotRead.error);
+      // A failed read of the settled cost refuses like the rollup's: priced
+      // without it, a hand-costed good would read "no price yet" as if true.
+      if (agreedRead.error) this.failed("agreed cost read", agreedRead.error);
+      // Refused like the others: priced without it, the serve would fall back
+      // to nothing for a good whose only cost is on an invoice.
+      if (invoiceRead.error) this.failed("invoice cost read", invoiceRead.error);
       for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
       for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
+      mergeAgreedLotCost(lots, agreedRead.data as Array<Record<string, unknown>> | null);
+      if (money) mergeInvoiceLotCost(lots, ids, invoiceRead.data as Array<Record<string, unknown>> | null);
     }
     return { items, lots };
   }
@@ -270,6 +336,7 @@ export class RecipesService {
     money: boolean,
     withWhatIsIn: boolean,
     owner?: RecipeOwner,
+    kind: OwnerKind = owner?.kind ?? "cocktail",
   ): Promise<{ version: Record<string, unknown>; cost: Record<string, unknown> | null; whatIsIn: WhatIsIn | null }> {
     const client = this.db.getClient();
     let versionQuery = client
@@ -283,7 +350,7 @@ export class RecipesService {
       versionQuery.maybeSingle(),
       client
         .from("recipe_lines")
-        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
+        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit, usable_pct")
         .eq("version_id", versionId)
         .eq("restaurant_id", restaurantId)
         .order("position", { ascending: true }),
@@ -297,10 +364,14 @@ export class RecipesService {
     const rows = (lines.data ?? []) as any[];
     const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
 
-    const { items, lots } = await this.readPricing(restaurantId, ids, money);
-
+    // The prices and what is in a serve are read at once: neither needs the
+    // other (r28 recipes audit, gap 17). whatIsIn never throws; a failed
+    // pricing read still fails the whole sheet.
     const v = version.data as Record<string, any>;
-    const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : null;
+    const [{ items, lots }, whatIsIn] = await Promise.all([
+      this.readPricing(restaurantId, ids, money),
+      withWhatIsIn ? this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves), kind) : Promise.resolve(null),
+    ]);
     const priced = recipeCost(
       rows.map((l) => ({
         role: l.role,
@@ -309,6 +380,7 @@ export class RecipesService {
         baseUnit: l.base_unit as BaseUnit,
         item: (l.inventory_id && (items.get(l.inventory_id) as CostItem)) || null,
         lot: (l.inventory_id && lots.get(l.inventory_id)) || null,
+        usablePct: l.usable_pct ?? null,
       })),
       Number(v.yield_serves),
     );
@@ -332,14 +404,24 @@ export class RecipesService {
           itemKind: item?.kind ?? null,
           itemUom: item?.uom ?? null,
           itemGone: !item ? null : item.deleted_at ? "deleted" : item.is_active === false ? "archived" : null,
+          // The weights the house stated for the good (r28 gap 7), so the
+          // sheet can show them and offer the one a line waits for.
+          itemPieceGrams: grams(item?.piece_grams),
+          itemMlGrams: grams(item?.ml_grams),
           qtyEntered: Number(l.qty_entered),
           unitCode: l.unit_code,
+          // How much of what is bought the amount is (r28 recipes gap 5); null is all of it.
+          usablePct: l.usable_pct == null ? null : Number(l.usable_pct),
           qtyBase: Number(l.qty_base),
           baseUnit: l.base_unit,
           status: priced.lines[i].status,
           costPerServe: money ? priced.lines[i].costPerServe : null,
           costPerServeExact: money ? priced.lines[i].costPerServeExact : null,
           costBasis: money ? priced.lines[i].costBasis : null,
+          needs: money ? (priced.lines[i].needs ?? null) : null,
+          // The stated weight this line's price went through, so a mistyped
+          // one is seen beside the price it made and can be changed.
+          weighed: money ? (priced.lines[i].weighed ?? null) : null,
         };
       }),
     };
@@ -402,22 +484,25 @@ export class RecipesService {
     const pairs = new Map<string, { qty: number; unit: string }>();
     for (const l of stocked) pairs.set(`${l.qtyEntered}|${l.unitCode}`, { qty: l.qtyEntered, unit: l.unitCode });
     const converted = new Map<string, { qtyBase: number; baseUnit: BaseUnit } | null>();
-    await Promise.all(
-      [...pairs.entries()].map(async ([k, p]) => {
-        const { data, error } = await client.rpc("recipe_qty_base", { p_qty: p.qty, p_unit: p.unit });
-        if (error) this.failed("quantity conversion", error);
-        const row = (Array.isArray(data) ? data[0] : data) as { qty_base?: unknown; base_unit?: unknown } | null;
-        converted.set(
-          k,
-          row && row.qty_base != null && row.base_unit != null
-            ? { qtyBase: Number(row.qty_base), baseUnit: row.base_unit as BaseUnit }
-            : null,
-        );
-      }),
-    );
-
     const ids = [...new Set(stocked.map((l) => l.inventoryId).filter(Boolean))] as string[];
-    const { items, lots } = await this.readPricing(restaurantId, ids, true);
+    // The conversions and the prices are read at once (r28 gap 17): the
+    // prices need only the linked items, never a converted quantity.
+    const [, { items, lots }] = await Promise.all([
+      Promise.all(
+        [...pairs.entries()].map(async ([k, p]) => {
+          const { data, error } = await client.rpc("recipe_qty_base", { p_qty: p.qty, p_unit: p.unit });
+          if (error) this.failed("quantity conversion", error);
+          const row = (Array.isArray(data) ? data[0] : data) as { qty_base?: unknown; base_unit?: unknown } | null;
+          converted.set(
+            k,
+            row && row.qty_base != null && row.base_unit != null
+              ? { qtyBase: Number(row.qty_base), baseUnit: row.base_unit as BaseUnit }
+              : null,
+          );
+        }),
+      ),
+      this.readPricing(restaurantId, ids, true),
+    ]);
 
     const priced = recipeCost(
       dto.lines.map((l) => {
@@ -432,6 +517,7 @@ export class RecipesService {
           baseUnit: q ? q.baseUnit : ("ml10" as BaseUnit),
           item: (inventoryId && (items.get(inventoryId) as CostItem)) || null,
           lot: (inventoryId && lots.get(inventoryId)) || null,
+          usablePct: l.role === "stocked" ? (l.usablePct ?? null) : null,
         };
       }),
       dto.yieldServes,
@@ -443,7 +529,13 @@ export class RecipesService {
       of: priced.of,
       complete: priced.complete,
       partial: priced.partial,
-      lines: priced.lines.map((l) => ({ status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis })),
+      lines: priced.lines.map((l) => ({
+        status: l.status,
+        costPerServe: l.costPerServe,
+        costBasis: l.costBasis,
+        needs: l.needs ?? null,
+        weighed: l.weighed ?? null,
+      })),
     };
   }
 
@@ -451,12 +543,16 @@ export class RecipesService {
    * What is in one serve. Its own reads: a failure is said and the recipe still
    * shows. <= 40 lines a version, so one page each, under the 1,000-row cap.
    */
-  private async whatIsIn(restaurantId: string, ids: string[], rows: any[], yieldServes: number): Promise<WhatIsIn> {
+  private async whatIsIn(restaurantId: string, ids: string[], rows: any[], yieldServes: number, kind: OwnerKind): Promise<WhatIsIn> {
     const figuresById = new Map<string, ItemFigures>();
     const allergensById = new Map<string, Array<{ allergen: string; status: string }>>();
+    const weightsById = new Map<string, { pieceGrams: number | null; mlGrams: number | null }>();
     if (ids.length) {
       const client = this.db.getClient();
-      const [nutrition, allergens] = await Promise.all([
+      // The weights the house stated join a piece or a volume to figures per
+      // 100 g, and a weight to figures per 100 ml (r28 gap 7). Read beside
+      // the figures, so the sheet keeps its three round trips.
+      const [nutrition, allergens, weights] = await Promise.all([
         client
           .from("item_nutrition")
           .select("inventory_id, basis, energy_kcal, fat_g, saturates_g, carbohydrate_g, sugars_g, protein_g, salt_g, abv_pct, energy_from_abv")
@@ -467,11 +563,16 @@ export class RecipesService {
           .select("inventory_id, allergen, status")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", ids),
+        client
+          .from("restaurant_inventory")
+          .select("id, piece_grams, ml_grams")
+          .eq("restaurant_id", restaurantId)
+          .in("id", ids),
       ]);
-      const error = nutrition.error ?? allergens.error;
+      const error = nutrition.error ?? allergens.error ?? weights.error;
       if (error) {
         this.logger.error(`recipes: what-is-in read failed: ${error.message}`);
-        return { readable: false, sentence: WHAT_IS_IN_UNREAD };
+        return { readable: false, sentence: kind === "dish" ? WHAT_IS_IN_UNREAD_DISH : WHAT_IS_IN_UNREAD };
       }
       for (const r of (nutrition.data ?? []) as any[]) {
         const f = { basis: r.basis, energyFromAbv: Boolean(r.energy_from_abv) } as ItemFigures;
@@ -480,6 +581,9 @@ export class RecipesService {
           f[k] = raw === null || raw === undefined ? null : Number(raw);
         }
         figuresById.set(r.inventory_id, f);
+      }
+      for (const w of (weights.data ?? []) as any[]) {
+        weightsById.set(w.id, { pieceGrams: grams(w.piece_grams), mlGrams: grams(w.ml_grams) });
       }
       for (const a of (allergens.data ?? []) as any[]) {
         const list = allergensById.get(a.inventory_id) ?? [];
@@ -495,6 +599,8 @@ export class RecipesService {
         qtyBase: Number(l.qty_base),
         baseUnit: l.base_unit,
         figures: (l.inventory_id && figuresById.get(l.inventory_id)) || null,
+        pieceGrams: (l.inventory_id && weightsById.get(l.inventory_id)?.pieceGrams) ?? null,
+        mlGrams: (l.inventory_id && weightsById.get(l.inventory_id)?.mlGrams) ?? null,
         allergens: (l.inventory_id && allergensById.get(l.inventory_id)) || [],
       })),
       yieldServes,
@@ -579,6 +685,17 @@ export class RecipesService {
       const label = (l.label ?? "").trim();
       if (!label) throw new BadRequestException(`Ingredient ${i + 1} needs a name.`);
       l.label = label;
+      if (l.usablePct !== undefined && l.usablePct !== null) {
+        const u = l.usablePct;
+        if (!(u >= 1 && u <= 100) || Math.abs(Math.round(u * 100) - u * 100) > 1e-6) {
+          throw new BadRequestException(
+            `Ingredient ${i + 1} (${l.label}): the usable share is a number of percent, from 1 to 100.`,
+          );
+        }
+        if (l.role === "untracked" && u !== 100) {
+          throw new BadRequestException(`Ingredient ${i + 1} (${l.label}) is not counted, so it has no usable share.`);
+        }
+      }
       if (l.qty > MAX_LINE_QTY) {
         throw new BadRequestException(
           `Ingredient ${i + 1} (${l.label}) is more than one line can hold. ` +
@@ -605,6 +722,7 @@ export class RecipesService {
         label: l.label,
         qty: l.qty,
         unit: l.unit,
+        usablePct: l.usablePct ?? null,
       })),
     });
     return this.saved(data, error);
@@ -630,6 +748,7 @@ export class RecipesService {
         label: l.label,
         qty: l.qty,
         unit: l.unit,
+        usablePct: l.usablePct ?? null,
       })),
     });
     return this.saved(data, error);
@@ -658,8 +777,12 @@ export class RecipesService {
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .is("deleted_at", null);
-    const term = (search ?? "").trim();
-    if (term) q = q.ilike("display_name", `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    // A term is read under foldName's rules (r28 gap 14): "RAKI", "raki" and
+    // "rakı" all find "Rakı", and "seker" finds "Şeker". Each folded letter is
+    // sent as the class of every way it is written, both cases, so the answer
+    // does not lean on the database's own case rules for I and İ.
+    const pattern = shelfSearchPattern(search ?? "");
+    if (pattern) q = q.filter("display_name", "imatch", pattern);
     const { data, error } = await q
       .order("display_name", { ascending: true })
       .limit(Math.min(Math.max(limit ?? 50, 1), 50));
@@ -671,5 +794,48 @@ export class RecipesService {
       uom: r.uom,
       bottleSizeMl: r.bottle_size_ml == null ? null : Number(r.bottle_size_ml),
     }));
+  }
+
+  /**
+   * Keep what one piece of a good weighs, and what one ml of it weighs, as the
+   * house states them (r28 gap 7). A recipe line measured another way than
+   * the good is kept is priced and counted through these and nothing else.
+   * A field left out is kept; null takes the statement off. House-scoped: a
+   * good of another house is not found. The cost views are untouched: the
+   * weights change no lot's cost, only how a line meets it.
+   */
+  async stateWeights(restaurantId: string, itemId: string, dto: StateWeightsDto) {
+    const patch: Record<string, number | null> = {};
+    // The smallest step each column keeps (numeric(10,3), numeric(8,4)): a
+    // figure below it would be stored as 0, which the database refuses.
+    if (dto.pieceGrams !== undefined) patch.piece_grams = this.weight(dto.pieceGrams, 0.001, MAX_PIECE_GRAMS, "One piece");
+    if (dto.mlGrams !== undefined) patch.ml_grams = this.weight(dto.mlGrams, 0.0001, MAX_ML_GRAMS, "One ml");
+    if (Object.keys(patch).length === 0) {
+      throw new BadRequestException("Say what one piece weighs, what one ml weighs, or both.");
+    }
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurant_inventory")
+      .update(patch)
+      .eq("id", itemId)
+      .eq("restaurant_id", restaurantId)
+      .select("id, piece_grams, ml_grams")
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`recipes: weight save failed: ${error.message}`);
+      throw new InternalServerErrorException(WEIGHT_SAVE_FAILED);
+    }
+    if (!data) throw new NotFoundException(WEIGHT_NOT_THIS_HOUSE);
+    const row = data as { id: string; piece_grams: unknown; ml_grams: unknown };
+    return { id: row.id, pieceGrams: grams(row.piece_grams), mlGrams: grams(row.ml_grams) };
+  }
+
+  private weight(v: number | null, min: number, max: number, what: string): number | null {
+    if (v === null) return null;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < min) {
+      throw new BadRequestException(`${what} must weigh more than 0 g.`);
+    }
+    if (v > max) throw new BadRequestException(`${what} can weigh at most ${max} g. Check the figure.`);
+    return v;
   }
 }

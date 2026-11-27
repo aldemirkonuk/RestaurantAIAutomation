@@ -68,6 +68,7 @@ import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'l
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
 import {
+  ownerOf,
   recipesApi,
   type CocktailRecipe,
   type PreviewCostBody,
@@ -83,6 +84,9 @@ import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
+import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
+import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
+import { SHEET_HOLD_ROOM } from './holdRoom';
 import {
   useCanEditRecipe,
   useCostPreview,
@@ -279,7 +283,7 @@ function PastVersion({
         ))}
       </ol>
       {say && cost?.complete && cost.perServe != null ? (
-        <p className="cl-note">Would cost {say(cost.perServe)} a serve at today's prices.</p>
+        <p className="cl-note">Would cost {say(cost.perServe)} a {ownerOf(cocktailId).kind === 'dish' ? 'plate' : 'serve'} at today's prices.</p>
       ) : null}
       {onStartFrom ? (
         <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={() => onStartFrom(version)}>
@@ -347,7 +351,15 @@ function Versions({
   );
 }
 
-type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean };
+type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean; saved?: true };
+
+/**
+ * What a sheet keeps saying once its lines or settings are changed again: only
+ * what is still true of the sheet. "Saved." and a refused save were about the
+ * sheet as it was; "someone saved first", "could not be read" and the note on
+ * a version put on the sheet still hold, and stay until the person acts on them.
+ */
+const stillTrue = (s: Said | null): Said | null => (s && !s.saved && (s.tone === 'ok' || s.offerLoad) ? s : null);
 
 /** The gateway's own sentence on a refused save, when it sent one. */
 function refusal(e: unknown): string | null {
@@ -386,10 +398,10 @@ export function costPreviewBody(rows: DraftRow[], serves: number): { body: Previ
 }
 
 /** Why Save is off, naming the first line that stops it. */
-export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null {
+export function whyBlocked(rows: DraftRow[], serves: number = 1, dish = false): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
   if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) {
-    return `Say how many serves it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
+    return `Say how many ${dish ? 'plates' : 'serves'} it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
   }
   if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
@@ -420,12 +432,12 @@ export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null 
  * One sheet per drink. The key is what keeps a draft typed for one drink out
  * of another: React drops the inner sheet's state when the drink changes.
  */
-export default function RecipeSheet(props: { cocktailId: string } | { dishId: string }) {
+export default function RecipeSheet(props: ({ cocktailId: string } | { dishId: string }) & { holdRoom?: boolean }) {
   const owner: RecipeOwner = 'dishId' in props ? { kind: 'dish', id: props.dishId } : { kind: 'cocktail', id: props.cocktailId };
-  return <Sheet key={owner.id} owner={owner} />;
+  return <Sheet key={owner.id} owner={owner} holdRoom={props.holdRoom ?? false} />;
 }
 
-function Sheet({ owner }: { owner: RecipeOwner }) {
+function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   const cocktailId = owner.id;
   const dId = draftId(owner);
   const isDish = owner.kind === 'dish';
@@ -528,7 +540,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   }, [data, versionId, dirty, seed]);
 
   const shownMeta = meta ?? metaOf(data?.current);
-  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
+  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, isDish), [rows, shownMeta.yieldServes, isDish]);
 
   // Money only where the server sent it, and never to a role that cannot edit.
   const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
@@ -546,12 +558,25 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   const preview = useCostPreview(owner, draftBody?.body ?? null);
   const draftCost: DraftCost | null = preview && draftBody ? { cost: preview, labels: draftBody.labels } : null;
 
-  if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
+  // Opened from a link, the page is still arriving, so this panel holds the
+  // room the sheet will fill: what sits under it (the other books, the
+  // signature) is below the fold before and after, not dragged down the screen
+  // when the recipe lands. Opened by a click it needs none (the person's own
+  // act is not a layout shift).
+  if (recipe.loading) {
+    return (
+      <p className="cl-note" role="status" style={holdRoom ? { minHeight: SHEET_HOLD_ROOM } : undefined}>
+        Reading the recipe…
+      </p>
+    );
+  }
   if (!data) {
     return (
       <p className="cl-note" role="alert" data-testid="recipe-unread">
         <AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
-        The recipe could not be read{recipe.error ? ` (${recipe.error})` : ''}. It is unread, not absent.
+        {recipe.unreachable
+          ? `${UNREACHABLE_WORDS} The recipe could not be read. It is unread, not absent.`
+          : `The recipe could not be read${recipe.error ? ` (${recipe.error})` : ''}. It is unread, not absent.`}
       </p>
     );
   }
@@ -568,10 +593,12 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
 
   const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
     setDirty(true);
+    setSaid(stillTrue);
     setRows((rs) => next(rs ?? []));
   };
   const setField = (p: Partial<DraftMeta>) => {
     setDirty(true);
+    setSaid(stillTrue);
     setMeta((m) => ({ ...(m ?? metaOf(data.current)), ...p }));
   };
   const patch = (key: string, p: Partial<DraftRow>) =>
@@ -640,6 +667,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       setSaid({
         tone: 'ok',
         text: `Saved. ${count(body.lines.length, 'ingredient', 'ingredients')}, version ${out.version}.`,
+        saved: true,
       });
     } catch (e) {
       const status = getErrorStatus(e);
@@ -680,13 +708,23 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       {recipe.error ? (
         <p className="cl-note" role="alert" data-testid="recipe-reread-failed">
           <AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
-          The recipe could not be read again just now ({recipe.error}). What is shown is the last read.
+          {recipe.unreachable
+            ? `${UNREACHABLE_WORDS} The recipe could not be read again. What is shown is the last read.`
+            : `The recipe could not be read again just now (${recipe.error}). What is shown is the last read.`}
         </p>
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
+      <RecipeTasteLine kind={owner.kind} subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} hasRecipe={(data.current?.lines.length ?? 0) > 0} />
       <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
+      <RecipeTaste
+        kind={owner.kind}
+        subjectId={cocktailId}
+        restaurantId={activeRestaurantId ?? null}
+        hasRecipe={(data.current?.lines.length ?? 0) > 0}
+        unsaved={canEdit && dirty}
+      />
 
       <header className="cl-rcp-head">
         <h4 className="cl-sec" style={{ margin: 0 }}>Recipe</h4>
@@ -704,6 +742,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
                 key={r.key}
                 row={r}
                 say={say}
+                dish={isDish}
                 onChange={(p) => patch(r.key, p)}
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
               />
@@ -716,7 +755,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
 
       {canEdit && repeated.length > 0 ? (
         <p className="cl-note" data-testid="recipe-repeated">
-          {repeated.map(([name, n]) => `${name} is on ${n} lines; a serve takes all of them.`).join(' ')}
+          {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${isDish ? 'plate' : 'serve'} takes all of them.`).join(' ')}
         </p>
       ) : null}
 

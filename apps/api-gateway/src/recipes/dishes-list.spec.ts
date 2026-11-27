@@ -1,7 +1,7 @@
 import { NotFoundException } from "@nestjs/common";
 import { DishesService, dishNameTaken } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
-import { B_DISH, HOUSE_A, TART, V_TART_2, fakeDb, twoHouses } from "./dishes.testing";
+import { B_DISH, GONE, HOUSE_A, TART, V_TART_2, fakeDb, twoHouses, figuredDishes } from "./dishes.testing";
 
 /**
  * A house's dish list, and adding and changing a dish (ADR 0366), through the
@@ -18,7 +18,7 @@ function services(rows = twoHouses(), opts: Parameters<typeof fakeDb>[1] = {}) {
 describe("dishes: the list", () => {
   it("lists this house's live dishes only, each with its current recipe's cost a plate", async () => {
     const { dishes } = services();
-    const out = await dishes.listDishes(HOUSE_A, "owner");
+    const out = await figuredDishes(dishes, HOUSE_A, "owner");
     expect(out.map((d) => d.name)).toEqual(["Bread soup", "Lemon tart"]);
     const tart = out.find((d) => d.id === TART)!;
     // 300 g of flour at 2 a kg = 0.60 for a batch of 8; the lemons are not linked, so not complete.
@@ -29,7 +29,7 @@ describe("dishes: the list", () => {
 
   it("a role that does not see money reads no price and no cost", async () => {
     const { dishes } = services();
-    const out = await dishes.listDishes(HOUSE_A, "staff");
+    const out = await figuredDishes(dishes, HOUSE_A, "staff");
     expect(out.every((d) => d.price === null && d.cost === null)).toBe(true);
   });
 
@@ -49,7 +49,7 @@ describe("dishes: the list", () => {
     rows.recipe_current_dish.push({ dish_id: stray, version_id: V_TART_2, restaurant_id: HOUSE_A });
     rows.dishes.push({ id: stray, restaurant_id: HOUSE_A, name: "Stray", price: null, deleted_at: null });
     const { dishes } = services(rows);
-    expect((await dishes.listDishes(HOUSE_A, "owner")).find((d) => d.name === "Stray")!.hasRecipe).toBe(false);
+    expect((await figuredDishes(dishes, HOUSE_A, "owner")).find((d) => d.name === "Stray")!.hasRecipe).toBe(false);
   });
 });
 
@@ -79,5 +79,27 @@ describe("dishes: adding and changing a dish", () => {
     await expect(dishes.updateDish(HOUSE_A, B_DISH, { price: 1 })).rejects.toBeInstanceOf(NotFoundException);
     expect(rows.dishes.find((d) => d.id === B_DISH)!.price).toBe(777);
     await expect(dishes.updateDish(HOUSE_A, TART, { price: null })).resolves.toMatchObject({ price: null, name: "Lemon tart" });
+  });
+});
+
+describe("dishes: taking a dish off the list", () => {
+  it("soft-deletes this house's live dish, keeps its versions, and the list stops reading it", async () => {
+    const rows = twoHouses();
+    const versionsBefore = rows.recipe_versions.length;
+    const { dishes } = services(rows);
+    await expect(dishes.removeDish(HOUSE_A, TART)).resolves.toEqual({ id: TART, name: "Lemon tart", removed: true });
+    expect(rows.dishes.find((d) => d.id === TART)!.deleted_at).toEqual(expect.any(String));
+    expect(rows.recipe_versions.length).toBe(versionsBefore);
+    const list = await dishes.listDishes(HOUSE_A, "owner");
+    expect(list.map((d) => d.id)).not.toContain(TART);
+  });
+
+  it("another house's dish, and one already removed, are a 404 and stay as they were", async () => {
+    const rows = twoHouses();
+    const { dishes } = services(rows);
+    await expect(dishes.removeDish(HOUSE_A, B_DISH)).rejects.toBeInstanceOf(NotFoundException);
+    expect(rows.dishes.find((d) => d.id === B_DISH)!.deleted_at ?? null).toBeNull();
+    await expect(dishes.removeDish(HOUSE_A, GONE)).rejects.toBeInstanceOf(NotFoundException);
+    expect(rows.dishes.find((d) => d.id === GONE)!.deleted_at).toBe("2026-10-01");
   });
 });

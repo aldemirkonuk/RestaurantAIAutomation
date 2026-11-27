@@ -43,7 +43,7 @@ export interface DraftCost {
   labels: string[];
 }
 
-function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean): Card | null {
+function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean, dish = false): Card | null {
   if (!cost) return null;
   const base = { id: 'cost', label: 'Cost a serve' };
   if (cost.complete && cost.perServe != null) {
@@ -58,7 +58,7 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
       known: true,
       said:
         part > 0
-          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only.`
+          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the ${dish ? 'goods' : 'bottles'} with an invoice only.`
           : `${lead}${priced}.`,
     };
   }
@@ -75,9 +75,10 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
 }
 
 function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string): Card {
+  const unit = data.kind === 'dish' ? 'plate' : 'serve';
   const price = data.cocktail.price;
   return price != null
-    ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: 'A serve, as your list has it.' }
+    ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: `A ${unit}, as your list has it.` }
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
 }
 
@@ -132,7 +133,7 @@ function nutritionCards(data: CocktailRecipe): Card[] {
   const w = data.whatIsIn;
   if (!data.current) return [];
   if (!w || !w.readable) {
-    const said = 'What is in a serve could not be read here, so it is not shown as known.';
+    const said = `What is in a ${data.kind === 'dish' ? 'plate' : 'serve'} could not be read here, so it is not shown as known.`;
     return [
       { id: 'energy', label: 'Energy a serve', figure: 'Not read', known: false, said },
       { id: 'alcohol', label: 'Pure alcohol a serve', figure: 'Not read', known: false, said },
@@ -206,9 +207,10 @@ export default function DrinkCards({
           names(draft.cost.lines.flatMap((l, i) => (l.status !== 'untracked' && l.costPerServe == null ? [draft.labels[i] ?? 'a line'] : []))),
           sayMoney,
           true,
+          isDish,
         )
       : data.current
-        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false)
+        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, isDish)
         : null;
   const cards = [
     cost,

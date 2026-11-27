@@ -115,6 +115,13 @@ export class InventoryService {
       row.master_wine_library?.retail_price_avg ?? null;
     const markupRatio: number | null = row.markup_ratio ?? null;
 
+    // The library's wine style, grape, drink kind, producer and vintage, so the
+    // list page need not ask /wines a second time for them. A column the join did not select is
+    // left undefined (and so off the wire); null means the library has none.
+    const lib: Record<string, any> | null = row.master_wine_library ?? null;
+    const libraryField = (column: string): string | null | undefined =>
+      lib && column in lib ? (lib[column] ?? null) : undefined;
+
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
     if (row.restaurants) delete result.restaurants;
@@ -126,6 +133,14 @@ export class InventoryService {
       // The library's own name, for search only. `wineName` stays the one
       // displayed value so no surface has to choose.
       libraryName,
+      libraryType: libraryField("primary_type"),
+      libraryGrape: libraryField("grape_variety"),
+      libraryKind: libraryField("beverage_kind"),
+      // The rest of what the page took from /wines: the producer and vintage
+      // (the inventory row has neither) and the library's own display name.
+      libraryProducer: libraryField("producer"),
+      libraryVintage: libraryField("vintage"),
+      libraryDisplayName: libraryField("display_name"),
       // Whether the house has actually set an alias, told apart from the
       // fallback: `wineName` is non-null either way, so without this a caller
       // cannot see that a name is the library's rather than the house's.
@@ -169,6 +184,18 @@ export class InventoryService {
       abcClass: analytics?.abc_class ?? undefined,
       deadStock: analytics?.dead_stock ?? false,
       daysSinceSale: analytics?.days_since_sale ?? undefined,
+      // Where velocityPerDay comes from (days_of_stock_from_real_use):
+      // "sales" (the till drew it), "counts" (two counts and what moved
+      // between them; a food or supply the till never draws), or undefined
+      // (neither, so velocity is 0 and there is no cover). usageQty is what
+      // was used between usageSince and usageUntil, in the item's own unit.
+      usageSource: analytics?.usage_source ?? undefined,
+      usageSince: analytics?.usage_since ?? undefined,
+      usageUntil: analytics?.usage_until ?? undefined,
+      usageQty:
+        analytics?.usage_qty === null || analytics?.usage_qty === undefined
+          ? undefined
+          : Number(analytics.usage_qty),
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
       locations: locations ?? [],
     };
@@ -239,7 +266,7 @@ export class InventoryService {
       const { data, error } = await client
         .from("inventory_analytics")
         .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, usage_source, usage_since, usage_until, usage_qty",
         )
         .eq("restaurant_id", restaurantId);
       if (error) throw error;

@@ -1,0 +1,33 @@
+/* The insights rail, drawn from the page's own tokens so it is paper on paper
+   and charcoal on charcoal (critic c3 round 3, item 3). Before this the card
+   was `bg-white` and every chip a fixed pastel, which on Warm Charcoal read as
+   a white tile with pale chips. The tokens come from the nearest `.mudavym`;
+   the fallbacks keep the legacy page, which has none, as it was. */
+.ci-card {
+  background: var(--paper-0, #fff);
+  border-color: var(--paper-2, #e5e7eb);
+  color: var(--ink-1, #1f2937);
+}
+.ci-head {
+  background: transparent;
+  color: inherit;
+  transition: background-color 120ms ease-out;
+}
+.ci-head:hover {
+  background: var(--paper-1, #f9fafb);
+}
+/* A chip is a hue (--h) mixed into the page's paper for its ground and into its
+   ink for its words. Light paper gives a pale tint with deep words; charcoal
+   gives a deep tint (about oklch(0.30 0.04 75) for amber) with light words.
+   --c 0 is the neutral chip. */
+.ci-chip {
+  --c: 1;
+  background: color-mix(in oklch, oklch(0.7 calc(0.14 * var(--c)) var(--h, 75)) 22%, var(--paper-0, #fff));
+  color: color-mix(in oklch, oklch(0.5 calc(0.14 * var(--c)) var(--h, 75)) 55%, var(--ink-1, #1f2937));
+}
+@supports not (color: color-mix(in oklch, red 50%, blue)) {
+  .ci-chip {
+    background: var(--paper-1, #f3f4f6);
+    color: var(--ink-2, #374151);
+  }
+}

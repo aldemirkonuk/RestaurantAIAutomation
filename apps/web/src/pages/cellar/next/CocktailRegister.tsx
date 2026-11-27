@@ -16,8 +16,10 @@
  *
  * TWO BOOKS, NOT ONE. The house's cocktail list is `public.cocktails`. What the
  * house's OTHER books say about cocktails — menu lines, till lines — is the
- * ledger, and it is shown apart rather than merged, because merging them would
- * need a name match this page is not entitled to make in the browser.
+ * ledger, and it is shown apart rather than merged. The menu reaches the list
+ * in two ways, both matched by name on the server: the Menu column gives a
+ * listed drink its menu price, and MenuDrinksOffer puts a menu cocktail not
+ * listed yet onto the list (r36 recipes audit, gap 3).
  *
  * NO SEAL HERE. The house ceremony is rationed to one act on this page: the
  * hold that sends a real purchase order to a vendor. Retiring a cocktail is
@@ -37,7 +39,17 @@ import {
   type HouseBookId,
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
-import { useHouseMoney } from './recipe/useRecipe';
+import MenuDrinksOffer from './MenuDrinksOffer';
+import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
+import { pourCostShare } from './recipe/DrinkCards';
+import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
+import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
+import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
+import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
+import UseMenuPrice from './recipe/UseMenuPrice';
+import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
+import type { DrinkFigureRow } from '../../../services/api/recipes';
+import { SHEET_HOLD_ROOM } from './recipe/holdRoom';
 import {
   useCocktailRegister,
   useCocktailWrites,
@@ -45,12 +57,17 @@ import {
   type RegisterVM,
 } from './useCellarNextData';
 
-interface Draft extends CocktailInput {
+interface Draft extends Omit<CocktailInput, 'price'> {
   name?: string;
+  /**
+   * The price box as typed. A number field read "12,50" as empty and saved the
+   * drink unpriced without a word; the text is read by `readPrice` on save.
+   */
+  priceText?: string;
 }
 
 function Field({
-  id, label, value, onChange, placeholder, type = 'text',
+  id, label, value, onChange, placeholder, type = 'text', inputMode, invalid, describedBy,
 }: {
   id: string;
   label: string;
@@ -58,6 +75,9 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  inputMode?: 'decimal';
+  invalid?: boolean;
+  describedBy?: string;
 }) {
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -68,12 +88,82 @@ function Field({
         id={id}
         className="cl-field cl-focus"
         type={type}
+        inputMode={inputMode}
+        autoComplete={inputMode ? 'off' : undefined}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
       />
     </span>
   );
+}
+
+/** Said under a cost some of whose lines are priced from part of the stock only. */
+const PARTLY_INVOICED = 'partly invoiced';
+
+/** Said above the list when its costs could not be read. */
+const DRINK_COSTS_UNREAD = 'The drinks’ costs could not be read just now, so none is shown.';
+
+/** Said above the list, to every role, when the figures that carry the allergens could not be read. */
+export const DRINK_ALLERGENS_UNREAD = 'The drinks’ allergens could not be read just now, so none is shown.';
+
+/**
+ * A drink's cost a serve and pour cost cells (r28 recipes audit, gap 9), as
+ * the dish list writes a dish's: an incomplete cost is "Not known", never a
+ * smaller figure; a cost priced from part of the stock says so under it.
+ * Unread figures are said once above the list, and the cells stay blank.
+ */
+function drinkCells(
+  id: string,
+  price: number | null,
+  f: DrinkFigureRow | undefined,
+  read: boolean,
+  say: (n: number | null | undefined) => string,
+  sayPct: SayPercent,
+) {
+  const dim = <span className="cl-dim">{EM}</span>;
+  if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim };
+  const per = f.cost?.complete ? f.cost.perServe : null;
+  const part = f.cost?.partial ?? 0;
+  const share = pourCostShare(f.cost, price);
+  return {
+    cost:
+      per == null ? (
+        <>
+          Not known
+          <CostWaits id={id} cost={f.cost} />
+        </>
+      ) : part > 0 ? (
+        <>
+          {say(per)}
+          <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid={`drink-partly-${id}`}>
+            {PARTLY_INVOICED}
+          </span>
+        </>
+      ) : (
+        say(per)
+      ),
+    share: 'pct' in share ? sayPct(share.pct) : 'Not known',
+  };
+}
+
+/** Room below an opened recipe's top edge for its heading and first line, in px. */
+export const LEAF_HEAD_ROOM = 160;
+
+/**
+ * Scrolls an opened recipe to the top of the screen when its heading would
+ * not be seen: above the screen, or below `innerHeight - LEAF_HEAD_ROOM`. A
+ * recipe already in view does not move the page. Measured on its top edge,
+ * not its height: it is still opening (0 tall) when this runs.
+ */
+export function bringIntoView(el: HTMLElement | null) {
+  if (!el) return;
+  const top = el.getBoundingClientRect().top;
+  if (top >= 0 && top <= window.innerHeight - LEAF_HEAD_ROOM) return;
+  const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  el.scrollIntoView?.({ block: 'start', behavior: still ? 'auto' : 'smooth' });
 }
 
 /* ── the register ───────────────────────────────────────────────────────── */
@@ -92,6 +182,16 @@ export default function CocktailRegister({
   // `money()` wrote $ for every house, so a lira list read "$14.00" beside
   // cards that read "₺14.00" (r7 browser check, 2026-11-12).
   const money = useHouseMoney();
+  // Cost and pour cost are the house's money: shown, and read, only for a
+  // role that may change a recipe (the same rule as the dish list).
+  const seesCost = useCanEditRecipe();
+  // Read for every role: the figures carry each drink's allergens, which are
+  // not money (the gateway sends staff no price and no cost).
+  const figures = useDrinkFigures(true);
+  // The current menu's price beside the drink's own (r28 recipes audit, gap 2).
+  const menu = useMenuPrices('drink', seesCost);
+  const showMenu = Boolean(seesCost && menu.byId && (menu.currentMenus ?? 0) > 0);
+  const sayPct = useHousePercent();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
@@ -122,32 +222,55 @@ export default function CocktailRegister({
   const leafRef = useRef<HTMLDivElement | null>(null);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  // A line about the last save or refusal is about the form as it was; opening,
+  // typing in or leaving the form again takes it away (as /dishes does).
+  const changeDraft = (next: Draft | null) => {
+    setSaid(null);
+    setDraft(next);
+  };
   const [query, setQuery] = useState('');
+  const [allergen, setAllergen] = useState('');
+  const [onlyBare, setOnlyBare] = useState(false);
 
-  // Opened from a link: bring the drink into view once the list has it. A
-  // link to a drink this house's list does not hold is said, not ignored.
+  // A link to a drink this house's list does not hold is said, not ignored.
   const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
   const linkedMissing = Boolean(openParam && data && !linkedRow);
-  useEffect(() => {
-    if (linkedRow && openId === linkedRow.id) leafRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
-  }, [linkedRow, openId]);
 
-  const rows = (data?.rows ?? []).filter((c) => {
+  const searched = (data?.rows ?? []).filter((c) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return [c.name, c.display_name, c.menu_section, c.method, c.glass]
       .filter(Boolean).join(' ').toLowerCase().includes(q);
   });
+  const byAllergen = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
+  // Which drinks have no recipe: known only once the figures are read.
+  const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
+  const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
+  // The recipe opens below the whole list, so a drink opened by a click (or a
+  // link) is brought into view whenever its heading would land off the screen;
+  // otherwise a click on a top row of a long list seemed to do nothing
+  // (r41 recipes audit, gap 7). Once per drink opened, not on every render.
+  const shownId = openShown ? openId : null;
+  useEffect(() => {
+    if (shownId) bringIntoView(leafRef.current);
+  }, [shownId]);
+
+  const priceRead = readPrice(draft?.priceText ?? '');
 
   const submit = async () => {
-    if (!draft?.name?.trim()) return;
+    if (!draft?.name?.trim() || priceRead.bad) return;
+    const { priceText: _typed, ...fields } = draft;
     try {
       if (editId) {
-        await amend.mutateAsync({ id: editId, input: draft });
+        // An amend sends the price it reads, null included: a cleared box
+        // takes the price off (undefined was dropped from the body, so the
+        // old price stayed while the form said it was amended).
+        await amend.mutateAsync({ id: editId, input: { ...fields, price: priceRead.price } });
         setSaid(`“${draft.name.trim()}” was amended on this house’s list.`);
       } else {
-        await create.mutateAsync(draft);
+        // A new drink with no price sends none: unpriced, never 0.
+        await create.mutateAsync(priceRead.price == null ? fields : { ...fields, price: priceRead.price });
         setSaid(`“${draft.name.trim()}” is on this house’s list.`);
       }
       setDraft(null);
@@ -190,7 +313,7 @@ export default function CocktailRegister({
           className="cl-btn cl-focus"
           data-on={draft !== null && editId === null}
           onClick={() => {
-            setDraft(draft && editId === null ? null : {});
+            changeDraft(draft && editId === null ? null : {});
             setEditId(null);
           }}
           style={{ marginLeft: 'auto' }}
@@ -201,6 +324,8 @@ export default function CocktailRegister({
       </div>
 
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
+
+      {seesCost ? <MenuDrinksOffer /> : null}
 
       {draft ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
@@ -213,18 +338,23 @@ export default function CocktailRegister({
               gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
             }}
           >
-            <Field id="ck-name" label="Name" value={draft.name ?? ''} onChange={(v) => setDraft({ ...draft, name: v })} placeholder="Negroni" />
-            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => setDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" />
-            <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => setDraft({ ...draft, method: v })} placeholder="Stirred" />
-            <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => setDraft({ ...draft, glass: v })} placeholder="Rocks" />
-            <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => setDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
+            <Field id="ck-name" label="Name" value={draft.name ?? ''} onChange={(v) => changeDraft({ ...draft, name: v })} placeholder="Negroni" />
+            <Field id="ck-section" label="Section" value={draft.menuSection ?? ''} onChange={(v) => changeDraft({ ...draft, menuSection: v })} placeholder="Aperitivo" />
+            <Field id="ck-method" label="Method" value={draft.method ?? ''} onChange={(v) => changeDraft({ ...draft, method: v })} placeholder="Stirred" />
+            <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => changeDraft({ ...draft, glass: v })} placeholder="Rocks" />
+            <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => changeDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
             <Field
-              id="ck-price" label="Price" type="number"
-              value={draft.price === undefined ? '' : String(draft.price)}
-              onChange={(v) => setDraft({ ...draft, price: v === '' ? undefined : Number(v) })}
+              id="ck-price" label="Price" inputMode="decimal"
+              value={draft.priceText ?? ''}
+              onChange={(v) => changeDraft({ ...draft, priceText: v })}
               placeholder="leave blank if unpriced"
+              invalid={priceRead.bad}
+              describedBy={priceRead.bad ? 'ck-price-said' : undefined}
             />
           </div>
+          {priceRead.bad ? (
+            <p id="ck-price-said" className="cl-note" role="alert">{PRICE_UNREAD}</p>
+          ) : null}
           <p className="cl-note">
             A blank price is unpriced — it is never recorded as zero, which on a
             list reads as “free”.
@@ -234,7 +364,7 @@ export default function CocktailRegister({
               type="button"
               className="cl-btn cl-focus"
               onClick={submit}
-              disabled={!draft.name?.trim() || create.isPending || amend.isPending}
+              disabled={!draft.name?.trim() || priceRead.bad || create.isPending || amend.isPending}
             >
               <Check size={13} aria-hidden />
               {create.isPending || amend.isPending
@@ -244,7 +374,7 @@ export default function CocktailRegister({
             <button
               type="button"
               className="cl-btn cl-focus"
-              onClick={() => { setDraft(null); setEditId(null); }}
+              onClick={() => { changeDraft(null); setEditId(null); }}
             >
               <X size={13} aria-hidden />
               Leave it
@@ -254,9 +384,52 @@ export default function CocktailRegister({
       ) : null}
 
       {loading ? (
-        <p className="cl-said" role="status" style={{ marginTop: 12 }}>
-          Reading this house’s cocktails…
-        </p>
+        <>
+          {/* The loaded page opens with the scope note (two lines) over the
+              table, so the read in flight holds that same room: the note's own
+              class and height, then the table's head and three empty rows
+              (the fewest a house's list has). First paint is the loaded
+              layout, so the books below it do not move when the list lands. */}
+          <p className="cl-note" role="status" style={{ minHeight: '2lh' }}>
+            Reading this house’s cocktails…
+          </p>
+          <div
+            aria-hidden="true"
+            data-testid="cocktails-reading-room"
+            style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}
+          >
+            <table className="cl-table">
+              <thead>
+                <tr>
+                  <th scope="col">Cocktail</th>
+                  <th scope="col">Section</th>
+                  <th scope="col">Method</th>
+                  <th scope="col">Glass</th>
+                  <th scope="col">Garnish</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2].map((i) => (
+                  <tr key={i} style={{ cursor: 'default' }}>
+                    <td>
+                      <span className="cl-serif" style={{ display: 'block', fontWeight: 600, fontSize: 13.5 }}>
+                        &nbsp;
+                      </span>
+                    </td>
+                    <td colSpan={6} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {openParam ? (
+            // A link names a drink: its panel opens under the list the moment
+            // the list lands, so its room is held from the first paint too.
+            <div aria-hidden="true" style={{ marginTop: 14, minHeight: SHEET_HOLD_ROOM }} />
+          ) : null}
+        </>
       ) : error || !data ? (
         <p className="cl-said" role="alert" style={{ marginTop: 12 }} data-testid="cocktails-unread">
           <AlertTriangle size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
@@ -278,6 +451,33 @@ export default function CocktailRegister({
             </p>
           ) : null}
 
+          {seesCost && menu.error ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-menu-unread">
+              {MENU_PRICES_UNREAD}
+            </p>
+          ) : null}
+
+          {seesCost && (figures.error || figures.costsUnread) ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-costs-unread">
+              {DRINK_COSTS_UNREAD}
+            </p>
+          ) : null}
+
+          {figures.error ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-allergens-unread">
+              {DRINK_ALLERGENS_UNREAD}
+            </p>
+          ) : null}
+
+          {data.rows.length > 0 ? (
+            <>
+              {seesCost ? (
+                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={setOnlyBare} />
+              ) : null}
+              <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="drinks" />
+            </>
+          ) : null}
+
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
               {data.rows.length === 0
@@ -295,11 +495,19 @@ export default function CocktailRegister({
                     <th scope="col">Glass</th>
                     <th scope="col">Garnish</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                    {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
+                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Cost per serve</th> : null}
+                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Pour cost</th> : null}
+                    <th scope="col">Allergens</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((c) => (
+                  {rows.map((c) => {
+                    const fc = seesCost
+                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId) && !figures.costsUnread, money, sayPct)
+                      : null;
+                    return (
                     <tr
                       key={c.id}
                       data-selected={c.id === openId}
@@ -322,11 +530,24 @@ export default function CocktailRegister({
                       <td>{c.glass ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
+                      {showMenu ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-menu-${c.id}`}>
+                          <MenuPriceCell id={c.id} menu={menu.byId?.get(c.id)} say={money} />
+                        </td>
+                      ) : null}
+                      {fc ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-cost-${c.id}`}>{fc.cost}</td>
+                      ) : null}
+                      {fc ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-share-${c.id}`}>{fc.share}</td>
+                      ) : null}
+                      <AllergenCell id={c.id} a={figures.byId?.get(c.id)?.allergens} />
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {shortDate((c as { created_at?: string }).created_at)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -356,14 +577,14 @@ export default function CocktailRegister({
                               className="cl-btn cl-focus"
                               onClick={() => {
                                 setEditId(c.id);
-                                setDraft({
+                                changeDraft({
                                   name: c.name,
                                   displayName: c.display_name ?? undefined,
                                   menuSection: c.menu_section ?? undefined,
                                   method: c.method ?? undefined,
                                   glass: c.glass ?? undefined,
                                   garnish: c.garnish ?? undefined,
-                                  price: c.price ?? undefined,
+                                  priceText: priceText(c.price),
                                 });
                               }}
                             >
@@ -388,8 +609,26 @@ export default function CocktailRegister({
                             </button>
                           </span>
                         </div>
+                        {/* The menu's price, offered while the drink differs from it (gap 2,
+                            slice 2). Not while the drink's own form is open: a price taken
+                            here would leave the form's box saying the old one. */}
+                        {showMenu && editId !== c.id ? (
+                          <div style={{ marginTop: 10 }}>
+                            <UseMenuPrice
+                              key={c.id}
+                              name={c.display_name ?? c.name}
+                              own={c.price ?? null}
+                              menu={menu.byId?.get(c.id)}
+                              say={money}
+                              share="pour cost"
+                              onUse={async (p) => {
+                                await amend.mutateAsync({ id: c.id, input: { price: p } });
+                              }}
+                            />
+                          </div>
+                        ) : null}
                         {/* The sheet keys its own draft by drink (RecipeSheet's default export), so typed lines never cross drinks. */}
-                        <RecipeSheet cocktailId={c.id} />
+                        <RecipeSheet cocktailId={c.id} holdRoom={c.id === openParam} />
                       </>
                     );
                   })()}
@@ -424,9 +663,8 @@ export default function CocktailRegister({
             <p className="cl-said">
               {count(register.counts.houseRows)} cocktail{' '}
               {register.counts.houseRows === 1 ? 'line' : 'lines'} appear in this
-              house’s menu and till outside the list above. They are shown apart
-              rather than merged: joining them to a row of the list would need a
-              name match this page is not entitled to make.
+              house’s menu and till. They are shown as those books name them,
+              beside the list above rather than joined to a row of it.
             </p>
             <div style={{ marginTop: 10, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
               <table className="cl-table">

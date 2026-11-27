@@ -32,12 +32,16 @@ import type { ProcurementDocument } from '../../../services/api/documents';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import { fmtWhen } from '../../../lib/mudavym/format';
+// Shares in the house's form, as its money is (r23 walk: "13.1%" beside "₺12,00").
+import { formatHousePercent } from '../../../lib/house-number';
 import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
+import { amountUnit, isPoured } from './iv-amount';
+import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
-import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
+import { costColumnsFor, oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
   EM,
@@ -80,21 +84,60 @@ export interface RowDropdownProps {
   providers: Provider[] | null;
   providersError: string | null;
   restaurantId: string | null;
+  /** The good's own unit (house item `uom`): its sheets count, write off and order in it. */
+  uom?: string | null;
+  /** The house item's kind: a food or supply is never offered "Record a pour". */
+  kind?: string | null;
+  /**
+   * Which evidence panels to draw (the drawer opens only the one a card asks
+   * for). Absent draws all of them, as the row always has.
+   */
+  sections?: ReadonlyArray<EvidenceSection>;
+  /**
+   * False draws no act buttons and no sheets (the drawer keeps its acts in one
+   * place). Its "Record a count" link still asks for the count sheet, through
+   * onSheet, and the instance that holds the acts draws it.
+   */
+  actions?: boolean;
+  /**
+   * The open sheet, when the caller holds it: the drawer passes one state to
+   * both its instances, so a link in the evidence opens the sheet the acts own.
+   * Absent, the row holds its own.
+   */
+  sheet?: SheetId | null;
+  onSheet?: (sheet: SheetId | null) => void;
+  /**
+   * What each delivery's price was settled at, first to last (the figures
+   * route's cost trend: a verified invoice or a hand-set price). Absent or
+   * null, "Last bought" reads the ledger's priced purchases as before.
+   * 'reading' and 'failed' are the figures read itself: while it reads or
+   * after it failed, whether a price was settled is not known, so "Last
+   * bought" says so and never falls back to the ledger, whose door lines carry
+   * no cost and would read "none on the ledger" under a Cost card that says
+   * the costs could not be read (inventory r36, gap 9).
+   */
+  settled?: SettledProp;
 }
 
-type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
+export type SettledProp = ReadonlyArray<{ receivedAt: string; unitCost: number }> | 'reading' | 'failed' | null;
+
+/** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
+export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper';
+
+export type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
 
 /**
  * Why "Remove from inventory" cannot start for this row, or null when it can.
  * The remove modal (shared with the legacy page) reconciles live, shadow and
  * the open bottle to zero before it soft-deletes, and it reads a missing figure
  * as 0. A figure this page did not read would therefore be removed without its
- * ledger row, so the act waits until the book says what is held.
+ * ledger row, so the act waits until the book says what is held. A good with no
+ * library title (flour, napkins) is zeroed and removed the same way: the count
+ * route is keyed on the house item and only logs a wine id.
  */
 export function removeBlocked(row: InvRow): string | null {
   if (row.stock === null || row.shadow === null || row.openMl === null)
     return 'the book did not say how many are held, so it cannot be zeroed first';
-  if (row.wineId === null) return 'this row is not tied to a library title, so its stock cannot be zeroed first';
   return null;
 }
 
@@ -170,17 +213,40 @@ function invoiceOf(docs: ProcurementDocument[]): ProcurementDocument | null {
 
 export default function RowDropdown(props: RowDropdownProps) {
   const { row, canManage, currency, zoneName } = props;
-  const [sheet, setSheet] = useState<SheetId | null>(null);
+  const [ownSheet, setOwnSheet] = useState<SheetId | null>(null);
+  const sheet = props.onSheet ? (props.sheet ?? null) : ownSheet;
+  const setSheet = props.onSheet ?? setOwnSheet;
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
-  const detail = useRowDetail(row.id);
+  const has = (s: EvidenceSection) => props.sections === undefined || props.sections.includes(s);
+  // Read only what a drawn panel shows (inventory r36 audit, gap 7). The cost
+  // panel is a manager's; it reads the ledger only when no settled price is
+  // known (WhatItHasCost's fallback), and the auction lots only for a drink.
+  // The Paperwork table reads the purchases and their paper.
+  const costShown = has('cost') && canManage;
+  const settledNow = props.settled ?? null;
+  // 'reading' and 'failed' are not an absent price: no ledger then (gap 9).
+  const costFromLedger = Array.isArray(settledNow) ? settledNow.length === 0 : settledNow === null;
+  const kitchenGood = props.kind === 'food' || props.kind === 'supply';
+  // The Paperwork table prints each purchase's unit cost, so it is a manager's
+  // too: a staff reader's drawer draws it nowhere and reads nothing for it
+  // (r39 walk-w5 F3).
+  const paperShown = has('paper') && canManage;
+  const detail = useRowDetail(row.id, {
+    purchases: paperShown || (costShown && costFromLedger),
+    paper: paperShown,
+    lots: costShown && !kitchenGood,
+  });
+  const acts = props.actions !== false;
   const queryClient = useQueryClient();
   const [removing, setRemoving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const blocked = removeBlocked(row);
   // Only marking INACTIVE is held back; marking a row active again never strands stock.
   const toggleBlocked = row.active === true ? inactiveBlocked(row) : null;
-  const title = row.name ?? 'This title';
+  // What one row is called: a kitchen good is a good, a drink keeps "title".
+  const thing = kitchenGood ? 'good' : 'title';
+  const title = row.name ?? `This ${thing}`;
   const unit = useRestaurantSettingsStore((st) => st.measurementUnit);
 
   // Mark inactive / active: the legacy page's toggleActive
@@ -195,7 +261,7 @@ export default function RowDropdown(props: RowDropdownProps) {
     try {
       await updateInventoryItem(row.id, { isActive: next }, props.restaurantId ?? undefined);
       toast.success(
-        next ? `${title} marked active` : `${title} marked inactive. The book lists active titles only, so it leaves this list.`,
+        next ? `${title} marked active` : `${title} marked inactive. The book lists active ${thing === 'good' ? 'goods' : 'titles'} only, so it leaves this list.`,
       );
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (e) {
@@ -230,10 +296,14 @@ export default function RowDropdown(props: RowDropdownProps) {
     row.stock !== null &&
     row.shadow !== null &&
     hold.some((f) => f.live === row.stock && f.shadow === row.shadow);
+  // Live and shadow are in the good's own unit: bottles say a bare figure, as they always have.
+  const goodUnit = amountUnit(props.uom);
+  const inBottles = goodUnit.base === 'bottle';
+  const say = inBottles ? fmtCount : goodUnit.words;
   const canReconcile =
-    row.stock !== null && row.shadow !== null && row.shadow > 0 && row.wineId !== null && !reconciling && !held;
+    row.stock !== null && row.shadow !== null && row.shadow > 0 && !reconciling && !held;
   const reconcileShadow = async () => {
-    if (!canReconcile || row.stock === null || row.shadow === null || row.wineId === null) return;
+    if (!canReconcile || row.stock === null || row.shadow === null) return;
     const before = { live: row.stock, shadow: row.shadow };
     const total = row.stock + row.shadow;
     const holdIt = (landed: boolean) => {
@@ -244,14 +314,18 @@ export default function RowDropdown(props: RowDropdownProps) {
     setMoreOpen(false);
     setReconciling(true);
     try {
-      await reconcileItem(row.id, { wineId: row.wineId, actualCount: total, notes: 'Shadow reconciled into live' });
+      await reconcileItem(row.id, {
+        ...(row.wineId !== null ? { wineId: row.wineId } : {}),
+        actualCount: total,
+        notes: 'Shadow reconciled into live',
+      });
       holdIt(true);
-      toast.success(`${title}: live set to ${fmtCount(total)}, the shadow bottles counted in.`);
+      toast.success(`${title}: live set to ${say(total)}, the shadow ${inBottles ? 'bottles ' : ''}counted in.`);
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (e) {
       const f = writeFailure(e, {
         refused: 'Nothing was reconciled',
-        act: 'live was set to the count with the shadow bottles in it',
+        act: `live was set to the count with the shadow ${inBottles ? 'bottles ' : ''}in it`,
         check: 'Re-read the book before trying again.',
       });
       if (f.unknown) {
@@ -268,7 +342,7 @@ export default function RowDropdown(props: RowDropdownProps) {
   const copyName = async () => {
     setMoreOpen(false);
     try {
-      await navigator.clipboard.writeText(oneLine(row.name ?? 'Unnamed title'));
+      await navigator.clipboard.writeText(oneLine(row.name ?? `Unnamed ${thing}`));
       toast.success('Name copied');
     } catch {
       toast.error('Could not copy to the clipboard.');
@@ -288,8 +362,13 @@ export default function RowDropdown(props: RowDropdownProps) {
   if (row.openMl !== null && row.openMl > 0) head.push({ k: 'Open bottle', v: `${fmtCount(row.openMl)} ml left` });
 
   return (
-    <div className="iv-drop" data-testid="row-dropdown" aria-label={`${row.name ?? 'This title'}, opened`}>
-      {head.length > 0 ? (
+    <div
+      className="iv-drop"
+      // The drawer mounts an evidence-only copy beside the acts: it is named apart, never a second "opened" row.
+      data-testid={acts ? 'row-dropdown' : 'row-evidence'}
+      aria-label={acts ? `${title}, opened` : `${title}: the evidence`}
+    >
+      {has('facts') && head.length > 0 ? (
         <dl className="iv-head-facts">
           {head.map((h) => (
             <KV key={h.k} k={h.k}>
@@ -299,17 +378,30 @@ export default function RowDropdown(props: RowDropdownProps) {
         </dl>
       ) : null}
 
-      <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} />
+      {has('facts') ? <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} /> : null}
 
-      <div className="iv-drop-cols">
-        <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} />
-        <HowFastItPours row={row} />
-        <WhatItHasCost row={row} currency={currency} detail={detail} />
-      </div>
+      {has('where') || has('pace') || has('cost') ? (
+        <div className="iv-drop-cols">
+          {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
+          {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
+          {has('cost') ? (
+          <WhatItHasCost
+            row={row}
+            currency={currency}
+            detail={detail}
+            uom={props.uom ?? null}
+            kind={props.kind ?? null}
+            canManage={canManage}
+            settled={props.settled ?? null}
+          />
+        ) : null}
+        </div>
+      ) : null}
 
-      <Paperwork detail={detail} currency={currency} providers={props.providers} />
+      {paperShown ? <Paperwork detail={detail} currency={currency} providers={props.providers} thing={thing} /> : null}
 
-      <div className="iv-actions" role="group" aria-label="What to do with this title">
+      {acts ? (
+      <div className="iv-actions" role="group" aria-label={`What to do with this ${thing}`}>
         <button type="button" className="iv-btn iv-focus" onClick={() => setSheet('count')}>
           Record a count
         </button>
@@ -336,7 +428,11 @@ export default function RowDropdown(props: RowDropdownProps) {
           onClose={() => setMoreOpen(false)}
           anchorRef={moreRef}
           width={220}
-          label="More things to do with this title: move bottles between zones, record a pour by hand, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory"
+          label={
+            kitchenGood
+              ? `More things to do with this good: move it between zones, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory`
+              : `More things to do with this ${thing}: move bottles between zones, record a pour by hand, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory`
+          }
         >
           <div className="iv-menu" role="menu" onKeyDown={(e) => onMenuKeys(e, moreRef.current, () => setMoreOpen(false))}>
             <button
@@ -350,21 +446,23 @@ export default function RowDropdown(props: RowDropdownProps) {
             >
               Transfer between zones
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="iv-menu-item iv-focus"
-              onClick={() => {
-                setMoreOpen(false);
-                setSheet('pour');
-              }}
-            >
-              Record a pour
-            </button>
+            {isPoured(props.uom, props.kind) ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="iv-menu-item iv-focus"
+                onClick={() => {
+                  setMoreOpen(false);
+                  setSheet('pour');
+                }}
+              >
+                Record a pour
+              </button>
+            ) : null}
             {row.shadow !== null && row.shadow > 0 && held ? (
               <p className="iv-note" role="note" data-testid="reconcile-held">
                 {holdWhy === 'landed'
-                  ? 'Reconcile is done for now: live was already set with the shadow bottles counted in, and the shadow lots still read until they are cleared. It comes back when live or shadow reads differently.'
+                  ? `Reconcile is done for now: live was already set with the shadow ${inBottles ? 'bottles ' : ''}counted in, and the shadow lots still read until they are cleared. It comes back when live or shadow reads differently.`
                   : 'Reconcile is held: the last one may have landed. It comes back when live or shadow reads differently.'}
               </p>
             ) : row.shadow !== null && row.shadow > 0 ? (
@@ -375,7 +473,7 @@ export default function RowDropdown(props: RowDropdownProps) {
                 disabled={!canReconcile}
                 onClick={() => void reconcileShadow()}
               >
-                Reconcile {fmtCount(row.shadow)} into live
+                Reconcile {say(row.shadow)} into live
               </button>
             ) : null}
             <button type="button" role="menuitem" className="iv-menu-item iv-focus" onClick={() => void copyName()}>
@@ -388,12 +486,20 @@ export default function RowDropdown(props: RowDropdownProps) {
               onClick={() => {
                 setMoreOpen(false);
                 // Legacy's right-click "Export this row": the valuation columns, as CSV, named after the title.
-                void runExport([row], valuationColumns(currency.code ?? null), rowFilename(row), title);
+                void runExport([row], costColumnsFor(valuationColumns(currency.code ?? null, thing === 'good' ? 'Good' : 'Title'), canManage), rowFilename(row), title);
               }}
             >
               Export this row
             </button>
-            {row.active !== null ? (
+            {/* Taking a good off the list or out of the books is an owner's or a
+                manager's, as a write-off is; the gateway refuses it to staff too
+                (inventory r28, gap 2). */}
+            {!canManage ? (
+              <p className="iv-menu-note" data-testid="remove-is-a-managers">
+                Removing a good or marking it inactive is for owners and managers.
+              </p>
+            ) : null}
+            {canManage && row.active !== null ? (
               <button
                 type="button"
                 role="menuitem"
@@ -405,25 +511,27 @@ export default function RowDropdown(props: RowDropdownProps) {
                 {row.active ? 'Mark inactive' : 'Mark active'}
               </button>
             ) : null}
-            {toggleBlocked ? (
+            {canManage && toggleBlocked ? (
               <p className="iv-menu-note" id={`iv-inactive-why-${row.id}`} data-testid="inactive-blocked">
                 Mark inactive waits: {toggleBlocked}.
               </p>
             ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              className="iv-menu-item iv-focus"
-              disabled={blocked !== null}
-              aria-describedby={blocked ? `iv-remove-why-${row.id}` : undefined}
-              onClick={() => {
-                setMoreOpen(false);
-                setRemoving(true);
-              }}
-            >
-              Remove from inventory
-            </button>
-            {blocked ? (
+            {canManage ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="iv-menu-item iv-focus"
+                disabled={blocked !== null}
+                aria-describedby={blocked ? `iv-remove-why-${row.id}` : undefined}
+                onClick={() => {
+                  setMoreOpen(false);
+                  setRemoving(true);
+                }}
+              >
+                Remove from inventory
+              </button>
+            ) : null}
+            {canManage && blocked ? (
               <p className="iv-menu-note" id={`iv-remove-why-${row.id}`} data-testid="remove-blocked">
                 Remove waits: {blocked}.
               </p>
@@ -431,31 +539,35 @@ export default function RowDropdown(props: RowDropdownProps) {
           </div>
         </Popover>
       </div>
+      ) : null}
 
-      {sheet === 'count' ? <CountSheet row={row} onClose={() => setSheet(null)} /> : null}
-      {sheet === 'order' ? (
+      {acts && sheet === 'count' ? <CountSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
+      {acts && sheet === 'order' ? (
         <OrderSheet
           row={row}
           onClose={() => setSheet(null)}
           providers={props.providers}
           providersError={props.providersError}
           restaurantId={props.restaurantId}
+          uom={props.uom}
         />
       ) : null}
-      {sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} onClose={() => setSheet(null)} /> : null}
-      {sheet === 'transfer' ? (
+      {acts && sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
+      {acts && sheet === 'transfer' ? (
         <TransferSheet
           row={row}
           onClose={() => setSheet(null)}
           locations={props.locations}
           locationsUnavailable={props.locationsUnavailable}
+          uom={props.uom}
         />
       ) : null}
-      {sheet === 'pour' ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
-      {removing && blocked === null ? (
+      {acts && sheet === 'pour' && isPoured(props.uom, props.kind) ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
+      {canManage && removing && blocked === null ? (
         <RemoveFromInventoryModal
           isOpen
           items={[removeTarget(row)]}
+          say={amountUnit(props.uom).words}
           onClose={() => setRemoving(false)}
           onRemoved={() => {
             setRemoving(false);
@@ -528,7 +640,8 @@ function WhereTheCountComesFrom({
 
 /* ── column 2 ──────────────────────────────────────────────────────────── */
 
-function HowFastItPours({ row }: { row: InvRow }) {
+function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; kind: string | null }) {
+  const thing = kind === 'food' || kind === 'supply' ? 'good' : 'title';
   const record = useRowRecord(row.name);
   const pos = record.data?.books?.find((b) => b.book === 'pos') ?? null;
   const tillLines: TillLine[] = useMemo(
@@ -540,13 +653,31 @@ function HowFastItPours({ row }: { row: InvRow }) {
   const maxDay = Math.max(1, ...vel.days.map((d) => d.qty));
   const maxHour = Math.max(1, ...hours.buckets.map((b) => b.qty));
 
+  // A counted good's runway is read from what is left after the use since
+  // its last count (inventory_analytics), so the sentence says so.
+  const lasts =
+    row.runway === null
+      ? '.'
+      : `; at that pace${row.usageSource === 'counts' ? ', counting the use since the last count,' : ''} it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`;
+  const between =
+    row.usageSince && row.usageUntil
+      ? `between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)}`
+      : 'between its last counts';
   const sentence = !row.analyticsReadable
-    ? 'Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a title with nothing sold.'
+    ? `Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a ${thing} with nothing sold.`
+    : row.usageSource === 'counts'
+      ? row.velocity !== null && row.velocity > 0
+        ? `About ${usageWordsOf(row.velocity, uom)} a day: ${row.usageQty === null ? 'what was used' : `${fmtQty(row.usageQty, uom)} used`} ${between}${lasts}`
+        : `Nothing used ${between}, so there is no runway to give.`
+      : row.usageSource === null && (kind === 'food' || kind === 'supply')
+        ? NOT_DRAWN_BY_SALES
     : row.velocity === null
-      ? 'Selling pace: unmeasured — the analytics have nothing for this title yet.'
+      ? `Selling pace: unmeasured — the analytics have nothing for this ${thing} yet.`
       : row.velocity === 0
         ? 'Nothing sold lately, so there is no runway to give.'
-        : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${row.runway === null ? '.' : `; at that pace it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`}`;
+        : row.usageSource === 'sales' && row.usageQty !== null && row.usageSince && row.usageUntil
+          ? `About ${fmtPace(row.velocity)} a day (${fmtQty(row.usageQty, uom)} sold in the last ${fmtCount(Math.max(1, Math.round((Date.parse(row.usageUntil) - Date.parse(row.usageSince)) / 86_400_000)))} days, less voids)${lasts}`
+          : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${lasts}`;
 
   return (
     <section className="iv-col">
@@ -565,7 +696,7 @@ function HowFastItPours({ row }: { row: InvRow }) {
           {pos?.readable === false
             ? 'The till could not be read. This is unread, not a quiet night.'
             : row.velocity !== null && row.velocity > 0
-              ? 'That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this title yet.'
+              ? `That pace is the last 30 days of sales on the books. The day-by-day chart is not drawn for this ${thing} yet.`
               : row.velocity === 0
                 ? 'No day-by-day chart either: no sales on the books in the last 30 days.'
                 : 'No day-by-day chart either.'}
@@ -630,34 +761,139 @@ function HowFastItPours({ row }: { row: InvRow }) {
 
 /* ── column 3 ──────────────────────────────────────────────────────────── */
 
+/** Said where cost is not shown to this reader, as the drawer's Cost card says it. */
+export const COST_IS_A_MANAGERS = 'Cost is shown to owners and managers.';
+
+/** The margin's own caveat, as the dish and drink cards carry FOOD_COST_TAX_NOTE. */
+export const MARGIN_TAX_NOTE = 'of the bottle price as your list has it; whether that price includes tax is not recorded';
+
+/**
+ * What one bottle has cost, from a cost kept a base unit (ADR 0070): a wine
+ * kept in bottles costs its WAC a bottle; a spirit kept in ml or litres costs
+ * its WAC times the bottle's size. `null` where the size is not recorded or
+ * the good is kept some other way, rather than comparing a bottle's price
+ * with a millilitre's cost (inventory r28 audit, gap 10).
+ */
+export function bottleCost(wac: number, uom: string | null, bottleSizeMl: number | null): number | null {
+  if (uom === null || uom === 'bottle') return wac;
+  if (bottleSizeMl === null || !(bottleSizeMl > 0)) return null;
+  if (uom === 'ml') return wac * bottleSizeMl;
+  if (uom === 'l') return (wac * bottleSizeMl) / 1000;
+  return null;
+}
+
 function WhatItHasCost({
   row,
   currency,
   detail,
+  uom,
+  kind,
+  canManage,
+  settled,
 }: {
   row: InvRow;
   currency: HouseCurrency;
   detail: ReturnType<typeof useRowDetail>;
+  uom: string | null;
+  kind: string | null;
+  canManage: boolean;
+  settled: SettledProp;
 }) {
-  const priced = (detail.purchases ?? []).filter((l) => l.unitCost !== null);
+  // A food or supply is costed, not priced (ADR 0051/0053): no btl · glass price,
+  // margin, market or auction lots, and its costs, stored a g, ml or piece
+  // (ADR 0070), read a kg, litre or piece as the drawer's cost card does
+  // (ItemCards perUnit). With no unit recorded a cost cannot say what it is a,
+  // so it reads as a dash, never as a guessed bottle. A drink is drawn as before.
+  const good = kind === 'food' || kind === 'supply' ? kind : null;
+  // A drink kept in bottles (or with no unit, a wine) reads its cost a bottle;
+  // one kept by measure reads a litre, as a food does, never a bare
+  // millilitre's cost that looks like a bottle's (inventory r28 audit, gap 10).
+  const byBottle = uom === null || uom === 'bottle';
+  const money = (n: number | null): ReactNode => {
+    if (good === null && byBottle) return cellMoney(n, currency);
+    if (n === null || uom === null) return EM;
+    const u = perUnit(n, uom);
+    return (
+      <>
+        {cellMoney(u.amount, currency)} <span className="iv-dim">{u.per}</span>
+      </>
+    );
+  };
+  // A delivery received at the door is booked with no cost, and its ledger
+  // row is never restated when the invoice settles the price, so the ledger
+  // alone said "none on the ledger" for every good bought that way. A settled
+  // price (the figures route's trend) comes first; the ledger's priced
+  // purchases are read only when no price was ever settled. The two are not
+  // merged: a ledger line may carry the estimate that a settled price later
+  // replaced, and the same delivery would then count twice.
+  const figuresState = settled === 'reading' || settled === 'failed' ? settled : null;
+  const points = settled === 'reading' || settled === 'failed' ? null : settled;
+  const fromSettled = points !== null && points.length > 0;
+  const fromLedger = !fromSettled && figuresState === null;
+  const priced: Array<{ unitCost: number | null; at: string | null }> = fromSettled
+    ? [...points].reverse().map((p) => ({ unitCost: p.unitCost, at: p.receivedAt }))
+    : fromLedger
+      ? (detail.purchases ?? []).filter((l: PurchaseLine) => l.unitCost !== null)
+      : [];
   const last = priced[0] ?? null;
   const before = priced[1] ?? null;
-  const unread = detail.purchasesError !== null;
-  const reading = detail.purchases === null && !unread;
-  const bought = (l: PurchaseLine | null) =>
-    reading ? EM : unread ? 'could not be read' : l === null ? 'none on the ledger' : `${cellMoney(l.unitCost, currency)} · ${shortDate(l.at)}`;
+  const unread = figuresState === 'failed' || (fromLedger && detail.purchasesError !== null);
+  const reading = figuresState === 'reading' || (fromLedger && detail.purchases === null && !unread);
+  const bought = (l: { unitCost: number | null; at: string | null } | null) =>
+    reading ? EM : unread ? 'could not be read' : l === null ? (fromSettled ? 'none settled before it' : 'none on the ledger') : (
+      <>
+        {money(l.unitCost)} · {fromSettled ? 'settled ' : ''}
+        {shortDate(l.at)}
+      </>
+    );
   const change =
     last && before && last.unitCost !== null && before.unitCost !== null && before.unitCost > 0
       ? ((last.unitCost - before.unitCost) / before.unitCost) * 100
       : null;
-  const margin = row.bottle !== null && row.bottle > 0 && row.wac !== null ? ((row.bottle - row.wac) / row.bottle) * 100 : null;
+  // The recorded size, not the gateway's 750 for an unsized good (r33 walk).
+  const sizeForCost = row.bottleSizeRecordedMl !== undefined ? row.bottleSizeRecordedMl : row.bottleSizeMl;
+  const oneBottle = row.wac === null ? null : bottleCost(row.wac, uom, sizeForCost);
+  const margin = row.bottle !== null && row.bottle > 0 && oneBottle !== null ? ((row.bottle - oneBottle) / row.bottle) * 100 : null;
+  const noMarginWhy =
+    row.bottle === null || !(row.bottle > 0)
+      ? null
+      : row.wac === null
+        ? 'no cost yet'
+        : oneBottle === null
+          ? uom === 'ml' || uom === 'l'
+            ? 'the bottle size is not recorded, so a bottle’s cost is not known'
+            : 'its cost is not kept a bottle'
+          : null;
+
+  // Staff read stock, not what the house paid (inventory r28 audit, gap 9).
+  // Before, a staff reader saw the cost here, or, with the gateway withholding
+  // it (#1355), "none on the ledger", which says the good was never bought.
+  if (!canManage) {
+    return (
+      <section className="iv-col">
+        <h4 className="iv-sec">What it has cost</h4>
+        <p className="iv-note" data-testid="cost-is-a-managers">
+          {COST_IS_A_MANAGERS}
+        </p>
+        {good === null ? (
+          <dl>
+            <KV k="Your price">
+              <span className="iv-num">
+                {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
+              </span>
+            </KV>
+          </dl>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="iv-col">
       <h4 className="iv-sec">What it has cost</h4>
       <dl>
         <KV k="Weighted average cost">
-          <span className="iv-num">{cellMoney(row.wac, currency)}</span>
+          <span className="iv-num">{money(row.wac)}</span>
           {row.wac !== null && row.costProvenance ? <span className="iv-dim"> · {row.costProvenance === 'invoice' ? 'from invoices' : 'estimated'}</span> : null}
         </KV>
         <KV k="Last bought">{bought(last)}</KV>
@@ -667,38 +903,62 @@ function WhatItHasCost({
             EM
           ) : (
             <span className="iv-num">
-              {cellMoney(before.unitCost, currency)} → {cellMoney(last.unitCost, currency)} ({change > 0 ? '+' : ''}
-              {change.toFixed(0)}%)
+              {money(before.unitCost)} → {money(last.unitCost)} (
+              {formatHousePercent(change, currency.code, { digits: 0, signed: true })})
             </span>
           )}
         </KV>
-        <KV k="Your price">
-          <span className="iv-num">
-            {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
-          </span>
-        </KV>
-        <KV k="Margin over cost">
-          <span className="iv-num">{margin === null ? EM : `${margin.toFixed(0)}%`}</span>
-        </KV>
-        <KV k="Market">
-          {EM} <span className="iv-dim">no market price is read</span>
-        </KV>
-        <KV k="Auction lots">
-          {detail.lotsError ? (
-            <>
-              could not be read{' '}
-              <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadLots}>
-                Read again
-              </button>
-            </>
-          ) : detail.lots === null
-              ? EM
-              : detail.lots.length === 0
-                ? 'none'
-                : `${fmtCount(detail.lots.length)} lot${detail.lots.length === 1 ? '' : 's'}, the latest sold ${shortDate(
-                    detail.lots.map((l) => l.saleDate).sort().at(-1) ?? null,
-                  )}`}
-        </KV>
+        {good !== null ? (
+          <KV k="Price">
+            <span className="iv-dim" data-testid="good-not-priced">
+              {good === 'food' ? 'A food is costed, not priced: the dishes that use it carry the price.' : 'A supply is costed, not priced.'}
+            </span>
+          </KV>
+        ) : (
+          <>
+            <KV k="Your price">
+              <span className="iv-num">
+                {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
+              </span>
+            </KV>
+            <KV k="Margin on your bottle price">
+              {margin === null ? (
+                <>
+                  {EM}
+                  {noMarginWhy ? <span className="iv-dim"> {noMarginWhy}</span> : null}
+                </>
+              ) : (
+                <>
+                  <span className="iv-num">{formatHousePercent(margin, currency.code, { digits: 0 })}</span>{' '}
+                  <span className="iv-dim" data-testid="margin-tax-note">
+                    {MARGIN_TAX_NOTE}
+                  </span>
+                </>
+              )}
+            </KV>
+            <KV k="Market">
+              {EM} <span className="iv-dim">no market price is read</span>
+            </KV>
+          </>
+        )}
+        {good !== null ? null : (
+          <KV k="Auction lots">
+            {detail.lotsError ? (
+              <>
+                could not be read{' '}
+                <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadLots}>
+                  Read again
+                </button>
+              </>
+            ) : detail.lots === null
+                ? EM
+                : detail.lots.length === 0
+                  ? 'none'
+                  : `${fmtCount(detail.lots.length)} lot${detail.lots.length === 1 ? '' : 's'}, the latest sold ${shortDate(
+                      detail.lots.map((l) => l.saleDate).sort().at(-1) ?? null,
+                    )}`}
+          </KV>
+        )}
       </dl>
     </section>
   );
@@ -736,10 +996,12 @@ function Paperwork({
   detail,
   currency,
   providers,
+  thing,
 }: {
   detail: ReturnType<typeof useRowDetail>;
   currency: HouseCurrency;
   providers: Provider[] | null;
+  thing: string;
 }) {
   const vendorOf = (paper: PaperRead | undefined) => {
     const id = paper?.docs ? invoiceOf(paper.docs)?.provider_id : null;
@@ -751,7 +1013,7 @@ function Paperwork({
       <h4 className="iv-sec">Paperwork</h4>
       {detail.purchasesError ? (
         <p className="iv-note">
-          The receipts could not be read. This is unread, not a title never bought.{' '}
+          The receipts could not be read. This is unread, not a {thing} never bought.{' '}
           <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadPurchases}>
             Read again
           </button>
@@ -759,7 +1021,7 @@ function Paperwork({
       ) : detail.purchases === null ? (
         <p className="iv-note">Reading the receipts…</p>
       ) : detail.purchases.length === 0 ? (
-        <p className="iv-note">No delivery of this title is on the ledger.</p>
+        <p className="iv-note">No delivery of this {thing} is on the ledger.</p>
       ) : (
         <>
           <table className="iv-papertable">
@@ -811,9 +1073,9 @@ function Paperwork({
           <p className="iv-note">
             Receipts opens at the invoice, not the line: it has no link to one line yet.{' '}
             <Link className="iv-linkish iv-focus" to="/receipts">
-              All {detail.purchasesTotal ?? detail.purchases.length} receipts of this title
+              All {detail.purchasesTotal ?? detail.purchases.length} receipts of this {thing}
             </Link>{' '}
-            — Receipts cannot filter by title yet, so this opens the whole list.
+            — Receipts cannot filter by {thing} yet, so this opens the whole list.
           </p>
         </>
       )}
@@ -822,7 +1084,7 @@ function Paperwork({
         <Link className="iv-linkish iv-focus" to="/documents-reports" data-testid="row-view-ledger">
           View the ledger
         </Link>{' '}
-        — it opens the house’s documents and reports, not this title alone.
+        — it opens the house’s documents and reports, not this {thing} alone.
       </p>
     </section>
   );

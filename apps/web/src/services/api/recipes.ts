@@ -269,23 +269,117 @@ export const recipesApi = {
   },
 };
 
-/** One row of GET /dishes. Price and cost are null for staff. */
+export type AllergenStatus = 'contains' | 'may_contain' | 'free' | 'not_stated';
+
+/**
+ * What a list row says of its recipe's allergens (dishes.service.ts
+ * RowAllergens; r36 recipes audit, gap 8). Every role reads it: allergens are
+ * not money. `readable: false` is a failed read, never allergen-free.
+ */
+export type RowAllergens =
+  | { readable: true; status: Record<string, AllergenStatus>; unstatedBy: string[] }
+  | { readable: false };
+
+/** A list row's cost a serve (or plate); null for staff, or when it could not be read. */
+export type ListCost = null | {
+  perServe: number | null;
+  perServeExact: number | null;
+  priced: number;
+  of: number;
+  complete: boolean;
+  partial: number;
+};
+
+/**
+ * One row of GET /dishes: the dish by name, nothing priced, so the list shows
+ * after one read (r41 recipes audit, gap 2). Price is null for staff.
+ */
 export interface DishListRow {
   id: string;
   name: string;
   section: string | null;
   price: number | null;
+}
+
+/** A dish on the house's list with its figures (GET /recipes/:rid/dishes/figures). */
+export interface DishFigureRow {
+  dishId: string;
+  /** Null for a role that does not see the house's money. */
+  price: number | null;
   hasRecipe: boolean;
   yieldServes: number | null;
   lineCount: number;
-  cost: null | {
-    perServe: number | null;
-    perServeExact: number | null;
-    priced: number;
-    of: number;
-    complete: boolean;
-    partial: number;
-  };
+  cost: ListCost;
+  /** Null when the dish has no recipe. */
+  allergens?: RowAllergens | null;
+}
+
+/** GET /recipes/:rid/drinks/figures. `costsUnread`: the pricing read failed, every cost is null. */
+export interface DrinkFiguresAnswer {
+  costsUnread: boolean;
+  drinks: DrinkFigureRow[];
+}
+
+/** GET /recipes/:rid/dishes/figures. `costsUnread`: the pricing read failed, every cost is null. */
+export interface DishFiguresAnswer {
+  costsUnread: boolean;
+  dishes: DishFigureRow[];
+}
+
+/** A drink on the house's list with its figures (GET /recipes/:rid/drinks/figures). */
+export interface DrinkFigureRow {
+  cocktailId: string;
+  /** Null for a role that does not see the house's money. */
+  price: number | null;
+  hasRecipe: boolean;
+  yieldServes: number | null;
+  lineCount: number;
+  cost: ListCost;
+  /** Null when the drink has no recipe; absent from an older gateway. */
+  allergens?: RowAllergens | null;
+}
+
+/**
+ * What the house's current menu says for one dish or drink of the same name
+ * (GET /recipes/:rid/menu-prices; r28 recipes audit, gap 2). `prices` are the
+ * line's distinct prices, lowest first; `agrees` is null when either side has
+ * no price.
+ */
+export type MenuPrice =
+  | { found: 'one'; prices: number[]; agrees: boolean | null }
+  | { found: 'none' }
+  | { found: 'several'; lines: number };
+
+export interface MenuPricesAnswer {
+  /** True for a role that does not see the house's money: nothing was read. */
+  amountsWithheld: boolean;
+  /** How many menus are current; 0 is "no current menu". Null when withheld. */
+  currentMenus: number | null;
+  dishes: Array<{ dishId: string; menu: MenuPrice }>;
+  drinks: Array<{ cocktailId: string; menu: MenuPrice }>;
+}
+
+/**
+ * A dish the current menu holds that is not on the list yet
+ * (GET /recipes/:rid/dishes/from-menu; r28 onboarding audit, gap 1, slice 3).
+ * `price` is null when the menu gives none, or gives two (`pricesDiffer`).
+ */
+export interface MenuDishOffer {
+  name: string;
+  section: string | null;
+  price: number | null;
+  pricesDiffer: boolean;
+}
+
+/** What POST /recipes/:rid/dishes/from-menu did with the names it was sent. */
+export interface MenuDishesAdded {
+  added: Array<{ id: string; name: string }>;
+  /** Already on the list when written (another tab, a double click). */
+  already: string[];
+  /** Not written: the run stopped at a failed write. */
+  notAdded: string[];
+  /** No longer offered: listed since, or gone from the menu. */
+  notOffered: string[];
 }
 
 export interface DishBody {
@@ -293,6 +387,13 @@ export interface DishBody {
   section?: string;
   price?: number;
   description?: string;
+}
+
+/** A change to a dish: only the fields sent change; a null section or price clears it. */
+export interface DishChange {
+  name?: string;
+  section?: string | null;
+  price?: number | null;
 }
 
 export interface Dish {
@@ -305,9 +406,72 @@ export interface Dish {
 
 
 
+/** What taking the menu's prices onto many dishes did, dish by dish (POST dishes/take-menu-prices). */
+export interface TakeMenuPricesAnswer {
+  changed: Array<{ id: string; name: string; from: number | null; to: number }>;
+  /** Every dish left as it was, with the gateway's reason in words. */
+  skipped: Array<{ id: string; name: string; why: string }>;
+}
+
+/** What taking the dishes the menu does not print off the list did (POST dishes/take-off-menu). */
+export interface TakeOffMenuAnswer {
+  removed: Array<{ id: string; name: string }>;
+  /** Every dish left on the list, with the gateway's reason in words. */
+  skipped: Array<{ id: string; name: string; why: string }>;
+}
+
 export const dishesApi = {
   async list(restaurantId: string): Promise<DishListRow[]> {
     const r = await apiClient.get<DishListRow[]>(`${base(restaurantId)}/dishes`);
+    return r.data;
+  },
+
+  /** Every dish's cost a plate and allergens, read beside the names (r41 recipes audit, gaps 2 and 3). */
+  async dishFigures(restaurantId: string): Promise<DishFiguresAnswer> {
+    const r = await apiClient.get<DishFiguresAnswer>(`${base(restaurantId)}/dishes/figures`);
+    // An answer without its rows is unread, never a list of dishes with no figures.
+    if (!Array.isArray(r.data?.dishes)) throw new Error('The dishes’ figures came back without their rows.');
+    return { costsUnread: r.data.costsUnread === true, dishes: r.data.dishes };
+  },
+
+  /** Every drink on the list with its cost a serve, in one read (r28 recipes audit, gap 9). */
+  async drinkFigures(restaurantId: string): Promise<DrinkFiguresAnswer> {
+    const r = await apiClient.get<{ costsUnread?: boolean; drinks: DrinkFigureRow[] }>(`${base(restaurantId)}/drinks/figures`);
+    // An older gateway sends no flag: its costs were read, or the whole read failed.
+    return { costsUnread: r.data.costsUnread === true, drinks: r.data.drinks };
+  },
+
+  /** The current menu's price beside each dish and drink, in one read (r28 recipes audit, gap 2). */
+  async menuPrices(restaurantId: string): Promise<MenuPricesAnswer> {
+    const r = await apiClient.get<MenuPricesAnswer>(`${base(restaurantId)}/menu-prices`);
+    return r.data;
+  },
+
+  /** The current menu's dishes not on the list yet; owner and manager only (gap 1 slice 3). */
+  async menuDishes(restaurantId: string): Promise<{ currentMenus: number; dishes: MenuDishOffer[] }> {
+    const r = await apiClient.get<{ currentMenus: number; dishes: MenuDishOffer[] }>(`${base(restaurantId)}/dishes/from-menu`);
+    return r.data;
+  },
+
+  /** Puts the named menu dishes on the list, with the menu's section and price. */
+  async addMenuDishes(restaurantId: string, names: string[]): Promise<MenuDishesAdded> {
+    const r = await apiClient.post<MenuDishesAdded>(`${base(restaurantId)}/dishes/from-menu`, { names });
+    return r.data;
+  },
+
+  /**
+   * The current menu's cocktails not on the cocktail list yet, by name or
+   * shown name; owner and manager only (r36 recipes audit, gap 3). Same
+   * shape as the dish offer; `dishes` is named `drinks` here.
+   */
+  async menuDrinks(restaurantId: string): Promise<{ currentMenus: number; drinks: MenuDishOffer[] }> {
+    const r = await apiClient.get<{ currentMenus: number; drinks: MenuDishOffer[] }>(`${base(restaurantId)}/drinks/from-menu`);
+    return r.data;
+  },
+
+  /** Puts the named menu cocktails on the list in one write; none is added when it fails. */
+  async addMenuDrinks(restaurantId: string, names: string[]): Promise<MenuDishesAdded> {
+    const r = await apiClient.post<MenuDishesAdded>(`${base(restaurantId)}/drinks/from-menu`, { names });
     return r.data;
   },
 
@@ -316,8 +480,30 @@ export const dishesApi = {
     return r.data;
   },
 
-  async update(restaurantId: string, dishId: string, body: Partial<DishBody>): Promise<Dish> {
+  async update(restaurantId: string, dishId: string, body: DishChange): Promise<Dish> {
     const r = await apiClient.patch<Dish>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}`, body);
+    return r.data;
+  },
+
+  /** Sets each named dish to the one price the current menu gives it; owner and manager only. */
+  async takeMenuPrices(restaurantId: string, ids: string[]): Promise<TakeMenuPricesAnswer> {
+    const r = await apiClient.post<TakeMenuPricesAnswer>(`${base(restaurantId)}/dishes/take-menu-prices`, { ids });
+    // An answer without its lists is not a result: the page must not say "done" for it.
+    if (!Array.isArray(r.data?.changed) || !Array.isArray(r.data?.skipped)) throw new Error('The answer came back without saying which dishes changed.');
+    return r.data;
+  },
+
+  /** Takes off the named dishes the current menu prints no line of; owner and manager only. */
+  async takeOffMenu(restaurantId: string, ids: string[]): Promise<TakeOffMenuAnswer> {
+    const r = await apiClient.post<TakeOffMenuAnswer>(`${base(restaurantId)}/dishes/take-off-menu`, { ids });
+    // An answer without its lists is not a result: the page must not say "done" for it.
+    if (!Array.isArray(r.data?.removed) || !Array.isArray(r.data?.skipped)) throw new Error('The answer came back without saying which dishes came off.');
+    return r.data;
+  },
+
+  /** Takes the dish off the list (a soft delete); its recipe versions are kept. */
+  async remove(restaurantId: string, dishId: string): Promise<{ id: string; name: string; removed: true }> {
+    const r = await apiClient.delete<{ id: string; name: string; removed: true }>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}`);
     return r.data;
   },
 };

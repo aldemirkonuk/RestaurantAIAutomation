@@ -45,6 +45,16 @@ export class RecipeLineDto {
   @ApiProperty({ enum: RECIPE_UNITS })
   @IsIn(RECIPE_UNITS as unknown as string[])
   unit!: string;
+
+  /**
+   * The share of what is bought that `qty` is, in percent: 45 means 180 g on
+   * the plate is 400 g bought (r28 recipes gap 5). Absent, null or 100: all
+   * of it. Its bounds are said in the service, in words.
+   */
+  @ApiPropertyOptional({ nullable: true, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  usablePct?: number | null;
 }
 
 export class SaveRecipeDto {
@@ -95,6 +105,14 @@ export class PreviewLineDto {
   @ApiProperty({ enum: RECIPE_UNITS })
   @IsIn(RECIPE_UNITS as unknown as string[])
   unitCode!: string;
+
+  /** As on a saved line: the share of what is bought that the amount is, 1 to 100. */
+  @ApiPropertyOptional({ nullable: true, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(100)
+  usablePct?: number | null;
 }
 
 /** An unsaved draft to be priced. Nothing about it is stored. */
@@ -172,6 +190,26 @@ export class UpdateDishDto {
   description?: string | null;
 }
 
+/** The dishes whose price should become the current menu's price (the ids the manager confirmed). */
+export class TakeMenuPricesDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @IsUUID("all", { each: true })
+  ids!: string[];
+}
+
+/** The dishes to take off the list because the current menu prints no line of their name (the ids the manager confirmed). */
+export class TakeOffMenuDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
+  @IsUUID("all", { each: true })
+  ids!: string[];
+}
+
 /** The pasted labels to look up on the shelf by exact folded name (ADR 0366 item 7). */
 export class ShelfMatchDto {
   @ApiProperty({ type: [String] })
@@ -181,4 +219,20 @@ export class ShelfMatchDto {
   @IsString({ each: true })
   @MaxLength(200, { each: true })
   labels!: string[];
+}
+
+/**
+ * What one piece of a good weighs and what one ml of it weighs, in g (r28
+ * gap 7). Left out: kept as it is. null: taken off. The service bounds each.
+ */
+export class StateWeightsDto {
+  @ApiPropertyOptional({ nullable: true, description: "What one piece weighs, in g" })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  pieceGrams?: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "What one ml weighs, in g" })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  mlGrams?: number | null;
 }

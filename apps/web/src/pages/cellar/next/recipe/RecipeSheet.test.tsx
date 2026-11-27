@@ -25,6 +25,8 @@ const h = vi.hoisted(() => ({
   put: vi.fn(),
   post: vi.fn(),
   auth: {} as Record<string, unknown>,
+  taste: vi.fn(),
+  roll: vi.fn(),
 }));
 
 vi.mock('../../../../services/api/client', () => ({
@@ -35,6 +37,12 @@ vi.mock('../../../../services/api/client', () => ({
   },
 }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
+// How it tastes has its own suite (RecipeTaste.test.tsx); here the route is simply not switched on.
+vi.mock('../../../../services/api/taste', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getTaste: h.taste,
+  rollupTaste: h.roll,
+}));
 
 import RecipeSheet, { fromProposal, LEGACY_NOTE, NEWER_SENTENCE, RESTORED_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
 import { draftKey, forgetDrafts, keepDraft } from './drafts';
@@ -152,6 +160,8 @@ const amount = (i: number) => (screen.getAllByLabelText('Amount')[i] as HTMLInpu
 beforeEach(() => {
   h.get.mockReset();
   h.put.mockReset();
+  h.taste.mockReset().mockResolvedValue({ state: 'absent' });
+  h.roll.mockReset();
   h.post.mockReset();
   versions = [];
   past = {};
@@ -183,6 +193,81 @@ function leaveReturnValue(): unknown {
 }
 
 describe('RecipeSheet', () => {
+  it('how it tastes: a one-line summary opens the sheet, then the cards, then the taste card with its action', async () => {
+    h.taste.mockResolvedValue({
+      state: 'ready',
+      data: {
+        effective: { axes: { sour: { v: 7, lo: 6, hi: 8, conf: 0.55, prov: [{ kind: 'recipe', share: 1 }], bandOnly: false } }, descriptors: [], texture: [], conflicts: [] },
+        layers: [{ source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+      },
+    });
+    serve(negroni());
+    mount();
+    const lead = await screen.findByTestId('recipe-taste-line');
+    expect(lead).toHaveTextContent('How it tastes');
+    expect(lead).toHaveTextContent(/sour/i);
+    expect(h.taste).toHaveBeenCalledWith('cocktail', CID, RID);
+    const card = await screen.findByTestId('recipe-taste');
+    expect(card).toHaveTextContent('Worked out from the recipe');
+    expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
+    // Order: summary line, then the sheet's cards, then the taste card.
+    const sheet = screen.getByTestId('recipe-sheet');
+    const pos = (el: Element) => Array.from(sheet.querySelectorAll('*')).indexOf(el);
+    expect(pos(lead)).toBeLessThan(pos(screen.getByText('Cost a serve')));
+    expect(pos(screen.getByText('Cost a serve'))).toBeLessThan(pos(card));
+  });
+
+  it('how it tastes: Work it out sends this drink to the roll-up and the sheet shows what came back', async () => {
+    h.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
+    const after = {
+      effective: { axes: { sweet: { v: 6, lo: 5, hi: 7, conf: 0.55, prov: [{ kind: 'recipe', share: 1 }], bandOnly: false } }, descriptors: [], texture: [], conflicts: [] },
+      layers: [{ source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+    };
+    h.roll.mockImplementation(async () => {
+      h.taste.mockResolvedValue({ state: 'ready', data: after });
+      return { state: 'ready', data: after };
+    });
+    serve(negroni());
+    mount();
+    fireEvent.click(await screen.findByTestId('recipe-taste-act'));
+    await waitFor(() => expect(h.roll).toHaveBeenCalledWith('cocktail', CID, RID));
+    expect(await screen.findByTestId('taste-row-sweet')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
+  });
+
+  it('how it tastes on a dish sheet: reads and works out THIS dish, not a cocktail with the same id', async () => {
+    h.taste.mockResolvedValue({ state: 'ready', data: { effective: null, layers: [] } });
+    const after = {
+      effective: { axes: { salty: { v: 5, lo: 4, hi: 6, conf: 0.5, prov: [{ kind: 'recipe', share: 1 }], bandOnly: false } }, descriptors: [], texture: [], conflicts: [] },
+      layers: [{ source: 'recipe', version: 1, method: 'computed', statedByName: null, statedAt: '2026-11-19T10:00:00Z', hasNote: false, noteText: null }],
+    };
+    h.roll.mockImplementation(async () => {
+      h.taste.mockResolvedValue({ state: 'ready', data: after });
+      return { state: 'ready', data: after };
+    });
+    const n = negroni();
+    const { cocktail, ...rest } = n;
+    const dish = { ...rest, dish: { id: CID, name: 'Kofta', section: null, price: 450, description: null } };
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
+      if (url === `/recipes/${RID}/dishes/${CID}`) return { data: dish };
+      if (url === `/recipes/${RID}/shelf`) return { data: [] };
+      if (url === `/recipes/${RID}/dishes/${CID}/versions`) return { data: [] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<RecipeSheet dishId={CID} />, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider> });
+    expect(await screen.findByTestId('recipe-taste')).toBeInTheDocument();
+    expect(h.taste).toHaveBeenCalledWith('dish', CID, RID);
+    expect(h.taste).not.toHaveBeenCalledWith('cocktail', CID, RID);
+    fireEvent.click(await screen.findByTestId('recipe-taste-act'));
+    await waitFor(() => expect(h.roll).toHaveBeenCalledWith('dish', CID, RID));
+    expect(h.roll).not.toHaveBeenCalledWith('cocktail', CID, RID);
+    expect(await screen.findByTestId('taste-row-salty')).toBeInTheDocument();
+    expect(screen.getByTestId('recipe-taste-act')).toHaveTextContent('Read again');
+    expect(screen.getByTestId('recipe-taste-line')).toBeInTheDocument();
+  });
+
   it('2. 2 of 3 lines priced says so and shows no total', async () => {
     serve(
       negroni({
@@ -369,6 +454,38 @@ describe('RecipeSheet', () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ['recipes', RID, CID] });
   });
 
+  it('6b. "Saved." goes when a line is changed again, and when a setting is', async () => {
+    serve(negroni());
+    h.put.mockResolvedValue({ data: { versionId: V5, version: 5, lines: [] } });
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByTestId('recipe-said')).toHaveTextContent('Saved.');
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '40' } });
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByTestId('recipe-said')).toHaveTextContent('Saved.');
+    fireEvent.change(screen.getByLabelText('Garnish'), { target: { value: 'Lemon' } });
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+  });
+
+  it('6c. a refusal goes when a line is changed, but "someone saved first" stays until the saved recipe is loaded', async () => {
+    serve(negroni());
+    h.put.mockRejectedValue(Object.assign(new Error('Request failed with status code 500'), { response: { status: 500 } }));
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved.');
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '41' } });
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+
+    h.put.mockRejectedValue(Object.assign(new Error('conflict'), { response: { status: 409 } }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(STALE_SENTENCE);
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '42' } });
+    expect(screen.getByTestId('recipe-said')).toHaveTextContent(STALE_SENTENCE);
+  });
+
   it('7. never shows a table name or the word confidence', async () => {
     serve({ ...EMPTY, legacyLines: [{ label: 'whites', quantity: 2, unit: 'egg' }] });
     const { container } = mount();
@@ -446,13 +563,34 @@ describe('RecipeSheet', () => {
     expect(await screen.findByTestId('recipe-unread')).toHaveTextContent('could not be read');
   });
 
+  it('an answered failure still says its reason in the re-read banner', async () => {
+    serve(negroni());
+    const { qc } = mount();
+    await screen.findAllByLabelText('Amount');
+    h.get.mockRejectedValue(new Error('boom'));
+    await refocus(qc);
+    expect(await screen.findByTestId('recipe-reread-failed')).toHaveTextContent('could not be read again just now (boom)');
+  });
+
+  it('a first read with no answer at all says the house could not be reached, not "Network Error"', async () => {
+    h.get.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    const unread = await screen.findByTestId('recipe-unread');
+    expect(unread).toHaveTextContent('Mudavym could not be reached just now.');
+    expect(unread).toHaveTextContent('unread, not absent');
+    expect(unread.textContent).not.toMatch(/Network Error/);
+  });
+
   it('a failed re-read says so and keeps the typed lines on the sheet', async () => {
     serve(negroni());
     const { qc } = mount();
     fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
-    h.get.mockRejectedValue(new Error('Network Error'));
+    h.get.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
     await refocus(qc);
-    expect(await screen.findByTestId('recipe-reread-failed')).toHaveTextContent('could not be read again just now (Network Error)');
+    const banner = await screen.findByTestId('recipe-reread-failed');
+    expect(banner).toHaveTextContent('Mudavym could not be reached just now.');
+    expect(banner.textContent).not.toMatch(/Network Error/);
+    expect(banner).toHaveTextContent('What is shown is the last read.');
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(3);
     expect(amount(0)).toBe('45');
   });
@@ -955,6 +1093,9 @@ describe('RecipeSheet', () => {
     fireEvent.click(within(opened).getByRole('button', { name: 'Start from version 4' }));
     expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
     expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
+    // The note says nothing is saved yet: still true after the next change.
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '44' } });
+    expect(screen.getByTestId('recipe-said')).toHaveTextContent('Version 4 is on the sheet. Nothing is saved yet');
     expect(screen.getByRole('region', { name: 'Recipe for Negroni' })).toHaveTextContent('Coupe');
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
@@ -1109,6 +1250,22 @@ describe('RecipeSheet', () => {
     serve(negroni({ current: { ...n.current!, lines: [linked('gin', 30, GIN), { ...linked('gin', 15, GIN), id: 'gin-2' }] } }));
     mount();
     expect(await screen.findByTestId('recipe-repeated')).toHaveTextContent('gin is on 2 lines; a serve takes all of them.');
+  });
+
+  it('opened from a link, the panel holds the screen\'s room while the recipe is read; opened by a click it holds none (r90)', async () => {
+    serve(negroni());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const linked = render(<RecipeSheet cocktailId={CID} holdRoom />, { wrapper: wrap });
+    expect(screen.getByText('Reading the recipe…').style.minHeight).toBe('calc(100vh - 56px)');
+    await screen.findByTestId('recipe-sheet');
+    expect(screen.queryByText('Reading the recipe…')).toBeNull();
+    linked.unmount();
+    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap2 = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc2}>{children}</QueryClientProvider>;
+    render(<RecipeSheet cocktailId={CID} />, { wrapper: wrap2 });
+    expect(screen.getByText('Reading the recipe…').style.minHeight).toBe('');
+    await screen.findByTestId('recipe-sheet');
   });
 });
 

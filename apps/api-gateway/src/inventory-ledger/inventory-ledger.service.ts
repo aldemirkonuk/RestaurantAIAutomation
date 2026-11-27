@@ -34,7 +34,7 @@ interface TransactionRow {
   id: string;
   restaurant_id: string;
   inventory_id: string;
-  wine_id: string;
+  wine_id: string | null;
   transaction_type: string;
   source: string;
   quantity_change: number;
@@ -249,7 +249,9 @@ export class InventoryLedgerService {
         eventType: EventType.INVENTORY_CHANGE,
         sourcePage: SourcePage.INVENTORY,
         payload: {
-          wineId: dto.wineId,
+          // A food or supply has no library title; the item id names it.
+          wineId: dto.wineId ?? null,
+          inventoryId: dto.inventoryId,
           quantity: dto.quantityChange,
           previousQuantity: transaction.quantityBefore,
           changeType: this.mapTransactionTypeToChangeType(dto.transactionType),
@@ -698,7 +700,7 @@ export class InventoryLedgerService {
     restaurantId: string,
     userId: string,
     inventoryId: string,
-    wineId: string,
+    wineId: string | undefined,
     actualCount: number,
     notes?: string,
     clientCountId?: string,

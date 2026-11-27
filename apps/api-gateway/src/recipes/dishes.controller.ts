@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -6,7 +6,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
-import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, UpdateDishDto } from "./dto/recipes.dto";
+import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, TakeMenuPricesDto, TakeOffMenuDto, UpdateDishDto } from "./dto/recipes.dto";
 
 /**
  * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
@@ -24,9 +24,19 @@ export class DishesController {
   ) {}
 
   @Get(":restaurantId/dishes")
-  @ApiOperation({ summary: "The house's dishes, each with its cost a plate at today's prices" })
+  @ApiOperation({ summary: "The house's dishes by name, section and price (their figures are GET dishes/figures)" })
   listDishes(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @CurrentUser() user: { role?: string } | undefined) {
     return this.dishes.listDishes(restaurantId, user?.role);
+  }
+
+  // Declared before `dishes/:dishId`, which would otherwise take "figures" for a dish id.
+  @Get(":restaurantId/dishes/figures")
+  @ApiOperation({ summary: "Every dish on the house's list with its cost a plate and allergens (no cost for a role without money)" })
+  dishFigures(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.dishFigures(restaurantId, user?.role);
   }
 
   @Post(":restaurantId/dishes")
@@ -35,6 +45,28 @@ export class DishesController {
   @ApiOperation({ summary: "Add a dish (owner/manager); 409 when the house already has one by that name" })
   createDish(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: CreateDishDto) {
     return this.dishes.createDish(restaurantId, dto);
+  }
+
+  @Post(":restaurantId/dishes/take-menu-prices")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Set each named dish's price to the one price the current menu gives it (owner/manager); says which dishes changed and why each other was left",
+  })
+  takeMenuPrices(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: TakeMenuPricesDto) {
+    return this.dishes.takeMenuPrices(restaurantId, dto.ids);
+  }
+
+  @Post(":restaurantId/dishes/take-off-menu")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Take the named dishes off the list when the current menu prints no line of their name (owner/manager); says which came off and why each other was left",
+  })
+  takeOffMenu(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Body() dto: TakeOffMenuDto) {
+    return this.dishes.takeOffMenu(restaurantId, dto.ids);
   }
 
   @Patch(":restaurantId/dishes/:dishId")
@@ -47,6 +79,14 @@ export class DishesController {
     @Body() dto: UpdateDishDto,
   ) {
     return this.dishes.updateDish(restaurantId, dishId, dto);
+  }
+
+  @Delete(":restaurantId/dishes/:dishId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Take a dish off the house's list (owner/manager); its recipe versions are kept" })
+  removeDish(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Param("dishId", ParseUUIDPipe) dishId: string) {
+    return this.dishes.removeDish(restaurantId, dishId);
   }
 
   @Get(":restaurantId/dishes/:dishId")
@@ -112,6 +152,34 @@ export class DishesController {
     @CurrentUser() user: { role?: string } | undefined,
   ) {
     return this.dishes.dishesUsingItem(restaurantId, itemId, user?.role);
+  }
+
+  @Get(":restaurantId/items/:itemId/drinks")
+  @ApiOperation({ summary: "The house's drinks whose current recipe uses a shelf item, each with its figures" })
+  drinksUsingItem(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("itemId", ParseUUIDPipe) itemId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.drinksUsingItem(restaurantId, itemId, user?.role);
+  }
+
+  @Get(":restaurantId/drinks/figures")
+  @ApiOperation({ summary: "Every drink on the house's list with its cost a serve at today's prices (no cost for a role without money)" })
+  drinkFigures(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.drinkFigures(restaurantId, user?.role);
+  }
+
+  @Get(":restaurantId/menu-prices")
+  @ApiOperation({ summary: "The current menu's price for each dish and drink of the same name (nothing for a role without money)" })
+  menuPrices(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.dishes.menuPrices(restaurantId, user?.role);
   }
 
   @Post(":restaurantId/shelf/match")

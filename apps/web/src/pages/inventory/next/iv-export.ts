@@ -48,9 +48,15 @@ export async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], f
   }
 }
 
-export function valuationColumns(currencyCode: string | null): TableExportColumn<InvRow>[] {
-  return [
-    { header: 'Title', value: (r) => r.name ?? '' },
+/**
+ * `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods.
+ * A house of goods has no producer, bottle price or glass price to write, so those
+ * columns are left out of its file rather than sent empty.
+ */
+export function valuationColumns(currencyCode: string | null, nameHead = 'Title'): TableExportColumn<InvRow>[] {
+  const goods = nameHead === 'Good';
+  const cols: TableExportColumn<InvRow>[] = [
+    { header: nameHead, value: (r) => r.name ?? '' },
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
     { header: 'Live', value: (r) => blank(r.stock) },
@@ -64,9 +70,36 @@ export function valuationColumns(currencyCode: string | null): TableExportColumn
     { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
+  return forHouse(goods, cols);
 }
+
+/** A house of goods' file without the drink-only columns; a house with a drink keeps them all. */
+export function forHouse<T>(goods: boolean, columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
+  return goods ? columns.filter((c) => !DRINK_ONLY_HEADERS.has(c.header)) : columns;
+}
+
+/** Columns that only a drink fills: left out of a house of goods' files. */
+export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
+  'Producer',
+  'Vintage',
+  'Bottle size (ml)',
+  'Your bottle price',
+  'Your glass price',
+]);
 
 /** Legacy's file name for one row: the title, slugged (InventoryCommandPage.tsx "Export this row"). */
 export function rowFilename(row: InvRow): string {
   return (row.name ?? '').replace(/[^\w]+/g, '-').toLowerCase() || 'inventory-row';
+}
+
+/** The cost columns a valuation export carries: WAC and value at cost. */
+export const COST_HEADERS: ReadonlySet<string> = new Set(['WAC', 'Value at cost']);
+
+/**
+ * The columns this reader may take away: all of them for an owner or a
+ * manager, the counts and prices without the cost for staff (inventory r28
+ * audit, gap 9; the gateway withholds the figures too, #1355).
+ */
+export function costColumnsFor<T>(columns: TableExportColumn<T>[], canManage: boolean): TableExportColumn<T>[] {
+  return canManage ? columns : columns.filter((c) => !COST_HEADERS.has(c.header));
 }

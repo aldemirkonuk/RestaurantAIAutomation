@@ -193,6 +193,14 @@ describe('MenuVersions', () => {
     expect(screen.queryByText('No menu has been read yet.')).not.toBeInTheDocument();
   });
 
+  it('an unreachable gateway on the kept menus is said in words, not as "Network Error"', async () => {
+    mockList.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount(true);
+    const said = await screen.findByTestId('menu-versions-error');
+    expect(said).toHaveTextContent('could not be read (Mudavym could not be reached just now.)');
+    expect(said.textContent).not.toContain('Network Error');
+  });
+
   it('a manager makes a kept menu current, and is told what it did', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version()] });
     mockMake.mockResolvedValue({

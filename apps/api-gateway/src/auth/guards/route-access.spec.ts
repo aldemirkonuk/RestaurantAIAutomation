@@ -140,6 +140,9 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // follow-up after PR #617, the way #617 withholds them, not refused here
     // (ADR 0348 §Decision 3; its §Decision 5 names the four role-less writes).
     // Pinned end to end by analytics/analytics-money-needs-a-manager.spec.ts.
+    // DishesController (the dish list, its recipes and the menu-price reads and
+    // writes) names owner AND manager on every write and on cost-preview and the
+    // shelf match; its reads stay "open", as the cocktails' do (g2 menu gap).
     // RecipesController (ADR 0360, F13) names owner AND manager on its one
     // write, the recipe save; its three reads stay "open" (staff read a
     // recipe without money, which the service withholds, not the guard).
