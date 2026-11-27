@@ -510,6 +510,10 @@
     "owner",
     "manager"
   ],
+  "PATCH /recipes/:restaurantId/dishes/:dishId/yield (DishesController.setYield)": [
+    "owner",
+    "manager"
+  ],
   "DELETE /recipes/:restaurantId/dishes/:dishId (DishesController.removeDish)": [
     "owner",
     "manager"
