@@ -581,10 +581,13 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
   });
 
   it("an item whose lines do not agree on what their cost holds is stamped null", () => {
+    // r103: line 1 is rate 0, so the paper shows no tax and line 2 (rate
+    // unknown, before tax, a house that keeps its tax) is still costed as
+    // printed. Were the paper to show tax, line 2 would be held instead.
     const r = cost(
       {},
       [
-        { ...outside(), item_key: "wine-a" },
+        { ...outside(), item_key: "wine-a", vat_rate_percent: 0 },
         {
           ...outside(),
           line_no: 2,
@@ -598,6 +601,19 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     expect(costed(r.lines[1]).cost_tax_basis).toBeNull();
     const item = r.items[0];
     expect(item.status === "costed" && item.cost_tax_basis).toBeNull();
+  });
+
+  it("a paper that shows tax, a keeping house, before-tax prices and no rate for the line is held (r103)", () => {
+    const r = cost(
+      {},
+      [
+        { ...outside(), item_key: "wine-a" },
+        { ...outside(), line_no: 2, item_key: "wine-b", vat_rate_percent: null },
+      ],
+      DOES_NOT_RECLAIM,
+    );
+    expect(open(r.lines[1]).unresolved).toContain("tax rate unknown");
+    expect(costed(r.lines[0]).cost_tax_basis).toBe("gross_cost");
   });
 
   it("a tax rate that is not a rate is unresolved", () => {
