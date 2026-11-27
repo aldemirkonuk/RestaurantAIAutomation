@@ -10,7 +10,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 import { useMailListsFollowSummary, useMailPeople, useMailThread } from './useMailData';
-import { mergePeopleHead, mergeThreadHead, mergeThreadsHead } from './mail-merge';
+import { headWentBack, mergePeopleHead, mergeThreadHead, mergeThreadsHead } from './mail-merge';
 import type { MailPeoplePage, MailSummary, MailThreadPage, MailThreadsPage } from './mail-format';
 
 /**
@@ -131,6 +131,33 @@ describe('a moved summary reads one page, however many are loaded', () => {
     await waitFor(() => expect(hook.result.current.data?.pages[0].messages.map((m) => m.id)).toEqual(['c', 'd', 'e']));
     expect(api.get.mock.calls.filter((c) => c[0] === '/mail/thread')).toHaveLength(1);
     expect(hook.result.current.data?.pages).toHaveLength(2);
+  });
+});
+
+describe('a filtered list is read whole, not merged', () => {
+  it('a waiting-only list whose page 1 no longer holds a loaded person drops that person', async () => {
+    let page: MailPeoplePage = { people: [person(1), person(2)], next: null, storedKinds: ['vendor'] };
+    api.get.mockImplementation(async (url: string) => ({ data: url === '/mail/people' ? page : {} }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const hook = renderHook(
+      ({ s }: { s: MailSummary }) => {
+        useMailListsFollowSummary(s);
+        return useMailPeople(true, '');
+      },
+      { wrapper: wrap(qc), initialProps: { s: SUMMARY } },
+    );
+    await waitFor(() => expect(hook.result.current.data?.pages[0].people).toHaveLength(2));
+    // Person 1 is answered elsewhere: the waiting list no longer holds them.
+    page = { people: [person(2)], next: null, storedKinds: ['vendor'] };
+    hook.rerender({ s: { ...SUMMARY, waitingPeople: 1 } });
+    await waitFor(() => expect(hook.result.current.data?.pages[0].people.map((p) => p.key)).toEqual(['guest:p2@x.example']));
+  });
+
+  it('a person whose newest letter went away is not put on top of newer people', () => {
+    const cur = { pages: [{ people: [person(1, '2026-11-20T10:00:00Z'), person(2, '2026-11-10T10:00:00Z')], next: null, storedKinds: [] } as MailPeoplePage], pageParams: [null] };
+    const fresh: MailPeoplePage = { people: [person(1, '2026-11-20T10:00:00Z'), person(2, '2026-11-01T10:00:00Z')], next: null, storedKinds: [] };
+    expect(headWentBack(cur, fresh)).toBe(true);
+    expect(headWentBack(cur, { ...fresh, people: [person(1, '2026-11-21T10:00:00Z'), person(2, '2026-11-10T10:00:00Z')] })).toBe(false);
   });
 });
 
