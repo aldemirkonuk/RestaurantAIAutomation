@@ -40,14 +40,41 @@ export interface PhoneRowsProps {
   onSelectAll?: () => void;
   /** Hover and focus handlers that warm the drawer's reads (use-item-prefetch.ts). */
   prefetch?: ReturnType<typeof useItemPrefetch>;
+  /** A tap on the Used in chip: open the sheet at the Used in group. */
+  onUsedIn?: (id: string) => void;
 }
 
-/** The first few cards rise in one after another (28 ms apart); card 9 on is just there. */
-const STAGGER_CARDS = 8;
+/** The first few cards rise in one after another (18 ms apart, 200 ms each, the last done by 308 ms); card 7 on is just there. */
+const STAGGER_CARDS = 6;
 
 /** A card's least height (inventory-next.css .ivc-card) with room for its price control; a group head's. */
 const CARD_PX = 72;
 const GROUP_HEAD_PX = 40;
+
+/**
+ * "Used in 3 recipes", the table column's count on a card. It reads the same
+ * field: null is a read that failed, undefined one that has not landed, and
+ * neither is ever said as 0. A count above 0 is a 44 px tap that opens the
+ * sheet on its Used in group; 0 is plain words, there is nothing to open.
+ */
+export function UsedInChip({ row, onUsedIn }: { row: InvRow; onUsedIn?: (id: string) => void }) {
+  const n = row.usedIn;
+  if (n === null) return <span className="ivc-used ivc-used--dim" data-testid={`inv-usedin-${row.id}`}>Used in: could not be read</span>;
+  if (n === undefined) return <span className="ivc-used ivc-used--dim" data-testid={`inv-usedin-${row.id}`}>Used in: not read yet</span>;
+  const words = `Used in ${n} ${n === 1 ? 'recipe' : 'recipes'}`;
+  if (n === 0 || !onUsedIn) return <span className="ivc-used ivc-used--dim" data-testid={`inv-usedin-${row.id}`}>{words}</span>;
+  return (
+    <button
+      type="button"
+      className="ivc-used ivc-used--tap iv-focus"
+      data-testid={`inv-usedin-${row.id}`}
+      aria-label={`${words}: open where it is used`}
+      onClick={() => onUsedIn(row.id)}
+    >
+      {words}
+    </button>
+  );
+}
 
 export default function PhoneRows(props: PhoneRowsProps) {
   const { rows, thing, grouped, openId, onToggle, canManage, currency, advice, onPriceChanged } = props;
@@ -176,6 +203,7 @@ export default function PhoneRows(props: PhoneRowsProps) {
                   </span>
                 </span>
               </button>
+              <UsedInChip row={row} onUsedIn={props.onUsedIn} />
               <div className="ivc-price iv-num">
                 {canManage ? (
                   <HousePriceCell

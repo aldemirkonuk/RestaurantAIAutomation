@@ -38,7 +38,7 @@ import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
-import { fetchAuctionLotRecords, type AuctionLotRecord } from '../../../services/api/inventory';
+import { fetchAuctionLotRecords, getUseCounts, inventoryUseCountsKey, type AuctionLotRecord } from '../../../services/api/inventory';
 import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
@@ -116,6 +116,13 @@ export interface InvRow {
   reorderPoint: number | null;
   /** False when the gateway's analytics join failed for this read. */
   analyticsReadable: boolean;
+  /** The unit costs of the last two settled deliveries; null when fewer than two (or unread). Absent on a row not built by toRow. */
+  lastSettledCost?: number | null;
+  previousSettledCost?: number | null;
+  /** False when the settled-price read failed: a price move is then unknown, not none. */
+  settledCostsReadable?: boolean;
+  /** How many current recipes use this good. Null: the read failed (never 0). Absent: not read yet. */
+  usedIn?: number | null;
   velocity: number | null;
   /** Days of cover. Null at zero velocity: a title nobody buys has no runway. */
   runway: number | null;
@@ -254,6 +261,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const stock = num(r.stockLive);
   const par = num(r.thresholdMin);
   const analyticsReadable = r.analyticsReadable !== false;
+  const settledCostsReadable = r.settledCostsReadable !== false;
   const velocity = analyticsReadable ? num(r.velocityPerDay) : null;
   const cover = analyticsReadable ? num(r.daysOfCover) : null;
   const runway =
@@ -293,6 +301,9 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     par,
     reorderPoint: num(r.reorderPoint),
     analyticsReadable,
+    lastSettledCost: settledCostsReadable ? num(r.lastSettledCost) : null,
+    previousSettledCost: settledCostsReadable ? num(r.previousSettledCost) : null,
+    settledCostsReadable,
     velocity,
     runway,
     daysSinceSale: num(r.daysSinceSale),
@@ -451,7 +462,7 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
 
 /* ── chips ───────────────────────────────────────────────────────────────── */
 
-export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price';
+export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price' | 'unused';
 
 export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -461,6 +472,7 @@ export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'count', label: 'Count due' },
   { id: 'dead', label: 'Dead stock' },
   { id: 'price', label: 'Price signals' },
+  { id: 'unused', label: 'Unused' },
 ];
 
 export function countDue(row: InvRow, now = Date.now()): boolean {
@@ -471,9 +483,39 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 }
 
 /**
- * Whether a row belongs under a chip. `price` matches nothing: a price signal
- * needs a market figure and none is read (`retail_price_avg` is not selected,
- * database.service.ts:42-53), so its count is the dash, never 0.
+ * A good is a price signal when its latest settled delivery cost per unit
+ * differs from the one before by more than this many percent. The house will
+ * set its own; until then it is said in words on the chip (r104 g3).
+ */
+export const PRICE_SIGNAL_PCT = 10;
+
+/** What the Unused chip says it holds. */
+export const UNUSED_WORDS = 'A good no current drink or dish recipe uses. Not the same as unsold: a bottle sold as it is has no recipe.';
+
+/** What the chip says it holds, in words (the default is stated, not hidden). */
+export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before`;
+
+/** How far the last settled unit cost moved from the one before, in percent; null when there are not two settled costs to compare (a first delivery, an unread or free one). */
+export function priceMovePct(row: InvRow): number | null {
+  const last = row.lastSettledCost ?? null;
+  const before = row.previousSettledCost ?? null;
+  if (last === null || before === null || !(before > 0)) return null;
+  return ((last - before) / before) * 100;
+}
+
+/** Whether the house has anything to compare: the read answered and some good has two settled costs. */
+export function priceSignalsReadable(rows: InvRow[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.settledCostsReadable !== false);
+}
+export function priceSignalsHaveBasis(rows: InvRow[]): boolean {
+  return rows.some((r) => priceMovePct(r) !== null);
+}
+
+/**
+ * Whether a row belongs under a chip. `price` matches a good whose last
+ * settled delivery cost moved by more than PRICE_SIGNAL_PCT from the one
+ * before; a good with one delivery, or none settled, never matches (and is
+ * never read as a 0 % move).
  */
 export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean {
   switch (chip) {
@@ -489,8 +531,13 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
       return countDue(row, now);
     case 'dead':
       return row.deadStock;
-    case 'price':
-      return false;
+    case 'unused':
+      // Only a read zero: an unread or not-yet-read count is never "no recipe uses it".
+      return row.usedIn === 0;
+    case 'price': {
+      const pct = priceMovePct(row);
+      return pct !== null && Math.abs(pct) > PRICE_SIGNAL_PCT;
+    }
   }
 }
 
@@ -719,9 +766,27 @@ export function useInventoryNextData() {
     return m;
   }, [wines.data]);
 
-  const rows = useMemo<InvRow[] | null>(
+  const baseRows = useMemo<InvRow[] | null>(
     () => (items === null ? null : items.map((i) => toRow(i, i.wineId ? winesById.get(i.wineId) : null))),
     [items, winesById],
+  );
+  // How many recipes use each good (r105 g5). A failed read is `null` on every row: unread, never 0.
+  const useCountsQ = useQuery({
+    queryKey: inventoryUseCountsKey(rid ?? ''),
+    queryFn: () => getUseCounts(rid ?? undefined),
+    enabled: rid !== null,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const rows = useMemo<InvRow[] | null>(
+    () =>
+      baseRows === null
+        ? null
+        : baseRows.map((r) => ({
+            ...r,
+            usedIn: useCountsQ.isError ? null : useCountsQ.data ? (useCountsQ.data.counts[r.id] ?? 0) : undefined,
+          })),
+    [baseRows, useCountsQ.isError, useCountsQ.data],
   );
 
   const currencyQ = useQuery({
@@ -873,6 +938,8 @@ export function useInventoryNextData() {
     libraryAnswered,
     /** The selling-pace join failed for this read: pace, runway and dead stock are unread, not zero (INV-W29). */
     paceUnread,
+    /** Whether the recipe use counts answered: the Unused chip and the Used in column read it. */
+    useCountsRead: (useCountsQ.isError ? 'unread' : useCountsQ.data ? 'ready' : 'reading') as 'reading' | 'unread' | 'ready',
     currency,
     locations: {
       list: storage.locations as StorageLocation[],

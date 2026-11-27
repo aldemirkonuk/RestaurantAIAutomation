@@ -28,6 +28,8 @@ import { rowOffsets, useRowWindow } from './useRowWindow';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
+  /** The list's "Used in" count: open this good scrolled to where it is used. */
+  onUsedIn?: (id: string) => void;
   /** What one row is called in the table's caption: "title" for a drink, "good" for a house of goods. */
   thing?: string;
   /** The wine library did not answer: a missing type is unknown, not "not recorded" (INV-W28). */
@@ -52,7 +54,7 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
 export const ROW_PX = 56;
 export const GROUP_PX = 30;
 
-const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
+const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Used in', 'Status'];
 
 /** The headers that sort, and the sort each one sets. */
 const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
@@ -149,6 +151,7 @@ export default function InventoryTable(props: InventoryTableProps) {
         onSelect={props.onSelect}
         onSelectAll={props.onSelectAll}
         prefetch={prefetch}
+        onUsedIn={props.onUsedIn}
       />
     );
   }
@@ -382,6 +385,29 @@ export default function InventoryTable(props: InventoryTableProps) {
 {!hidden.has('Value') ? (
                   <td data-label="Value at cost" className="iv-r iv-num">
                     {cellMoney(row.value, currency)}
+                  </td>
+ ) : null}
+{!hidden.has('Used in') ? (
+                  <td data-label="Used in" className="iv-r iv-num" data-testid={`inv-usedin-${row.id}`}>
+                    {row.usedIn === null ? (
+                      <span className="iv-dim" title="Which recipes use this could not be read">unread</span>
+                    ) : row.usedIn === undefined ? (
+                      EM
+                    ) : row.usedIn > 0 && props.onUsedIn ? (
+                      <button
+                        type="button"
+                        className="iv-linkish iv-focus"
+                        aria-label={`Used in ${row.usedIn} ${row.usedIn === 1 ? 'recipe' : 'recipes'}: open where it is used`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          props.onUsedIn?.(row.id);
+                        }}
+                      >
+                        {row.usedIn}
+                      </button>
+                    ) : (
+                      row.usedIn
+                    )}
                   </td>
  ) : null}
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>

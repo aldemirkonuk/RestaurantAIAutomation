@@ -113,6 +113,9 @@ export function normalizeInventoryItem(
     usageUntil: item.usageUntil ?? undefined,
     usageQty: typeof item.usageQty === 'number' ? item.usageQty : undefined,
     analyticsReadable: item.analyticsReadable ?? true,
+    lastSettledCost: typeof item.lastSettledCost === 'number' ? item.lastSettledCost : undefined,
+    previousSettledCost: typeof item.previousSettledCost === 'number' ? item.previousSettledCost : undefined,
+    settledCostsReadable: item.settledCostsReadable,
     locations: item.locations ?? [],
   } as InventoryItem;
 }
@@ -645,6 +648,15 @@ export async function getItemUsedIn(itemId: string, restaurantId?: string): Prom
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
   const response = await apiClient.get<ItemUsedIn>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in`);
+  return response.data;
+}
+
+/** GET /inventory/:rid/use-counts: how many current recipes use each good. A good no recipe uses is absent. */
+export const inventoryUseCountsKey = (restaurantId: string) => ['inventory', 'use-counts', restaurantId] as const;
+export async function getUseCounts(restaurantId?: string): Promise<{ counts: Record<string, number> }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<{ counts: Record<string, number> }>(`${INVENTORY_PATH}/${id}/use-counts`);
   return response.data;
 }
 
