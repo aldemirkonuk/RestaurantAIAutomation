@@ -16,7 +16,8 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getItemNutrition, inventoryItemKeys, type StoredNutrition } from '../../../services/api/inventory';
+import type { StoredNutrition } from '../../../services/api/inventory';
+import { nutritionQuery } from './item-queries';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { failureReason } from './iv-failure';
 import NutritionForm from './NutritionForm';
@@ -65,11 +66,8 @@ export default function NutritionCard({ row, restaurantId, canManage }: WhatIsIn
   const itemId = row.id;
   const [editing, setEditing] = useState<false | 'edit' | 'lookup'>(false);
   const q = useQuery({
-    queryKey: inventoryItemKeys.nutrition(restaurantId ?? '', itemId),
-    queryFn: () => getItemNutrition(itemId, restaurantId ?? undefined),
+    ...nutritionQuery(restaurantId ?? '', itemId),
     enabled: restaurantId !== null && itemId !== '',
-    staleTime: 60_000,
-    retry: false,
   });
 
   if (q.isError) {
