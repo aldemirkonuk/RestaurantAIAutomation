@@ -177,8 +177,8 @@ describe('r98: /dishes holds the menu offer\'s line and gives the dish register 
 
   it('the offer room is one line above 640 px and two at 640 px and under, where the "no menu" sentence wraps', () => {
     const css = readFileSync(resolve(__dirname, '../cellar/next/cellar-next.css'), 'utf8');
-    expect(css).toMatch(/\.cl-offer-room\s*\{[^}]*min-height: 1lh;/);
-    const phone = css.match(/@media \(max-width: 640px\) \{\s*\.cl-offer-room\s*\{([^}]*)\}/);
+    expect(css).toMatch(/\.cl-offer-room(?:,\s*\.cl-try-room)?\s*\{[^}]*min-height: 1lh;/);
+    const phone = css.match(/@media \(max-width: 640px\) \{\s*\.cl-offer-room(?:,\s*\.cl-try-room)?\s*\{([^}]*)\}/);
     expect(phone).not.toBeNull();
     expect(phone?.[1]).toMatch(/min-height: 2lh;/);
   });
