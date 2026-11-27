@@ -236,11 +236,12 @@ export interface ReportsNextData {
   setTillDays: (days: number) => void;
   sheet: SheetState;
   /**
-   * Writes the sheet to the reader's preferences — and writes NOTHING while
+   * Writes the sheet to the reader's preferences and settles when the gateway
+   * has answered — rejecting if it refused, and rejecting WITHOUT writing while
    * the sheet is not known, so the house sheet can never be saved over the
-   * reader's own.
+   * reader's own. The page stamps "Ruled off." only after this resolves.
    */
-  saveSheet: (next: SheetState) => void;
+  saveSheet: (next: SheetState) => Promise<void>;
   /**
    * True once the account's preferences have answered, so `sheet` is the
    * reader's own. Read from `isPlaceholderData`, not `isLoading`: the
@@ -295,7 +296,7 @@ export function useReportsNextData(
   const qc = useQueryClient();
   const {
     preferences,
-    updatePreferences,
+    updatePreferencesAsync,
     isPlaceholderData: prefsPlaceholder,
     error: prefsError,
   } = useUserPreferences();
@@ -455,11 +456,12 @@ export function useReportsNextData(
   }) as Register<ReadingRow[]>;
 
   const saveSheet = useCallback(
-    (next: SheetState) => {
-      if (!sheetKnown) return;
-      updatePreferences({ [SHEET_PREF_KEY]: encodeSheet(next) });
+    async (next: SheetState): Promise<void> => {
+      if (!sheetKnown)
+        throw new Error('The sheet is not known yet, so it was not saved over the one you keep.');
+      await updatePreferencesAsync({ [SHEET_PREF_KEY]: encodeSheet(next) });
     },
-    [sheetKnown, updatePreferences],
+    [sheetKnown, updatePreferencesAsync],
   );
 
   const refetchAll = useCallback(() => {

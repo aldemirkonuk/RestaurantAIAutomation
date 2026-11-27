@@ -35,7 +35,8 @@ const prefs = vi.hoisted(() => ({
 vi.mock('@/hooks/useUserPreferences', () => ({
   useUserPreferences: () => ({
     preferences: {},
-    updatePreferences: prefs.write,
+    updatePreferences: vi.fn(),
+    updatePreferencesAsync: prefs.write,
     isLoading: false,
     isPlaceholderData: prefs.isPlaceholderData,
     error: prefs.error,
@@ -257,6 +258,7 @@ describe('useReportsNextData — whose sheet this is', () => {
     prefs.error = null;
     prefs.userId = 'u1';
     prefs.write.mockReset();
+    prefs.write.mockResolvedValue({});
     api.get.mockReset();
     api.get.mockResolvedValue({ data: {} });
   });
@@ -276,18 +278,21 @@ describe('useReportsNextData — whose sheet this is', () => {
     expect(result.current.sheetUnread).toBeNull();
   });
 
-  it('refuses to save a sheet that is not known, and writes nothing', () => {
+  it('refuses to save a sheet that is not known, and writes nothing', async () => {
     prefs.isPlaceholderData = true;
     const { result } = mount();
-    result.current.saveSheet(defaultSheet());
+    await expect(result.current.saveSheet(defaultSheet())).rejects.toThrow();
     expect(prefs.write).not.toHaveBeenCalled();
   });
 
-  it('saves the one preference key once the sheet is known', () => {
+  it('hands back the write itself, so the page learns whether it landed', async () => {
     const { result } = mount();
-    result.current.saveSheet(defaultSheet());
+    await expect(result.current.saveSheet(defaultSheet())).resolves.toBeUndefined();
     expect(prefs.write).toHaveBeenCalledTimes(1);
     expect(Object.keys(prefs.write.mock.calls[0][0])).toEqual(['reportsSheet']);
+
+    prefs.write.mockRejectedValueOnce(new Error('Request failed with status code 503'));
+    await expect(result.current.saveSheet(defaultSheet())).rejects.toThrow('503');
   });
 
   it('says so when the preferences could not be read, instead of passing the house sheet off as the reader’s', () => {

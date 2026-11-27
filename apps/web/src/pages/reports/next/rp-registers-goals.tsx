@@ -582,6 +582,7 @@ function ProposalCard({ desk }: { desk: GoalsDesk }) {
               type="button"
               className="rp-mini rp-ink rp-focus"
               data-strong="true"
+              disabled={desk.placeBlocked}
               onClick={() => {
                 desk.place(p.cutting!);
                 desk.dismiss();
@@ -592,6 +593,7 @@ function ProposalCard({ desk }: { desk: GoalsDesk }) {
             <button type="button" className="rp-mini rp-ink rp-focus" onClick={desk.dismiss}>
               No thanks
             </button>
+            {desk.placeBlocked && <span className="rp-cap">Ruling off…</span>}
           </div>
         </>
       ) : (

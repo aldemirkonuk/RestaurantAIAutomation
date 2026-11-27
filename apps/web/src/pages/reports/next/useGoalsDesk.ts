@@ -109,6 +109,12 @@ export interface GoalsDesk {
   /** Put a proposed cutting on the sheet. Supplied by the page. */
   place: (cutting: { id: AnalysisId; graph: GraphType; days: number | null }) => void;
   /**
+   * True while the page is saving the sheet: the paper is held still, so
+   * "Put it on the sheet" waits too (a cutting placed mid-save would be
+   * dropped with the draft when the save lands). Supplied by the page.
+   */
+  placeBlocked?: boolean;
+  /**
    * The book of scenarios the form's picker offers (ADR 0120). Read from
    * `GET /analytics/goal-scenarios`, which is static and carries no tenant
    * data — so a failure here is a browsing aid being down, never a figure
