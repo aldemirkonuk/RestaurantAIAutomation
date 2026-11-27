@@ -806,6 +806,8 @@ const week = analysis<WeekRegister>({
     // With fewer than two weekdays measured there is nothing to rank, and no
     // weekday "shares" an extreme: say that, not a tie (R-F10 leaves a weekday
     // with no line out of the profile, so one measured weekday is reachable).
+    // Checked before `shared`: a lone weekday says so whether or not the
+    // gateway flagged a tie (r109 reports-r109-7).
     const lone = w.weekdayProfile.length < 2;
     const figures = [
       {
@@ -820,11 +822,11 @@ const week = analysis<WeekRegister>({
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
-    const notes = !shared
+    const notes = lone
+      ? ['Busiest and quietest are left blank because fewer than two weekdays have a reading in this window, so there is nothing to rank.']
+      : !shared
       ? []
-      : lone
-        ? ['Busiest and quietest are left blank because fewer than two weekdays have a reading in this window, so there is nothing to rank.']
-        : !best && !worst
+      : !best && !worst
         ? [
             'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
           ]
