@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { signerSpeaksFor } from "../common/orchestrator/email-triage";
 import { readHouseZone, type HouseZone } from "../common/house-day";
 import type {
   MailAttachment,
@@ -117,7 +118,7 @@ const CONNECTED_MAILBOX = "a connected mailbox";
  */
 export function letterDetailsOf(
   m: { direction?: string | null; channel?: string | null; mirrored_by_grant_id?: string | null },
-  who: { grant: string | null; auth: unknown } | undefined,
+  who: { grant: string | null; auth: unknown; from?: string | null } | undefined,
   mailboxes: Map<string, string>,
 ): Pick<MailMessage, "mailbox" | "senderCheck" | "signedBy"> {
   const none = { mailbox: null, senderCheck: null, signedBy: null };
@@ -135,9 +136,13 @@ export function letterDetailsOf(
     return { ...none, mailbox };
   }
   const a = auth as Record<string, unknown>;
-  if (a.dkim === true || a.dmarc === true) {
-    const by = typeof a.signedBy === "string" ? a.signedBy.trim() : "";
-    return { mailbox, senderCheck: "passed", signedBy: by || null };
+  // Gmail's own DMARC fail stands: a signature by some other domain does not
+  // rescue it. DKIM alone counts only when its signer speaks for the From domain.
+  const by = typeof a.signedBy === "string" ? a.signedBy.trim() : "";
+  const aligned = signerSpeaksFor(by, who?.from);
+  if (a.dmarc === false) return { mailbox, senderCheck: "failed", signedBy: null };
+  if (a.dmarc === true || (a.dkim === true && aligned)) {
+    return { mailbox, senderCheck: "passed", signedBy: aligned ? by : null };
   }
   return { mailbox, senderCheck: "failed", signedBy: null };
 }

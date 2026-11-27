@@ -761,7 +761,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     // Only Gmail's own verdict is believed: the address webhook carries no
     // receiving-server stamp of ours, so its topmost header may be the sender's.
     const senderAuth =
-      payload.source === "inbound-domain" ? null : senderAuthOf(rawHeaders);
+      payload.source === "inbound-domain" ? null : senderAuthOf(rawHeaders, from);
 
     // The sender is the addr-spec a real RFC 5322 parser finds, never "the
     // first <...>" (QA round 6 N-1): `"Sales <sales@bigdist.com>"
