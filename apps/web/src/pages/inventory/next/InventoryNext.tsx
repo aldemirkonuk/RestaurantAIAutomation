@@ -214,6 +214,13 @@ export default function InventoryNext() {
     setCountFirst(false);
     setUsedFirst(false);
   };
+  // Stepping to the next or previous good replaces ?open=, so Back still closes the drawer in one step.
+  const stepGood = (id: string) => {
+    setParams((cur) => writeView(cur, { ...readView(cur), open: id }), { replace: true });
+    setCountFirst(false);
+    setUsedFirst(false);
+    document.getElementById(`iv-row-${id}`)?.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
+  };
   // The phone is a count mode for staff (critic c3 round 3, item 13); the Count bar opens the count itself.
   const phone = useIsPhone();
   const [countFirst, setCountFirst] = useState(false);
@@ -382,6 +389,7 @@ export default function InventoryNext() {
   useEffect(() => {
     setSelected(new Set());
   }, [data.rid, activeChip, zone, type, query, view]);
+  const visibleIds = useMemo(() => visible.map((r) => r.id), [visible]);
   const selectedRows = useMemo(() => visible.filter((r) => selected.has(r.id)), [visible, selected]);
   const toggleSelect = useCallback((id: string) => {
     setSelected((prev) => {
@@ -1386,7 +1394,6 @@ export default function InventoryNext() {
       {/* The terms sheet cannot be dismissed (ADR 0207 §19), so a link's drawer waits for it: one overlay at a time. */}
       {openId !== null && data.state === 'ready' && rows !== null && !termsBusy ? (
         <ItemDrawer
-          key={openId}
           row={rows.find((r) => r.id === openId) ?? null}
           house={houseFieldsOf(data.rawItems.find((i) => i.id === openId))}
           canManage={data.canManage}
@@ -1398,6 +1405,7 @@ export default function InventoryNext() {
           providersError={data.providers.error}
           restaurantId={data.rid}
           onClose={closeItem}
+          steps={{ ids: visibleIds, onStep: stepGood }}
           startWith={countFirst ? 'count' : undefined}
           scrollToUsed={usedFirst}
         />
