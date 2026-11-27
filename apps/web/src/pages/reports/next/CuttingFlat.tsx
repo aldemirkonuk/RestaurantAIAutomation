@@ -19,7 +19,15 @@
  *     and back to the opener, Tab held, the counted scroll lock, and a place on
  *     the shared overlay stack (`openStack`) so Escape closes only the topmost
  *     overlay — and it does not move, so reduced motion has nothing to remove.
- *  5. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
+ *  5. **"Fill the screen" is the browser's own full screen, asked of this
+ *     dialog's root** (so the focus trap, the scroll lock and the held ⌘K stay
+ *     exactly as they are). Shown only where `document.fullscreenEnabled` and
+ *     `requestFullscreen` exist, so none on iPhone Safari. A phone held upright
+ *     asks for landscape once it is in (`screen.orientation.lock`, silently
+ *     declined where refused). The browser's first Escape leaves its full
+ *     screen; the second closes this view. Closing by any road gives the full
+ *     screen and the lock back. Nothing animates (MOTIONS.md, non-motions).
+ *  6. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
  *     palette never opens unseen underneath (audit 2026-11-07).
@@ -36,7 +44,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Maximize2, Minimize2 } from 'lucide-react';
 import { lockBodyScroll, openStack } from '@/components/mudavym/overlayState';
 import { readGroundFromDom, type MudavymGround } from '@/lib/mudavym/shellGround';
 import type { ComboPick } from './rp-combo';
@@ -45,6 +53,25 @@ import './reports-flat.css';
 
 /** The search parameter that lays a cutting flat: `/reports?flat=till`. */
 export const FLAT_PARAM = 'flat';
+
+/** True where the browser can give one element the whole screen (not iPhone Safari). */
+function canFillScreen(): boolean {
+  return (
+    typeof document !== 'undefined' &&
+    document.fullscreenEnabled === true &&
+    typeof HTMLElement !== 'undefined' &&
+    typeof HTMLElement.prototype.requestFullscreen === 'function'
+  );
+}
+
+/** A phone-sized touch screen: the one place a landscape lock is asked for. */
+function wantsLandscapeLock(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 767px)').matches;
+  } catch {
+    return false;
+  }
+}
 
 const TABBABLE =
   'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),' +
@@ -98,6 +125,9 @@ export default function CuttingFlat({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const backRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
+  const canFill = canFillScreen();
+  const [filled, setFilled] = useState(false);
+  const lockedRef = useRef(false);
   const closeRef = useRef(onClose);
   useEffect(() => {
     closeRef.current = onClose;
@@ -144,6 +174,56 @@ export default function CuttingFlat({
       release();
     };
   }, [titleId]);
+
+  /* The full screen is the dialog root's. `filled` follows the browser, so the
+     UA's own Escape (which leaves it) puts the label back. Leaving this view
+     by any road (Back, Escape, popstate) gives the screen and the lock back. */
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const sync = () => setFilled(document.fullscreenElement === root);
+    document.addEventListener('fullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      if (document.fullscreenElement === root) {
+        try {
+          void Promise.resolve(document.exitFullscreen()).catch(() => {});
+        } catch {
+          /* already out */
+        }
+      }
+      if (lockedRef.current) {
+        lockedRef.current = false;
+        try {
+          screen.orientation.unlock();
+        } catch {
+          /* nothing was held */
+        }
+      }
+    };
+  }, []);
+
+  const toggleFill = () => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (document.fullscreenElement === root) {
+      void Promise.resolve(document.exitFullscreen()).catch(() => {});
+      return;
+    }
+    void Promise.resolve(root.requestFullscreen({ navigationUI: 'hide' }))
+      .then(() => {
+        if (!wantsLandscapeLock()) return;
+        try {
+          void Promise.resolve(screen.orientation.lock('landscape'))
+            .then(() => {
+              lockedRef.current = true;
+            })
+            .catch(() => {});
+        } catch {
+          /* the lock is a courtesy; refused is fine */
+        }
+      })
+      .catch(() => {});
+  };
 
   /** Tab and Shift+Tab wrap inside the dialog. */
   const holdTab = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -213,6 +293,17 @@ export default function CuttingFlat({
               </label>
             )}
             {windowControl}
+            {canFill && (
+              <button
+                type="button"
+                className="rp-btn rp-ink rp-focus rp-flat__fill"
+                aria-pressed={filled}
+                onClick={toggleFill}
+              >
+                {filled ? <Minimize2 size={14} strokeWidth={1.8} aria-hidden /> : <Maximize2 size={14} strokeWidth={1.8} aria-hidden />}
+                <span>{filled ? 'Leave full screen' : 'Fill the screen'}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

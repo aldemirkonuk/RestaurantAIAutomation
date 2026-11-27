@@ -198,3 +198,23 @@
     padding-right: max(32px, env(safe-area-inset-right));
   }
 }
+
+/* "Fill the screen" (CuttingFlat.tsx): the dialog root is the browser's full-screen
+   element, so the UA's black ground is covered with the page's paper and the
+   safe-area padding is kept. A 44px target; nothing animates. */
+.rp-flat__fill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  align-self: flex-end;
+}
+.rp-flat:fullscreen {
+  background: var(--paper-0);
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+}
