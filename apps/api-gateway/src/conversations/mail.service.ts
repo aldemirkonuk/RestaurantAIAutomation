@@ -97,6 +97,41 @@ export const NO_REPLY_NOT_RECEIVED =
 export const NO_REPLY_FAILED =
   "The mark could not be saved just now, so nothing changed. Try again.";
 
+const CONNECTED_MAILBOX = "a connected mailbox";
+
+/**
+ * A letter's Details (r108 mail-gap g8): which mailbox it came into, and the
+ * sender check it was stored with. `email_headers.auth` is written by the
+ * bridge from the receiving server's Authentication-Results; a letter stored
+ * before then has none and is null, never "failed".
+ */
+export function letterDetailsOf(
+  m: { direction?: string | null; channel?: string | null; mirrored_by_grant_id?: string | null },
+  who: { grant: string | null; auth: unknown } | undefined,
+  mailboxes: Map<string, string>,
+): Pick<MailMessage, "mailbox" | "senderCheck" | "signedBy"> {
+  const none = { mailbox: null, senderCheck: null, signedBy: null };
+  if (direction(m.direction) !== "inbound") return none;
+  const grant = who?.grant ?? m.mirrored_by_grant_id ?? null;
+  const mailbox = grant
+    ? (mailboxes.get(grant) ?? CONNECTED_MAILBOX)
+    : null;
+  const auth = who?.auth;
+  if (
+    (m.channel ?? "").toLowerCase() === "whatsapp" ||
+    !auth ||
+    typeof auth !== "object"
+  ) {
+    return { ...none, mailbox };
+  }
+  const a = auth as Record<string, unknown>;
+  if (a.dkim === true || a.dmarc === true) {
+    const by = typeof a.signedBy === "string" ? a.signedBy.trim() : "";
+    return { mailbox, senderCheck: "passed", signedBy: by || null };
+  }
+  return { mailbox, senderCheck: "failed", signedBy: null };
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -636,6 +671,11 @@ export class MailService {
       houseId,
       kept.map((m) => m.id),
     );
+    const mailboxes = await this.readMailboxes(
+      houseId,
+      withhold,
+      [...who.values()].map((w) => w.grant),
+    );
     return {
       key,
       subject:
@@ -673,6 +713,7 @@ export class MailService {
                 ? m.no_reply_marked_at
                 : null,
             attachments: files?.get(m.id) ?? [],
+            ...letterDetailsOf(m, who.get(m.id), mailboxes),
           }),
         ),
       before:
@@ -689,12 +730,20 @@ export class MailService {
   private async readWho(houseId: string, letterIds: string[]) {
     const out = new Map<
       string,
-      { kind: MailPersonKind; from: string | null; to: string[] }
+      {
+        kind: MailPersonKind;
+        from: string | null;
+        to: string[];
+        grant: string | null;
+        auth: unknown;
+      }
     >();
     if (!letterIds.length) return out;
     const { data, error } = await this.db
       .from("procurement_conversations")
-      .select("id, kind, from_address, to_addresses")
+      .select(
+        "id, kind, from_address, to_addresses, mirrored_by_grant_id, auth:email_headers->auth",
+      )
       .eq("restaurant_id", houseId)
       .in("id", letterIds);
     if (error) this.failed("letter addresses", error);
@@ -703,7 +752,44 @@ export class MailService {
         kind: mailKindOf(r.kind),
         from: typeof r.from_address === "string" ? r.from_address : null,
         to: Array.isArray(r.to_addresses) ? r.to_addresses : [],
+        grant:
+          typeof r.mirrored_by_grant_id === "string"
+            ? r.mirrored_by_grant_id
+            : null,
+        auth: r.auth ?? null,
       });
+    }
+    return out;
+  }
+
+  /**
+   * The address of each house mailbox that mirrored a letter on the page
+   * (r108 mail-gap g8), by grant id: this house's grants only, and never read
+   * for a caller whose house letters are withheld, who is told "a connected
+   * mailbox". A failed read is not the page's failure: the letter then says
+   * "a connected mailbox", which is still true.
+   */
+  private async readMailboxes(
+    houseId: string,
+    withhold: boolean,
+    grants: Array<string | null>,
+  ): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const ids = [...new Set(grants.filter((g): g is string => Boolean(g)))];
+    if (withhold || !ids.length) return out;
+    const { data, error } = await this.db
+      .from("integration_oauth_connections")
+      .select("id, account_email")
+      .eq("restaurant_id", houseId)
+      .in("id", ids);
+    if (error) {
+      this.logger.warn(`mail mailbox addresses read failed: ${error.message}`);
+      return out;
+    }
+    for (const r of (data ?? []) as any[]) {
+      if (typeof r.account_email === "string" && r.account_email.trim()) {
+        out.set(r.id, r.account_email.trim());
+      }
     }
     return out;
   }

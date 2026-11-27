@@ -148,6 +148,21 @@ export interface MailMessage {
    * when the page's `attachmentsRead` is false.
    */
   attachments: MailAttachment[];
+  /**
+   * Details (r108 mail-gap g8): the house mailbox a mirrored letter arrived
+   * in. The connected account's address for an owner or manager; for staff,
+   * or when the grant is not this house's, "a connected mailbox", never a
+   * person's address. Null for every other door.
+   */
+  mailbox: string | null;
+  /**
+   * Whether an email letter's sender was checked when it arrived: DKIM or
+   * DMARC passed, or neither did. Null when no check was kept (a letter stored
+   * before it was), and for anything that is not inbound email.
+   */
+  senderCheck: "passed" | "failed" | null;
+  /** The domain that signed it, when DKIM passed and named one. */
+  signedBy: string | null;
 }
 
 /** One file a letter carried. Opened through GET /mail/attachments/:id/link. */
