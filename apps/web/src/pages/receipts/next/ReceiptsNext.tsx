@@ -852,19 +852,16 @@ function PriceMovesNote({ docId }: { docId: string }) {
       </p>
     );
   const all = q.data?.lines ?? [];
-  // r106: a paper in another money is not compared, and silence read as "nothing
-  // moved". When every line was held back for currency, say so, with both codes.
+  // r106/r108: a paper in another money is not compared, and the verdict above
+  // already says so, with both codes (CanonicalDocumentPage). The money card does
+  // not say it a second time on the same paper.
   if (
     all.length > 0 &&
     all.every((l) => !l.compared && l.reason === 'currency_differs') &&
     q.data?.paperCurrency &&
     q.data?.houseCurrency
   )
-    return (
-      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-        Prices are in {q.data.paperCurrency} and the house costs in {q.data.houseCurrency}, so none were compared against earlier costs.
-      </p>
-    );
+    return null;
   const moved = all.flatMap((l) => (l.compared && l.moved && l.sentence ? [l] : []));
   if (!moved.length) return null;
   return (
