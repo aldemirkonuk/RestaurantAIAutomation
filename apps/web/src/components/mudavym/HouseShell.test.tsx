@@ -112,6 +112,17 @@ beforeEach(() => {
 afterEach(() => setWidth(1024));
 
 describe('the shell at 1440', () => {
+  it('marks its Ask doors so the panel downloads on intent, and loads it on first open (perf-p9-5)', async () => {
+    mount('/orders');
+    expect(screen.getByRole('button', { name: /Ask Mudavym\./ }).getAttribute('data-preload')).toBe('ask');
+    expect(
+      within(screen.getByRole('banner')).getByRole('button', { name: /^Ask Mudavym/ }).getAttribute('data-preload'),
+    ).toBe('ask');
+    expect(screen.queryByRole('complementary', { name: 'Ask Mudavym' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Ask Mudavym\./ }));
+    expect(await screen.findByRole('complementary', { name: 'Ask Mudavym' })).toBeTruthy();
+  });
+
   it('holds the rooms, the page and the counter — and no Wine Agent button', async () => {
     mount('/orders');
     expect(screen.getByRole('navigation', { name: 'The rooms' })).toBeTruthy();

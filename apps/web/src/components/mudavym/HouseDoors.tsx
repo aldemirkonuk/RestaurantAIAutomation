@@ -54,13 +54,13 @@ export function HouseDoors({ waiting, counterOpen, roomsOpen, onCounter, onRooms
         </span>
         <span>Rooms</span>
       </button>
-      <button type="button" className="mdv-doors__door" onClick={openPalette}>
+      <button type="button" className="mdv-doors__door" data-preload="palette" onClick={openPalette}>
         <span className="mdv-doors__glyph" aria-hidden>
           <Search size={16} strokeWidth={1.75} />
         </span>
         <span>Search</span>
       </button>
-      <button type="button" className="mdv-doors__door" onClick={() => openAskAi()}>
+      <button type="button" className="mdv-doors__door" data-preload="ask" onClick={() => openAskAi()}>
         <span className="mdv-doors__glyph" aria-hidden>
           <MessageCircle size={16} strokeWidth={1.75} />
         </span>

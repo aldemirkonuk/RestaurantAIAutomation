@@ -24,7 +24,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CommandPalette } from "./CommandPalette";
+import { LazyCommandPalette as CommandPalette } from "./LazyCommandPalette";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { RecentlyViewed } from "./RecentlyViewed";
 import { GOTO_MAP, routeLabel } from "./commands";

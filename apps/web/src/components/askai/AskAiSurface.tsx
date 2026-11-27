@@ -25,7 +25,7 @@
  * here as an event.
  */
 
-import { AskPanel } from './AskPanel'
+import { LazyAskPanel as AskPanel } from './LazyAskPanel'
 import { useAskPanel, useOverlayScrollLock } from './useAskPanel'
 
 export function AskAiSurface() {
