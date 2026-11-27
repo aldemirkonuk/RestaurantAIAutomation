@@ -49,6 +49,7 @@ import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
 import { readEveryPage, summariseChanges, type RestatementRow, type RevaluationRow } from "./sealed-changes";
+import { summariseCoverage, type CoverageRow, type EstimateDelivery } from "./sale-cost-coverage";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1505,6 +1506,92 @@ export class DocumentsController {
         failure: null,
       },
     };
+  }
+
+  @Get("sale-cost-coverage")
+  @ApiOperation({
+    summary: "How much of the till's drinks cost is exact: from checked papers, partly checked, on an estimate, not kept (r109 g2)",
+    description:
+      "Pages the house's wine_consumption_log for the last 7 or 30 days in 1000s and sums cost_at_sale in integer micro-units by basis. A null cost is counted, never read as 0; voided lines are left out. The estimate figure lists its deliveries. Two currencies are refused in words. Owners and managers only.",
+  })
+  @ApiQuery({ name: "days", required: false })
+  async saleCostCoverage(@CurrentUser() user: AuthedUser, @Query("days") daysQ?: string) {
+    if (!holdsHouseMoney(user?.role ?? null)) {
+      const role = user?.role ? String(user.role).trim() : "";
+      throw new HttpException(
+        `What the till's cost of sales is read from is the house's money, so an owner or a manager reads it. ` +
+          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was read.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const days = daysQ === "30" ? 30 : 7;
+    const client = this.db.getClient();
+    const rid = user.restaurantId;
+    const fail = (what: string, e: { message: string }) =>
+      new HttpException(`${what} could not be read, so no cost is shown: ${e.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const CHUNK = 100;
+    const chunks = <T,>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / CHUNK) }, (_, i) => xs.slice(i * CHUNK, (i + 1) * CHUNK));
+    const { data: house, error: houseErr } = await client.from("restaurants").select("currency").eq("id", rid).maybeSingle();
+    if (houseErr) throw fail("The house", houseErr);
+    const currency = ((house as { currency?: string | null } | null)?.currency ?? "").trim().toUpperCase() || null;
+    let rows: CoverageRow[];
+    try {
+      rows = await readEveryPage<CoverageRow>((from, to) =>
+        client
+          .from("wine_consumption_log")
+          .select("id, cost_at_sale, cost_basis, cost_source_order_id, quantity, volume_ml")
+          .eq("restaurant_id", rid)
+          .gte("recorded_at", since)
+          .order("recorded_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      );
+    } catch (e) {
+      throw fail("The till's sales", e as Error);
+    }
+    const orderIds = [...new Set(rows.map((r) => r.cost_source_order_id).filter((x): x is string => !!x))];
+    type O = { id: string; provider_id: string | null; delivered_at: string | null; currency: string | null };
+    let orders: O[] = [];
+    let names = new Map<string, string>();
+    let papers = new Map<string, { state: "in_review" | "checked"; documentId: string }>();
+    try {
+      orders = (await Promise.all(chunks(orderIds).map((xs) => readEveryPage<O>((f, t) => client.from("procurement_orders").select("id, provider_id, delivered_at, currency").eq("restaurant_id", rid).in("id", xs).order("id", { ascending: true }).range(f, t))))).flat();
+      const providerIds = [...new Set(orders.map((o) => o.provider_id).filter((x): x is string => !!x))];
+      const provs = (await Promise.all(chunks(providerIds).map((xs) => readEveryPage<{ id: string; name: string | null }>((f, t) => client.from("providers").select("id, name").in("id", xs).order("id", { ascending: true }).range(f, t))))).flat();
+      names = new Map(provs.map((p) => [p.id, p.name ?? ""]));
+      const links = (await Promise.all(chunks(orderIds).map((xs) => readEveryPage<{ order_id: string; document_id: string }>((f, t) => client.from("procurement_document_links").select("order_id, document_id").eq("restaurant_id", rid).in("order_id", xs).order("document_id", { ascending: true }).range(f, t))))).flat();
+      const docIds = [...new Set(links.map((l) => l.document_id))];
+      const docs = (await Promise.all(chunks(docIds).map((xs) => readEveryPage<{ id: string; status: string }>((f, t) => client.from("procurement_documents").select("id, status").eq("restaurant_id", rid).in("id", xs).order("id", { ascending: true }).range(f, t))))).flat();
+      const status = new Map(docs.map((d) => [d.id, d.status]));
+      for (const l of links) {
+        const st = status.get(l.document_id);
+        if (!st || st === "rejected" || st === "superseded") continue;
+        const had = papers.get(l.order_id);
+        const state = st === "verified" ? "checked" : "in_review";
+        if (!had || (had.state === "in_review" && state === "checked")) papers.set(l.order_id, { state, documentId: l.document_id });
+      }
+    } catch (e) {
+      throw fail("The deliveries those costs came from", e as Error);
+    }
+    // Nothing is converted: a figure read from two monies is not one figure.
+    const monies = [...new Set([currency, ...orders.map((o) => (o.currency ?? "").trim().toUpperCase() || null)].filter((x): x is string => !!x))];
+    if (monies.length > 1)
+      throw new HttpException(
+        `The till's drinks cost for the last ${days} days was read from deliveries in ${monies.join(" and ")}, and nothing here converts one into the other, so no total is shown.`,
+        HttpStatus.CONFLICT,
+      );
+    const orderBy = new Map(orders.map((o) => [o.id, o]));
+    const describe = (id: string | null): Omit<EstimateDelivery, "orderId" | "cost" | "sales"> => {
+      const o = id ? orderBy.get(id) : undefined;
+      const p = id ? papers.get(id) : undefined;
+      return {
+        vendor: o?.provider_id ? names.get(o.provider_id) || null : null,
+        deliveredAt: o?.delivered_at ?? null,
+        paper: p ?? { state: "none", documentId: null },
+      };
+    };
+    return { days, currency, food: "Food costs are not drawn yet.", ...summariseCoverage(rows, describe) };
   }
 
   @Get(":id/changes")
