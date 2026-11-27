@@ -112,10 +112,19 @@ const CONNECTED_MAILBOX = "a connected mailbox";
  * mail-gap g1, house-inbox.dsn.ts). Only an outbound letter carries one, and
  * only a mark of the written shape is passed on: anything else is none.
  */
-export function deliveryOf(m: { direction?: string | null }, raw: unknown): MailDelivery | null {
+export function deliveryOf(
+  m: { direction?: string | null },
+  raw: unknown,
+  answeredSince = false,
+): MailDelivery | null {
   if (direction(m.direction) !== "outbound" || !raw || typeof raw !== "object") return null;
   const d = raw as Record<string, unknown>;
   if (d.state !== "did_not_arrive" && d.state !== "delayed") return null;
+  // A delay is never cleared by Gmail (a delivered letter sends no success
+  // notice), so the thread itself is the evidence: once someone has written back
+  // after the letter, "delayed" is a stale claim and is not passed on. A failure
+  // stays: a later reply does not make the letter arrive.
+  if (d.state === "delayed" && answeredSince) return null;
   if (typeof d.at !== "string" || typeof d.recipient !== "string" || typeof d.status !== "string") return null;
   if (!/^[245]\.\d{1,3}\.\d{1,3}$/.test(d.status)) return null;
   return {
@@ -695,6 +704,14 @@ export class MailService {
       withhold,
       [...who.values()].map((w) => w.grant),
     );
+    // `kept` is newest first, so a letter with an inbound one at a lower index
+    // has been answered since.
+    const answered = new Set<string>();
+    let sawInbound = false;
+    for (const m of kept) {
+      if (direction(m.direction) === "inbound") sawInbound = true;
+      else if (sawInbound) answered.add(m.id);
+    }
     return {
       key,
       subject:
@@ -733,7 +750,7 @@ export class MailService {
                 : null,
             attachments: files?.get(m.id) ?? [],
             ...letterDetailsOf(m, who.get(m.id), mailboxes),
-            delivery: deliveryOf(m, who.get(m.id)?.delivery),
+            delivery: deliveryOf(m, who.get(m.id)?.delivery, answered.has(m.id)),
           }),
         ),
       before:

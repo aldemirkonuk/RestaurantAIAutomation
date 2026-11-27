@@ -6,7 +6,7 @@
  * said: whether a mailbox is connected is what the page's own lists read.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
@@ -103,6 +103,10 @@ describe('connecting from Mail setup', () => {
     mount();
     const box = await screen.findByTestId('setup-reader-none');
     expect(box.textContent).toMatch(/“Read this house’s mailbox” switch in Settings/);
+    // r109 mail-gap g1: the terms name both queries before Google is asked.
+    expect(within(box).getByTestId('setup-read-terms').textContent).toMatch(
+      /letters from the addresses in your vendor book, and the notices Gmail sends from mailer-daemon or postmaster when a letter did not arrive/,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Let vendor replies in your Gmail land here' }));
     expect(screen.getByTestId('where').textContent).toBe(consentPath('gmail_read'));
   });
