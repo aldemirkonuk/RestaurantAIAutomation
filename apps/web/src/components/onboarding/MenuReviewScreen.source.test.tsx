@@ -76,7 +76,10 @@ describe('the kept menu beside the review', () => {
   it('holds its 420 px room before the link resolves', () => {
     vi.mocked(getMenuSourceUrl).mockReturnValue(new Promise(() => {}))
     mount(true, { menuId: 'm9', mime: 'application/pdf' })
-    expect(screen.getByRole('region', { name: 'The kept menu' }).style.minHeight).toBe('420px')
+    // #2168 turns the room from minHeight into a fixed height (SOURCE_PANE_HEIGHT); the test holds
+    // the 420 px room whichever of the two the pane states, so it passes before and after that lands.
+    const room = screen.getByRole('region', { name: 'The kept menu' }).style
+    expect(room.height || room.minHeight).toBe('420px')
   })
 })
 
