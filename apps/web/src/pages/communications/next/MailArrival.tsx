@@ -8,7 +8,7 @@
  * 0020), and no address is ever invented.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { MailMotionStyles } from './mail-motion';
 import { MONO } from './cm-format';
 import { setupFailWords, shortSpan } from './mail-format';
@@ -31,16 +31,15 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
   const waiting = waitingForTestLetter(view, now);
   const started = latest ? Date.parse(latest.startedAt) : NaN;
 
-  // Only a change to "arrived" settles in; a page already arrived draws it as is.
-  const arrived = Boolean(latest?.arrivedAt);
-  const arrivedCode = arrived ? latest?.code : null;
-  const prevArrived = useRef(arrived);
+  // Only a change to "arrived" settles in; a page already arrived draws it as is. Decided while rendering, so the
+  // first frame that says "Arrived" already carries the settle (an effect would paint it bare, then fade it in).
+  const arrivedCode = latest?.arrivedAt ? latest.code : null;
+  const [seenCode, setSeenCode] = useState<string | null>(arrivedCode ?? null);
   const [settleCode, setSettleCode] = useState<string | null>(null);
-  useEffect(() => {
-    if (arrivedCode && !prevArrived.current) setSettleCode(arrivedCode);
-    else if (!arrivedCode) setSettleCode(null);
-    prevArrived.current = arrived;
-  }, [arrived, arrivedCode]);
+  if ((arrivedCode ?? null) !== seenCode) {
+    setSeenCode(arrivedCode ?? null);
+    setSettleCode(arrivedCode && !seenCode ? arrivedCode : null);
+  }
   const settling = Boolean(arrivedCode) && settleCode === arrivedCode;
 
   let state: ReactNode;
