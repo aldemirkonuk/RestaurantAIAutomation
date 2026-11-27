@@ -37,6 +37,10 @@ async function mockGateway(page: Page, papers = 3) {
       const d = queue.find((q) => q.id === one[1])
       return d ? json({ document: d, lines: [LINE], links: [] }) : json({ message: 'gone' }, 404)
     }
+    // The notes under the money (held cost, price moves) exist once the held-read stack is merged:
+    // the page reads their shapes, so an empty list is not an answer.
+    if (path.endsWith('/held-costs')) return json({ taxBasisKnown: true, held: [] })
+    if (path.endsWith('/price-moves')) return json({ thresholdPct: 10, paperCurrency: 'EUR', houseCurrency: 'EUR', lines: [] })
     // The formatted sheet is not under test: a spoken refusal, which the page tolerates.
     if (path.endsWith('/canonical')) return json({ message: 'The formatted paper is not available.' }, 404)
     if (path.endsWith('/verify-seal-challenge')) return json({ challenge: 'seal-token' })
