@@ -118,15 +118,18 @@ export class SetupReminderService {
 
     const userIds = [...new Set(rows.map((r) => r.user_id))];
     const houseIds = [...new Set(rows.map((r) => r.restaurant_id))];
-    const [people, access, houses] = await Promise.all([
+    const [people, access, houses, menus] = await Promise.all([
       client.from("users").select("user_id, email, name, email_verified").in("user_id", userIds),
       client
         .from("user_restaurant_access")
         .select("user_id, restaurant_id, role, is_active, valid_until")
         .in("user_id", userIds),
       client.from("restaurants").select("id, name").in("id", houseIds),
+      // The flag on the progress row is written by a step that can fail quietly
+      // (markMenuUploaded only warns), so the house's own menu is asked too.
+      client.from("restaurant_menus").select("restaurant_id").eq("status", "active").in("restaurant_id", houseIds),
     ]);
-    const failed = [people, access, houses].find((r) => r.error);
+    const failed = [people, access, houses, menus].find((r) => r.error);
     if (failed?.error) throw new Error(`a recipient read failed: ${failed.error.message}`);
     const person = new Map(
       ((people.data ?? []) as Array<Record<string, any>>).map((p) => [p.user_id, p]),
@@ -141,6 +144,9 @@ export class SetupReminderService {
         )
         .map((a) => `${a.user_id}:${a.restaurant_id}`),
     );
+    const hasMenu = new Set(
+      ((menus.data ?? []) as Array<Record<string, any>>).map((m) => String(m.restaurant_id)),
+    );
     const houseName = new Map(
       ((houses.data ?? []) as Array<Record<string, any>>).map((h) => [h.id, String(h.name ?? "")]),
     );
@@ -148,7 +154,14 @@ export class SetupReminderService {
     for (const row of rows) {
       const p = person.get(row.user_id);
       const email = typeof p?.email === "string" ? p.email.trim() : "";
-      if (!owns.has(`${row.user_id}:${row.restaurant_id}`) || p?.email_verified !== true || !email) {
+      // A house that has a menu is never written to as one that has none, whatever
+      // its flag says: the letter says "you have not put your menu in".
+      if (
+        !owns.has(`${row.user_id}:${row.restaurant_id}`) ||
+        p?.email_verified !== true ||
+        !email ||
+        hasMenu.has(row.restaurant_id)
+      ) {
         tally.skipped++;
         continue;
       }
