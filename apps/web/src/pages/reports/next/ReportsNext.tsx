@@ -551,7 +551,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
         onDays={setTillDays}
-        onCompare={setTillCompare}
+        onCompare={data.salesKept ? undefined : setTillCompare}
       />
     ),
     };

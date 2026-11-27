@@ -2666,3 +2666,17 @@ describe('r61 c2 — the opening, the strips and the till window', () => {
     expect(full).toBe(36 * 12);
   });
 });
+
+describe('ReportsNext — no compare for a reader who is not sent the takings (r107 fix on #2162)', () => {
+  const tillCard = () => screen.getByRole('region', { name: 'Through the till' });
+
+  it('[REVERT-FAILS] offers no compare button to staff on the first read, and still offers it to an owner', () => {
+    hook.current = { ...withRegister('till', pending), salesKept: true };
+    paint('/reports');
+    expect(within(tillCard()).queryByRole('button', { name: /Against the prior/ })).toBeNull();
+    cleanup();
+    hook.current = { ...withRegister('till', pending), salesKept: false };
+    paint('/reports');
+    expect(within(tillCard()).getByRole('button', { name: /Against the prior/ })).toBeInTheDocument();
+  });
+});

@@ -437,6 +437,9 @@ export default function Cutting({
         flat={workingOpen}
       />
     );
+  // A till kept from this reader's role has nothing to lay beside a prior.
+  const compareHeld = spec.takesWindow && readsRegister(spec) && answer !== undefined && !!spec.view(answer, viewCtx).withheld;
+  const compareOn = compareHeld ? undefined : onCompare;
   const body = bodyFor(drawn);
 
   const held = arrange.picked === id;
@@ -545,7 +548,7 @@ export default function Cutting({
         ) : spec.takesWindow || canLayFlat ? (
           <div className="rp-row" style={{ gap: 6 }}>
             {spec.takesWindow && (
-              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={onCompare} />
+              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} />
             )}
             {canLayFlat && (
               <button
@@ -622,7 +625,7 @@ export default function Cutting({
           renderBody={(g, combo) => bodyFor(g, true, combo)}
           windowControl={
             spec.takesWindow ? (
-              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={onCompare} />
+              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} />
             ) : undefined
           }
           anchorRef={openerRef}
