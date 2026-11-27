@@ -27,8 +27,8 @@ describe("a sale keeps the shelf it was costed on (r109 g1)", () => {
     ];
     const source = pickSaleCostSource({ last_purchase_price: 9 }, null, lots);
     expect(source?.parts).toEqual([
-      { order_id: "oa", lot_id: "a", qty: 10, unit_cost: 8, invoiced: false },
-      { order_id: "ob", lot_id: "b", qty: 12, unit_cost: 9, invoiced: false },
+      { order_id: "oa", delivery_id: null, lot_id: "a", qty: 10, unit_cost: 8, invoiced: false },
+      { order_id: "ob", delivery_id: null, lot_id: "b", qty: 12, unit_cost: 9, invoiced: false },
     ]);
     expect(source?.partsCapped).toBe(false);
     const snap = snapshotLineCost(source, "volume", 150, 750, 1);
@@ -50,7 +50,7 @@ describe("a sale keeps the shelf it was costed on (r109 g1)", () => {
     const source = pickSaleCostSource({ last_purchase_price: 9 }, rollup, lots);
     expect(source?.basis).toBe("invoice_lot_wac_partial");
     expect(source?.parts).toEqual([
-      { order_id: "o1", lot_id: "ok", qty: 4, unit_cost: 8, invoiced: true },
+      { order_id: "o1", delivery_id: null, lot_id: "ok", qty: 4, unit_cost: 8, invoiced: true },
     ]);
   });
 
@@ -59,7 +59,18 @@ describe("a sale keeps the shelf it was costed on (r109 g1)", () => {
       lot({ id: "x", qty: 2, unit_cost: 7, source_order_id: null }),
     ]);
     expect(source?.parts).toEqual([
-      { order_id: null, lot_id: "x", qty: 2, unit_cost: 7, invoiced: false },
+      { order_id: null, delivery_id: null, lot_id: "x", qty: 2, unit_cost: 7, invoiced: false },
+    ]);
+  });
+
+  it("two deliveries of one order are two parts, each naming its delivery", () => {
+    const source = pickSaleCostSource({ last_purchase_price: 35 }, null, [
+      lot({ id: "l1", qty: 2, source_order_id: "o", delivery_id: "d1", received_at: "2026-11-01" }),
+      lot({ id: "l2", qty: 3, source_order_id: "o", delivery_id: "d2", received_at: "2026-11-02" }),
+    ]);
+    expect(source?.parts?.map((p) => [p.order_id, p.delivery_id])).toEqual([
+      ["o", "d1"],
+      ["o", "d2"],
     ]);
   });
 

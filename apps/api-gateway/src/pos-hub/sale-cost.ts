@@ -40,6 +40,8 @@ export interface SaleCostSource {
 /** One live lot on the shelf at sale: what a paper restates, part by part. */
 export interface CostPart {
   order_id: string | null;
+  /** The delivery that booked the lot: one order can arrive as two, each with its own paper. */
+  delivery_id: string | null;
   lot_id: string | null;
   qty: number;
   unit_cost: number;
@@ -81,6 +83,7 @@ interface LotRow {
   unit_cost?: unknown;
   cost_provenance?: unknown;
   source_order_id?: unknown;
+  delivery_id?: unknown;
   received_at?: unknown;
   stock_state?: unknown;
 }
@@ -129,6 +132,7 @@ export function pickSaleCostSource(
     else if (live.length > 0)
       parts = live.map((l) => ({
         order_id: l.source_order_id ? String(l.source_order_id) : null,
+        delivery_id: l.delivery_id ? String(l.delivery_id) : null,
         lot_id: l.id ? String(l.id) : null,
         qty: Number(l.qty),
         unit_cost: Number(l.unit_cost),

@@ -2012,7 +2012,7 @@ export class PosHubService {
         db
           .from("inventory_lots")
           .select(
-            "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, received_at, stock_state",
+            "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, delivery_id, received_at, stock_state",
           )
           .eq("restaurant_id", restaurantId)
           // pickSaleCostSource keeps live lots only
