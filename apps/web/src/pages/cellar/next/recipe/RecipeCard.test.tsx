@@ -321,6 +321,24 @@ describe('the printable recipe card', () => {
       expect(screen.getByTestId('recipe-card-cost')).toHaveTextContent('Cost to make 12 £25.32 · Cost per serve £2.11');
     });
 
+    it('a made line scales in its own unit, and the cost to make 2 is 2 x the exact serve to the cent (2.105 x 2 = 4.21)', async () => {
+      const sourMix: RecipeLine = {
+        ...gin, id: 'l-sour', position: 1, role: 'made', inventoryId: null, componentId: '55555555-5555-4555-8555-555555555555',
+        label: 'Sour mix', itemName: null, itemKind: null, qtyEntered: 22.5, unitCode: 'ml', qtyBase: 225, costPerServe: 0.11,
+      };
+      const base = h.get.getMockImplementation()!;
+      h.get.mockImplementation(async (url: string) =>
+        url === `/recipes/${RID}/cocktails/${CID}`
+          ? { data: { ...negroni, current: { ...negroni.current!, lines: [gin, sourMix] }, cost: { perServe: 2.11, perServeExact: 2.105, priced: 2, of: 2, complete: true } } }
+          : base(url));
+      mount();
+      fireEvent.click(await screen.findByLabelText('Include cost'));
+      fireEvent.change(make(), { target: { value: '2' } });
+      expect(card()).toHaveTextContent('100 ml Plymouth gin');
+      expect(card()).toHaveTextContent('45 ml Sour mix');
+      expect(screen.getByTestId('recipe-card-cost')).toHaveTextContent('Cost to make 2 £4.21 · Cost per serve £2.11');
+    });
+
     it('staff get scaled lines and still no money', async () => {
       h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u2', role: 'staff' } };
       mount();
