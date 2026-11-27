@@ -1842,227 +1842,45 @@ export class AuthService {
   }
 
   /**
-   * Path B: Register a new restaurant (creates org + restaurant + user atomically).
-   * User starts with email_verified: false and must verify email.
+   * Path B, kept as a door that only opens for a proved address (DD-r104-6
+   * PR 2, r105). It used to create the owner, unverified, with a house in the
+   * same call, while `createFirstHouse` refused the same account until it was
+   * verified: two doors into one house, two rules. Now there is one rule and
+   * one writer. The address must already belong to a verified account, proved
+   * by its own password (the same check as sign-in), and the house is opened by
+   * `createFirstHouse` -- org, restaurant and onboarding row in the one
+   * compensating unit it already has. Everything else gets the same words, so
+   * the answer cannot be used to learn which addresses are accounts.
    */
-  async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
-    if (await this.emailAlreadyRegistered(dto.email)) {
-      throw new BadRequestException("Email already registered");
-    }
-
-    let orgId: string | null = null;
-    let restaurantId: string | null = null;
-    let userId: string | null = null;
-
+  async registerRestaurant(
+    dto: RegisterRestaurantDto,
+  ): Promise<TokenPair & { restaurantId: string }> {
+    let user: { user_id: string; email_verified?: boolean } | null = null;
     try {
-      // A place that is already a house is refused here, before anything is
-      // written, and the caller is told so -- the founder, 2026-10-08, F-006
-      // OPEN-1: "Refuse, say it exists (Recommended)". A place taken between
-      // this look-up and the insert below is refused there (the 23505).
-      const placeId = this.coordinateColumns(dto).google_place_id;
-      if (placeId) {
-        const held = await this.databaseService.supabase
-          .from("restaurants")
-          .select("id")
-          .eq("google_place_id", placeId)
-          .maybeSingle();
-        if (held.error)
-          throw houseWriteError(
-            "place look-up",
-            held.error,
-            "the place was not looked up",
-          );
-        if (held.data) throw new PlaceAlreadyAHouse();
-      }
-
-      const { data: org, error: orgErr } = await this.databaseService.supabase
-        .from("organizations")
-        .insert({ name: `${dto.restaurantName} Group`, owner_id: null })
-        .select()
-        .single();
-      if (orgErr || !org)
-        throw houseWriteError("organization", orgErr, "Org creation failed");
-      orgId = org.id;
-
-      // Generate URL-safe slug: "The Oak Room" → "the-oak-room-a3f2"
-      const baseSlug = slugBase(dto.restaurantName);
-      const slug = `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`;
-
-      // The point the house asserted at sign-up, or nothing at all: a
-      // half-pair and an out-of-range pair are both dropped rather than
-      // half-written. Spelled as three explicit keys (undefined when absent,
-      // which the client omits) so the capture-contract guard can read every
-      // column this insert writes — a conditional spread is unreadable to it.
-      const coords = this.coordinateColumns(dto);
-
-      const { data: restaurant, error: restErr } =
-        await this.databaseService.supabase
-          .from("restaurants")
-          .insert({
-            name: dto.restaurantName,
-            slug,
-            email: dto.restaurantEmail || dto.email, // use dedicated contact email or fall back to owner's
-            address: { street: dto.address }, // restaurants.address is JSONB in the live schema
-            city: dto.city,
-            country: dto.country,
-            state_province: dto.stateProvince,
-            postal_code: dto.postalCode,
-            neighborhood: dto.neighborhood,
-            phone: dto.phone,
-            cuisine_type: dto.cuisineType,
-            // Item 62 (2026-09-27, founder verbatim: "Browser zone, else
-            // none (Recommended)"). This used to write `dto.timezone ||
-            // "America/New_York"` — a fabricated answer for the same fault
-            // ADR 0116 removed from the column itself
-            // (`20260903170000_a_default_is_not_an_answer.sql` dropped the
-            // DEFAULT and left the column nullable). The web form sends
-            // `Intl.DateTimeFormat().resolvedOptions().timeZone`; this
-            // validates it against Intl and stores NULL for anything absent
-            // or not a real IANA zone rather than inventing a house's clock.
-            // See sign-up-timezone.ts.
-            timezone: resolveSignUpTimezone(dto.timezone),
-            // The money this house reports in, as CONFIRMED on the form's
-            // currency step — or NULL, which means the question has not been
-            // answered and every reader must say so rather than print a dollar
-            // sign (ADR 0117 Q25, founder 2026-09-05).
-            //
-            // This key did not exist here until 2026-09-05, and its absence was
-            // the whole defect: `restaurants.currency` carried `DEFAULT 'USD'`
-            // (baseline:3576), so the column was the writer and all fourteen
-            // production houses asserted dollars — two of them in Turkiye, one
-            // in London. `20260905120000_a_house_names_its_money.sql` drops that
-            // default; naming the key here is what makes "not asked" reachable.
-            // Spelled explicitly, `?? null` rather than left off, so the
-            // capture-contract guard can read what this insert claims.
-            currency: dto.currency ?? null,
-            organization_id: org.id,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            google_place_id: coords.google_place_id,
-          })
-          .select("id")
-          .single();
-      // Taken since the look-up above: refused the same way (OPEN-1).
-      if (isSharedPlace(restErr)) throw new PlaceAlreadyAHouse();
-      if (restErr || !restaurant)
-        throw houseWriteError(
-          "restaurant",
-          restErr,
-          "Restaurant creation failed",
-        );
-      restaurantId = restaurant.id;
-
-      const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
-      const { data: user, error: userErr } = await this.databaseService.supabase
-        .from("users")
-        .insert({
-          email: dto.email,
-          password_hash: passwordHash,
-          name: dto.name,
-          restaurant_id: restaurantId,
-          role: "owner",
-          email_verified: false,
-        })
-        .select()
-        .single();
-      if (userErr || !user)
-        throw houseWriteError("user", userErr, "User creation failed");
-      userId = user.user_id;
-
-      await this.databaseService.supabase
-        .from("organizations")
-        .update({ owner_id: userId })
-        .eq("id", orgId);
-
-      await this.databaseService.supabase.from("organization_members").insert({
-        organization_id: orgId,
-        user_id: userId,
-        role: "owner",
-      });
-
-      await this.databaseService.supabase
-        .from("user_restaurant_access")
-        .insert({
-          user_id: userId,
-          restaurant_id: restaurantId,
-          role: "owner",
-          invited_via: null,
-          is_active: true,
-        });
-
-      // Registering lands in the house it opened (ADR 0164, R1); the owner
-      // row above is what lets `generateTokens` name it. Minted, and awaited,
-      // before either email goes out: a failed mint rolls the account back in
-      // the catch below, and no mail is sent for an account that is gone
-      // (F-006 OPEN-4, option c). One line: claim
-      // ADR-0164-SESSIONS-FOLLOW-MEMBERSHIP pins this call's argument list.
-      // prettier-ignore
-      const tokens = await this.generateTokens(user, false, restaurantId, signedInNow());
-
-      // Seed onboarding progress row (fire-and-forget — never block registration)
-      this.databaseService.supabase
-        .from("user_onboarding_progress")
-        .insert({ user_id: userId, restaurant_id: restaurantId })
-        .then(({ error }) => {
-          if (error)
-            this.logger.warn(
-              `Failed to seed onboarding_progress (non-fatal): ${error.message}`,
-            );
-        });
-
-      // Both emails are fire-and-forget — Gmail latency must never delay the registration response
-      // `userId` is declared `string | null` for the rollback path above; by
-      // here it has been assigned from the created row and the throw on
-      // failure means it cannot be null. Asserting that rather than widening
-      // the callee, which would let a genuinely-null id through elsewhere.
-      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
-        this.logger.warn(
-          `queueEmailVerification failed (non-fatal): ${err.message}`,
-        ),
-      );
-
-      this.gmailService
-        .sendOnboardingEmail({
-          to: dto.email,
-          ownerName: dto.name,
-          restaurantName: dto.restaurantName,
-          restaurantCity: dto.city,
-          // Fallback only -- the pre-rebrand Vercel URL below is still LIVE
-          // (curl -> 200), which is exactly what made it dangerous: it never
-          // errors, it just silently mails out the wrong domain if
-          // FRONTEND_URL is ever unset (ADR 0149 row 28).
-          // FRONTEND_URL is a comma-separated CORS allow-list (cors-origins.ts);
-          // canonicalOrigin() takes only its first entry so this never mails a
-          // literal comma-joined URL (template-config.ts).
-          frontendBaseUrl:
-            canonicalOrigin(this.configService.get("FRONTEND_URL")) ||
-            "https://mudavym.com",
-        })
-        .catch((err) =>
-          this.logger.warn(
-            `Onboarding email failed (non-fatal): ${err.message}`,
-          ),
-        );
-
-      return tokens;
-    } catch (err) {
-      if (userId)
-        await this.databaseService.supabase
-          .from("users")
-          .delete()
-          .eq("user_id", userId);
-      if (restaurantId)
-        await this.databaseService.supabase
-          .from("restaurants")
-          .delete()
-          .eq("id", restaurantId);
-      if (orgId)
-        await this.databaseService.supabase
-          .from("organizations")
-          .delete()
-          .eq("id", orgId);
-      throw refuseHouseOpening("registerRestaurant", err, this.logger);
+      user = await this.validateUser(dto.email, dto.password);
+    } catch (error) {
+      if (!(error instanceof UnauthorizedException)) throw error;
     }
+    if (!user || !user.email_verified)
+      throw new ForbiddenException(
+        "A house opens only for an address that is verified. Sign up, verify the address, then open the house.",
+      );
+    return this.createFirstHouse(user.user_id, {
+      restaurantName: dto.restaurantName,
+      address: dto.address,
+      city: dto.city,
+      country: dto.country,
+      stateProvince: dto.stateProvince,
+      postalCode: dto.postalCode,
+      neighborhood: dto.neighborhood,
+      restaurantEmail: dto.restaurantEmail,
+      restaurantPhone: dto.phone,
+      timezone: dto.timezone,
+      currency: dto.currency,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      googlePlaceId: dto.googlePlaceId,
+    });
   }
 
   private async queueEmailVerification(

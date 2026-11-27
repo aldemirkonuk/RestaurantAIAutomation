@@ -60,7 +60,13 @@ function makeService() {
         return chain(table, { data: { id: "rest-1" }, error: null });
       if (table === "users")
         return chain(table, {
-          data: { user_id: "user-1", email: "o@x.com", role: "owner" },
+          data: {
+            user_id: "user-1",
+            email: "o@x.com",
+            role: "owner",
+            email_verified: true,
+            restaurant_id: null,
+          },
           error: null,
         });
       return chain(table, { data: null, error: null });
@@ -79,6 +85,13 @@ function makeService() {
     .fn()
     .mockResolvedValue({ accessToken: "a", refreshToken: "r" });
   (svc as any).queueEmailVerification = jest.fn().mockResolvedValue(undefined);
+  // The door now opens only for a proved account (DD-r104-6 PR 2): the
+  // sign-in check answers with a verified, houseless owner.
+  (svc as any).validateUser = jest.fn().mockResolvedValue({
+    user_id: "user-1",
+    email: "o@x.com",
+    email_verified: true,
+  });
 
   return { svc, inserts };
 }

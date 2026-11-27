@@ -496,18 +496,19 @@ export class AuthController {
   }
 
   /**
-   * Path B: Register a new restaurant (creates org + restaurant + owner user atomically).
-   * Requires email verification after registration.
+   * Path B: open the first house of an account whose address is verified.
+   * It no longer creates the account (DD-r104-6): sign up at `register/account`,
+   * verify, then open the house here with the password or at `register/house`.
    */
   @Post("register/restaurant")
   @Public()
   async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
-    this.logger.log(`Path B registration attempt: ${dto.email}`);
+    this.logger.log(`Path B house attempt: ${dto.email}`);
     const tokens = await this.authService.registerRestaurant(dto);
     return {
       success: true,
       ...tokens,
-      message: "Registration successful. Please verify your email.",
+      message: "Your house is open.",
     };
   }
 
