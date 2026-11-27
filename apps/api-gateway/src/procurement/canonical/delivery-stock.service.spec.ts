@@ -511,3 +511,69 @@ describe("A5 — the two legacy paths are no longer second writers", () => {
     expect(res.value).toEqual({ booked: false, deliveryIds: [] });
   });
 });
+
+describe("DeliveryStockService — a settled cost says whether it holds tax (r108 inventory-1)", () => {
+  let db: MockDb;
+  let service: DeliveryStockService;
+  const line = (lineTotal: number | null) => ({
+    data: [
+      { document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, unit_price: 142.5, line_total: lineTotal, description: "Öküzgözü", vendor_sku: null },
+    ],
+    error: null,
+  });
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.deliveries = { data: { id: DEL, state: "AGREED", order_id: null }, error: null };
+    db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 10 }], error: null };
+    db.answers.document_deliveries = { data: [{ document_id: "inv-1", role: "invoice" }], error: null };
+    db.answers.delivery_proposals = { data: [], error: null };
+    db.answers.procurement_documents = { data: [{ id: "inv-1", subtotal: 1425, tax: 285, total: 1710 }], error: null };
+    db.rpcAnswers.finalise_delivery_cost = { data: { lots_matched: 1, lots_finalised: 1, bottles_finalised: 10 }, error: null };
+    db.rpcAnswers.stamp_settled_cost_tax_basis = { data: { rows_stamped: 1 }, error: null };
+  });
+
+  const stamps = () => db.rpcCalls.filter((c) => c.fn === "stamp_settled_cost_tax_basis");
+
+  it("an invoice whose lines sum to its total before tax stamps the cost net, for this house, delivery, item and cost", async () => {
+    db.answers.procurement_document_lines = line(1425);
+    expect((await service.finaliseAtVerified(REST, DEL, USER)).ok).toBe(true);
+    expect(stamps()).toHaveLength(1);
+    expect(stamps()[0].args).toEqual({
+      p_restaurant_id: REST,
+      p_delivery_id: DEL,
+      p_inventory_id: ITEM,
+      p_unit_cost: 142.5,
+      p_cost_tax_basis: "net",
+    });
+  });
+
+  it("an invoice whose lines sum to its total with tax stamps it gross_cost", async () => {
+    db.answers.procurement_document_lines = line(1710);
+    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(stamps()[0]?.args.p_cost_tax_basis).toBe("gross_cost");
+  });
+
+  it("a paper that does not say is not stamped, and the house's basis is never asked", async () => {
+    db.answers.procurement_document_lines = line(null);
+    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(stamps()).toEqual([]);
+    expect(db.verbs.some((v) => v.startsWith("restaurants."))).toBe(false);
+  });
+
+  it("an accepted proposal's price is a person's, not a paper's: not stamped", async () => {
+    db.answers.procurement_document_lines = line(1425);
+    db.answers.delivery_proposals = { data: [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 140, status: "accepted" }], error: null };
+    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(stamps()).toEqual([]);
+  });
+
+  it("a failed stamp leaves the verify standing", async () => {
+    db.answers.procurement_document_lines = line(1425);
+    db.rpcAnswers.stamp_settled_cost_tax_basis = { data: null, error: { message: "timeout" } };
+    const res = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(res.ok).toBe(true);
+  });
+});

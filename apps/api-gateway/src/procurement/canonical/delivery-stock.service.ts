@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { commonCostTaxBasis, paperCostTaxBasis } from "./paper-cost-tax-basis";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
@@ -438,7 +439,71 @@ export class DeliveryStockService {
       });
     }
 
+    await this.stampCostTaxBasis(restaurantId, deliveryId, finalised);
     return { ok: true, value: { deliveryId, finalised, stillProvisional } };
+  }
+
+  /**
+   * r108 inventory-1: say whether the costs just settled from INVOICE lines
+   * hold tax, as the delivery's invoices show it in their own totals
+   * (paper-cost-tax-basis.ts). Every invoice must state the same basis, else
+   * nothing is stamped. An accepted proposal is a person's price, not a
+   * paper's, and is never stamped. Best effort: the cost has posted, and an
+   * unstamped cost reads "not stated", which is what every cost read before.
+   */
+  private async stampCostTaxBasis(
+    restaurantId: string,
+    deliveryId: string,
+    finalised: FinalisedItem[],
+  ): Promise<void> {
+    const fromInvoice = finalised.filter((f) => f.source === "invoice_line");
+    if (!fromInvoice.length) return;
+    const client = this.db.getClient();
+    try {
+      const join = await client
+        .from("document_deliveries")
+        .select("document_id, role")
+        .eq("delivery_id", deliveryId);
+      if (join.error) throw join.error;
+      const ids = ((join.data ?? []) as { document_id: string; role: string }[])
+        .filter((r) => r.role === "invoice")
+        .map((r) => r.document_id);
+      if (!ids.length) return;
+      const [docs, lines] = await Promise.all([
+        client.from("procurement_documents").select("id, subtotal, tax, total").eq("restaurant_id", restaurantId).in("id", ids),
+        client.from("procurement_document_lines").select("document_id, line_total").eq("restaurant_id", restaurantId).in("document_id", ids),
+      ]);
+      if (docs.error) throw docs.error;
+      if (lines.error) throw lines.error;
+      const docRows = (docs.data ?? []) as { id: string; subtotal: unknown; tax: unknown; total: unknown }[];
+      if (docRows.length !== ids.length) return;
+      const lineRows = (lines.data ?? []) as { document_id: string; line_total: number | string | null }[];
+      const basis = commonCostTaxBasis(
+        docRows.map((d) =>
+          paperCostTaxBasis({
+            subtotal: d.subtotal as number | string | null,
+            tax: d.tax as number | string | null,
+            total: d.total as number | string | null,
+            lineTotals: lineRows.filter((l) => l.document_id === d.id).map((l) => l.line_total),
+          }),
+        ),
+      );
+      if (basis === null) return;
+      for (const f of fromInvoice) {
+        const rpc = await client.rpc("stamp_settled_cost_tax_basis", {
+          p_restaurant_id: restaurantId,
+          p_delivery_id: deliveryId,
+          p_inventory_id: f.inventoryId,
+          p_unit_cost: f.unitCost,
+          p_cost_tax_basis: basis,
+        });
+        if (rpc.error) throw rpc.error;
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `finaliseAtVerified: delivery ${deliveryId}'s costs posted, but whether they hold tax was not stamped: ${err?.message ?? err}`,
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
