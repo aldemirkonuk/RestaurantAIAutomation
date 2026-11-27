@@ -28,13 +28,14 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
 vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
 
 import ItemDrawer from './ItemDrawer';
+import { figuresQuery, usedInQuery } from './item-queries';
 
 const mk = (id: string, name: string) =>
   ({
     id, wineId: null, name, libraryName: null, producer: null, type: 'red', kind: 'wine', vintage: null, grape: null, bottleSizeMl: 750,
     stock: 3, shadow: 0, par: 1, reorderPoint: null, analyticsReadable: true, velocity: 1, runway: 3, daysSinceSale: 1, deadStock: false,
     usageSource: null, usageSince: null, usageUntil: null, usageQty: null, bottle: 50, glass: 10, pourMl: 150, wac: 20, costProvenance: 'invoice',
-    value: 60, lastCountedAt: null, openMl: null, zones: [], providerId: null, providerName: null, standing: 'above', active: true,
+    value: 60, lastCountedAt: null, openMl: null, zones: [], providerId: null, providerName: null, standing: 'above', active: true, rollupReadable: true, locationsReadable: true,
   }) as InvRow;
 const ROWS = [mk('a', 'Ankara Red'), mk('b', 'Bodrum White'), mk('c', 'Cappadocia Rose')];
 const NO_HOUSE: HouseFields = { kind: null, uom: null, displayName: null };
@@ -161,6 +162,21 @@ describe('stepping through the list from the drawer', () => {
   });
 });
 
+describe('the neighbours are warmed through the shared read definitions', () => {
+  it('opening a good fills figures and used-in for the good above and below under the keys the drawer reads', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <Harness start="b" />
+      </QueryClientProvider>,
+    );
+    for (const other of ['a', 'c']) {
+      expect(qc.getQueryState(figuresQuery('r1', other).queryKey)?.fetchStatus).toBe('fetching');
+      expect(qc.getQueryState(usedInQuery('r1', other).queryKey)?.fetchStatus).toBe('fetching');
+    }
+  });
+});
+
 describe('the step enters by stylesheet and not at all under reduced motion', () => {
   const css = readFileSync('src/pages/inventory/next/item-drawer.css', 'utf8');
   const rule = (sel: string): string => {
@@ -177,7 +193,12 @@ describe('the step enters by stylesheet and not at all under reduced motion', ()
     expect(css).not.toMatch(/ivd-stepbody[^{]*\{[^}]*(exit|forwards)/);
   });
   it('reduced motion is an instant swap: no animation, so no opacity either', () => {
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.ivd-stepbody\[data-step\] \{\s*animation: none;/);
+    // One block holds the held-skeleton rule and the step rule: inventory-motion.test.ts reads the last block, and the
+    // block must come after the step rules or `animation: none` loses the cascade (equal specificity, later wins).
+    const reduced = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduced).toMatch(/\.ivd-hold \.iv-skel-bar \{\s*animation: none;\s*\}\s*\.ivd-stepbody\[data-step\] \{\s*animation: none;/);
+    expect(css.lastIndexOf("ivd-stepbody[data-step='prev'] {")).toBeLessThan(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduced).not.toMatch(/opacity|transition/);
   });
   it('the buttons are 44 px tall', () => {
     expect(rule('.ivd-step')).toContain('height: 44px');
