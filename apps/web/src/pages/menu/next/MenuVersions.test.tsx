@@ -312,13 +312,25 @@ describe('MenuVersions', () => {
       mount(true);
       fireEvent.click(await screen.findByTestId('menu-version-remove'));
       const said = await screen.findByTestId('menu-removed-said');
-      expect(said.getAnimations?.() ?? []).toHaveLength(0);
+      // jsdom has no getAnimations, so "not an animation" is asserted on the source and the CSS below.
+      expect(said).toHaveAttribute('class', 'cl-said');
       await act(async () => {
         vi.advanceTimersByTime(4100);
       });
       expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('the taken-off sentence is a plain status line: no animation or transition on .cl-said, in the markup or any stylesheet (ADR 0112)', () => {
+    const src = readFileSync(resolve(__dirname, 'MenuVersions.tsx'), 'utf8');
+    expect(src).toMatch(/className="cl-said" style=\{\{ marginTop: 10 \}\} data-testid="menu-removed-said"/);
+    for (const file of ['../../cellar/next/cellar-next.css', '../../inventory/next/inventory-next.css']) {
+      const css = readFileSync(resolve(__dirname, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const rules = [...css.matchAll(/([^{}]*\.cl-said[^{}]*)\{([^}]*)\}/g)];
+      expect(rules.length).toBeGreaterThan(0);
+      for (const [, selector, body] of rules) expect(`${selector}{${body}}`).not.toMatch(/animation|transition/);
     }
   });
 
