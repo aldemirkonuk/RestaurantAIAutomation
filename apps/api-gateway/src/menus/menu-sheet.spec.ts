@@ -61,15 +61,14 @@ describe("menu sheet (menu r104 g3)", () => {
   });
 
   // r104 fix: digits and dots only meant "62,50" read as 6250 and "1.250,75" as 1.25075.
-  it("reads a decimal comma and a dot thousands mark as the money they are, and refuses an ambiguous comma", () => {
+  // Integration 2026-11-27: the one reader (readMenuPrice, #2146) keeps an ambiguous line UNPRICED
+  // (never guessed, never refused), where #2489's own reader dropped the line.
+  it("reads a decimal comma and a dot thousands mark as the money they are, and leaves an ambiguous comma unpriced", () => {
     const rows = ['A,"62,50"', 'B,"1.250,75"', 'C,"1,250.75"', 'D,"1.250.000"', 'E,"1,250,000"', 'F,"$62.50"', 'G,"1,250"'];
-    const warnings: any[] = [];
-    const back = parser.parse(`name,bottle_price\r\n${rows.join("\r\n")}\r\n`, warnings);
+    const back = parser.parse(`name,bottle_price\r\n${rows.join("\r\n")}\r\n`);
     expect(back.map((b) => [b.name, b.bottle_price])).toEqual([
-      ["A", 62.5], ["B", 1250.75], ["C", 1250.75], ["D", 1250000], ["E", 1250000], ["F", 62.5],
+      ["A", 62.5], ["B", 1250.75], ["C", 1250.75], ["D", 1250000], ["E", 1250000], ["F", 62.5], ["G", undefined],
     ]);
-    // G ("1,250") is 1250 or 1.25: the line is refused, once said, never guessed.
-    expect(warnings).toEqual([{ kind: "ambiguous_price", pages: null }]);
   });
 
   it("the blank sheet reads as one example line", () => {

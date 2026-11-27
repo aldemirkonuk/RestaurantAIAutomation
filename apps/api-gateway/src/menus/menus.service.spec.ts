@@ -1277,7 +1277,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(tables.master_wine_library_submissions).toHaveLength(0);
   });
 
-  it("a CSV line whose price is ambiguous (\"1,250\") is refused with the warning, never guessed", async () => {
+  it("a CSV line whose price is ambiguous (\"1,250\") is kept UNPRICED and said, never guessed (one reader, #2146)", async () => {
     const tables: Record<string, Row[]> = base();
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
     const r = await service.importMenu(
@@ -1285,8 +1285,11 @@ describe("MenusService — every menu read is kept as its own version", () => {
       "user-1",
     );
     const v = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
-    expect(v.lines_extracted).toBe(1);
-    expect(v.read_warnings).toEqual([{ kind: "ambiguous_price", pages: null }]);
+    expect(v.lines_extracted).toBe(2);
+    const raki = tables.menu_items.find((l) => l.name === "Raki")!;
+    expect(raki.bottle_price ?? null).toBeNull();
+    expect(tables.menu_items.find((l) => l.name === "Efes")!.bottle_price).toBe(4.5);
+    expect((r.notes ?? []).some((n) => n.reason === "two_readings")).toBe(true);
   });
 
   it("a CSV read becomes a NEW draft version with its source, its lines as read, and who read it -- and touches no price", async () => {
@@ -2258,7 +2261,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       for (const l of tables.menu_items) l.status = "discarded";
       const e: any = await service.makeCurrent("rest-1", read.menuId, "user-2", fp).catch((x: unknown) => x);
       expect(e).toBeInstanceOf(BadRequestException);
-      expect(String(e.message)).toMatch(/no lines left.*Nothing was changed/);
+      expect(String(e.message)).toMatch(/A menu with no lines cannot be the current menu\. Nothing was changed/);
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
     });
 
@@ -2812,7 +2815,7 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(plan.lines.find((l) => l.menuItemId === "n-2")!.returned).toBe(false);
   });
 
-  it("L18: the menus being replaced are read for their wine ids only, and the plan is the same", async () => {
+  it("L18: the menus being replaced are each read once, with the columns notOnThisFile and isKitchenItem need, and the plan is the same", async () => {
     const { tables, service } = setup();
     // A second active menu carries the Barolo, so it is no longer "returned";
     // a discarded line stays out of the read, as it does in readLines.
@@ -2842,10 +2845,13 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     const by = Object.fromEntries(plan.lines.map((l) => [l.menuItemId, l]));
     expect(by["n-1"].returned).toBe(false); // on menu-old2
     expect(by["n-4"].returned).toBe(false); // not locked, so never "returned"
-    // The menu being chosen keeps its full read; each replaced menu is two columns.
+    // Each replaced menu is read once. Integration 2026-11-27: #2134 narrowed it to
+    // "id, wine_library_id", but notOnThisFile (7f743fc3e) names the replaced lines and
+    // isKitchenItem reads raw_extracted_text, so it needs the lines' name, producer,
+    // vintage and category too; the narrow read would drop them.
     const replaced = selects.filter((s) => s.menuId !== "menu-new");
     expect(replaced.map((s) => s.menuId).sort()).toEqual(["menu-old", "menu-old2"]);
-    for (const s of replaced) expect(s.columns).toBe("id, wine_library_id");
+    for (const s of replaced) for (const col of ["id", "wine_library_id", "name", "producer", "vintage", "category", "raw_extracted_text"]) expect(s.columns).toContain(col);
     expect(selects.find((s) => s.menuId === "menu-new")!.columns).toContain("raw_extracted_text");
   });
 
@@ -4174,7 +4180,8 @@ describe("MenusService.addToInventory — N lines are O(1) reads, not O(N) (p3 s
     const tables: Record<string, Row[]> = {
       restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
       restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", master_wine_id: "wA", menu_price_current: 40 }],
-      menu_items: [{ id: "mi-0", price_flag: null }],
+      // The write-back is scoped to the house (.eq("restaurant_id")), so the row carries its house.
+      menu_items: [{ id: "mi-0", restaurant_id: "rest-1", price_flag: null }],
     };
     const { out } = await run(tables, [line(0, "wA", null)]);
     expect(out.priceSync.get("mi-0")).toMatchObject({ outcome: "no_price", flag: "blank_kept_last_known" });
