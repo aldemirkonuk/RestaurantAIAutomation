@@ -26,8 +26,9 @@
  * read with the page, it says so, never that the letters carried none.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Stub } from '@/components/mudavym';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
 import {
@@ -48,6 +49,7 @@ import {
   type MailAnswer,
   type MailMessage,
 } from './mail-format';
+import { heldLine, ReplyHoldsContext } from './held-words';
 import { LetterFiles } from './LetterFiles';
 import { FadeAway, MailMotionStyles, prefersReducedMotion, useArriveFocus, useEnteringKeys } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
@@ -257,8 +259,11 @@ export function MailThread({
   /** Orders with a drafted reply waiting (useCommsNextData's drafts). */
   draftedOrderIds: ReadonlySet<string>;
   onOpenReply: (orderId: string) => void;
-  /** Opens the composer on a reply to this thread's newest letter (gap 3). */
-  onAnswer?: (answer: MailAnswer) => void;
+  /**
+   * Opens the composer on a reply to this thread's newest letter (gap 3). The
+   * thread and its person are named, so a reply held here resumes (r109 g2).
+   */
+  onAnswer?: (answer: MailAnswer, at?: { threadKey: string; personKey: string | null }) => void;
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey, withKey);
@@ -279,6 +284,11 @@ export function MailThread({
   // drafted reply, when there is one, stays the first act.
   const answer = canReply && onAnswer ? answerFor(head, letters) : null;
   const noReply = useNoReplyMark();
+  // r109 mail-gap g2: a reply torn on this thread stays here, on the Stub.
+  const replies = useContext(ReplyHoldsContext);
+  const heldReply = canReply ? replies?.get(threadKey) : undefined;
+  const writeReplyRef = useRef<HTMLButtonElement | null>(null);
+  const at = { threadKey, personKey: head?.person?.key ?? null };
   // Earlier letters fold (r108 mail g9). The reader's unfolds are kept for this thread only.
   const [opened, setOpened] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
   const unfoldedIds = opened.key === threadKey ? opened.ids : new Set<string>();
@@ -540,6 +550,20 @@ export function MailThread({
             </p>
           )}
 
+          {heldReply && (
+            <Stub
+              key={`reply-${heldReply.n}`}
+              words={heldLine(heldReply.words.subject, heldReply.words.body)}
+              onResume={() => {
+                writeReplyRef.current?.focus();
+                onAnswer?.(heldReply.answer, at);
+              }}
+              onDiscard={() => replies?.discard(threadKey)}
+              onRestore={() => replies?.restore(threadKey)}
+              footer="Not sent. Kept in this tab."
+            />
+          )}
+
           {(replyOrder || answer || settleId) && (
             <div className="flex flex-wrap gap-2">
               {replyOrder && (
@@ -565,7 +589,8 @@ export function MailThread({
                 <button
                   type="button"
                   data-testid="write-thread-reply"
-                  onClick={() => onAnswer?.(answer)}
+                  ref={writeReplyRef}
+                  onClick={() => onAnswer?.(answer, at)}
                   style={{
                     fontSize: 12,
                     fontWeight: 600,
