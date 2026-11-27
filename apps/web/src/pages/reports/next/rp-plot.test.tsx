@@ -6,7 +6,7 @@
 import { cloneElement, type ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { CatPlot, HeatGrid } from './rp-plot';
+import { CatPlot, HeatGrid, tickInterval } from './rp-plot';
 import { MemoryRouter } from 'react-router-dom';
 import {
   ahead,
@@ -219,5 +219,15 @@ describe('a house with no time zone says so on spend and the week (ADR 0296)', (
     const view = week.view(w, { days: 30 });
     expect(sayOf(view.say)).toMatch(/time zone isn’t set/);
     expect(view.figures).toEqual([]);
+  });
+});
+
+describe('tickInterval', () => {
+  it('draws every day of a week, and thins only longer or wordier runs', () => {
+    const week = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label) => ({ label }));
+    expect(tickInterval(week)).toBe(0);
+    const month = Array.from({ length: 30 }, (_, i) => ({ label: `Oct ${i + 1}` }));
+    expect(tickInterval(month)).toBe('preserveStartEnd');
+    expect(tickInterval([{ label: 'Local Check…' }, { label: 'Ana' }])).toBe('preserveStartEnd');
   });
 });
