@@ -111,9 +111,11 @@ function Marks({ axis, a }: { axis: AxisKey; a: TasteAxis }) {
   );
 }
 
+const reducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 function Row({ axis, a, e }: { axis: AxisKey; a: TasteAxis; e: TasteEffective }) {
   const [open, setOpen] = useState(false);
-  // Once the detail has been opened it stays mounted (closed, it is hidden), so closing can tween.
+  // Once the detail has been opened it stays mounted while it closes (so closing can tween), then goes.
   const [opened, setOpened] = useState(false);
   const band = bandOf(a.v);
   const range = rangeWords(a);
@@ -142,7 +144,16 @@ function Row({ axis, a, e }: { axis: AxisKey; a: TasteAxis; e: TasteEffective })
         className="tc-more iv-focus"
         aria-expanded={open}
         aria-label={`Details for ${label}`}
-        onClick={() => { setOpened(true); setOpen((v) => !v); }}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+            // Reduced motion draws no close, so there is nothing to wait for: the wrap goes at once.
+            if (reducedMotion()) setOpened(false);
+          } else {
+            setOpened(true);
+            setOpen(true);
+          }
+        }}
       >
         {open ? 'Less' : 'More'}
       </button>
@@ -150,7 +161,16 @@ function Row({ axis, a, e }: { axis: AxisKey; a: TasteAxis; e: TasteEffective })
           instead of removing it; closed it is hidden from sight and from a screen reader
           (visibility), never drawn in the row's height. */}
       {opened ? (
-        <div className="tc-detail-wrap" data-open={open ? 'true' : 'false'} data-testid={`taste-detail-wrap-${axis}`}>
+        <div
+          className="tc-detail-wrap"
+          data-open={open ? 'true' : 'false'}
+          data-testid={`taste-detail-wrap-${axis}`}
+          onTransitionEnd={(e) => {
+            // The close has finished: unmount, so the wrap's grid track (and the row-gap it adds) goes with it
+            // and the row is the height it was before it was opened (a closed track keeps its 4 px gap).
+            if (!open && e.target === e.currentTarget && e.propertyName === 'grid-template-rows') setOpened(false);
+          }}
+        >
           <div className="tc-detail-clip">
             <p className="tc-detail iv-note" data-testid={`taste-detail-${axis}`}>
               {a.bandOnly ? 'Not sure enough to say more than the word. ' : ''}
