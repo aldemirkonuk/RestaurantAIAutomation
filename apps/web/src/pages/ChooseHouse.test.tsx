@@ -11,6 +11,7 @@ import { ChooseHouse } from "./ChooseHouse";
 import { useAuth } from "../contexts/AuthContext";
 import apiClient from "../services/api/client";
 import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
+import { prefetchWhenIdle } from "../lib/stepPrefetch";
 
 /**
  * Which house today? (ADR 0164, R7): one row per house, this device's last
@@ -20,6 +21,9 @@ import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
  */
 
 vi.mock("../contexts/AuthContext", () => ({ useAuth: vi.fn() }));
+vi.mock("../lib/stepPrefetch", () => ({
+  prefetchWhenIdle: vi.fn(() => () => undefined),
+}));
 vi.mock("../services/api/client", () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }));
@@ -91,6 +95,13 @@ beforeEach(() => {
 });
 
 describe("ChooseHouse", () => {
+  it("warms get-started while the person picks a house", async () => {
+    housesAnswer([MODA]);
+    renderAt();
+    await screen.findByRole("list", { name: "Your houses" });
+    expect(prefetchWhenIdle).toHaveBeenCalledWith(["get-started"]);
+  });
+
   it("lists the person's houses by name, with this device's last house first and marked", async () => {
     rememberHouse(U, MODA.id);
     housesAnswer([KADIKOY, MODA, BESIKTAS]);
@@ -374,6 +385,21 @@ describe("ChooseHouse", () => {
       expect(setActiveRestaurantId).not.toHaveBeenCalled();
     });
 
+    it("an accepted house that would not open says the person is in it and to try again", async () => {
+      housesAnswer([], { held: [HELD], accessEnded: false });
+      vi.mocked(apiClient.post).mockResolvedValue({ data: { success: true } } as any);
+      setActiveRestaurantId.mockResolvedValue(false);
+      renderAt();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Join Evil <b>House</b>" }),
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "You joined Evil <b>House</b>, but we couldn't open it. Try again.",
+      );
+      expect(screen.queryByTestId("where")).toBeNull();
+    });
+
     it("with nothing waiting and no house, it still leaves for /get-started", async () => {
       housesAnswer([], { held: [], accessEnded: false });
       renderAt();
@@ -381,5 +407,23 @@ describe("ChooseHouse", () => {
         "/get-started",
       );
     });
+  });
+
+  // r65 F2: a kept sign-in whose person was not read (a busy gateway) is not a
+  // signed-out visitor; sending it to /login made the loop.
+  it("keeps a kept sign-in here, with a calm note, when the person was not read", () => {
+    localStorage.setItem("accessToken", "kept");
+    authAs({ user: null });
+    renderAt();
+    expect(screen.queryByTestId("where")).toBeNull();
+    expect(screen.getByRole("status").textContent).toMatch(/still signed in/i);
+    expect(screen.getByRole("button", { name: /try again/i })).toBeTruthy();
+    expect(vi.mocked(apiClient.get)).not.toHaveBeenCalled();
+  });
+
+  it("sends a signed-out visitor to /login", () => {
+    authAs({ user: null });
+    renderAt();
+    expect(screen.getByTestId("where").textContent).toBe("/login");
   });
 });

@@ -185,6 +185,7 @@ export default function RootLayout() {
               <Stack.Screen name="forgot-password" />
               <Stack.Screen name="reset-password" />
               <Stack.Screen name="verify-email" />
+              <Stack.Screen name="open-house" />
               <Stack.Screen name="invite" />
               <Stack.Screen name="no-access" />
               <Stack.Screen name="choose-house" />

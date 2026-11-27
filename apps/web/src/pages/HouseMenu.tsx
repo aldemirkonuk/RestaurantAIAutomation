@@ -5,10 +5,15 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { NoProofInThisTab } from '../components/onboarding/NoProofInThisTab'
 import {
   addMenuItem,
+  readWarningSentence,
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
 import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import { settingsApi } from '../services/api/settings'
+import { formatMoney } from '../lib/currency'
+import { formatHouseNumber } from '../lib/house-number'
+import { MenuReadNotes } from '../components/onboarding/MenuReadNotes'
 
 const sectionOrder = [
   'wine',
@@ -62,12 +67,45 @@ export function dishPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bot
   return n == null ? '' : String(n)
 }
 
-function price(item: MenuImportReviewItem) {
+/**
+ * The house's money, read once for the proof's prices. `read` is false until
+ * the answer is in, so a price is never said to have no currency while the
+ * currency is still being asked for.
+ */
+type HouseMoney = { read: boolean; code: string | null }
+
+/**
+ * A line's prices in the house's money: "glass ₺14,00 · bottle ₺1.250,00".
+ * It printed "1250 bottle" (r23 walk), a bare figure in a lira house. Before
+ * the answer is in, the figure stands alone; a house with no code says so.
+ */
+export function proofPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>, money: HouseMoney) {
+  const say = (n: number) => (money.read ? formatMoney(n, money.code) : formatHouseNumber(n, null, { digits: 2 }))
   const parts = [
-    item.byGlassPrice != null ? `${item.byGlassPrice} glass` : null,
-    item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
+    item.byGlassPrice != null ? `glass ${say(item.byGlassPrice)}` : null,
+    item.bottlePrice != null ? `bottle ${say(item.bottlePrice)}` : null,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+/**
+ * Read with a plain request, not react-query: the page's tests (here and in
+ * ArrivalFlow) mount it with no query client, and one read is all it needs.
+ * A failed read is "no code": the price says so, never a sign.
+ */
+function useHouseMoney(): HouseMoney {
+  const [money, setMoney] = useState<HouseMoney>({ read: false, code: null })
+  useEffect(() => {
+    let live = true
+    settingsApi
+      .houseCurrency()
+      .then((c) => live && setMoney({ read: true, code: c.readable ? (c.code ?? null) : null }))
+      .catch(() => live && setMoney({ read: true, code: null }))
+    return () => {
+      live = false
+    }
+  }, [])
+  return money
 }
 
 export default function HouseMenu() {
@@ -82,6 +120,7 @@ export default function HouseMenu() {
   const [addSection, setAddSection] = useState('')
   const [placeError, setPlaceError] = useState<string | null>(null)
   const sourceImage = proof?.sourceImage ?? null
+  const money = useHouseMoney()
 
   // Every placed or added line is kept for a reload and for /house's count.
   useEffect(() => {
@@ -114,6 +153,7 @@ export default function HouseMenu() {
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
           <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
+          <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
           <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
             Try another menu
           </button>
@@ -252,6 +292,14 @@ export default function HouseMenu() {
             <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">○</span>No section yet: tap the line to choose one.</li>
           )}
         </ul>
+        {proof.warnings?.length ? (
+          <ul data-testid="first-proof-warnings" className="mt-4 space-y-1 text-sm text-[#6d685f]">
+            {proof.warnings.map((w, i) => (
+              <li key={i}>{readWarningSentence(w)}</li>
+            ))}
+          </ul>
+        ) : null}
+        <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
@@ -297,13 +345,13 @@ export default function HouseMenu() {
                               {expanded ? 'Close' : mark === 'ring' ? 'Choose its section' : 'Check this line'}
                             </span>
                           </span>
-                          <span className="font-mono text-sm">{price(item)}</span>
+                          <span className="font-mono text-sm">{proofPrice(item, money)}</span>
                         </button>
                       ) : (
                         <div className="grid w-full grid-cols-[24px_1fr_auto] items-start gap-3 py-5 text-left">
                           {markSpan}
                           <span>{nameSpan}</span>
-                          <span className="font-mono text-sm">{price(item)}</span>
+                          <span className="font-mono text-sm">{proofPrice(item, money)}</span>
                         </div>
                       )}
                       {expanded && (

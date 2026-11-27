@@ -5,9 +5,10 @@ import GetStarted from './GetStarted'
 import HouseContents from './HouseContents'
 import HouseMenu from './HouseMenu'
 
-const { navigate, createFirstHouse, patch, addMenuItem, addCustomProvider } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, signInWithSession, patch, addMenuItem, addCustomProvider } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
+  signInWithSession: vi.fn(),
   patch: vi.fn(),
   addMenuItem: vi.fn(),
   addCustomProvider: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { name: 'Selin Kaya', emailVerified: true },
     createFirstHouse,
+    signInWithSession,
   }),
 }))
 // The real getErrorStatus and isUnconfirmedWrite stay: the failure sentences
@@ -41,6 +43,7 @@ vi.mock('../lib/googleMaps', () => ({
   isMapsConfigured: () => true,
 }))
 vi.mock('../components/ui/PlacesAutocomplete', () => ({
+  warmPlaces: vi.fn(),
   PlacesAutocomplete: ({
     onPlaceSelect,
     locationBias,
@@ -108,6 +111,7 @@ beforeEach(() => {
   })
   addCustomProvider.mockResolvedValue({ id: 'vendor-1', name: 'Suvla' })
   sessionStorage.clear()
+  localStorage.clear()
 })
 
 function fillRestaurantStep() {
@@ -118,8 +122,8 @@ function fillRestaurantStep() {
 }
 
 async function toRestaurantStep() {
+  // Two steps since OB-7 (#1055): the restaurant step is the first screen.
   const view = render(<MemoryRouter><GetStarted /></MemoryRouter>)
-  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
   await screen.findByRole('heading', { name: 'Your restaurant' })
   fillRestaurantStep()
   return view
@@ -131,19 +135,14 @@ const NOT_CREATED = 'We could not create the house.'
 const UNCONFIRMED =
   'We could not confirm the house opened. Try again in a moment: if it did open, we will tell you, and no second house is opened.'
 const ALREADY_OPEN = 'This account already has a house, so no second one was opened.'
+const NOT_LOADED =
+  'This account already has a house, but it did not load here just now. Choose it to go on.'
 
 describe('approved arrival flow', () => {
   it('creates the house on the restaurant screen and offers skip only on menu', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
-    expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
-    expect(patch).toHaveBeenCalledWith('/auth/me', {
-      name: 'Selin Kaya',
-      phone: undefined,
-    })
+    expect(screen.getByText(/Welcome, Selin/)).toBeInTheDocument()
     expect(screen.queryByText(/Skip for now/)).not.toBeInTheDocument()
 
     fillRestaurantStep()
@@ -160,8 +159,12 @@ describe('approved arrival flow', () => {
       }),
     )
     expect(screen.getByText('Skip for now — open the house')).toBeInTheDocument()
+    // The name came from sign-up unchanged, so it is not written again.
+    expect(patch).not.toHaveBeenCalled()
     expect(screen.getByText('Drop the menu here')).toBeInTheDocument()
-    expect(screen.getByText(/Your last invoice — read the same way/)).toBeInTheDocument()
+    // The greyed "Later: your last invoice… Not a step now." box went (r21):
+    // it offered nothing to press; /house carries the way to Receipts.
+    expect(screen.queryByText(/last invoice/i)).not.toBeInTheDocument()
     expect(screen.queryByText('Photograph the menu')).not.toBeInTheDocument()
     expect(screen.queryByText(/certain/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/likely/i)).not.toBeInTheDocument()
@@ -221,7 +224,10 @@ describe('approved arrival flow', () => {
     }
   })
 
-  it('says a press after a lost answer met the house it opened (F-006, OPEN-2 unbuilt)', async () => {
+  it('steps past a 409 after a lost answer: a session with no house chooses one (F8)', async () => {
+    localStorage.setItem('accessToken', 'access')
+    localStorage.setItem('refreshToken', 'refresh')
+    signInWithSession.mockResolvedValue(undefined)
     createFirstHouse
       .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { isAxiosError: true, request: {} }))
       .mockRejectedValueOnce({
@@ -231,10 +237,22 @@ describe('approved arrival flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
     expect((await screen.findByRole('alert')).textContent).toBe(UNCONFIRMED)
     fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(ALREADY_OPEN))
-    // Where the person goes from here is F-006 OPEN-2; nothing moves yet.
-    expect(screen.getByRole('heading', { name: 'Your restaurant' })).toBeInTheDocument()
-    expect(navigate).not.toHaveBeenCalled()
+    // The re-read session still names no house (the lost answer's token), so
+    // the house is one to choose; the 409 sentence is never the end.
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/choose-house', { replace: true }))
+    expect(signInWithSession).toHaveBeenCalledWith({ accessToken: 'access', refreshToken: 'refresh' })
+    expect(document.body.textContent).not.toContain(ALREADY_OPEN)
+  })
+
+  it('says a 409 whose session will not reload, with a way to choose the house (F8)', async () => {
+    localStorage.setItem('accessToken', 'access')
+    localStorage.setItem('refreshToken', 'refresh')
+    signInWithSession.mockRejectedValue({ response: { status: 503 } })
+    createFirstHouse.mockRejectedValue({ response: { status: 409, data: { message: 'x' } } })
+    await toRestaurantStep()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect((await screen.findByRole('alert')).textContent).toBe(NOT_LOADED)
+    expect(screen.getByRole('link', { name: 'Choose your house' })).toHaveAttribute('href', '/choose-house')
   })
 
   it('keeps the fallback for anything that is not an answer (F-006)', async () => {
@@ -265,12 +283,11 @@ describe('approved arrival flow', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('shows SMS consent only after a mobile number is entered', async () => {
+  it('asks no mobile number, so no SMS consent is drawn (the You step went, OB-7)', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    expect(screen.queryByLabelText('Mobile')).not.toBeInTheDocument()
     expect(screen.queryByText(/the account does not depend on it/i)).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '+90 532 000 00 00' } })
-    expect(screen.getByText(/the account does not depend on it/i)).toBeInTheDocument()
-    expect(screen.getByText('STOP')).toBeInTheDocument()
   })
 
   it('passes Use my location into Places as a search bias', async () => {
@@ -282,7 +299,6 @@ describe('approved arrival flow', () => {
       value: { getCurrentPosition },
     })
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
     fireEvent.click(screen.getByRole('button', { name: /Use my location/ }))
     expect(getCurrentPosition).toHaveBeenCalled()

@@ -25,6 +25,7 @@ import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decora
 import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
+import { ChangeUnverifiedEmailDto } from "./dto/change-unverified-email.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { AcceptHeldMembershipDto } from "./dto/accept-held-membership.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
@@ -496,18 +497,20 @@ export class AuthController {
   }
 
   /**
-   * Path B: Register a new restaurant (creates org + restaurant + owner user atomically).
-   * Requires email verification after registration.
+   * Path B: open the first house of an account whose address is verified.
+   * It no longer creates the account (DD-r104-6): sign up at `register/account`,
+   * verify, then open the house here with the password or at `register/house`.
    */
   @Post("register/restaurant")
   @Public()
   async registerRestaurant(@Body() dto: RegisterRestaurantDto) {
-    this.logger.log(`Path B registration attempt: ${dto.email}`);
+    this.logger.log(`Path B house attempt: ${dto.email}`);
     const tokens = await this.authService.registerRestaurant(dto);
+    // `tokens` carries `verificationMail`: did the verification mail leave.
     return {
       success: true,
       ...tokens,
-      message: "Registration successful. Please verify your email.",
+      message: "Your house is open.",
     };
   }
 
@@ -559,7 +562,9 @@ export class AuthController {
   }
 
   /**
-   * Verify email with the token from the verification email.
+   * Verify email with the token from the verification email, or with the
+   * six-digit code the same email carries (onboarding OB-3, founder /goal
+   * 2026-11-07): `{ token }` or `{ code }`, never both.
    *
    * Signed-in only (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link
    * needs sign-in (Recommended)"): the link verifies only for a session of
@@ -582,16 +587,28 @@ export class AuthController {
     @Req() req: Request & { user: any },
     @Body() dto: VerifyEmailDto,
   ) {
-    const tokens = await this.authService.verifyEmail(
-      dto.token,
-      req.user?.userId ?? null,
-      req.user?.restaurantId ?? null,
-    );
+    // The mail's six-digit code (onboarding OB-3) or its link's token; the
+    // DTO admits exactly one. Same session rules, same answer.
+    const tokens =
+      dto.code !== undefined
+        ? await this.authService.verifyEmailWithCode(
+            dto.code,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          )
+        : await this.authService.verifyEmail(
+            dto.token as string,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          );
     return { success: true, ...tokens, message: "Email verified" };
   }
 
   /**
-   * Resend verification email — rate-limited to 1 per minute.
+   * Resend verification email — rate-limited to 1 per minute. Answers
+   * `verificationMail: 'sent' | 'not_sent'` as sign-up does (onboarding OB-3,
+   * round 6 #789): `success` means the request was handled, not that a mail
+   * left.
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
@@ -603,6 +620,26 @@ export class AuthController {
       req.user.email,
       // Exempt from the fork 8 lapse exactly where a refresh is (fork 10).
       req.user.devBypass === true && devBypassEnvEnabled(),
+    );
+    return { success: true, ...result };
+  }
+
+  /**
+   * Move an unverified account to the address its owner meant (r104 gap 2,
+   * ADR 0390). Session required; the service refuses a verified account.
+   */
+  @Post("change-unverified-email")
+  @UseGuards(JwtAuthGuard)
+  @AllowUnverified() // an unverified person is exactly who needs it
+  @AllowsNoHouse()
+  async changeUnverifiedEmail(
+    @Req() req: Request & { user: any },
+    @Body() dto: ChangeUnverifiedEmailDto,
+  ) {
+    const result = await this.authService.changeUnverifiedEmail(
+      req.user.userId,
+      dto.email,
+      req.user.restaurantId ?? null,
     );
     return { success: true, ...result };
   }

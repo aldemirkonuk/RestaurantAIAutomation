@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { MotionConfig } from 'framer-motion'
 import App from './App.tsx'
 import './styles/globals.css'
 import { initGlobalErrorHandler } from './lib/global-error-handler'
@@ -38,7 +39,11 @@ void offlineStorage.pruneExpiredCache().catch(() => {})
 applyDevAuthBypass().finally(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <App />
+      {/* ADR 0112: under prefers-reduced-motion every framer-motion transform
+          (slides, rises, springs) is dropped; only opacity still changes. */}
+      <MotionConfig reducedMotion="user">
+        <App />
+      </MotionConfig>
     </React.StrictMode>,
   )
 })

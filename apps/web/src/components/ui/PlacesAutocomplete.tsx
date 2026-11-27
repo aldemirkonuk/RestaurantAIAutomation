@@ -34,6 +34,19 @@ export interface PlaceResult {
    * carried no place id.
    */
   googlePlaceId: string | null;
+  /**
+   * The country's ISO alpha-2 code as Google wrote it (the `country`
+   * component's short text), or null. Free: it rides on addressComponents.
+   */
+  countryCode?: string | null;
+  /**
+   * The place's own phone and its UTC offset now. Asked only when the caller
+   * passes `withContact` (the first house, OB-7): the phone moves the Place
+   * Details call to a higher-priced field tier, so a branch or an address
+   * editor never pays for it.
+   */
+  phone?: string | null;
+  utcOffsetMinutes?: number | null;
 }
 
 interface SuggestionRow {
@@ -53,6 +66,8 @@ interface PlacesAutocompleteProps {
   country?: string;
   id?: string;
   locationBias?: { latitude: number; longitude: number } | null;
+  /** Also ask Google for the place's phone and UTC offset (see PlaceResult). */
+  withContact?: boolean;
 }
 
 // The name -> alpha-2 table that used to live here is RETIRED (ADR 0117 Q33,
@@ -80,6 +95,29 @@ async function ensurePlaces(): Promise<NewPlacesLib> {
   }
   await loadPromise;
   return placesLib!;
+}
+
+let warmScheduled = false;
+
+/**
+ * Starts loading the Places library before anyone types, so the first
+ * suggestion waits one request, not the script plus one request (r105
+ * onboarding g3). Idle-time, once, errors swallowed (a failed load surfaces
+ * where a search needs it, as before), and a no-op when no key is set.
+ */
+export function warmPlaces(): void {
+  if (!MAPS_API_KEY || warmScheduled) return;
+  warmScheduled = true;
+  const run = () => {
+    ensurePlaces().catch(() => {});
+  };
+  const idle = (
+    window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }
+  ).requestIdleCallback;
+  if (idle) idle.call(window, run, { timeout: 2000 });
+  else window.setTimeout(run, 200);
 }
 
 function parseAddressComponents(
@@ -110,6 +148,8 @@ function parseAddressComponents(
     stateProvince: get('administrative_area_level_1'),
     postalCode: get('postal_code'),
     country: get('country'),
+    countryCode:
+      components.find((c) => c.types.includes('country'))?.shortText?.toUpperCase() || null,
     neighborhood: get('neighborhood') || get('sublocality_level_1') || '',
   };
 }
@@ -131,6 +171,7 @@ export function PlacesAutocomplete({
   country,
   id,
   locationBias,
+  withContact = false,
 }: PlacesAutocompleteProps) {
   const [query, setQuery] = useState(value);
   const [rows, setRows] = useState<SuggestionRow[]>([]);
@@ -243,7 +284,9 @@ export function PlacesAutocomplete({
     try {
       const place = row.prediction.toPlace();
       await place.fetchFields({
-        fields: ['addressComponents', 'formattedAddress', 'location'],
+        fields: withContact
+          ? ['addressComponents', 'formattedAddress', 'location', 'internationalPhoneNumber', 'utcOffsetMinutes']
+          : ['addressComponents', 'formattedAddress', 'location'],
       });
 
       if (!place.addressComponents) return;
@@ -258,6 +301,10 @@ export function PlacesAutocomplete({
       // `placeId` is on the prediction itself, so it survives even when
       // fetchFields declines to return a location.
       result.googlePlaceId = row.prediction.placeId ?? null;
+      if (withContact) {
+        result.phone = place.internationalPhoneNumber ?? null;
+        result.utcOffsetMinutes = typeof place.utcOffsetMinutes === 'number' ? place.utcOffsetMinutes : null;
+      }
       onPlaceSelect(result);
     } catch (err) {
       console.warn('[PlacesAutocomplete] getDetails failed', err);
