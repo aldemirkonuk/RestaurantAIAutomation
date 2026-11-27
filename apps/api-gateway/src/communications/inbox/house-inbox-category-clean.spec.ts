@@ -52,16 +52,22 @@ function build(conv: Row[], opts: { deleteError?: string } = {}) {
     let inIds: unknown[] | null = null;
     let notNull: string | null = null;
     let deleting = false;
+    let bounds: [number, number] | null = null;
     const s: Row = {};
     s.select = () => s;
     s.delete = () => ((deleting = true), s);
     s.eq = (k: string, v: unknown) => (eq.push([k, v]), s);
     s.in = (_k: string, v: unknown[]) => ((inIds = v), s);
     s.not = (k: string) => ((notNull = k), s);
+    s.order = () => s;
+    s.range = (a: number, b: number) => ((bounds = [a, b]), s);
     s.then = (resolve: (v: unknown) => unknown) => {
       let hit = table.rows.filter((r) => eq.every(([k, v]) => r[k] === v));
       if (inIds) hit = hit.filter((r) => inIds!.includes(r.id));
       if (notNull) hit = hit.filter((r) => r[notNull!] != null);
+      // Like PostgREST with max_rows = 1000: a read returns at most that many, however much is asked.
+      hit = [...hit].sort((x, y) => String(x.id).localeCompare(String(y.id)));
+      if (!deleting) hit = bounds ? hit.slice(bounds[0], Math.min(bounds[1] + 1, bounds[0] + 1000)) : hit.slice(0, 1000);
       if (deleting) {
         deleteCalls.push({ ids: inIds, kind: eq.find(([k]) => k === "kind")?.[1] });
         if (opts.deleteError) return Promise.resolve({ data: null, error: { message: opts.deleteError } }).then(resolve);
@@ -133,6 +139,26 @@ describe("the stored rows the newsletter tabs left behind (r104 mail-2)", () => 
     expect(table.rows.map((r) => r.id).sort()).toEqual(["c-guest-person", "c-team-promo", "c-vendor-promo"]);
     expect(deleteCalls).toEqual([{ ids: ["c-guest-promo", "c-guest-social"], kind: "guest" }]);
     for (const c of NEWSLETTER_CATEGORIES) expect(queries.some((q) => q.includes(`category:${c} `))).toBe(true);
+  });
+
+  it("reads every stored guest row past 1000, deletes in chunks of 200, and bounds each listing to one window", async () => {
+    const rows: Row[] = [];
+    for (let i = 0; i < 1001; i += 1) rows.push(row(`c-${String(i).padStart(4, "0")}`, "guest", `g-${i}`));
+    // The newest row sorts last by id: it is the one a 1000-row read never reaches.
+    const { db, table, deleteCalls } = build(rows);
+    const svc = service(db);
+    const { queries, impl } = gmailByCategory({ promotions: rows.map((r) => String(r.gmail_message_id)) });
+    svc.fetchImpl = impl;
+
+    const run = await svc.cleanCategoryGuestRows();
+
+    expect(run.outcomes[0]).toMatchObject({ considered: 1001, deleted: 1001, error: null });
+    expect(run.outcomes[0].says).toMatch(/Checked 1001 stored guest messages/);
+    expect(table.rows).toHaveLength(0);
+    expect(deleteCalls.map((c) => (c.ids as unknown[]).length)).toEqual([200, 200, 200, 200, 200, 1]);
+    // One window of one month: each category asked once, with both bounds.
+    expect(queries).toHaveLength(NEWSLETTER_CATEGORIES.length);
+    for (const q of queries) expect(q).toMatch(/after:\d+ before:\d+/);
   });
 
   it("says a failed category listing and deletes nothing for that grant", async () => {
