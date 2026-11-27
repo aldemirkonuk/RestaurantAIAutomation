@@ -20,8 +20,8 @@ import type { ListTax } from './listTax';
 import type { SayPercent } from './useHousePercent';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { useHouseDate } from './useHouseDate';
-import { amountWithUnit } from './units';
 import type { RecipeWords } from './recipeWords';
+import { MAKE_SAID, readMake, scaledAmount, scaledCost } from './recipeScale';
 
 const FLAG = 'data-print-card';
 
@@ -44,6 +44,25 @@ function keepBox(key: string, on: boolean): void {
     else window.localStorage.removeItem(key);
   } catch {
     /* not stored: the box opens unticked next time */
+  }
+}
+
+/** The Make count last used on THIS card, kept in this browser: a convenience, never state. */
+const makeKey = (userId: string | null | undefined, houseId: string | null | undefined, cardId: string) =>
+  `mudavym.recipeCard.make.v1:${userId ?? '-'}:${houseId ?? '-'}:${cardId}`;
+function makeWas(key: string): string {
+  try {
+    return window.localStorage.getItem(key) ?? '1';
+  } catch {
+    return '1';
+  }
+}
+function keepMake(key: string, text: string): void {
+  try {
+    if (readMake(text) != null && text.trim() !== '1') window.localStorage.setItem(key, text.trim());
+    else window.localStorage.removeItem(key);
+  } catch {
+    /* not stored: the count opens at 1 next time */
   }
 }
 
@@ -82,6 +101,11 @@ export default function RecipeCard({
   const v = data.current;
   const isDish = data.kind === 'dish';
   const showCost = canSeeCost && withCost;
+  const makeStore = makeKey(user?.userId, activeRestaurantId, data.cocktail.id);
+  const [makeText, setMakeText] = useState(() => makeWas(makeStore));
+  const makeRead = readMake(makeText);
+  // A count that cannot be read is said, and the card is drawn for 1, never for a guess.
+  const n = makeRead ?? 1;
 
   // The flag is only ever on while this card is the thing being printed.
   useEffect(() => () => document.documentElement.removeAttribute(FLAG), []);
@@ -98,6 +122,7 @@ export default function RecipeCard({
   const share = pourCostShare(data.cost, price, tax);
   const margin = marginPerServe(data.cost, price, tax);
   const per = data.cost?.complete ? data.cost.perServe : null;
+  const exact = data.cost?.complete ? (data.cost.perServeExact ?? data.cost.perServe) : null;
   const dated = sayDate(v.createdAt);
   const glass = v.glass ?? data.cocktail.glass;
   const garnish = v.garnish ?? data.cocktail.garnish;
@@ -110,6 +135,22 @@ export default function RecipeCard({
           <Printer size={13} aria-hidden />
           Print recipe card
         </button>
+        <label htmlFor={`${boxId}-make`} className="cl-note" style={{ margin: 0, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          Make
+          <input
+            id={`${boxId}-make`}
+            className="cl-field cl-focus cl-num"
+            inputMode="numeric"
+            style={{ width: 56 }}
+            value={makeText}
+            aria-invalid={makeRead == null}
+            onChange={(e) => {
+              setMakeText(e.target.value);
+              keepMake(makeStore, e.target.value);
+            }}
+          />
+        </label>
+        {makeRead == null ? <span className="cl-note" role="alert" data-testid="recipe-make-said">{MAKE_SAID}</span> : null}
         {canSeeCost ? (
           <label htmlFor={boxId} className="cl-note" style={{ margin: 0, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <input id={boxId} type="checkbox" checked={withCost} onChange={(e) => {
@@ -121,6 +162,12 @@ export default function RecipeCard({
         ) : null}
       </div>
 
+      {n > 1 ? (
+        <p className="cl-note" data-testid="recipe-make-preview">
+          {`Make ${n}: ${v.lines.map((l) => `${scaledAmount(l.qtyEntered, n, l.unitCode)} ${l.itemName ?? l.label}`).join(', ')}`}
+        </p>
+      ) : null}
+
       {/* Out of the app's own tree, so paper can hide everything else and leave one page (r104 walk: visibility alone left blank sheets). */}
       {createPortal(
         <section className="cl-print-card" data-testid="recipe-card" aria-hidden="true">
@@ -130,10 +177,11 @@ export default function RecipeCard({
             {!isDish && glass ? ` · ${glass}` : ''}
             {` · version ${v.version}${dated ? `, ${dated}` : ''}`}
           </p>
+          {n > 1 ? <p data-testid="recipe-card-make"><b>{`Make ${n}`}</b></p> : null}
           <ol>
             {v.lines.map((l) => (
               <li key={l.id}>
-                <b>{amountWithUnit(l.qtyEntered, l.unitCode as never)}</b> {l.itemName ?? l.label}
+                <b>{scaledAmount(l.qtyEntered, n, l.unitCode)}</b> {l.itemName ?? l.label}
               </li>
             ))}
           </ol>
@@ -142,6 +190,7 @@ export default function RecipeCard({
           <p>{cardAllergens(data.whatIsIn)}</p>
           {showCost ? (
             <p data-testid="recipe-card-cost">
+              {n > 1 ? `Cost to make ${n} ${data.cost?.complete && exact != null ? sayMoney(scaledCost(exact, n)) : 'not known'} · ` : ''}
               {`Cost per serve ${per == null ? 'not known' : sayMoney(per)} · Price ${price == null ? 'not set' : sayMoney(price)}`}
               {` · Pour cost ${'pct' in share ? sayPct(share.pct) : 'not known'}`}
               {` · Margin ${'margin' in margin ? sayMoney(margin.margin) : 'not known'}`}
