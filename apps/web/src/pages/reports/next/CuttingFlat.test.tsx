@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { openStack } from '@/components/mudavym/overlayState';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
 import { CATALOGUE } from './rp-catalogue';
@@ -285,5 +286,131 @@ describe('the working', () => {
     } finally {
       errors.mockRestore();
     }
+  });
+});
+
+/** Three registers on one sheet, in this order, each its own Cutting (the page's shape). */
+const ORDER: AnalysisId[] = ['till', 'week', 'seats'];
+function Sheet3({ order = ORDER }: { order?: AnalysisId[] }) {
+  const held: Register<unknown> = { ...reg(undefined), failure: heldBackFailure(['owner', 'manager'], 'staff') };
+  return (
+    <>
+      {order.map((id) => (
+        <Cutting
+          key={id}
+          id={id}
+          graph={CATALOGUE[id].graphs[0] ?? 'table'}
+          register={id === 'till' ? answered(TILL) : id === 'seats' ? held : inFlight()}
+          ctx={{ days: 30 }}
+          arranging={false}
+          swapOptions={swapOptions}
+          arrange={arrangeStub}
+          onGraph={vi.fn()}
+          onSwap={vi.fn()}
+          onRemove={vi.fn()}
+          onDays={vi.fn()}
+          flatOrder={order}
+        />
+      ))}
+    </>
+  );
+}
+const titleOf = (id: AnalysisId) => CATALOGUE[id].title;
+const dialogNamed = (id: AnalysisId) => screen.getByRole('dialog', { name: titleOf(id) });
+
+describe('full screen steps through the sheet (r108 g1)', () => {
+  it('steps in sheet order, says where, hides the button at an end, and focuses the direction it came by', () => {
+    paint(<Sheet3 />);
+    fireEvent.click(opener(titleOf('till')));
+    let dialog = dialogNamed('till');
+    expect(within(dialog).getByText('1 of 3')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^Previous/ })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    expect(where()).toBe('/reports?flat=week');
+    dialog = dialogNamed('week');
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(within(dialog).getByText('2 of 3')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: `Next: ${titleOf('seats')}` })).toHaveFocus();
+    fireEvent.click(within(dialog).getByRole('button', { name: `Previous: ${titleOf('till')}` }));
+    expect(where()).toBe('/reports?flat=till');
+    expect(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` })).toBeInTheDocument();
+    // The last one: no Next, no wrap, and focus falls back to Back, the one control it can offer.
+    fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    fireEvent.click(within(dialogNamed('week')).getByRole('button', { name: `Next: ${titleOf('seats')}` }));
+    dialog = dialogNamed('seats');
+    expect(within(dialog).getByText('3 of 3')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: /^Next/ })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'Back to the sheet' })).toHaveFocus();
+  });
+
+  it('a withheld cutting shows its held sentence when stepped to', () => {
+    paint(<Sheet3 />, ['/reports?flat=week']);
+    fireEvent.click(within(dialogNamed('week')).getByRole('button', { name: `Next: ${titleOf('seats')}` }));
+    const failure = heldBackFailure(['owner', 'manager'], 'staff');
+    expect(
+      within(dialogNamed('seats')).getByText(failureLine(CATALOGUE.seats.register, failure)),
+    ).toBeInTheDocument();
+  });
+
+  it('a step replaces the entry: one Back leaves full screen, the scroll lock and the overlay stack are free', async () => {
+    paint(<Sheet3 />);
+    fireEvent.click(opener(titleOf('till')));
+    fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    fireEvent.click(within(dialogNamed('week')).getByRole('button', { name: `Next: ${titleOf('seats')}` }));
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(openStack).toHaveLength(1);
+    fireEvent.click(within(dialogNamed('seats')).getByRole('button', { name: 'Back to the sheet' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(where()).toBe('/reports');
+    expect(document.body.style.overflow).toBe('');
+    expect(openStack).toHaveLength(0);
+    // Focus lands on the cutting last viewed.
+    expect(opener(titleOf('seats'))).toHaveFocus();
+  });
+
+  it('a cold link steps without inventing an entry of ours: closing removes the param in place', async () => {
+    paint(<Sheet3 />, ['/reports?flat=till']);
+    fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    fireEvent.click(within(dialogNamed('week')).getByRole('button', { name: 'Back to the sheet' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(where()).toBe('/reports');
+  });
+
+  it('Left and Right step, but not from a select, an input or a focused chart, nor with a modifier', () => {
+    paint(<Sheet3 />, ['/reports?flat=week']);
+    const dialog = dialogNamed('week');
+    const chart = document.createElement('div');
+    chart.className = 'rp-plot';
+    dialog.appendChild(chart);
+    const input = document.createElement('input');
+    dialog.appendChild(input);
+    for (const el of [chart, input]) {
+      fireEvent.keyDown(el, { key: 'ArrowRight' });
+      expect(where()).toBe('/reports?flat=week');
+    }
+    const select = within(dialog).queryByRole('combobox');
+    if (select) {
+      fireEvent.keyDown(select, { key: 'ArrowRight' });
+      expect(where()).toBe('/reports?flat=week');
+    }
+    fireEvent.keyDown(document.body, { key: 'ArrowRight', altKey: true });
+    expect(where()).toBe('/reports?flat=week');
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(where()).toBe('/reports?flat=seats');
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(where()).toBe('/reports?flat=seats'); // no wrap
+    fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+    expect(where()).toBe('/reports?flat=week');
+    fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+    fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+    expect(where()).toBe('/reports?flat=till'); // no wrap
+  });
+
+  it('a lone cutting, or one the order does not name, offers no step', () => {
+    paint(<Sheet3 order={['till']} />, ['/reports?flat=till']);
+    const dialog = dialogNamed('till');
+    expect(within(dialog).queryByRole('group', { name: 'Move through the sheet' })).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(where()).toBe('/reports?flat=till');
   });
 });

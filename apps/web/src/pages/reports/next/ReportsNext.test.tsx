@@ -885,6 +885,45 @@ describe('ReportsNext — a cutting laid flat keeps the page behind it', () => {
     expect(screen.getByRole('dialog', { name: 'Through the till' })).toBeInTheDocument();
   });
 
+  it('Next lays flat the next cutting in the order the sheet reads, skipping what has no register (r108 g1)', () => {
+    // A phone's sheet is one column in list order, so its document order IS the order a step must follow
+    // (the twelve-column grid orders its DOM by position, which is not the reading order).
+    const width = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(343);
+    try {
+      stepsFollowTheReadOrder();
+    } finally {
+      clientWidth.mockRestore();
+      Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+    }
+  });
+
+  const stepsFollowTheReadOrder = () => {
+    paint();
+    const stepFrom = (title: string) => {
+      const flat = screen.getByRole('dialog', { name: title });
+      return within(flat).queryByRole('button', { name: /^Next: / });
+    };
+    // The sheet's own order, the ones that can lay flat: their openers, in document order.
+    const order = screen
+      .getAllByRole('button', { name: /^Show .* full screen$/ })
+      .map((b) => (b.getAttribute('aria-label') ?? '').replace(/^Show (.*) full screen$/, '$1'));
+    expect(order.length).toBeGreaterThan(2);
+    layFlat();
+    // Walk the whole sheet by Next: every title once, in the page's order.
+    let at = order.indexOf('Through the till');
+    const seen = ['Through the till'];
+    for (let next = stepFrom(seen[seen.length - 1]); next; next = stepFrom(seen[seen.length - 1])) {
+      fireEvent.click(next);
+      at += 1;
+      const title = order[at];
+      expect(screen.getByRole('dialog', { name: title })).toBeInTheDocument();
+      seen.push(title);
+    }
+    expect(seen).toEqual(order.slice(order.indexOf('Through the till')));
+  };
+
   it('⌘K works again once the flat view is closed', () => {
     paint();
     const flat = layFlat();

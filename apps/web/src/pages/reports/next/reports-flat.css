@@ -69,6 +69,40 @@
   align-items: center;
   gap: 6px;
 }
+/* Back on the left, the sheet's steps on the right. Nothing here moves or fades: a step is a new subject (MOTIONS.md). */
+.rp-flat__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.rp-flat__steps {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+/* An end keeps its 44 px so the marker never shifts; the button is simply not there. */
+.rp-flat__step-slot {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+.rp-flat__step {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+.rp-flat__step-count {
+  min-width: 4.5em;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .rp-flat__row {
   display: flex;
   flex-wrap: wrap;
