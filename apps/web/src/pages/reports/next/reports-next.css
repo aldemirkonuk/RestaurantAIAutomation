@@ -218,6 +218,18 @@
   inset: 0;
 }
 
+/* What a plot is drawing, said once above it (N-03): 11 px, 60% ink, in the
+   reader's order. It stands in for the rotated value-axis titles, which sat on
+   the tick labels. */
+.rp-plot-cap {
+  margin: 0 0 4px;
+  font-family: var(--rp-mono);
+  font-size: 11px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in oklch, var(--ink-1) 60%, transparent);
+}
+
 /* ── the hover detail on a plot ────────────────────────────────────────────
    One tooltip shape for every drawing: what you are hovering, then the value
    with its unit spelled out. A number with no unit is a number the reader has

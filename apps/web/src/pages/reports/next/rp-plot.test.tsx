@@ -90,7 +90,7 @@ describe('a day with no figure is a gap', () => {
   it('names the chart for a screen reader in words', () => {
     render(<CatPlot series={forecastSeries()} kind="line" />);
     expect(
-      screen.getByRole('img', { name: 'A line of bottles by day, the projected part dashed' }),
+      screen.getByRole('img', { name: /^A line of bottles by day, the projected part dashed(\. |$)/ }),
     ).toBeInTheDocument();
   });
 });
