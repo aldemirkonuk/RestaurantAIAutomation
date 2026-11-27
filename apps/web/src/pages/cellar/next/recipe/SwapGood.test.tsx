@@ -179,10 +179,24 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
         method: null,
         glass: 'Coupe',
         garnish: null,
-        lines: [col.lines[0], { ...col.lines[1], inventoryId: 'i-gin2' }],
+        lines: [col.lines[0], { ...col.lines[1], inventoryId: 'i-gin2', label: 'Better gin' }],
       }),
     );
     expect(body.lines[1]).toMatchObject({ qty: 50, unit: 'ml', usablePct: 95 });
+    // The old typed name is not carried onto a line that now pours the new good; lines not swapped keep theirs.
+    expect(body.lines[1].label).toBe('Better gin');
+    expect(body.lines[0].label).toBe('Lime juice');
+  });
+
+  it('a drink with a made line says plainly that its cost could not be previewed, and still swaps', async () => {
+    const made = { role: 'made' as const, componentId: 'comp-1', inventoryId: null, label: 'Orgeat', qty: 15, unit: 'ml', usablePct: null };
+    uses = answer([[drink('c-mad', 'Mai Tai', 'ml10', [made]), 'ml10']]);
+    await choose('Better gin');
+    await waitFor(() => expect(screen.getByTestId('swap-plan')).toHaveTextContent('Mai Tai: its cost could not be previewed: a line is made in the house'));
+    expect(h.post).not.toHaveBeenCalled();
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines[0]).toEqual(made);
   });
 
   it('says the usable share a swapped line carries over, so keeping it is a seen choice (r108 fix)', async () => {

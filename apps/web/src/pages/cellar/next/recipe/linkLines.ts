@@ -26,8 +26,12 @@ export function useLooseLines(enabled: boolean) {
   });
 }
 
-/** The PUT body that links `indices` of a drink's lines to a good: the version read, with only those `inventoryId`s changed. */
-export function linkBody(drink: LooseDrink, indices: number[], inventoryId: string): SaveRecipeBody {
+/**
+ * The PUT body that links `indices` of a drink's lines to a good: the version read, with only those `inventoryId`s changed.
+ * A swap passes `label` (the new good's name) so the new version no longer carries the old typed name on a line that now
+ * pours something else; the table is append-only, so this is written only in the new version.
+ */
+export function linkBody(drink: LooseDrink, indices: number[], inventoryId: string, label?: string): SaveRecipeBody {
   const at = new Set(indices);
   return {
     expectedVersionId: drink.versionId,
@@ -35,7 +39,7 @@ export function linkBody(drink: LooseDrink, indices: number[], inventoryId: stri
     method: drink.method,
     glass: drink.glass,
     garnish: drink.garnish,
-    lines: drink.lines.map((l, i) => ({ ...l, inventoryId: at.has(i) ? inventoryId : l.inventoryId })),
+    lines: drink.lines.map((l, i) => (at.has(i) ? { ...l, inventoryId, label: label ?? l.label } : l)),
   };
 }
 

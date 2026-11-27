@@ -98,7 +98,7 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
       if (!lines) return [];
       const off = lines.some((l) => l.baseUnit !== want);
       const keeps = [...new Set(lines.map((l) => drink.lines[l.index]?.usablePct).filter((u): u is number => u != null))];
-      return [{ drink, body: linkBody(drink, lines.map((l) => l.index), to.id), refused: off ? `not swapped: counted ${COUNTED[want]}` : null, keeps }];
+      return [{ drink, body: linkBody(drink, lines.map((l) => l.index), to.id, to.name), refused: off ? `not swapped: counted ${COUNTED[want]}` : null, keeps }];
     });
   }, [uses.data, to]);
 
@@ -118,7 +118,13 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
       const out: Record<string, string> = {};
       go.forEach((p, i) => {
         const [a, b] = [r[2 * i], r[2 * i + 1]];
-        out[p.drink.cocktailId] = a && b ? `cost a serve ${costWords(a, say)} -> ${costWords(b, say)}` : 'its cost could not be previewed';
+        const made = p.drink.lines.some((l) => l.role === 'made');
+        out[p.drink.cocktailId] =
+          a && b
+            ? `cost a serve ${costWords(a, say)} -> ${costWords(b, say)}`
+            : made
+              ? 'its cost could not be previewed: a line is made in the house'
+              : 'its cost could not be previewed';
       });
       setPreviews(out);
     });
