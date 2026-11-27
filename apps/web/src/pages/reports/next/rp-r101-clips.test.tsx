@@ -136,10 +136,15 @@ describe('the stylesheets', () => {
     expect(t).toMatch(/\.rp-cut\[data-strip\] \.rp-cut__body > :not\(\.rp-empty-strip\):not\(\.rp-quiet\) \{\s*display: none;/);
     expect(t).toMatch(/\.rp-cut\[data-strip\] \.rp-cut__title \{\s*flex: none;/);
   });
-  it('[REVERT-FAILS] the phone stack card fills a slot that is only a floor, and grows past it', () => {
+  it('[REVERT-FAILS] the phone stack card fills its slot: text cards grow past it, chart cards hold it and scroll inside the body', () => {
     const t = css('reports-next.css');
     expect(t).toMatch(/\.rp-stack__item \{[^}]*display: flex;[^}]*flex-direction: column;/);
     expect(t).toMatch(/\.rp-stack__item > \.rp-cut \{\s*flex: 1 1 auto;\s*height: auto;/);
+    // Text cards grow (minHeight), chart cards hold the slot (height): the split Sheet.tsx makes.
+    const sheet = css('Sheet.tsx');
+    expect(sheet).toMatch(/TEXT_IDS\.has\(c\.id\)\s*\?\s*\{ minHeight: slotHeightPx\(c\.slot\.h\) \}\s*:\s*\{ height: slotHeightPx\(c\.slot\.h\) \}/);
+    // The words say it, so a later reader does not reintroduce growing chart cards.
+    expect(t).toMatch(/Chart cards hold the slot as their height and scroll inside \.rp-cut__body/);
   });
   it('[REVERT-FAILS] the landscape head stacks the window sentence under the title and never ellipsises it', () => {
     const landscape = css('reports-flat.css').split('@media (max-height: 500px) {')[1].split('@media (min-width: 900px)')[0];
