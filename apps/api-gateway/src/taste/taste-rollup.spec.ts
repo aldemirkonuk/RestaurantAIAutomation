@@ -125,6 +125,9 @@ describe('rollup: what it does not know', () => {
     const base = rollup(whiskeySour);
     const r = rollup(withMore([{ name: 'Salt', qty: null, unit: 'g' }]));
     expect(r.basis.unquantified).toBe(1);
+    // The row of the line with no weight says so; a weighed row says nothing.
+    expect(r.basis.lineSources.filter((l) => l.weighed === false).map((l) => l.name)).toEqual(['Salt']);
+    expect(r.basis.lineSources.filter((l) => l.name !== 'Salt').every((l) => l.weighed === undefined)).toBe(true);
     expect(r.axes.salty?.v ?? 0).toBeLessThan(0.5);
     expect(r.axes.sweet.conf).toBeLessThan(base.axes.sweet.conf);
   });

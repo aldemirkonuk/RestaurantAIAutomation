@@ -119,6 +119,17 @@ describe('a worked-out layer says how many counted lines it did not weigh (r103 
     mount();
     expect((await screen.findByTestId('taste-not-weighed')).textContent).toBe(said);
   });
+  it('names the unweighed line in the not-weighed sentence and leaves it out of "Worked out from"', async () => {
+    const lineSources = [{ name: 'Gin', from: 'good' }, { name: 'Salt Pinch', from: 'class_prior', weighed: false }];
+    api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }, [basisLayer({ ...base, lineSources, unweighed: 1 }) as never]));
+    mount();
+    expect((await screen.findByTestId('taste-not-weighed')).textContent).toBe(
+      '1 counted ingredient (Salt Pinch) is not weighed, so it adds nothing to the taste.',
+    );
+    const from = screen.getByTestId('taste-worked-from').textContent ?? '';
+    expect(from).toContain('Gin');
+    expect(from).not.toContain('Salt Pinch');
+  });
   it('says nothing when every counted line was weighed', async () => {
     api.get.mockResolvedValue(ready({ axes: { bitter: ax(4) } }, [basisLayer({ ...base, unweighed: 0 }) as never]));
     mount();
