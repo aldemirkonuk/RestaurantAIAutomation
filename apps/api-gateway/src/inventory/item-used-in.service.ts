@@ -178,7 +178,7 @@ export class ItemUsedInService {
 
     const line = await client
       .from("menu_items")
-      .select("id, menu_id, name, inventory_item_id, status")
+      .select("id, menu_id, name, inventory_item_id, wine_library_id, status")
       .eq("id", menuItemId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -199,6 +199,10 @@ export class ItemUsedInService {
       });
     }
     if (l.inventory_item_id) throw await this.heldBy(client, restaurantId, String(l.name), String(l.inventory_item_id));
+    // A line sold through ANOTHER good's master wine already counts as that good's (soldAs), so it is not taken.
+    if (l.wine_library_id && l.wine_library_id !== item.masterWineId) {
+      throw await this.heldByMaster(client, restaurantId, String(l.name), String(l.wine_library_id));
+    }
 
     const write = await client
       .from("menu_items")
@@ -206,6 +210,7 @@ export class ItemUsedInService {
       .eq("id", menuItemId)
       .eq("restaurant_id", restaurantId)
       .is("inventory_item_id", null)
+      .or(`wine_library_id.is.null${item.masterWineId ? `,wine_library_id.eq.${item.masterWineId}` : ""}`)
       .in("menu_id", menuIds)
       .neq("status", "discarded")
       .select("id");
@@ -216,18 +221,39 @@ export class ItemUsedInService {
       // Linked, moved or discarded between the read and the write.
       const now = await client
         .from("menu_items")
-        .select("inventory_item_id")
+        .select("inventory_item_id, wine_library_id")
         .eq("id", menuItemId)
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
       const holder = (now.data as Record<string, any> | null)?.inventory_item_id;
       if (holder) throw await this.heldBy(client, restaurantId, String(l.name), String(holder));
+      const master = (now.data as Record<string, any> | null)?.wine_library_id;
+      if (master && master !== item.masterWineId) throw await this.heldByMaster(client, restaurantId, String(l.name), String(master));
       throw new ConflictException({
         message: `"${l.name}" changed while it was being linked, so it is not linked. Look at it again.`,
         reason: "changed",
       });
     }
     return this.usedIn(restaurantId, itemId);
+  }
+
+  /** The 409 for a line sold through another good's master wine, naming that good. */
+  private async heldByMaster(client: SupabaseClient, restaurantId: string, lineName: string, masterWineId: string) {
+    const r = await client
+      .from("restaurant_inventory")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("master_wine_id", masterWineId)
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const holderId = (r.data as Record<string, any> | null)?.id;
+    if (holderId) return this.heldBy(client, restaurantId, lineName, String(holderId));
+    return new ConflictException({
+      message: `"${lineName}" is already sold as another good, so it was not linked again.`,
+      reason: "already_linked",
+      heldBy: null,
+    });
   }
 
   /** The 409 for a line another good already holds, naming that good. */
@@ -348,7 +374,9 @@ export class ItemUsedInService {
       if (error) return failed("The menu", error.message);
       const rows = (data ?? []) as Array<Record<string, any>>;
       for (const r of rows) {
-        if (!taken.has(r.id) && foldName(String(r.name ?? "")) === want) {
+        // A line another good sells through its master wine is that good's, not a candidate here.
+        const theirs = r.wine_library_id != null && r.wine_library_id !== item.masterWineId;
+        if (!taken.has(r.id) && !theirs && foldName(String(r.name ?? "")) === want) {
           lines.push(menuLine(r));
         }
       }
