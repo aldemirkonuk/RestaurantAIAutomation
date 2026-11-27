@@ -102,6 +102,7 @@ vi.mock('./recipe/useRecipe', async (orig) => ({
 vi.mock('./recipe/useListTax', () => ({ useListTax: () => ({ basis: 'prices_exclude_tax' }) }));
 // The loose-lines queue reads the signed-in house; its own behaviour is recipe/LooseLines.test.
 vi.mock('./recipe/LooseLines', () => ({ default: () => null }));
+vi.mock('./recipe/SwapGood', () => ({ default: () => null }));
 vi.mock('./recipe/useHousePercent', () => ({ useHousePercent: () => (p: number) => `%${p}` }));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

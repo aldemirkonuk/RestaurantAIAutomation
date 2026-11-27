@@ -209,7 +209,8 @@ export interface SaveRecipeLine {
 export interface LooseLineGroup {
   key: string;
   label: string;
-  lines: Array<{ cocktailId: string; index: number }>;
+  /** `baseUnit` (ml10, mg, each_milli) is how the line is measured; absent from an older gateway. */
+  lines: Array<{ cocktailId: string; index: number; baseUnit?: string }>;
   drinkCount: number;
   proposed: ShelfItem | null;
   sameName: number;
@@ -227,6 +228,8 @@ export interface LooseDrink {
 export interface LooseLines {
   lineCount: number;
   drinkCount: number;
+  /** With `linkedTo`: how many dishes' current recipes use the good too. */
+  dishCount?: number;
   groups: LooseLineGroup[];
   drinks: LooseDrink[];
 }
@@ -247,6 +250,7 @@ export interface PreviewCostLine {
   inventoryId: string | null;
   qtyEntered: number;
   unitCode: string;
+  usablePct?: number | null;
 }
 
 export interface PreviewCostBody {
@@ -354,8 +358,9 @@ export const recipesApi = {
   },
 
   /** Every counted line of a drink's current recipe that names no shelf good (owner/manager); writes nothing. */
-  async looseLines(restaurantId: string): Promise<LooseLines> {
-    const r = await apiClient.get<LooseLines>(`${base(restaurantId)}/drinks/loose-lines`);
+  async looseLines(restaurantId: string, linkedTo?: string): Promise<LooseLines> {
+    const q = linkedTo ? `?linkedTo=${encodeURIComponent(linkedTo)}` : '';
+    const r = await apiClient.get<LooseLines>(`${base(restaurantId)}/drinks/loose-lines${q}`);
     return r.data;
   },
 
