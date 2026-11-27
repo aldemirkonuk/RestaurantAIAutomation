@@ -561,6 +561,28 @@ describe('MenuVersions', () => {
     finish({ menuId: 'm9', itemsExtracted: 0, submissionsCreated: 0, items: [] } as never);
   });
 
+  it('a CSV whose upload is complete is Reading, not Sending on a full bar, until the reply comes (r103 review)', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    let finish: (v: never) => void = () => {};
+    let labelsSeen: { onUploadProgress?: (n: number | null) => void } = {};
+    mockImport.mockImplementation((_m, _d, labels) => {
+      labelsSeen = labels as typeof labelsSeen;
+      return new Promise((resolve) => { finish = resolve as never; });
+    });
+    const { container } = mount(false);
+    const file = new File(['name,bottle_price\nOpus,60\n'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalled());
+    act(() => { labelsSeen.onUploadProgress?.(0.5); });
+    expect(container.querySelector('.mdv-drop__reading')).toHaveTextContent(/^Sending/);
+    act(() => { labelsSeen.onUploadProgress?.(1); });
+    expect(container.querySelector('.mdv-drop__bar')).toBeNull();
+    expect(container.querySelector('.mdv-drop__dots')).not.toBeNull();
+    expect(container.querySelector('.mdv-drop__reading')).toHaveTextContent(/^Reading/);
+    finish({ menuId: 'm9', itemsExtracted: 0, submissionsCreated: 0, items: [] } as never);
+  });
+
   it('a read that WAITS on the spend record says the gateway\'s reason', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mockImport.mockRejectedValue({
