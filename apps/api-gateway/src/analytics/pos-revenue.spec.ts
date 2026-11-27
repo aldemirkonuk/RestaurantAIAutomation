@@ -1422,8 +1422,7 @@ describe("AnalyticsService.getPosConsumptionBreakdown", () => {
   });
 });
 
-// Staff are answered "withheld" before any read (ADR 0348), so these reads are an owner's.
-const OWNER = { role: "owner" };
+// Staff are answered "withheld" before any read (ADR 0348), so these reads are an owner's (`OWNER`, above).
 
 describe("GET /analytics/pos-revenue/:restaurantId", () => {
   let controller: AnalyticsController;

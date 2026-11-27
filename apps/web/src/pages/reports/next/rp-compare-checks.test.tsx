@@ -57,7 +57,7 @@ async function readTill(compare: boolean, failN = false) {
   });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till'], undefined, compare), { wrapper });
+  const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till'], undefined, null, compare), { wrapper });
   await waitFor(() => expect(result.current.registers.till?.data).toBeDefined());
   return { view: till.view(result.current.registers.till!.data as never, ctx(compare)), paths: api.get.mock.calls.map((c) => String(c[0])) };
 }
@@ -97,7 +97,7 @@ describe('till compare keeps the shown window\u2019s checks', () => {
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till'], undefined, true), { wrapper });
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till'], undefined, null, true), { wrapper });
     await waitFor(() => expect(result.current.registers.till?.data).toBeDefined());
     const view = till.view(result.current.registers.till!.data as never, ctx(true));
     expect(fig(view, 'Checks')).toBe('\u2014');
@@ -135,7 +135,7 @@ describe('a window switch with compare on reads the till alone (perf-p4-5 on the
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
     const { result, rerender } = renderHook(
-      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['till', 'week'], undefined, true),
+      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['till', 'week'], undefined, null, true),
       { wrapper, initialProps: { days: 30 } },
     );
     await waitFor(() => {
@@ -206,7 +206,7 @@ describe('a till the gateway kept from the reader reads once, whatever the windo
     return renderHook(
       ({ days, r }: { days: number; r: string }) => {
         auth.role = r;
-        return useReportsNextData(days, () => {}, ['till'], undefined, false);
+        return useReportsNextData(days, () => {}, ['till'], undefined, null, false);
       },
       { wrapper, initialProps: { days: 30, r: role } },
     );

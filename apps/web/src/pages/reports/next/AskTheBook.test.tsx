@@ -18,6 +18,7 @@ const row = (ruleKey: string, sentence: string, category = 'sales', score = 1, e
   category,
   score,
   entityLabel,
+  computedAt: null,
 });
 
 const ROWS: ReadingRow[] = [

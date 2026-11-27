@@ -59,7 +59,7 @@
 }
 /* A step lays the next cutting flat as a new dialog: it does not replay the
    arrival (MOTIONS.md: a subject change inside full screen is not animated). */
-.rp-flat[data-stepped='true'] {
+.rp-flat[data-stepped] {
   animation: none;
 }
 @keyframes rp-flat-in {

@@ -730,10 +730,11 @@ export class AdvancedAnalyticsService {
         generatedAt: new Date().toISOString(),
       };
     const today = houseToday(zone);
-    const first = shiftHouseDay(today, -sinceDays);
+    // The window's first house day; `first` is the house's first recorded line (#1538), a different thing.
+    const start = shiftHouseDay(today, -sinceDays);
     const consumption = all.filter((c) => {
       const day = houseDayOf(c.at, zone);
-      return day !== null && day >= first && day < today;
+      return day !== null && day >= start && day < today;
     });
     // Counted lines only, zero-filled: a line with no bottle figure is left
     // out, so a day holding one counts only its other lines and reads 0 if

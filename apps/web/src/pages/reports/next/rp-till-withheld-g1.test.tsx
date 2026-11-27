@@ -63,7 +63,7 @@ describe('the till kept from staff', () => {
   it('[REVERT-FAILS] says takings are kept to the owner and managers, with no "no check fell", figures or basis', () => {
     const { container } = draw(WITHHELD, true);
     const text = container.textContent ?? '';
-    expect(text).toContain('Takings are kept to the owner and managers.');
+    expect(text).toContain('The till register is written for owners and managers. Nothing below is claimed.');
     expect(text).not.toMatch(/no check fell/i);
     expect(text).not.toMatch(/pos_checks/);
     expect(container.querySelectorAll('.rp-dl > .rp-fig')).toHaveLength(0);

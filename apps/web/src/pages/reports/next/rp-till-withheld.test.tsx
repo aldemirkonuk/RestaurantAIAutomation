@@ -43,7 +43,7 @@ afterEach(cleanup);
 describe('till: a withheld read', () => {
   it.each([false, true])('[REVERT-FAILS] says the takings are kept, not that none rang (compare %s)', (compare) => {
     const v = CATALOGUE.till.view(CATALOGUE.till.select(WITHHELD), { days: 30, compare, currency: 'USD' });
-    expect(v.say).toBe('Takings are kept to the owner and managers.');
+    expect(v.say).toBe('The till register is written for owners and managers. Nothing below is claimed.');
     expect(v.figures).toEqual([]);
     const all = TEXT(compare);
     expect(all).not.toMatch(/no check fell/);

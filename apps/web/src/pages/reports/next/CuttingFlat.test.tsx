@@ -370,7 +370,8 @@ describe('full screen steps through the sheet (r108 g1)', () => {
     fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
     expect(dialogNamed('week')).toHaveAttribute('data-stepped', 'true');
     // The stylesheet takes the arrival off a stepped dialog.
-    expect(FLAT_CSS).toMatch(/\.rp-flat\[data-stepped='true'\]\s*\{\s*animation:\s*none;/);
+    // One rule for the step mark, shipped three times (#2297, #2344, #2365): the motions table keys it bare.
+    expect(FLAT_CSS).toMatch(/\.rp-flat\[data-stepped(='true')?\]\s*\{\s*animation:\s*none;/);
   });
 
   it('a withheld cutting shows its held sentence when stepped to', () => {
