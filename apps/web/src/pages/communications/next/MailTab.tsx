@@ -1184,6 +1184,8 @@ export function MailTab({
           onAnswer={onAnswer}
           onOpenThread={(key) => go({ thread: key })}
           bookFacts={bookFacts}
+          houseAddress={summary?.address?.address ?? null}
+          houseZone={summary?.zone?.zone ?? null}
         />
         </Suspense>
       ) : withKey ? (
