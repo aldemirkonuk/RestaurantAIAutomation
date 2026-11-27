@@ -31,6 +31,25 @@ function mergeRows<R extends Keyed>(loadedPages: R[][], fresh: R[]): R[][] {
   return pages;
 }
 
+/**
+ * True when a row of the fresh first page is older than the loaded copy of it:
+ * its newest letter went away (a revoked grant, a category clean). Merged as
+ * "moved" it would jump above newer rows, so the caller reads the list whole.
+ */
+export function headWentBack(
+  cur: InfiniteData<MailPeoplePage | MailThreadsPage, string | null>,
+  fresh: MailPeoplePage | MailThreadsPage,
+): boolean {
+  const loaded = new Map<string, number>();
+  for (const page of cur.pages) {
+    for (const r of 'people' in page ? page.people : page.threads) loaded.set(r.key, Date.parse(r.lastAt));
+  }
+  return ('people' in fresh ? fresh.people : fresh.threads).some((r) => {
+    const was = loaded.get(r.key);
+    return was !== undefined && Date.parse(r.lastAt) < was;
+  });
+}
+
 export function mergePeopleHead(
   cur: InfiniteData<MailPeoplePage, string | null>,
   fresh: MailPeoplePage,

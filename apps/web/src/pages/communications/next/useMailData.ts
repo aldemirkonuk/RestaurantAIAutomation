@@ -39,7 +39,7 @@ import type {
   SeenMark,
 } from './mail-format';
 import { READ_ALL_ID } from './mail-format';
-import { mergePeopleHead, mergeThreadHead, mergeThreadsHead } from './mail-merge';
+import { headWentBack, mergePeopleHead, mergeThreadHead, mergeThreadsHead } from './mail-merge';
 
 export const MAIL_POLL_MS = 30_000;
 
@@ -112,10 +112,15 @@ async function refreshHead(qc: QueryClient, queryKey: readonly unknown[]): Promi
   const cur = qc.getQueryData<InfiniteData<unknown, string | null>>(queryKey);
   if (!cur || cur.pages.length === 0) return stale();
   if (root === 'mail-people') {
+    // A page 1 of a filtered list (waiting, a search, a kind) cannot be folded in: a row that
+    // stopped matching is absent from it and would stay. Only the unfiltered list merges.
+    if (a === true || b !== '' || (c ?? 'all') !== 'all') return stale();
     const fresh = await fetchPeoplePage(a as boolean, b as string, (c as MailKindFilter) ?? 'all', null);
+    if (headWentBack(cur as InfiniteData<MailPeoplePage, string | null>, fresh)) return stale();
     qc.setQueryData<InfiniteData<MailPeoplePage, string | null>>(queryKey, (now) => (now ? mergePeopleHead(now, fresh) : now));
   } else if (root === 'mail-threads') {
     const fresh = await fetchThreadsPage(a as string, null);
+    if (headWentBack(cur as InfiniteData<MailThreadsPage, string | null>, fresh)) return stale();
     qc.setQueryData<InfiniteData<MailThreadsPage, string | null>>(queryKey, (now) => (now ? mergeThreadsHead(now, fresh) : now));
   } else {
     const fresh = await fetchThreadPage(a as string, b as string | undefined, null);
