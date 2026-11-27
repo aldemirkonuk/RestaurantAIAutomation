@@ -1734,6 +1734,15 @@ export class MenusService {
         .filter((v) => v.status === "archived" && v.retiredAt)
         .sort((a, b) => String(b.retiredAt).localeCompare(String(a.retiredAt)))[0] ?? null;
     const zone = await this.houseZone(restaurantId);
+    // A newer read already kept as a draft, or still reading, answers the reminder: say nothing, never a second billed read (r104).
+    const madeAt = current?.madeCurrentAt ? Date.parse(current.madeCurrentAt) : NaN;
+    const newerRead = versions.some(
+      (v) =>
+        !v.current &&
+        v.status === "draft" &&
+        v.readState !== "failed" &&
+        Date.parse(String(v.extractedAt ?? v.createdAt)) > madeAt,
+    );
     return {
       current,
       lastUsed,
@@ -1741,7 +1750,7 @@ export class MenusService {
       namesReadable: namesError === null,
       namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
       ...zone,
-      due: current ? menuDueState(current.cadence, current.madeCurrentAt, new Date(), zone.timezone) : null,
+      due: current && !newerRead ? menuDueState(current.cadence, current.madeCurrentAt, new Date(), zone.timezone) : null,
     };
   }
 
