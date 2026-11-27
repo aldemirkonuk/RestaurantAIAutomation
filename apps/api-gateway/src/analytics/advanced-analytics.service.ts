@@ -14,6 +14,14 @@ import {
 } from "../common/house-day";
 import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
+import {
+  FirstRecord,
+  MIN_PLAN_DAYS,
+  observedWindow,
+  readFirstRecord,
+  trimToObserved,
+  windowWords,
+} from "./observed-window";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
@@ -70,6 +78,24 @@ export class AdvancedAnalyticsService {
     private readonly insightGenerator: InsightGeneratorService,
     private readonly goalsService: GoalsService,
   ) {}
+
+  /**
+   * The house's first consumption line ever: menu speed and the week's shape
+   * start there, not at the window's first day (r36 reports gap 1). Never
+   * throws; a failed read falls back to the whole window and says so.
+   */
+  private async firstConsumption(restaurantId: string): Promise<FirstRecord> {
+    const first = await readFirstRecord(
+      this.dbService.getClient(),
+      "wine_consumption_log",
+      restaurantId,
+    );
+    if (first.read === "could_not_read")
+      this.logger.warn(
+        `first consumption line could not be read; rates use the whole window: ${first.error}`,
+      );
+    return first;
+  }
 
   // =========================================================================
   // Shared lean loaders
@@ -326,10 +352,19 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getMenuEngineering(restaurantId: string, sinceDays = 90) {
-    const [inventory, consumption] = await Promise.all([
+    const [inventory, consumption, first] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
       this.loadConsumption(restaurantId, sinceDays),
+      this.firstConsumption(restaurantId),
     ]);
+    // Sold ÷ the days the house was recording, not ÷ the whole window: a
+    // 7-day-old house read every good at a twelfth of its speed and filed
+    // it a slow mover (r36 reports gap 1).
+    const observed = observedWindow(
+      sinceDays,
+      new Date().toISOString().substring(0, 10),
+      first,
+    );
     const soldByWine = new Map<string, number>();
     const standInWines = new Set<string>();
     for (const c of consumption) {
@@ -349,7 +384,7 @@ export class AdvancedAnalyticsService {
       type: i.type,
       velocityPerDay: unmeasuredWines.has(i.masterWineId)
         ? null
-        : (soldByWine.get(i.masterWineId) || 0) / sinceDays,
+        : (soldByWine.get(i.masterWineId) || 0) / observed.rateDays,
       sizeStandIn: standInWines.has(i.masterWineId),
       marginPerBottle: i.marginPerBottle,
       costBasis: i.costBasis,
@@ -410,7 +445,7 @@ export class AdvancedAnalyticsService {
 
     return {
       basis: {
-        velocity: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}`,
+        velocity: `bottles/day ${windowWords(observed, "consumption line")} — ${unitsBasisSentence(unitsCoverage)}`,
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
@@ -660,9 +695,10 @@ export class AdvancedAnalyticsService {
 
   async getSeasonality(restaurantId: string, sinceDays = 90) {
     // Two extra days are read so the oldest house day is whole in any zone.
-    const [all, zone] = await Promise.all([
+    const [all, zone, first] = await Promise.all([
       this.loadConsumption(restaurantId, sinceDays + 2),
       this.houseZoneFor(restaurantId),
+      this.firstConsumption(restaurantId),
     ]);
     // Weekdays are the HOUSE's weekdays (ADR 0296, audit G7): on UTC days a
     // US house's evening sales landed on the next weekday. With no zone there
@@ -691,13 +727,23 @@ export class AdvancedAnalyticsService {
     // it has none. `basis.units` says so in those words (ADR 0297); the day
     // is short, and the basis is what keeps it from passing as a quiet one.
     const unitsCoverage = summarizeUnits(consumption);
-    const { dates, values } = this.houseDaily(
+    const dense = this.houseDaily(
       consumption
         .filter((c) => c.qty != null)
         .map((c) => ({ at: c.at, value: c.qty as number })),
       sinceDays,
       zone,
     );
+    // The window ends yesterday and starts at the house's first line when
+    // that is inside it. Zero days before the first line pulled every
+    // weekday's mean down and read flat sales as a climb (r36 gap 1).
+    // (integ 2026-11-27: #1538's trim on #1037's house days.)
+    const observed = observedWindow(
+      sinceDays,
+      dense.dates[dense.dates.length - 1],
+      first,
+    );
+    const { dates, values } = trimToObserved(dense, observed);
 
     const weekday = E.dayOfWeekProfile(dates, values);
     // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
@@ -705,7 +751,11 @@ export class AdvancedAnalyticsService {
     // night. An extreme that is shared is not an extreme (ADR 0020).
     const extremes = E.separableExtremes(weekday.profiles);
     const decomposition = E.seasonalDecompose(values, 7);
-    const trend28 = E.trendPerPeriodPct(values.slice(-28));
+    // A trend needs two of each weekday; under that it is the opening
+    // fortnight's shape, not a direction, and is withheld.
+    const trend28 = observed.young
+      ? null
+      : E.trendPerPeriodPct(values.slice(-28));
 
     // The per-category weekday winners (`categoryProfiles`) are gone: no page,
     // agent or tool read them, and they cost an unbounded inventory read whose
@@ -724,15 +774,21 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} complete house days in ${zone} of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `mean bottles per weekday ${observed.since == null && observed.firstRecord !== "could_not_read" ? `over the last ${sinceDays} complete house days in ${zone}` : `${windowWords(observed, "consumption line")} (house days in ${zone})`} of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         // Names which extreme is withheld, not just that one is (r33 R-F2).
         extremes: E.extremesBasis(extremes, weekday.profiles.length),
+        ...(observed.young
+          ? {
+              trend: `No trend is drawn: the house has ${observed.observedDays} days of records and a trend needs ${MIN_PLAN_DAYS}, two of each weekday.`,
+            }
+          : {}),
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)
         : null,
       trendPerDayPct: trend28,
+      observed,
       generatedAt: new Date().toISOString(),
     };
   }
