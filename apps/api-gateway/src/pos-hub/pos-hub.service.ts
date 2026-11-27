@@ -7,10 +7,23 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import {
+  assertCocktailBelongsToRestaurant,
+  cocktailIdOf,
+} from "./cocktail-link";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
+import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
+import {
+  CostSnapshot,
+  SaleCostSource,
+  checkMarginFromRows,
+  pickSaleCostSource,
+  snapshotLineCost,
+  type SaleLedgerRow,
+} from "./sale-cost";
 import {
   PROVIDER_BY_KEY,
   POS_PROVIDERS,
@@ -310,6 +323,18 @@ export interface StockTally {
   consumptionNotWritten: number;
   /** Lines this import booked whose check closed more than 72 hours ago. */
   backdatedOver72h: number;
+  /**
+   * Lines that moved stock but came with no price from the till (r57 D5):
+   * booked at the menu price for a bottle and with no revenue for a pour,
+   * and said so rather than booked as a comp.
+   */
+  priceNotSent: number;
+  /**
+   * Consumption rows booked with no cost (r57 D4): the house has recorded no
+   * cost for the item, or the cost lookup failed. They read as "cost not kept"
+   * on the check, never as a cost of 0.
+   */
+  costNotKept: number;
 }
 
 type StockFailureKind = "stock" | "queue" | "consumption";
@@ -353,6 +378,8 @@ export class StockReport {
     failed: 0,
     consumptionNotWritten: 0,
     backdatedOver72h: 0,
+    priceNotSent: 0,
+    costNotKept: 0,
   };
 
   private readonly groups = new Map<
@@ -451,6 +478,33 @@ export type SaleVolume =
 
 /** A sale volume that resolved — i.e. one that may touch stock. */
 export type ResolvedSaleVolume = Exclude<SaleVolume, { mode: "unresolved" }>;
+
+/**
+ * The unit price a till line's consumption row books (r56).
+ *
+ * The price the till rang is the price, and a rung zero is a zero: a comped
+ * glass took no money (ADR 0105 D5), so its row says none. This used to read
+ * `Number(price) || menuPrice`, which turned every comp into a sale at the
+ * item's full BOTTLE price, and a comped glass into a bottle's worth of revenue.
+ * Only a price that is not a number falls back, and only for a whole bottle:
+ * the bottle's menu price is not what a pour sells for. An absent price is
+ * null from every adapter (r57 D5), so a till that sent none books the menu
+ * price and the import says so; it is never read as a comp.
+ */
+export function consumptionUnitPrice(
+  price: unknown,
+  mode: "whole_bottle" | "volume",
+  menuPrice: number | null,
+  comped = false,
+): number | null {
+  // r57 D5: only a till that says outright the line was comped makes it one.
+  if (comped) return 0;
+  if (price !== null && price !== undefined && price !== "") {
+    const n = Number(price);
+    if (Number.isFinite(n)) return n;
+  }
+  return mode === "whole_bottle" ? menuPrice : null;
+}
 
 /**
  * Resolve one line's depletion, in the order locked by ADR 0011:
@@ -694,9 +748,10 @@ export function tallyChannels(
  * keyword heuristic) → table/server resolution → UPSERT pos_checks → stock
  * depletion via apply_stock_movement/record_glass_pour for closed checks only
  * (decision B18). Idempotent on (restaurant_id, source, external_check_id)
- * for the check row, and on `pos:{source}:{externalCheckId}:{externalItemId}
- * :{lineNo}` (decision B15) for every stock write, so webhook replays and
- * re-imports are safe.
+ * for the check row, and for every stock write on the provider's line id, or
+ * `pos:{source}:{externalCheckId}:{item}|{modifiers}|{price}:#{occurrence}`
+ * (decision B15, line identity r57 D2: never the line's position), so webhook
+ * replays and re-imports are safe.
  */
 @Injectable()
 export class PosHubService {
@@ -1052,7 +1107,10 @@ export class PosHubService {
             external_item_id: it.externalItemId ?? null,
             category: it.category ?? mapped.category ?? null,
             qty: it.qty,
-            price: it.price,
+            price: it.price ?? null,
+            line_id: it.lineId ?? null,
+            modifiers: it.modifiers ?? null,
+            comped: it.comped === true,
             is_wine,
             master_wine_id: it.master_wine_id ?? mapped.masterWineId ?? null,
             inventory_id: mapped.inventoryId,
@@ -1303,7 +1361,10 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
+      line_id?: string | null;
+      modifiers?: string | null;
+      comped?: boolean;
       is_wine: boolean;
       inventory_id: string | null;
       sale_unit: string | null;
@@ -1347,11 +1408,23 @@ export class PosHubService {
       ),
     ]);
     const inventories = inventoryRead.volumes;
+    // r57 D4: what each wine costs now, read once per check, so each line's
+    // consumption row can keep the cost it sold at.
+    const costRead = await this.loadSaleCosts(restaurantId, [
+      ...new Set(
+        items
+          .filter((it) => it.is_wine && it.inventory_id)
+          .map((it) => it.inventory_id as string),
+      ),
+    ]);
     // queueUnresolvedLine counts its own outcome into this check's report, so
     // the three queue call sites below stay exactly as they were.
     STOCK_REPORTS.set(check, report);
     tally.lines += items.length;
     const decidedBefore = decidedLines(tally);
+    // r57 D2: every line's key, worked out over the whole check, so a line's
+    // key is the same however many lines sit before it.
+    const lineKeys = saleLineKeys(source, check.externalCheckId, items);
 
     for (let lineNo = 0; lineNo < items.length; lineNo++) {
       const it = items[lineNo];
@@ -1364,8 +1437,10 @@ export class PosHubService {
       // is skipped here. See .planning/BEVERAGE_CATALOGUE_PLAN.md register A11.
       if (!it.is_wine) continue;
 
-      const qty = Math.max(0, Math.round(Number(it.qty) || 0));
-      if (qty <= 0) continue;
+      // r57 D3: a fractional quantity (Clover by measure, 0.5) keeps its
+      // fraction. `qty` is the whole units; `frac` the share of one more.
+      const { whole: qty, frac } = splitQty(it.qty);
+      if (qty <= 0 && frac <= 0) continue;
 
       try {
         if (!it.inventory_id) {
@@ -1421,102 +1496,136 @@ export class PosHubService {
           continue;
         }
 
-        // B15: depletion idempotency key.
-        const idem = `pos:${source}:${check.externalCheckId}:${it.external_item_id ?? it.name}:${lineNo}`;
+        // B15 / r57 D2: depletion idempotency key. The provider's line id, or
+        // the item + modifiers + price + occurrence; never the line position.
+        const idem = lineKeys[lineNo];
         // Reporting label only — never arithmetic (ADR 0011).
         const label = it.sale_unit ?? resolved.mode;
+        // What one whole unit holds, for the fractional part (r57 D3).
+        const unitMl =
+          resolved.mode === "volume"
+            ? resolved.ml
+            : (inv?.bottleMl ?? RPC_DEFAULT_BOTTLE_ML);
+        // Said once per line: the till sent no price (r57 D5).
+        let priceNoted = false;
 
-        // supabase-js resolves RPC failures as { error } rather than
-        // throwing, so — as in the receiving-door bug this plan's spine
-        // repair fixed — the error field must be checked explicitly or a
-        // failed depletion reports success silently.
-        let rpcError: { message?: string } | null = null;
-        if (resolved.mode === "volume" && !isVoid) {
-          // record_glass_pour has taken an arbitrary p_pour_ml since the
-          // baseline (baseline_from_production.sql:1132); the app layer was
-          // the only binary part. It is passed explicitly rather than as null
-          // so the ml that moves stock and the ml written to the consumption
-          // log are the same number, decided here.
-          ({ error: rpcError } = await db.rpc("record_glass_pour", {
-            p_inventory_id: it.inventory_id,
-            p_pours: qty,
-            p_pour_ml: Math.round(resolved.ml),
-            p_location_id: null,
-            p_source: "pos",
-            p_reason: `POS sale (${label}): ${it.name}`,
-            p_idempotency_key: idem,
-            // ADR 0281: dated by the check, not by its arrival.
-            p_occurred_at: when.at,
-          }));
-        } else if (isVoid) {
-          // A void gives back what its sale (`idem`) BOOKED, in the unit it was
-          // booked in -- ml of a glass sale, bottles of a bottle sale -- not by
-          // today's mapping, and at most once across every void of that sale.
-          // No booked sale is an error, never a quiet 0 (QA 8c; ADR 0011).
-          //
-          // ADR 0093 D5 -- THE VOID'S KEY IS NOT THE SALE'S KEY. Reusing `idem`
-          // hit the sale's idempotent early return and moved nothing.
-          // `${idem}:void` is derived from it, so a replayed void stays a no-op
-          // (pos-hub.void-idempotency.spec.ts).
-          const { data: back, error } = await db.rpc("return_glass_pour", {
-            p_restaurant_id: restaurantId,
-            p_inventory_id: it.inventory_id,
-            p_sale_key: idem,
-            p_pours: qty,
-            p_idempotency_key: `${idem}:void`,
-            p_occurred_at: when.at,
-          });
-          rpcError = error;
-          if (!error && Number((back as any)?.overflow_ml) > 0) {
-            this.logger.warn(
-              `Void of ${it.name}: ${(back as any).overflow_ml} ml not added back (${(back as any).reason})`,
-            );
+        // One stock write and its consumption row. The whole units and the
+        // fractional share of one more each have their own key, so a replay of
+        // either is a no-op.
+        const book = async (
+          part: "whole" | "fraction",
+          units: number,
+          key: string,
+        ) => {
+          // supabase-js resolves RPC failures as { error } rather than
+          // throwing, so — as in the receiving-door bug this plan's spine
+          // repair fixed — the error field must be checked explicitly or a
+          // failed depletion reports success silently.
+          let rpcError: { message?: string } | null = null;
+          if (isVoid) {
+            // A void gives back what its sale BOOKED under `key`, in the unit
+            // it was booked in -- ml of a glass or of a fraction, bottles of a
+            // bottle sale -- not by today's mapping, and at most once across
+            // every void of that sale. No booked sale is an error, never a
+            // quiet 0 (QA 8c; ADR 0011). r57's split: the whole units and the
+            // fraction were booked under their own keys, so each part is
+            // voided under its own (r109, DD-r108-21; the ml-based 10-argument
+            // overload is dropped by migration 20271230100000).
+            //
+            // ADR 0093 D5 -- THE VOID'S KEY IS NOT THE SALE'S KEY. Reusing it
+            // hit the sale's idempotent early return and moved nothing.
+            // `${key}:void` is derived from it, so a replayed void stays a
+            // no-op (pos-hub.void-idempotency.spec.ts).
+            const { data: back, error } = await db.rpc("return_glass_pour", {
+              p_restaurant_id: restaurantId,
+              p_inventory_id: it.inventory_id,
+              p_sale_key: key,
+              p_pours: part === "fraction" ? 1 : units,
+              p_idempotency_key: `${key}:void`,
+              p_occurred_at: when.at,
+            });
+            rpcError = error;
+            if (!error && Number((back as any)?.overflow_ml) > 0) {
+              this.logger.warn(
+                `Void of ${it.name}: ${(back as any).overflow_ml} ml not added back (${(back as any).reason})`,
+              );
+            }
+          } else if (part === "fraction" || resolved.mode === "volume") {
+            // record_glass_pour has taken an arbitrary p_pour_ml since the
+            // baseline (baseline_from_production.sql:1132); the app layer was
+            // the only binary part. It is passed explicitly rather than as null
+            // so the ml that moves stock and the ml written to the consumption
+            // log are the same number, decided here. A fraction is one pour of
+            // that share of the unit, in a bottle sale as in a glass sale.
+            ({ error: rpcError } = await db.rpc("record_glass_pour", {
+              p_inventory_id: it.inventory_id,
+              p_pours: part === "fraction" ? 1 : units,
+              p_pour_ml:
+                part === "fraction"
+                  ? fractionMl(unitMl, frac)
+                  : Math.round((resolved as { ml: number }).ml),
+              p_location_id: null,
+              p_source: "pos",
+              p_reason: `POS sale (${label}): ${it.name}`,
+              p_idempotency_key: key,
+              // ADR 0281: dated by the check, not by its arrival.
+              p_occurred_at: when.at,
+            }));
+          } else {
+            // Whole-bottle sales. Their voids go through return_glass_pour
+            // above, which reads what the sale booked.
+            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
+              p_inventory_id: it.inventory_id,
+              p_stock_state: "live",
+              p_delta: -units,
+              p_transaction_type: "sale",
+              p_source: "pos",
+              p_reason: `POS sale (${label}): ${it.name}`,
+              p_idempotency_key: key,
+              // ADR 0141 — the house this check belongs to. `it.inventory_id`
+              // comes from a `pos_item_mappings` row read for this restaurant;
+              // the row belonging here does not make the item it names belong
+              // here, and a mis-seeded mapping used to move another house's
+              // shelf on every sale.
+              p_restaurant_id: restaurantId,
+              // ADR 0281: a sale and its void are both dated by the closed_at
+              // their check carries.
+              p_occurred_at: when.at,
+            }));
           }
-        } else {
-          // Whole-bottle sales.
-          ({ error: rpcError } = await db.rpc("apply_stock_movement", {
-            p_inventory_id: it.inventory_id,
-            p_stock_state: "live",
-            p_delta: -qty,
-            p_transaction_type: "sale",
-            p_source: "pos",
-            p_reason: `POS sale (${label}): ${it.name}`,
-            p_idempotency_key: idem,
-            // ADR 0141 — the house this check belongs to. `it.inventory_id`
-            // comes from a `pos_item_mappings` row read for this restaurant;
-            // the row belonging here does not make the item it names belong
-            // here, and a mis-seeded mapping used to move another house's
-            // shelf on every sale.
-            p_restaurant_id: restaurantId,
-            // ADR 0281: a sale and its void are both dated by the closed_at
-            // their check carries. A void lands on the sale's day only when
-            // the till re-sends the sale's closed_at on it; a till that
-            // stamps the void with its own time dates the return then.
-            p_occurred_at: when.at,
-          }));
-        }
 
-        if (rpcError) {
-          this.logger.warn(
-            `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
-          );
-          tally.failed++;
-          report.noteFailure(
-            "stock",
-            it.name,
-            rpcError.message,
-            check.externalCheckId,
-          );
-        } else {
-          affected.add(it.inventory_id);
+          if (rpcError) {
+            this.logger.warn(
+              `Stock effect failed for ${it.name} (${label}) on check ${check.externalCheckId}: ${rpcError.message}`,
+            );
+            tally.failed++;
+            report.noteFailure(
+              "stock",
+              it.name,
+              rpcError.message,
+              check.externalCheckId,
+            );
+            return;
+          } else {
+            affected.add(it.inventory_id as string);
+          }
           if (!isVoid) {
+            const partQty = part === "fraction" ? frac : units;
+            if (it.price === null || it.price === undefined) {
+              if (!it.comped && !priceNoted) {
+                priceNoted = true;
+                tally.priceNotSent++;
+              }
+            }
             const consumption = await this.recordConsumption(
               restaurantId,
               it,
               resolved,
               inv,
-              qty,
-              idem,
+              partQty,
+              key,
+              costRead.costs.get(it.inventory_id as string) ?? null,
+              () => tally.costNotKept++,
               when.at,
             );
             if (consumption === "already") {
@@ -1536,9 +1645,25 @@ export class PosHubService {
               }
             }
           } else {
-            booked();
+            if (!rpcError) booked();
+            // A voided line never happened (r56): the sale's consumption row
+            // goes to nothing along with its stock, or velocity, revenue and
+            // top sellers keep counting a glass nobody drank.
+            if (!(await this.voidConsumption(restaurantId, key))) {
+              tally.consumptionNotWritten++;
+              report.noteFailure(
+                "consumption",
+                it.name,
+                "the stock came back; the sale's consumption row could not be cleared, see the gateway log",
+                check.externalCheckId,
+              );
+            }
           }
-        }
+        };
+
+        if (qty > 0) await book("whole", qty, idem);
+        if (frac > 0)
+          await book("fraction", 1, qty > 0 ? `${idem}:frac` : idem);
       } catch (err: any) {
         this.logger.warn(
           `Stock effect threw for ${it.name} on check ${check.externalCheckId}: ${err?.message}`,
@@ -1603,7 +1728,8 @@ export class PosHubService {
       name: string;
       external_item_id: string | null;
       qty: number;
-      price: number;
+      price: number | null;
+      comped?: boolean;
     },
     opts: {
       reason: "unmapped" | "no_sale_volume";
@@ -1647,6 +1773,50 @@ export class PosHubService {
   }
 
   /**
+   * Zero the consumption row a voided line booked when it sold (r56).
+   *
+   * Zeroed, not deleted: the partial unique index on (restaurant_id, notes)
+   * keeps the key, so a replay of the sale after its void finds the row
+   * (23505, "already") instead of booking the line a second time. A void
+   * with no earlier sale row matches nothing and is not an error. Every
+   * reader sums quantity, volume and revenue, so a zero row counts as nothing.
+   * Returns false only when the database refused the write.
+   */
+  private async voidConsumption(
+    restaurantId: string,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    try {
+      const { error } = await this.dbService
+        .getClient()
+        .from("wine_consumption_log")
+        .update({
+          quantity: 0,
+          volume_ml: 0,
+          total_revenue: 0,
+          cost_at_sale: 0,
+        })
+        .eq("restaurant_id", restaurantId)
+        .eq("source", "pos")
+        .eq("notes", idempotencyKey);
+      if (error) {
+        this.logger.error(
+          `wine_consumption_log void FAILED for key=${idempotencyKey} ` +
+            `(r=${restaurantId}): ${error.message} [${error.code ?? "no-code"}] — ` +
+            `the voided sale still counts as consumption.`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.warn(
+        `Consumption void failed for key=${idempotencyKey}: ${err?.message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * Mirror a depleting POS sale into `wine_consumption_log`.
    *
    * That table is the demand series behind essentially all of the
@@ -1669,13 +1839,16 @@ export class PosHubService {
     item: {
       name: string;
       qty: number;
-      price: number;
+      price: number | null;
+      comped?: boolean;
       inventory_id: string | null;
     },
     resolved: ResolvedSaleVolume,
     inv: InventoryVolumes | null,
     qty: number,
     idempotencyKey: string,
+    costSource: SaleCostSource | null,
+    onCostNotKept: () => void,
     occurredAt: string,
   ): Promise<"logged" | "already" | "failed"> {
     if (!item.inventory_id) return "failed";
@@ -1695,7 +1868,12 @@ export class PosHubService {
           ? resolved.ml * qty
           : (inv?.bottleMl ?? RPC_DEFAULT_BOTTLE_ML) * qty;
       const unit = resolved.mode === "volume" ? "glass" : "bottle";
-      const unitPrice = Number(item.price) || inv?.menuPrice || null;
+      const unitPrice = consumptionUnitPrice(
+        item.price,
+        resolved.mode,
+        inv?.menuPrice ?? null,
+        item.comped === true,
+      );
 
       // Idempotent from 2026-08-24, matching the stock write it follows.
       //
@@ -1727,15 +1905,49 @@ export class PosHubService {
       // logged and nothing else noticed. The honest shape is a plain INSERT
       // with the partial unique index as the backstop: a replay raises 23505,
       // which is the idempotent no-op the upsert was meant to be.
+      // r105: a whole-bottle line reads the row apply_stock_movement just
+      // wrote under this key, so the line costs what the lots it drew cost.
+      // A pour has no such row (record_glass_pour writes no draws) and stays
+      // on the recorded WAC. A failed read says so and falls back to the WAC
+      // the line was costed at before; it is never silently a different cost.
+      let ledgerRow: SaleLedgerRow | null = null;
+      if (resolved.mode === "whole_bottle" && costSource) {
+        const { data, error: ledgerError } = await db
+          .from("inventory_transactions")
+          .select("quantity_change, unit_cost, cost_total, unpriced_qty")
+          .eq("restaurant_id", restaurantId)
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
+        if (ledgerError) {
+          this.logger.warn(
+            `Sale ledger row unreadable for ${item.name} (key=${idempotencyKey}): ${ledgerError.message}; the line is costed at the recorded cost instead.`,
+          );
+        } else {
+          ledgerRow = (data as SaleLedgerRow | null) ?? null;
+        }
+      }
+      const snapshot: CostSnapshot = snapshotLineCost(
+        costSource,
+        resolved.mode,
+        volumeMl,
+        inv?.bottleMl ?? null,
+        qty,
+        ledgerRow,
+      );
       const { error } = await db.from("wine_consumption_log").insert({
         restaurant_id: restaurantId,
         inventory_id: item.inventory_id,
         wine_name: item.name,
         consumption_type: unit,
-        quantity: qty,
+        // the column is an integer count of units rung; the volume and the
+        // revenue beside it carry the exact fraction (r57 D3)
+        quantity: Math.max(1, Math.ceil(qty)),
         volume_ml: volumeMl,
         unit_price: unitPrice,
         total_revenue: unitPrice != null ? unitPrice * qty : null,
+        // r57 D4: what the line cost when it sold, kept on the row so a later
+        // invoice never moves a closed check's margin. Null = not kept.
+        ...snapshot,
         source: "pos",
         notes: idempotencyKey,
         // ADR 0281: the sale's instant, not the import's. Both columns, because
@@ -1769,6 +1981,7 @@ export class PosHubService {
         );
         return "failed";
       }
+      if (snapshot.cost_at_sale === null) onCostNotKept();
       return "logged";
     } catch (err: any) {
       this.logger.warn(
@@ -1776,6 +1989,96 @@ export class PosHubService {
       );
       return "failed";
     }
+  }
+
+  /**
+   * What each wine costs now, for the consumption rows of one check (r57 D4):
+   * the recorded unit cost by the rule every margin reader uses, and the lot
+   * it came from. An item with no recorded cost is simply absent from the
+   * map; a failed read leaves the map empty AND says so, so a whole check
+   * booked without costs is never mistaken for a check of free wine.
+   */
+  private async loadSaleCosts(
+    restaurantId: string,
+    inventoryIds: string[],
+  ): Promise<{ costs: Map<string, SaleCostSource>; error: string | null }> {
+    const costs = new Map<string, SaleCostSource>();
+    if (!inventoryIds.length) return { costs, error: null };
+    try {
+      const db = this.dbService.getClient();
+      const [inv, rollup, lots] = await Promise.all([
+        db
+          .from("restaurant_inventory")
+          .select("id, last_purchase_price")
+          .eq("restaurant_id", restaurantId)
+          .in("id", inventoryIds),
+        db
+          .from("inventory_lot_rollup")
+          .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", inventoryIds),
+        db
+          .from("inventory_lots")
+          .select(
+            "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, received_at, stock_state",
+          )
+          .eq("restaurant_id", restaurantId)
+          // pickSaleCostSource keeps live lots only
+          .in("inventory_id", inventoryIds),
+      ]);
+      const failed = inv.error || rollup.error || lots.error;
+      if (failed) {
+        this.logger.error(
+          `sale cost lookup failed for ${inventoryIds.length} item(s) (r=${restaurantId}): ` +
+            `${failed.message} — this check's consumption rows are booked with no cost ` +
+            `("cost not kept") rather than a cost of 0.`,
+        );
+        return { costs, error: failed.message ?? "cost lookup failed" };
+      }
+      for (const id of inventoryIds) {
+        const source = pickSaleCostSource(
+          (inv.data || []).find((r: any) => r.id === id) ?? null,
+          (rollup.data || []).find((r: any) => r.inventory_id === id) ?? null,
+          (lots.data || []).filter((r: any) => r.inventory_id === id),
+        );
+        if (source) costs.set(id, source);
+      }
+      return { costs, error: null };
+    } catch (err: any) {
+      this.logger.error(
+        `sale cost lookup threw (r=${restaurantId}): ${err?.message}`,
+      );
+      return { costs, error: err?.message ?? "cost lookup failed" };
+    }
+  }
+
+  /**
+   * A check's cost of goods and margin, from the cost each line kept when it
+   * sold (r57 D4). Never reads a lot: a later invoice cannot move it. A read
+   * that fails throws, so the screen says the read failed rather than showing
+   * a check with no cost (ADR 0020).
+   */
+  async getCheckMargin(restaurantId: string, externalCheckId: string) {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("wine_consumption_log")
+      .select(
+        "wine_name, quantity, volume_ml, total_revenue, cost_at_sale, cost_basis, notes",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("source", "pos")
+      .like("notes", `pos:%:${externalCheckId.replace(/[\\%_]/g, "\\$&")}:%`);
+    if (error)
+      throw new Error(
+        `The check's wine lines could not be read (${error.message}); no margin is shown.`,
+      );
+    // The like narrows; the prefix decides. `pos:<source>:<check id>:`.
+    const rows = (data || []).filter((r: any) => {
+      const n = String(r.notes ?? "");
+      const at = n.indexOf(":", 4);
+      return at > 0 && n.startsWith(`${externalCheckId}:`, at + 1);
+    });
+    return { externalCheckId, ...checkMarginFromRows(rows) };
   }
 
   async upsertItemMapping(restaurantId: string, mapping: any) {
@@ -1833,6 +2136,10 @@ export class PosHubService {
       saleVolumeMl = n;
     }
 
+    // A till button may name its drink recipe instead of a shelf item
+    // (inventory r28 gap 1, slice 2): one or the other, never both.
+    const cocktailId = cocktailIdOf(mapping);
+
     const row = {
       restaurant_id: restaurantId,
       source: mapping.source || "*",
@@ -1842,6 +2149,7 @@ export class PosHubService {
       is_wine: mapping.is_wine === true,
       master_wine_id: mapping.master_wine_id ?? null,
       inventory_id: mapping.inventory_id ?? null,
+      cocktail_id: cocktailId,
       sale_unit: saleUnit,
       sale_volume_ml: saleVolumeMl,
       updated_at: new Date().toISOString(),
@@ -1862,6 +2170,14 @@ export class PosHubService {
         restaurantId,
         row.inventory_id,
         "upsertItemMapping",
+        this.logger,
+      );
+    }
+    if (row.cocktail_id) {
+      await assertCocktailBelongsToRestaurant(
+        this.dbService.getClient(),
+        restaurantId,
+        row.cocktail_id,
         this.logger,
       );
     }
