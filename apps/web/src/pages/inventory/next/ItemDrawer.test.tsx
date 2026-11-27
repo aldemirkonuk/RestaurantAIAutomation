@@ -408,6 +408,34 @@ describe('the item drawer', () => {
     expect(within(wrap).queryByTestId('ivd-evidence')).toBeNull();
   });
 
+  it('a second card pressed while the card is open remounts the evidence (so its fade replays), moves data-on in one frame, and holds the old height for one frame (r108 g15)', async () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(321);
+    try {
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-value'));
+      const first = screen.getByTestId('ivd-evidence');
+      expect(first.getAttribute('data-card')).toBe('value');
+      expect(first.getAttribute('data-switched')).toBeNull();
+      const clip = screen.getByTestId('ivd-evwrap').firstElementChild as HTMLElement;
+      expect(clip.style.minHeight).toBe('');
+      fireEvent.click(screen.getByTestId('ivd-card-usage'));
+      const second = screen.getByTestId('ivd-evidence');
+      expect(second).not.toBe(first);
+      expect(second.getAttribute('data-card')).toBe('usage');
+      expect(second.getAttribute('data-switched')).toBe('true');
+      expect(screen.getByTestId('ivd-card-usage').getAttribute('data-on')).toBe('true');
+      expect(screen.getByTestId('ivd-card-value').getAttribute('data-on')).toBe('false');
+      expect(clip.style.minHeight).toBe('321px');
+      await waitFor(() => expect(clip.style.minHeight).toBe(''));
+      // Closing is not a switch.
+      fireEvent.click(screen.getByTestId('ivd-card-usage'));
+      fireEvent.click(screen.getByTestId('ivd-card-value'));
+      expect(screen.getByTestId('ivd-evidence').getAttribute('data-switched')).toBeNull();
+    } finally {
+      height.mockRestore();
+    }
+  });
+
   it('brings the opened card into view only after its 200 ms open, and at once for reduced motion (r102 motion-1)', async () => {
     const spy = vi.fn();
     const was = Element.prototype.scrollIntoView;
