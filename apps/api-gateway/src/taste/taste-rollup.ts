@@ -43,7 +43,7 @@ export interface RollupBasis {
   /** How many lines drew their profile from the good's own layers (staff included). */
   staff: number;
   /** One row per line: which profile it used. The good's own, or the class prior from its label. */
-  lineSources: Array<{ name: string; from: LineFrom; prov: RollupProv }>;
+  lineSources: Array<{ name: string; from: LineFrom; prov: RollupProv; weighed?: false }>;
   /** Core axes the roll-up will not state, because a line's value on them is not known. */
   notKnown: string[];
   dilution: number | null; dilutionAssumed: boolean; method: string | null;
@@ -293,7 +293,8 @@ export function rollup(input: RollupInput): RollupResult {
       kind: input.kind, lines: flat.length, classPrior: count('class_prior'), dataset: count('dataset'),
       measured: count('measured'), unknown: count('unknown'), unquantified: nullQty,
       staff: count('staff'),
-      lineSources: flat.map((r) => ({ name: r.name, from: r.from, prov: r.prov })),
+      // A counted line with no stated weight is in the list but adds nothing: say so on its row.
+      lineSources: flat.map((r) => ({ name: r.name, from: r.from, prov: r.prov, ...(r.mass === null ? { weighed: false as const } : {}) })),
       notKnown,
       unknownNames: flat.filter((r) => r.prov === 'unknown').map((r) => r.name).slice(0, 5),
       dilution: input.kind === 'cocktail' ? dil.d : null, dilutionAssumed: dil.assumed,
