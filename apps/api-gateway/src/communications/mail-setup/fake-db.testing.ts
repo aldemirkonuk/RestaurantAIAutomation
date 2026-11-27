@@ -54,13 +54,17 @@ export function fakeDb(tables: Record<string, TableSpec>) {
             ? (r[k] ?? null) === v
             : kind === "in"
               ? (v as any[]).map(String).includes(String(r[k]))
-              : true,
+              : kind === "lte"
+                ? r[k] != null && String(r[k]) <= String(v)
+                : true,
       );
     const chain: any = {
       select: () => chain,
       eq: (k: string, v: any) => (q.filters.push(["eq", k, v]), chain),
       is: (k: string, v: any) => (q.filters.push(["is", k, v]), chain),
       in: (k: string, v: any[]) => (q.filters.push(["in", k, v]), chain),
+      // ISO timestamps compare correctly as strings.
+      lte: (k: string, v: any) => (q.filters.push(["lte", k, v]), chain),
       order: () => chain,
       limit: (n: number) => ((q.limit = n), chain),
       maybeSingle: () => ((q.single = true), Promise.resolve(run())),
