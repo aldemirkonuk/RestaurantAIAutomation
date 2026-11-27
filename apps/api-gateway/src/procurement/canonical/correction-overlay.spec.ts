@@ -94,4 +94,28 @@ describe("verify costs the corrected paper (r109)", () => {
     expect(r).toMatchObject({ ok: false, status: 500 });
     expect(posted()).toEqual([]);
   });
+  it("pages over several papers' corrections in a total order (document, revision, id)", async () => {
+    corrected([2, "lines[0].netPrice", 55], [3, "lines[0].netAmount", 550]);
+    const orders: unknown[][] = [];
+    const getClient = db.client.getClient;
+    db.client.getClient = () => {
+      const c = getClient();
+      return {
+        ...c,
+        from: (t: string) => {
+          const ch = c.from(t) as Record<string, (...a: unknown[]) => unknown>;
+          if (t === "document_corrections") {
+            const order = ch.order;
+            ch.order = (...a: unknown[]) => {
+              orders.push(a);
+              return order(...a);
+            };
+          }
+          return ch;
+        },
+      };
+    };
+    await service.finaliseAtVerified(REST, DEL, "u1");
+    expect(orders.map((o) => o[0])).toEqual(["document_id", "revision", "id"]);
+  });
 });
