@@ -115,6 +115,17 @@ describe('Copy a drink', () => {
     expect(h.put).not.toHaveBeenCalled();
   });
 
+  it('carries how much of a line is usable, so the copy costs what its source does (r107f)', async () => {
+    h.get.mockResolvedValue({ data: source([L({ label: 'Lemon', inventoryId: 'inv-2', usablePct: 45 }), L({ id: 'l2', usablePct: null })]) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines).toEqual([
+      { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 50, unit: 'ml', usablePct: 45 },
+      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml' },
+    ]);
+  });
+
   it('shows staff no Copy button', async () => {
     role.edit = false;
     mount();

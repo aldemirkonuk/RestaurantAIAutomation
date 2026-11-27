@@ -49,13 +49,18 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
   const body: SaveRecipeBody = {
     expectedVersionId: null,
     yieldServes: cur.yieldServes,
-    lines: cur.lines.map((l) => ({
-      role: l.role,
-      inventoryId: l.role === 'stocked' ? l.inventoryId : null,
-      label: l.label,
-      qty: l.qtyEntered,
-      unit: l.unitCode,
-    })),
+    lines: cur.lines.map((l) => {
+      const line: SaveRecipeBody['lines'][number] = {
+        role: l.role,
+        inventoryId: l.role === 'stocked' ? l.inventoryId : null,
+        label: l.label,
+        qty: l.qtyEntered,
+        unit: l.unitCode,
+      };
+      // A line that is 45 % usable costs over what is bought; a copy that saved it as 100 % would cost less than its source (ADR 0051).
+      if (l.role === 'stocked' && l.usablePct != null) line.usablePct = l.usablePct;
+      return line;
+    }),
   };
   if (cur.method) body.method = cur.method;
   if (cur.glass) body.glass = cur.glass;
