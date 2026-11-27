@@ -45,6 +45,7 @@ to those would put a moving cutting somewhere the announcement says it is not.
 | `rp-seg-thumb` | `settle` | `cubic-bezier(.16,1,.3,1)` · 260ms | the window pill's thumb (`.rp-seg__thumb`) sliding to the picked window; transform only |
 | `rp-prior-draw` | `settle` | `cubic-bezier(.16,1,.3,1)` · 360ms | the compare's prior line (`.rp-prior`, dashed) drawing left to right once when compare is switched on, `clip-path: inset(0 100% 0 0)` to `inset(0)`. A refetch or a window re-read keeps the line in place and does not replay it; shown at once under reduced motion |
 | `rp-stack__item` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | the phone till card's height settling to hold the compare answer's 66px row when compare is switched on or off (`.rp-stack__item[data-holds]`, `height` only); none under reduced motion |
+| `rp-flat-in` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | full screen (`.rp-flat`, `CuttingFlat.tsx`) arriving over the sheet; opacity + 6px rise, transform and opacity only, once on mount (a step inside it does not replay it). Never blocks input; focus is placed at once. Exit is instant (ADR 0112); none under reduced motion, the fade included. Rejected: a View Transition card-to-flat morph (large-area zoom, two charts cross-fading) |
 
 ## Deliberate non-motions
 
