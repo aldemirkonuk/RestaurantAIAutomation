@@ -15,6 +15,7 @@ import { RawMailRetentionService } from "./raw-mail-retention.service";
  */
 
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
+const MAX_ROWS = 1000;
 const GRANT = "eeeeeeee-0000-4000-8000-eeeeeeeeeeee";
 
 type Row = Record<string, any>;
@@ -71,7 +72,12 @@ function world(opts: {
       if (mode === "update") hit.forEach((r) => Object.assign(r, body));
       if (mode === "delete") tables[table] = rows.filter((r) => !hit.includes(r));
       if (ordered) hit = [...hit].sort((x, y) => String(x.id).localeCompare(String(y.id)));
-      if (range) hit = hit.slice(range[0], range[1] + 1);
+      // PostgREST max_rows = 1000 (supabase/config.toml): an unranged select, and a ranged one
+      // asking for more, return at most 1,000 rows, with no error. Writes are not capped here.
+      if (mode === "select") {
+        const [a, z] = range ?? [0, MAX_ROWS - 1];
+        hit = hit.slice(a, Math.min(z + 1, a + MAX_ROWS));
+      }
       return Promise.resolve({ data: hit.map((r) => ({ ...r })), error: null }).then(resolve);
     };
     return b;
@@ -250,5 +256,42 @@ describe("revoking gmail_read_all and the replies to the letters it read", () =>
     const run = await revoke(db);
     expect(run.error).toMatch(/name no letter could NOT be read \(stray timeout\)/);
     expect(run.says).not.toMatch(/name no letter they answer/);
+  });
+
+  describe("past PostgREST's 1,000-row cap on every read", () => {
+    const standing = [{ id: "vendor-only", restaurant_id: HOUSE, integration_id: "gmail_read", revoked_at: null }];
+    const guestReplies = (n: number) =>
+      Array.from({ length: n }, (_, i) => reply(`bulk-${String(i).padStart(4, "0")}`, "guest-in"));
+
+    it("1 guest letter and 1,001 replies, vendor-only reading live: every reply goes, none is relabelled or restamped", async () => {
+      const { db, tables } = world({
+        rows: [row("guest-in", { kind: "guest", mirrored_by_grant_id: GRANT }), ...guestReplies(1001)],
+        connections: standing,
+      });
+      const run = await revoke(db);
+      expect(left(tables)).toEqual([]);
+      expect(tables.procurement_conversations.filter((r) => r.mirrored_by_grant_id === "vendor-only")).toEqual([]);
+      expect(run.says).not.toMatch(/vendor repl/);
+      expect(run.error).toBeNull();
+    });
+
+    it("1,001 letters the grant stored: all are found and deleted, not the first 1,000", async () => {
+      const letters = Array.from({ length: 1001 }, (_, i) =>
+        row(`g-${String(i).padStart(4, "0")}`, { kind: "guest", mirrored_by_grant_id: GRANT }),
+      );
+      const { db, tables } = world({ rows: letters });
+      const run = await revoke(db);
+      expect(left(tables)).toEqual([]);
+      expect(run.deleted).toBe(1001);
+    });
+
+    it("1,001 vendor letters with the vendor-only reading live: all are kept and all are handed to it", async () => {
+      const letters = Array.from({ length: 1001 }, (_, i) =>
+        row(`v-${String(i).padStart(4, "0")}`, { kind: "vendor", mirrored_by_grant_id: GRANT }),
+      );
+      const { db, tables } = world({ rows: letters, connections: standing });
+      await revoke(db);
+      expect(tables.procurement_conversations.filter((r) => r.mirrored_by_grant_id === "vendor-only")).toHaveLength(1001);
+    });
   });
 });
