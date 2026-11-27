@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useId, type ReactNode, type Ref } from 'react'
 import { EndpaperShell } from './EndpaperShell'
 import '../mudavym/sheet.css'
 
@@ -34,6 +34,8 @@ export interface AuthSpreadProps {
    * and one whose title is the same does not.
    */
   pageKey?: string
+  /** A page that moves focus to its heading on a step change takes the H1 here. */
+  titleRef?: Ref<HTMLHeadingElement>
   wide?: boolean
   children: ReactNode
 }
@@ -56,6 +58,7 @@ export function AuthSpread({
   folio,
   footer,
   pageKey,
+  titleRef,
   wide = false,
   children,
 }: AuthSpreadProps) {
@@ -71,7 +74,7 @@ export function AuthSpread({
     >
       <main id={mainId} tabIndex={-1} className="mdv-spread-main mdv-spread">
         {title ? (
-          <h1 className="mdv-spread-title" {...(holdHeading ? HELD : {})}>
+          <h1 ref={titleRef} tabIndex={titleRef ? -1 : undefined} className="mdv-spread-title" {...(holdHeading ? HELD : {})}>
             {title}
           </h1>
         ) : null}
