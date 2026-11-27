@@ -74,7 +74,12 @@ export function ReceiptsStatementTieout({ docId }: { docId: string }) {
             <li key={p.id} style={ROW}>
               <span style={{ flex: '1 1 auto' }}>
                 {head(p.docNumber, p.docDate, p.kind)}
-                {p.total != null ? ` · ${fmtMoney(Number(p.total), t.currency)}` : ''}
+                {/* Its own money, never the statement's: a TRY 120 is not $120 (ADR 0020). */}
+                {p.total != null
+                  ? p.currency
+                    ? ` · ${fmtMoney(Number(p.total), p.currency)}`
+                    : ` · ${p.total}, in a money this paper does not name`
+                  : ''}
               </span>
               <span style={{ flex: '0 1 60%', textAlign: 'right' }}>On file, not on this statement</span>
             </li>

@@ -44,7 +44,8 @@ export interface TieOutRow {
 export interface TieOut {
   rows: TieOutRow[];
   /** Papers from this vendor dated inside the statement's span that it does not list. */
-  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; kind: "invoice" | "credit" }[];
+  /** Each paper keeps its OWN money: its total is never printed in the statement's. */
+  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; currency: string | null; kind: "invoice" | "credit" }[];
   paymentsIgnored: number;
 }
 
@@ -154,7 +155,7 @@ export function tieOutStatement(
           })
           .map((p) => {
             const t = toCents(p.total);
-            return { id: p.id, docNumber: p.doc_number, docDate: p.doc_date, total: t === null ? null : centsText(t), kind: p.doc_type === "credit_memo" ? ("credit" as const) : ("invoice" as const) };
+            return { id: p.id, docNumber: p.doc_number, docDate: p.doc_date, total: t === null ? null : centsText(t), currency: (p.currency ?? "").trim().toUpperCase() || null, kind: p.doc_type === "credit_memo" ? ("credit" as const) : ("invoice" as const) };
           })
       : [];
   return { rows, notOnStatement, paymentsIgnored };

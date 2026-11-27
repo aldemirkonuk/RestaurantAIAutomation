@@ -66,7 +66,7 @@ describe("GET /procurement/documents/:id/statement-tieout (r109 g5)", () => {
     ]);
     expect(out.paymentsIgnored).toBe(1);
     // 103 sits inside the span (2 to 8 Nov) and the statement does not list it by its number.
-    expect(out.notOnStatement).toEqual([{ id: "d103", docNumber: "103", docDate: "2026-11-07", total: "312.40", kind: "invoice" }]);
+    expect(out.notOnStatement).toEqual([{ id: "d103", docNumber: "103", docDate: "2026-11-07", total: "312.40", currency: "USD", kind: "invoice" }]);
   });
 
   it("a credit row matches a credit memo, never an invoice of the same number; unchecked says so", async () => {
@@ -165,5 +165,24 @@ describe("statement-tieout pure parts", () => {
       { vendorNamed: true, currency: null },
     );
     expect(out.rows[0]).toMatchObject({ verdict: "not_compared", reason: "the statement's money is not known" });
+  });
+});
+
+describe("papers off the statement keep their own money (r109 invoices walk, ADR 0020)", () => {
+  it("a TRY paper on a USD statement is carried as TRY, never as dollars", async () => {
+    const c = controllerWith({
+      procurement_documents: [
+        statement([{ docNumber: "101", docDate: "2026-11-02", amount: 10, kind: "invoice" }, { docNumber: "104", docDate: "2026-11-09", amount: 10, kind: "invoice" }]),
+        paper({ id: "r102", doc_number: "R102-1", total: "120.00", currency: "TRY", doc_date: "2026-11-05" }),
+        paper({ id: "u103", doc_number: "103", total: "55.00", doc_date: "2026-11-06" }),
+        paper({ id: "n104", doc_number: "R104", total: "9.00", currency: null, doc_date: "2026-11-07" }),
+      ],
+    });
+    const out: any = await c.statementTieout("st1", owner);
+    expect(out.notOnStatement.map((r: any) => [r.id, r.total, r.currency])).toEqual([
+      ["r102", "120.00", "TRY"],
+      ["u103", "55.00", "USD"],
+      ["n104", "9.00", null],
+    ]);
   });
 });

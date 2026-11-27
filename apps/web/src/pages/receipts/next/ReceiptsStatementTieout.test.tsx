@@ -82,7 +82,11 @@ const TIE = {
     row({ docNumber: '77', kind: 'credit', amount: '40.00', verdict: 'on_file_not_checked', paperId: 'cm77' }),
     row({ docNumber: '9', verdict: 'not_compared', reason: 'the paper is in TRY and the statement in USD' }),
   ],
-  notOnStatement: [{ id: 'd103', docNumber: '103', docDate: '2026-11-07', total: '312.40', kind: 'invoice' }],
+  notOnStatement: [
+    { id: 'd103', docNumber: '103', docDate: '2026-11-07', total: '312.40', currency: 'USD', kind: 'invoice' },
+    { id: 'r102', docNumber: 'R102-1', docDate: '2026-11-26', total: '120.00', currency: 'TRY', kind: 'invoice' },
+    { id: 'x1', docNumber: 'X-1', docDate: '2026-11-27', total: '7.00', currency: null, kind: 'invoice' },
+  ],
 };
 
 beforeEach(() => {
@@ -109,6 +113,19 @@ describe('the check card, a statement against your papers', () => {
     expect(items[4].textContent).toMatch(/Not compared: the paper is in TRY and the statement in USD/);
     expect(screen.getByLabelText('On file, not on this statement').textContent).toMatch(/Invoice 103/);
     expect(screen.getByText(/One payment on the statement is not\s+read here, and nothing is marked paid/)).toBeTruthy();
+  });
+
+  it('prints a paper off the statement in its own money, never the statement\'s', async () => {
+    api.tie.mockResolvedValue(TIE);
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const off = Array.from((await screen.findByLabelText('On file, not on this statement')).querySelectorAll('li'));
+    expect(off[0].textContent).toMatch(/\$312\.40/);
+    expect(off[1].textContent).toMatch(/R102-1/);
+    expect(off[1].textContent).not.toMatch(/\$/);
+    expect(off[1].textContent).toMatch(/(₺|TRY).*120\.00/);
+    expect(off[2].textContent).toMatch(/7\.00, in a money this paper does not name/);
+    expect(off[2].textContent).not.toMatch(/\$/);
   });
 
   it('while it reads it holds one 44px row', async () => {
