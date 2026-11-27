@@ -107,6 +107,25 @@ describe('the rise plays once and rests', () => {
   });
 });
 
+describe('switching the drawing in place', () => {
+  it('[REVERT-FAILS] Area -> Bars on one mounted plot rises once, because till:bars has not risen', () => {
+    const ui = (key: string, kind: 'area' | 'bars') => (
+      <DrawKey.Provider value={key}><CatPlot series={series(5)} kind={kind} /></DrawKey.Provider>
+    );
+    const { container, rerender } = render(ui('till:area', 'area'));
+    act(() => seen[0]([{ isIntersecting: true }]));
+    act(() => void vi.advanceTimersByTime(RISE_MS));
+    expect(plot(container).dataset.draw).toBe('settled');
+    rerender(ui('till:bars', 'bars'));
+    expect(plot(container).dataset.draw).toBe('pending');
+    act(() => seen[seen.length - 1]([{ isIntersecting: true }]));
+    expect(plot(container).dataset.draw).toBe('drawn');
+    // Back to a drawing that has risen: rests, no replay.
+    rerender(ui('till:area', 'area'));
+    expect(plot(container).dataset.draw).toBe('settled');
+  });
+});
+
 describe('one sweep for any count', () => {
   it('[REVERT-FAILS] each bar carries the count, and the sweep plus one rise is the budget', () => {
     const { container } = render(<CatPlot series={series(30)} kind="bars" />);
