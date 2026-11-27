@@ -17,14 +17,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AuthContext } from '../../../contexts/AuthContext';
 import { inventoryListQuery } from '../../../hooks/queries/useInventoryQueries';
 import { useMudavymDesignVerdict } from '../../../lib/mudavym/useMudavymDesign';
-import { Suspense, lazy } from 'react';
+import { Suspense } from 'react';
+import { lazyWithRefresh } from '../../../lib/lazyWithRefresh';
 import InventoryNext from './InventoryNext';
+import { LoadBoundary, PAGE_LOAD_FAILED } from './LazyPanels';
 
 // The command page is the OFF / failed-read side. It is its own file, so a
 // house on InventoryNext does not download it, nor the panels only it draws
 // (r104 g1: a static import here kept both pages and every shared panel in
 // the one route file).
-const InventoryCommandPage = lazy(() =>
+const InventoryCommandPage = lazyWithRefresh(() =>
   import('../command/InventoryCommandPage').then((m) => ({ default: m.InventoryCommandPage })),
 );
 
@@ -56,9 +58,11 @@ export function InventoryRoute() {
   return verdict ? (
     <InventoryNext />
   ) : (
-    <Suspense fallback={<Reading />}>
-      <InventoryCommandPage />
-    </Suspense>
+    <LoadBoundary onFail={PAGE_LOAD_FAILED}>
+      <Suspense fallback={<Reading />}>
+        <InventoryCommandPage />
+      </Suspense>
+    </LoadBoundary>
   );
 }
 
