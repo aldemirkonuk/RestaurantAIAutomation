@@ -19,6 +19,13 @@ export interface WineExtractItem {
   raw_text?: string
 }
 
+/** One printed size of a menu line (r109 menu-g3): its label, volume when printed, and price. */
+export interface PrintedSize {
+  label: string
+  ml: number | null
+  price: number
+}
+
 export interface MenuImportReviewItem {
   menuItemId: string
   submissionId: string | null
@@ -30,6 +37,8 @@ export interface MenuImportReviewItem {
   grapeVariety: string | null
   byGlassPrice: number | null
   bottlePrice: number | null
+  /** Every size the line prints, as printed (r109 menu-g3); shown, never carried. */
+  printedSizes?: PrintedSize[] | null
   rawText: string | null
   matched: boolean
   needsReview: boolean
@@ -403,6 +412,8 @@ export interface MenuLine {
    * (r108 menu-g10). Never inferred; none is never "free of".
    */
   printed_marks?: string[] | null
+  /** Every size the line prints, as printed (r109 menu-g3); never a house price. Absent from an older gateway. */
+  printed_sizes?: PrintedSize[] | null
   created_at: string
   /**
    * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every

@@ -934,3 +934,32 @@ describe('MenuNext — a line shows what the menu prints beside it (r108 menu-g1
     expect(css).toMatch(/\.mdv-line-desc\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
   });
 });
+
+describe('MenuNext — a current line lists every size it prints (r110 menu-r110-5, r109 g3 web)', () => {
+  const SIZES = [
+    { label: '20 cl', ml: 200, price: 450 },
+    { label: '35 cl', ml: 350, price: 700 },
+  ];
+  it('each size with its label and price as printed, beside the glass and bottle the menu sets', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Yeni Rakı', by_glass_price: 450, bottle_price: 1200, printed_sizes: SIZES })] }));
+    mount();
+    const sizes = await screen.findByTestId('menu-line-sizes');
+    expect(sizes.getAttribute('aria-label')).toMatch(/^Sizes as printed on the menu: 20 cl .*450.*, 35 cl .*700/);
+    expect(sizes).toHaveTextContent(/Raise prices and the downloaded sheet leave these sizes as they are/);
+    expect(sizes.closest('[data-testid="menu-row"]')).not.toBeNull();
+  });
+
+  it('one size, or none, is no list of sizes', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ printed_sizes: [SIZES[0]] }), line({ id: 'l2', name: 'Çay', printed_sizes: null })] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-line-sizes')).toBeNull();
+  });
+
+  it('the sizes line holds still: menu-rows.css gives it no motion', () => {
+    const css = readFileSync(`${__dirname}/menu-rows.css`, 'utf8');
+    const block = css.match(/\.mdv-line-sizes\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(block).toMatch(/flex-wrap:\s*wrap/);
+    expect(block).not.toMatch(/animation|transition/);
+  });
+});

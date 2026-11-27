@@ -12,6 +12,7 @@ import {
 } from '../../services/api/menus'
 import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
+import { PrintedSizes } from '../../pages/menu/next/PrintedSizes'
 import { useHouseCurrencyCode } from '../../hooks/queries/useHouseCurrencyCode'
 
 interface MenuReviewScreenProps {
@@ -192,6 +193,11 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
         placeholder="Region"
         onSave={(v) => updateField(item.menuItemId, 'region', v)}
       />
+      {item.printedSizes && item.printedSizes.length > 1 ? (
+        <div className="col-span-4 text-xs text-gray-600">
+          <PrintedSizes sizes={item.printedSizes} currency={currency} />
+        </div>
+      ) : null}
     </div>
   )
 
