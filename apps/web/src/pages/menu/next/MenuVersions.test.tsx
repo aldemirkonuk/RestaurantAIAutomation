@@ -813,3 +813,12 @@ describe('the read box: a drop zone, with the optional fields behind "Add detail
     expect(document.getElementById('menu-read-details')?.getAttribute('data-open')).toBe('true');
   });
 });
+
+describe('readWarningSentence — an ambiguous price', () => {
+  it('says which line kind was refused and how to write it, not the generic sentence', async () => {
+    const { readWarningSentence } = await import('../../../services/api/menus');
+    const said = readWarningSentence({ kind: 'ambiguous_price', pages: null });
+    expect(said).toContain('1,250');
+    expect(said).not.toContain('Part of this file may not have been read');
+  });
+});

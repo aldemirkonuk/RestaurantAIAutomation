@@ -611,11 +611,11 @@ export class MenusService {
     let sourceMime: { mime: string; ext: string } | null = null;
     if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        items = await this.csvParser.parseExcel(dto.data.fileBase64);
+        items = await this.csvParser.parseExcel(dto.data.fileBase64, warnings);
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        items = this.csvParser.parse(dto.data.csvContent!);
+        items = this.csvParser.parse(dto.data.csvContent!, warnings);
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }

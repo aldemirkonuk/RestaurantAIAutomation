@@ -460,6 +460,34 @@ describe('MenuNext — the menu as a sheet (menu r104 g3)', () => {
     click.mockRestore();
   });
 
+  it('saves the sheet with a byte-order mark, so Excel opens it as UTF-8', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    vi.mocked(getMenuSheet).mockResolvedValue('name\r\nKavaklıdere\r\n');
+    let made: Blob | null = null;
+    Object.assign(URL, { createObjectURL: (b: Blob) => ((made = b), 'blob:x'), revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Download this menu as a sheet' }));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    const bytes = await new Promise<Uint8Array>((res) => {
+      const fr = new FileReader();
+      fr.onload = () => res(new Uint8Array(fr.result as ArrayBuffer));
+      fr.readAsArrayBuffer(made as unknown as Blob);
+    });
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    click.mockRestore();
+  });
+
+  it('says the gateway\'s sentence when its JSON error body arrives as text (the sheet is fetched as text)', async () => {
+    mockGetMenu.mockResolvedValue(menu());
+    vi.mocked(getMenuSheet).mockRejectedValue({
+      response: { status: 403, data: JSON.stringify({ statusCode: 403, message: 'Only an owner or a manager can download the menu as a sheet.' }) },
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Download this menu as a sheet' }));
+    expect(await screen.findByTestId('menu-export-error')).toHaveTextContent('Only an owner or a manager can download the menu as a sheet.');
+  });
+
   it('offers staff neither the sheet nor the sample', async () => {
     role = 'staff';
     mockGetMenu.mockResolvedValue(menu());
