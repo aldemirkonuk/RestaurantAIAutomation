@@ -1,5 +1,5 @@
 /**
- * The recipe sheet's reads.
+ * The recipe sheet's reads and its one write.
  *
  * Keys are tenant-first, as `useCellarNextData.ts` keys the cellar's own reads
  * (`['cellar', 'register', activeRestaurantId, …]`), so a house switch never
@@ -7,10 +7,14 @@
  *   ['recipes', activeRestaurantId, cocktailId]              the drink's recipe
  *   ['recipes', activeRestaurantId, cocktailId, 'versions']  its saved versions
  *   ['recipes', 'shelf', activeRestaurantId, search]         the shelf picker
+ *
+ * A save invalidates `['recipes', rid, cid]`, which also covers the versions
+ * key under it, so the sheet re-reads the saved lines and their costs at once
+ * (gap G8) instead of waiting for a page reload.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { recipesApi } from '../../../../services/api/recipes';
+import { recipesApi, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { settingsApi } from '../../../../services/api/settings';
 import { managesHouse } from '../../../communications/next/cm-format';
 import { fmtMoney } from '../../../receipts/next/rc2-format';
@@ -65,6 +69,15 @@ export function useShelf(search: string, enabled: boolean) {
     staleTime: 30_000,
   });
   return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
+}
+
+export function useSaveRecipe(cocktailId: string) {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveRecipeBody) => recipesApi.save(activeRestaurantId as string, cocktailId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) }),
+  });
 }
 
 /**
