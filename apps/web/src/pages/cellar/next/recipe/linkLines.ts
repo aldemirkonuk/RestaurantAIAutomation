@@ -42,11 +42,11 @@ export function linkBody(drink: LooseDrink, indices: number[], inventoryId: stri
 export type LinkOutcome = { cocktailId: string; name: string; ok: boolean; said: string };
 
 /** One drink's save, said in a sentence: saved, someone saved first (409), or the gateway's own refusal. */
-export function linkOutcome(drink: LooseDrink, error: unknown, done = 'linked'): LinkOutcome {
+export function linkOutcome(drink: LooseDrink, error: unknown, done = 'linked', act = 'link this line'): LinkOutcome {
   const base = { cocktailId: drink.cocktailId, name: drink.name };
   if (error === null) return { ...base, ok: true, said: `${drink.name}: saved, ${done}.` };
   const status = getErrorStatus(error);
-  if (status === 409) return { ...base, ok: false, said: `Someone saved ${drink.name} first; open it to link this line.` };
+  if (status === 409) return { ...base, ok: false, said: `Someone saved ${drink.name} first; open it to ${act}.` };
   const m = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
   const theirs = typeof m === 'string' && m.trim() ? m.trim() : Array.isArray(m) ? m.join(' ') : null;
   if (theirs) return { ...base, ok: false, said: `${drink.name}: not saved. ${theirs}` };
@@ -61,14 +61,15 @@ export async function saveEach(
   restaurantId: string,
   jobs: Array<{ drink: LooseDrink; body: SaveRecipeBody }>,
   done?: string,
+  act?: string,
 ): Promise<LinkOutcome[]> {
   const out: LinkOutcome[] = [];
   for (const { drink, body } of jobs) {
     try {
       await recipesApi.save(restaurantId, drink.cocktailId, body);
-      out.push(linkOutcome(drink, null, done));
+      out.push(linkOutcome(drink, null, done, act));
     } catch (e) {
-      out.push(linkOutcome(drink, e, done));
+      out.push(linkOutcome(drink, e, done, act));
     }
   }
   return out;
