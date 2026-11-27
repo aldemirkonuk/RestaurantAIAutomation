@@ -346,6 +346,12 @@ export default function HouseContents() {
                         setListOpen(false)
                       }
                     }}
+                    // The failure note has no controls, so leaving the box closes it: a phone
+                    // keyboard has no Escape. The rows are buttons and must survive the blur
+                    // their own press causes, so only the note closes here.
+                    onBlur={() => {
+                      if (matchFailed) setListOpen(false)
+                    }}
                     placeholder="Their name"
                     className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                   />
@@ -356,7 +362,7 @@ export default function HouseContents() {
                   <p
                     role="status"
                     data-testid="house-vendor-match-failed"
-                    className="absolute left-0 right-0 top-full z-10 flex min-h-11 items-center border border-[#211f1b]/15 bg-white px-3 py-2 text-base text-[#6d685f] shadow-sm"
+                    className="pointer-events-none absolute left-0 right-0 top-full z-10 flex min-h-11 items-center border border-[#211f1b]/15 bg-white px-3 py-2 text-base text-[#6d685f] shadow-sm"
                   >
                     We could not check the catalogue. Type it as your own.
                   </p>

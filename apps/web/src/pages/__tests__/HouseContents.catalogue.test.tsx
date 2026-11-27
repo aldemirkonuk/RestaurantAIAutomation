@@ -113,6 +113,23 @@ describe('HouseContents vendor catalogue', () => {
     expect(screen.getByRole('button', { name: 'Add this vendor' })).toBeTruthy()
   })
 
+  it('the failure note never takes a tap from the field beneath it, and closes when the vendor box loses focus', async () => {
+    matchVendorCatalogue.mockResolvedValue(null)
+    await typeName('Suvla')
+    const note = screen.getByTestId('house-vendor-match-failed')
+    // It overlays the email label; a tap there must reach the email input, and a phone has no Escape.
+    expect(note.className).toContain('pointer-events-none')
+    fireEvent.blur(screen.getByLabelText('Vendor'))
+    expect(screen.queryByTestId('house-vendor-match-failed')).toBeNull()
+  })
+
+  it('a blur does not close the list of rows: pressing a row blurs the box first', async () => {
+    matchVendorCatalogue.mockResolvedValue([row('c1', 'Suvla Meze', 'Izmir', null)])
+    await typeName('Suv')
+    fireEvent.blur(screen.getByLabelText('Vendor'))
+    expect(screen.getByRole('listbox')).toBeTruthy()
+  })
+
   it('a match that answered with no rows says nothing about a failure', async () => {
     matchVendorCatalogue.mockResolvedValue([])
     await typeName('Suvla')
