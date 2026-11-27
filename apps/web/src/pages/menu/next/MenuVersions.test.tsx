@@ -389,6 +389,62 @@ describe('MenuVersions', () => {
     }
   });
 
+  // r108 menu-2 (DD-r108-59): the way back outlives the 4 s sentence and a reload.
+  it('keeps a "Taken off the list (n)" fold with Put back, which puts the read back on the list', async () => {
+    const off = version({ menuId: 'm-off', status: 'archived', readState: 'failed', retiredAt: local(2026, 11, 20, 9, 0), retiredBy: { userId: 'u1', name: 'Ada' } });
+    mockList.mockResolvedValueOnce({ versions: [], takenOff: [off], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockList.mockResolvedValue({ versions: [version({ menuId: 'm-off', readState: 'failed' })], takenOff: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRestore.mockResolvedValue({ menuId: 'm-off', restored: true });
+    mount(true);
+    const fold = await screen.findByTestId('menu-taken-off');
+    expect(within(fold).getByText('Taken off the list (1)')).toBeInTheDocument();
+    expect(within(fold).getByTestId('menu-taken-off-row')).toHaveTextContent(/taken off 2026-11-20 by Ada/);
+    fireEvent.click(within(fold).getByTestId('menu-taken-off-restore'));
+    await waitFor(() => expect(mockRestore).toHaveBeenCalledWith('m-off'));
+    expect(await screen.findByTestId('menu-taken-off-said')).toHaveTextContent(/^Back on the list: /);
+    expect(await screen.findByTestId('menu-version-row')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-taken-off')).not.toBeInTheDocument();
+  });
+
+  it('the fold has no timer: it is still there long after the 4 s sentence', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const off = version({ menuId: 'm-off', status: 'archived', readState: 'failed', retiredAt: local(2026, 11, 20, 9, 0) });
+      mockList.mockResolvedValue({ versions: [], takenOff: [off], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mount(true);
+      await screen.findByTestId('menu-taken-off');
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByTestId('menu-taken-off-restore')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says the gateway\'s words when the fold cannot put a read back, and the row stays', async () => {
+    const off = version({ menuId: 'm-off', status: 'archived', readState: 'failed', retiredAt: local(2026, 11, 20, 9, 0) });
+    mockList.mockResolvedValue({ versions: [], takenOff: [off], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRestore.mockRejectedValue({ response: { status: 409, data: { message: 'This read is no longer off the list, so nothing was put back. Nothing was changed.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-taken-off-restore'));
+    expect(await screen.findByTestId('menu-taken-off-said')).toHaveTextContent(/no longer off the list/);
+    expect(screen.getByTestId('menu-taken-off-row')).toBeInTheDocument();
+  });
+
+  it('shows staff no fold, and an older gateway that sends no list shows none', async () => {
+    const off = version({ menuId: 'm-off', status: 'archived', readState: 'failed' });
+    mockList.mockResolvedValue({ versions: [version()], takenOff: [off], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    const a = mount(false);
+    await screen.findByTestId('menu-version-row');
+    expect(screen.queryByTestId('menu-taken-off')).not.toBeInTheDocument();
+    a.unmount();
+    mockList.mockResolvedValue({ versions: [version()], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mount(true);
+    await screen.findByTestId('menu-version-row');
+    expect(screen.queryByTestId('menu-taken-off')).not.toBeInTheDocument();
+  });
+
   it('offers staff no way back: it is an owner\'s or a manager\'s', async () => {
     const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
     mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);

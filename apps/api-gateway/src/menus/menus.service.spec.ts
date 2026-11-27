@@ -3387,6 +3387,29 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     expect(tables.restaurant_menus).toHaveLength(5);
   });
 
+  it("lists what was taken off, with who and when, so the way back outlives the 4 s sentence (r108 menu-2)", async () => {
+    const tables = house();
+    tables.restaurant_menus.push(
+      { id: "m-off-old", restaurant_id: "rest-1", status: "archived", read_state: "failed", retired_at: "2026-11-01T09:00:00Z", retired_by: "user-1" },
+      { id: "m-off-other", restaurant_id: "rest-2", status: "archived", read_state: "failed", retired_at: "2026-11-02T09:00:00Z" },
+      // An archived failed read that WAS current once is a retired menu, not one taken off.
+      { id: "m-was-current", restaurant_id: "rest-1", status: "archived", read_state: "failed", made_current_at: "2026-10-01T00:00:00Z", retired_at: "2026-10-05T00:00:00Z" },
+    );
+    const service = makeService(tables);
+    expect((await service.listVersions("rest-1")).takenOff.map((v) => v.menuId)).toEqual(["m-off-old"]);
+    await service.removeFailedRead("rest-1", "m-failed", "user-1");
+    const after = await service.listVersions("rest-1");
+    expect(after.takenOff.map((v) => v.menuId)).toEqual(["m-failed", "m-off-old"]);
+    expect(after.takenOff[0]).toMatchObject({ retiredBy: { userId: "user-1", name: "Aylin" } });
+    expect(after.versions.map((v) => v.menuId)).not.toContain("m-failed");
+    expect(after.versions.map((v) => v.menuId)).toContain("m-was-current");
+    // Put back, it leaves the taken-off list and is on the kept list again.
+    await service.restoreFailedRead("rest-1", "m-failed");
+    const back = await service.listVersions("rest-1");
+    expect(back.takenOff.map((v) => v.menuId)).toEqual(["m-off-old"]);
+    expect(back.versions.map((v) => v.menuId)).toContain("m-failed");
+  });
+
   it("takes only a failed read: current, finished and still-reading menus answer 409 and are not touched", async () => {
     const tables = house();
     const service = makeService(tables);

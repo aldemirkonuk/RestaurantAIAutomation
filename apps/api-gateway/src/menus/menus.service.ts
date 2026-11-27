@@ -1987,6 +1987,11 @@ export class MenusService {
     timezoneReason: string | null;
     /** Whether the current menu is due for a newer read by its own cadence (menu r104 g1); null = nothing to say. */
     due: MenuDue | null;
+    /**
+     * Failed reads taken off the list, newest taken off first (r108 menu-2, DD-r108-59): the way back
+     * (`POST /menu-versions/:id/restore`) stays reachable after the 4 s sentence and after a reload.
+     */
+    takenOff: MenuVersion[];
   }> {
     await this.sweepStaleReads(restaurantId);
     const all: Array<Record<string, any>> = [];
@@ -2005,8 +2010,9 @@ export class MenusService {
     }
     // A failed read that was taken off the list is retired, not shown.
     const rows = all.filter((r) => !isRemovedFailedRead(r));
+    const off = all.filter((r) => isRemovedFailedRead(r));
     const { names, error: namesError } = await this.namesOf(
-      rows.flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by]),
+      [...rows, ...off].flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by]),
     );
     const live = await this.liveLineCounts(restaurantId, rows);
     const versions = rows
@@ -2026,6 +2032,9 @@ export class MenusService {
       namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
       ...zone,
       due: current ? menuDueState(current.cadence, current.madeCurrentAt, new Date(), zone.timezone) : null,
+      takenOff: off
+        .map((r) => this.toVersion(r, names))
+        .sort((a, b) => String(b.retiredAt ?? "").localeCompare(String(a.retiredAt ?? ""))),
     };
   }
 

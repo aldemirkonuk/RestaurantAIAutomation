@@ -528,6 +528,8 @@ export interface MenuVersions {
   timezoneReason?: string | null
   /** Whether the current menu is due for a newer read by its own cadence; null or absent = nothing to say. */
   due?: { state: 'ok' | 'due' | 'overdue'; cadence: 'weekly' | 'monthly' | 'quarterly' | 'yearly'; daysSince: number } | null
+  /** Failed reads taken off the list, newest taken off first: each can be put back. Absent on an older gateway. */
+  takenOff?: MenuVersion[]
 }
 
 /** A kind a price lock held, and the lock (ADR 0193 round 3). */

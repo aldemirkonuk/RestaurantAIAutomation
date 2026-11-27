@@ -1098,9 +1098,71 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
             </p>
             </>
           )}
+          {canManage ? <TakenOffFold off={q.data?.takenOff ?? []} zone={zone} onBack={refresh} /> : null}
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Failed reads taken off the list (r108 menu-2, DD-r108-59). The 4 s sentence's
+ * 'Put it back' is the quick way; this fold is the way that does not expire, and
+ * it is still there after a reload. No timer. A read put back leaves the fold at
+ * once and is on the list again: no row-leave animation (DD-r102-9, DD-r103-7),
+ * and a native <details> opens without motion (ADR 0112). Owner and manager only,
+ * like taking it off.
+ */
+function TakenOffFold({ off, zone, onBack }: { off: MenuVersion[]; zone: string | null; onBack: () => void }) {
+  const [said, setSaid] = useState<string | null>(null);
+  const [putting, setPutting] = useState<string | null>(null);
+  const putBack = async (v: MenuVersion) => {
+    setPutting(v.menuId);
+    try {
+      await restoreFailedRead(v.menuId);
+      setSaid(`Back on the list: ${versionLabel(v, false, zone)}.`);
+      onBack();
+    } catch (err) {
+      setSaid(reasonOf(err));
+    } finally {
+      setPutting(null);
+    }
+  };
+  return (
+    <>
+      {off.length > 0 ? (
+        <details style={{ marginTop: 12 }} data-testid="menu-taken-off">
+          <summary className="cl-note cl-focus" style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center' }}>
+            Taken off the list ({off.length})
+          </summary>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+            {off.map((v) => (
+              <li key={v.menuId} className="cl-said" data-testid="menu-taken-off-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <span>
+                  {versionLabel(v, false, zone)}: taken off {day(v.retiredAt, zone)}
+                  {v.retiredBy?.name ? ` by ${v.retiredBy.name}` : ''}. The file is kept.
+                </span>
+                <button
+                  type="button"
+                  className="cl-btn cl-focus"
+                  style={{ minHeight: 44 }}
+                  data-testid="menu-taken-off-restore"
+                  disabled={putting !== null}
+                  onClick={() => void putBack(v)}
+                >
+                  {putting === v.menuId ? 'Putting back…' : 'Put back'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {said ? (
+        <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-taken-off-said">
+          {said}
+        </p>
+      ) : null}
+    </>
   );
 }
 
