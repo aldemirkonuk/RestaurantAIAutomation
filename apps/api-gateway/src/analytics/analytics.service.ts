@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
-import { readByIds } from "../common/read-by-ids";
 import { readConsumptionRows } from "./consumption-read-shared";
+import { readInventoryWithLots, sharedLensRead } from "./lens-shared-reads";
 import * as E from "./engine";
 import {
   FirstRecord,
@@ -203,37 +203,10 @@ export class AnalyticsService {
    */
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    // Column names must match the live schema exactly. PostgREST rejects the
-    // WHOLE query with 42703 on a single unknown column. There is no
-    // wine_type/unit_price/unit_cost/reorder_point on this table: the menu
-    // price is `menu_price_current`, cost is `last_purchase_price`, the
-    // reorder trigger is `threshold_min`, and the varietal/type lives on
-    // master_wine_library.
-    const inventory = await readWholeWindow<any>("The house's inventory", () =>
-      client
-        .from("restaurant_inventory")
-        .select(
-          "id, wine_name, display_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type, name)",
-          { count: "exact" },
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-    );
-    const lots = await readByIds<any>(
-      "The house's lot totals",
-      inventory.map((i: any) => i.id),
-      (batch) =>
-        client
-          .from("inventory_lot_rollup")
-          .select(
-            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-            // can tell a WAC that covers every on-hand bottle from one that
-            // covers a single invoiced bottle in twenty-one.
-            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("inventory_id", batch),
-    );
+    // Whole or refused (ADR 0292), and read once per house across every lens
+    // (#2304, lens-shared-reads.ts): the memo holds the WHOLE read, never a
+    // first-1,000-rows page, and forgets a refusal at once.
+    const { inventory, lots } = await readInventoryWithLots(client, restaurantId);
     const rollup = new Map<string, any>();
     for (const r of lots) rollup.set(r.inventory_id, r);
 
@@ -280,9 +253,9 @@ export class AnalyticsService {
     // stopped at 1,000 rows, and an error became `[]`: a restaurant that
     // bought nothing all year, the exact shape ADR 0053 named for cost. A
     // refusal (`WholeReadError`, a 503) now propagates, as consumption does.
-    const data = await readWholeWindow<any>(
-      "The delivered purchase orders in this window",
-      () =>
+    // One shared whole read per (house, window): see lens-shared-reads.ts (#2304).
+    const data = await sharedLensRead(client, `procurement_orders|delivered|${restaurantId}|${sinceDays}`, () =>
+      readWholeWindow<any>("The delivered purchase orders in this window", () =>
         client
           .from("procurement_orders")
           .select(
@@ -292,6 +265,7 @@ export class AnalyticsService {
           .eq("restaurant_id", restaurantId)
           .in("status", ORDER_SPEND_STATUSES)
           .gte("delivered_at", since),
+      ),
     );
     return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",

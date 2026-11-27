@@ -12,8 +12,8 @@ import {
   shiftHouseDay,
 } from "../common/house-day";
 import { readWholeWindow } from "../common/read-whole-window";
-import { readByIds } from "../common/read-by-ids";
 import { readConsumptionRows } from "./consumption-read-shared";
+import { readInventoryWithLots, sharedLensRead } from "./lens-shared-reads";
 import * as E from "./engine";
 import {
   FirstRecord,
@@ -112,33 +112,8 @@ export class AdvancedAnalyticsService {
    */
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const inventory = await readWholeWindow<any>("The house's inventory", () =>
-      client
-        .from("restaurant_inventory")
-        // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query.
-        .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
-          { count: "exact" },
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-    );
-    const lots = await readByIds<any>(
-      "The house's lot totals",
-      inventory.map((i: any) => i.id),
-      (batch) =>
-        client
-          .from("inventory_lot_rollup")
-          .select(
-            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-            // can tell a WAC that covers every on-hand bottle from one that
-            // covers a single invoiced bottle in twenty-one.
-            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("inventory_id", batch),
-    );
+    // Whole or refused, and the same shared read as AnalyticsService.loadInventory (#2304).
+    const { inventory, lots } = await readInventoryWithLots(client, restaurantId);
     const rollup = new Map<string, any>();
     for (const r of lots) rollup.set(r.inventory_id, r);
     // Same fix as AnalyticsService.loadInventory: the third branch here was
@@ -261,15 +236,18 @@ export class AdvancedAnalyticsService {
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     const client = this.dbService.getClient();
-    return readWholeWindow<any>("The purchase orders in this window", () =>
-      client
-        .from("procurement_orders")
-        .select(
-          "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
-          { count: "exact" },
-        )
-        .eq("restaurant_id", restaurantId)
-        .or(`created_at.gte.${since},delivered_at.gte.${since}`),
+    // One shared whole read per (house, window): see lens-shared-reads.ts (#2304).
+    return sharedLensRead(client, `procurement_orders|advanced|${restaurantId}|${sinceDays}`, () =>
+      readWholeWindow<any>("The purchase orders in this window", () =>
+        client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .or(`created_at.gte.${since},delivered_at.gte.${since}`),
+      ),
     );
   }
 
