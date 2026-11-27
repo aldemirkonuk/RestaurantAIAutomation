@@ -67,30 +67,43 @@ export interface NutritionFormProps {
   data: ItemNutrition;
   startWithLookup: boolean;
   onDone: () => void;
+  /**
+   * A lookup already run for this good (the fill lane, r108 g14): a draft
+   * fills the form as the lookup button would, still unsaved until Save; a
+   * list of choices or none opens the lookup with what it said.
+   */
+  seed?: NutritionLookup;
+  /** Called with what was saved, before onDone. */
+  onSaved?: (fresh: ItemNutrition) => void;
+  /** What the second button says; "Cancel" by default. Null draws none (the lane has its own Skip). */
+  cancelLabel?: string | null;
 }
 
-export default function NutritionForm({ restaurantId, itemId, data, startWithLookup, onDone }: NutritionFormProps) {
+export default function NutritionForm({ restaurantId, itemId, data, startWithLookup, onDone, seed, onSaved, cancelLabel = 'Cancel' }: NutritionFormProps) {
   const qc = useQueryClient();
   const f = data.figures;
-  const [basis, setBasis] = useState<string>(f?.basis ?? data.suggestedBasis ?? '');
+  const seeded = seed?.kind === 'draft' ? seed.draft : null;
+  const [basis, setBasis] = useState<string>(seeded?.basis ?? f?.basis ?? data.suggestedBasis ?? '');
   const [vals, setVals] = useState<Record<Key, string>>(() => {
     const out = {} as Record<Key, string>;
-    for (const [k] of FIELDS) out[k] = f ? asText(f[k]) : '';
+    for (const [k] of FIELDS) out[k] = seeded ? asText(seeded.figures[k]) : f ? asText(f[k]) : '';
     // Energy worked out from ABV is worked out again on save, not kept as typed.
-    if (f?.energyFromAbv) out.energyKcal = '';
+    if (!seeded && f?.energyFromAbv) out.energyKcal = '';
     return out;
   });
-  const [source, setSource] = useState<{ source: NutritionSource; ref: string | null }>({
-    source: f?.source ?? 'pack_label',
-    ref: f?.sourceRef ?? null,
-  });
-  const [allergens, setAllergens] = useState<Record<Allergen, AllergenStatus>>(
-    () => Object.fromEntries(data.allergens.map((a) => [a.allergen, a.status])) as Record<Allergen, AllergenStatus>,
+  const [source, setSource] = useState<{ source: NutritionSource; ref: string | null }>(
+    seeded ? { source: seeded.source, ref: seeded.sourceRef } : { source: f?.source ?? 'pack_label', ref: f?.sourceRef ?? null },
   );
-  const [draft, setDraft] = useState<NutritionDraft | null>(null);
-  const [lookupOpen, setLookupOpen] = useState(startWithLookup);
+  const [allergens, setAllergens] = useState<Record<Allergen, AllergenStatus>>(() => {
+    const out = Object.fromEntries(data.allergens.map((a) => [a.allergen, a.status])) as Record<Allergen, AllergenStatus>;
+    // A lookup adds "contains" or "may contain" only; it never states one free.
+    for (const a of seeded?.allergens ?? []) out[a.allergen] = a.status;
+    return out;
+  });
+  const [draft, setDraft] = useState<NutritionDraft | null>(seeded);
+  const [lookupOpen, setLookupOpen] = useState(startWithLookup || (seed !== undefined && seed.kind !== 'draft'));
   const [by, setBy] = useState('');
-  const [found, setFound] = useState<NutritionLookup | null>(null);
+  const [found, setFound] = useState<NutritionLookup | null>(seed && seed.kind !== 'draft' ? seed : null);
   const [lookupSaid, setLookupSaid] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
 
@@ -120,6 +133,7 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
     mutationFn: (body: SaveItemNutritionBody) => saveItemNutrition(itemId, body, restaurantId ?? undefined),
     onSuccess: (fresh) => {
       qc.setQueryData(inventoryItemKeys.nutrition(restaurantId ?? '', itemId), fresh);
+      onSaved?.(fresh);
       onDone();
     },
     onError: (e) =>
@@ -315,9 +329,11 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
           <button type="submit" className="iv-btn iv-focus" data-seal="true" disabled={blocked !== null || save.isPending}>
             {save.isPending ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" className="iv-btn iv-focus" onClick={onDone}>
-            Cancel
-          </button>
+          {cancelLabel === null ? null : (
+            <button type="button" className="iv-btn iv-focus" onClick={onDone}>
+              {cancelLabel}
+            </button>
+          )}
         </p>
         {said ? (
           <p role="alert" className="iv-said iv-said-alarm">
