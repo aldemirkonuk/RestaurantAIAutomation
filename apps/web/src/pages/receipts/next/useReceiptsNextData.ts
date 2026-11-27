@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { receivingApi, type UnverifiedDelivery } from '../../../services/api/receiving';
@@ -113,6 +113,8 @@ export interface ReceiptsNextData {
   verifiedCapped: boolean;
   /** The search applied to the verified lane ('' = none). */
   verifiedTerm: string;
+  /** Why the verified read failed, in words; null when it did not. */
+  verifiedError: string | null;
   setVerifiedTerm: (term: string) => void;
   /** More, older verified papers exist that are not on the page yet. */
   verifiedHasOlder: boolean;
@@ -189,9 +191,6 @@ export function useReceiptsNextData(): ReceiptsNextData {
     busy: boolean;
     error: string | null;
   }>({ rows: [], lastLen: null, busy: false, error: null });
-  useEffect(() => {
-    setOlder({ rows: [], lastLen: null, busy: false, error: null });
-  }, [rid, verifiedTerm]);
   const verifiedQ = useQuery<ProcurementDocument[]>({
     queryKey: ['receipts-next', 'verified', rid, verifiedTerm || null],
     queryFn: () =>
@@ -202,7 +201,16 @@ export function useReceiptsNextData(): ReceiptsNextData {
       }),
     enabled,
     staleTime: 60_000,
+    // A new term changes the key. Without this the answer vanished while the
+    // search read, and the whole lane, search form included, unmounted with it.
+    placeholderData: keepPreviousData,
   });
+  // The Older pages belong to the first window they were read against: a new
+  // house, a new term, or a refetch of that window (a verification invalidates
+  // it) starts them over, so a paper that moved cannot drop out between pages.
+  useEffect(() => {
+    setOlder({ rows: [], lastLen: null, busy: false, error: null });
+  }, [rid, verifiedTerm, verifiedQ.dataUpdatedAt]);
   const cleanQ = useQuery<ProcurementDocument[]>({
     queryKey: ['receipts-next', 'clean', rid],
     queryFn: () =>
@@ -302,6 +310,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedCount: verifiedQ.data === undefined ? null : verified.length,
     verifiedCapped: verifiedHasOlder,
     verifiedTerm,
+    verifiedError: verifiedQ.isError ? msg(verifiedQ.error) : null,
     setVerifiedTerm,
     verifiedHasOlder,
     loadOlderVerified,

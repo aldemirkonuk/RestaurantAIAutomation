@@ -943,6 +943,24 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       procurement_document_lines: none,
     });
     await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z");
+    expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T00:00:00Z"]]);
+  });
+
+  it("passes the cursor's microseconds through, so no row between the cut and the stored time is lost", async () => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: none,
+      procurement_document_lines: none,
+    });
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T10:00:00.123456+00:00");
+    expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T10:00:00.123456+00:00"]]);
+  });
+
+  it("normalises a cursor that is a date but not an ISO time", async () => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: none,
+      procurement_document_lines: none,
+    });
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01");
     expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T00:00:00.000Z"]]);
   });
 
