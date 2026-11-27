@@ -29,7 +29,8 @@
  *     and Right keys, lay the neighbouring cutting flat in sheet order; "3 of
  *     9" says where. Each cutting owns its `?flat=`, so a step is a replace of
  *     that one param (`Cutting.tsx`), and the dialog it lands on is a new one.
- *     Nothing animates (MOTIONS.md: a subject change is not animated).
+ *     A step does not replay the arrival (`data-stepped`; MOTIONS.md: a
+ *     subject change is not animated).
  *  6. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
@@ -123,6 +124,10 @@ export default function CuttingFlat({
   initialFocus,
 }: CuttingFlatProps) {
   const [picked, setGraph] = useState<GraphType>(initialGraph);
+  // Whether this dialog arrived by a step, latched at mount. The page's window, compare and grain setters
+  // replace the entry without the step marker, so reading it live would flip the flag on an open dialog
+  // and start the arrival animation mid-read (MOTIONS.md; ADR 0112).
+  const [stepped] = useState(() => !!initialFocus);
   // A drawing the data turned out not to carry (the list shrinks when the read lands) is not held on to.
   const graph: GraphType = graphs.length === 0 || graphs.includes(picked) ? picked : graphs[0];
   const [comboPick, setComboPick] = useState<Partial<ComboPick> | undefined>(initialComboPick);
@@ -227,6 +232,9 @@ export default function CuttingFlat({
       ref={rootRef}
       className="mudavym rp-page rp-flat"
       data-ground={ground ?? undefined}
+      // Landed by a step: the arrival (`rp-flat-in`) is for opening full
+      // screen, not for a subject change inside it (MOTIONS.md).
+      data-stepped={stepped ? 'true' : undefined}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

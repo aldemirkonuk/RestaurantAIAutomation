@@ -56,6 +56,11 @@
      layer mounts, so a step inside it never replays it. Exit is instant. */
   animation: rp-flat-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+/* A step lays the next cutting flat as a new dialog: it does not replay the
+   arrival (MOTIONS.md: a subject change inside full screen is not animated). */
+.rp-flat[data-stepped='true'] {
+  animation: none;
+}
 @keyframes rp-flat-in {
   from {
     opacity: 0;
