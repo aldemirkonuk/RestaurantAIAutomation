@@ -868,4 +868,77 @@ describe("ADR 0020 — a pairing check that could not read or save says so", () 
     expect(result.suggested[0].documentLineId).toBe("dl-1");
     expect(result.suggested[0].reason).toMatch(/could not be saved/i);
   });
+
+  describe("the link writes run in bounded groups", () => {
+    const N = 20;
+    const lines = Array.from({ length: N }, (_, i) => ({
+      ...docLine,
+      id: `dl-${i}`,
+      vendor_sku: `SKU-${i}`,
+      description: `Wine number ${i}`,
+    }));
+    const orderLines = Array.from({ length: N }, (_, i) => ({
+      ...orderLine,
+      id: `ol-${i}`,
+      vendor_sku: `SKU-${i}`,
+      wine_name: `Wine number ${i}`,
+    }));
+
+    function slowDb(failId?: string) {
+      const flight = { now: 0, max: 0 };
+      const db = makeDb(((call: DbCall) => {
+        if (call.table === LINES_TABLE && call.verb === "select")
+          return { data: lines, error: null };
+        if (call.table === "procurement_document_links")
+          return { data: [{ order_id: "ord-1" }], error: null };
+        if (call.table === ORDER_ITEMS_TABLE)
+          return { data: orderLines, error: null };
+        if (call.table === LINES_TABLE && call.verb === "update") {
+          flight.now += 1;
+          flight.max = Math.max(flight.max, flight.now);
+          const id = call.filters.find(([, c]) => c === "id")?.[2];
+          return new Promise((r) =>
+            setImmediate(() => {
+              flight.now -= 1;
+              r({
+                data: null,
+                error: id === failId ? { message: "write refused" } : null,
+              });
+            }),
+          );
+        }
+        return { data: null, error: null };
+      }) as any);
+      return { db, flight };
+    }
+
+    it("keeps several writes in flight, never more than a group", async () => {
+      const { db, flight } = slowDb();
+      const service = await buildService(db, noExtractor);
+      const result = await service.matchDocumentLines("doc-1", "rest-1");
+      expect(result.applied).toHaveLength(N);
+      expect(flight.max).toBeGreaterThan(1);
+      expect(flight.max).toBeLessThanOrEqual(8);
+    });
+
+    it("returns the saved list in the matcher's order and names each failure", async () => {
+      const { db } = slowDb("dl-3");
+      const service = await buildService(db, noExtractor);
+      const result = await service.matchDocumentLines("doc-1", "rest-1");
+      const ids = result.applied.map((m) => m.documentLineId);
+      expect(ids).toHaveLength(N - 1);
+      expect(ids).not.toContain("dl-3");
+      // The writes were issued in the matcher's order, so the saved list
+      // must read the same way, minus the one that failed.
+      const issued = db.calls
+        .filter((c) => c.table === LINES_TABLE && c.verb === "update")
+        .map((c) => c.filters.find(([, col]) => col === "id")?.[2]);
+      expect(ids).toEqual(issued.filter((id) => id !== "dl-3"));
+      const failed = result.suggested.filter(
+        (m) => m.documentLineId === "dl-3",
+      );
+      expect(failed).toHaveLength(1);
+      expect(failed[0].reason).toMatch(/could not be saved/i);
+    });
+  });
 });
