@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { MapPin, PenLine } from 'lucide-react'
 import { AuthSpread } from '../components/brand/AuthSpread'
 import { PlacesAutocomplete, warmPlaces, type PlaceResult } from '../components/ui/PlacesAutocomplete'
@@ -7,10 +7,11 @@ import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
+import { DeskHouseMismatch, PhoneHandoff } from '../components/onboarding/PhoneHandoff'
 import { useAuth, type User } from '../contexts/AuthContext'
 import { HouseBusyNotice } from '../components/HouseBusyNotice'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
-import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
+import { apiClient, getActiveRestaurantId, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { CURRENCY_CODES, currencyForCountry, currencyLabel, currencyToRecord } from '../lib/currency'
 import { settingsApi } from '../services/api/settings'
@@ -180,7 +181,12 @@ const MENU_STEP_MIN_HEIGHT_PX = 378
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user, loading, meBusy, createFirstHouse, signInWithSession, logout } = useAuth()
+  const { user, loading, meBusy, createFirstHouse, signInWithSession, logout, availableRestaurants } = useAuth()
+  // A phone opened from the computer's QR (DD-r108-56). The house in the
+  // address is only what the computer asked for; the phone's session decides.
+  const [searchParams] = useSearchParams()
+  const deskHouse = searchParams.get('from') === 'desk' ? searchParams.get('house') : null
+  const [otherHouse, setOtherHouse] = useState(false)
   // No step shows until the entry rule decides, so Welcome never flashes.
   const [step, setStep] = useState<Step>('restaurant')
   const [entered, setEntered] = useState(false)
@@ -289,15 +295,25 @@ export default function GetStarted() {
     if (loading || entryDecided.current) return
     entryDecided.current = true
     const entry = entryFor(user)
-    if (entry === 'sign-in') navigate(SIGN_IN_THEN_GET_STARTED, { replace: true })
+    if (entry === 'sign-in')
+      navigate(
+        deskHouse
+          ? `/login?redirect=${encodeURIComponent(`/get-started?from=desk&house=${encodeURIComponent(deskHouse)}`)}`
+          : SIGN_IN_THEN_GET_STARTED,
+        { replace: true },
+      )
     else if (entry === 'verify') navigate('/verify-email', { replace: true })
-    else if (entry === 'desk') navigate('/', { replace: true })
+    else if (deskHouse && deskHouse !== user?.restaurantId) {
+      // Never read for a house the phone is not in: ChooseHouse checks.
+      setOtherHouse(true)
+      setEntered(true)
+    } else if (entry === 'desk') navigate('/', { replace: true })
     else if (entry === 'house-menu') navigate('/menu', { replace: true })
     else {
       if (entry === 'menu') setStep('menu')
       setEntered(true)
     }
-  }, [loading, navigate, user])
+  }, [loading, navigate, user, deskHouse])
 
   // Read once per entry to the menu step, only when this visit did not open
   // the house (and so holds no country). A read that fails leaves the boxes
@@ -562,10 +578,34 @@ export default function GetStarted() {
       if (out) navigate('/login', { replace: true })
     })
 
+  // The phone's own sign-out for a QR visit keeps the house it was asked for.
+  const signOutToDesk = () =>
+    void logout().then((out) => {
+      if (out && deskHouse) {
+        navigate(
+          `/login?redirect=${encodeURIComponent(`/get-started?from=desk&house=${encodeURIComponent(deskHouse)}`)}`,
+          { replace: true },
+        )
+      }
+    })
+
   if (!entered) {
     return (
       <ArrivalShell step={null}>
         {loading && meBusy ? <HouseBusyNotice busy={meBusy} /> : null}
+      </ArrivalShell>
+    )
+  }
+
+  if (otherHouse && deskHouse) {
+    return (
+      <ArrivalShell step="menu" onSignOut={signOut} eyebrow="Next" title="Your menu">
+        <DeskHouseMismatch
+          search={`?from=desk&house=${encodeURIComponent(deskHouse)}`}
+          houseless={!user?.restaurantId}
+          email={user?.email}
+          onSignOut={signOutToDesk}
+        />
       </ArrivalShell>
     )
   }
@@ -783,6 +823,12 @@ export default function GetStarted() {
         {/* r36 onboarding gap 11: "One last step" was followed by the proof,
             the plan, a vendor, an invite and the next steps. */}
         {notice && <p role="status">{notice}</p>}
+        {deskHouse && (
+          <p role="status" data-testid="reading-for">
+            Reading for {availableRestaurants?.find((house) => house.id === deskHouse)?.name ?? 'your house'}. Your computer
+            shows it when it is read.
+          </p>
+        )}
         {menuStanding === 'draft' && (
           <p role="status">
             A menu read earlier is kept as a draft. Choose it on{' '}
@@ -830,6 +876,7 @@ export default function GetStarted() {
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} droppedFiles={droppedFiles} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={menuCurrency} />}
         </div>
+        {!deskHouse && <PhoneHandoff restaurantId={user?.restaurantId || getActiveRestaurantId()} />}
         <div>
           <button type="button" onClick={() => navigate('/house', { replace: true })} className="mdv-spread-textlink">
             Skip for now — open the house
