@@ -79,5 +79,6 @@ describe('SealedChangesPart', () => {
   it('never reads an unchanged sale as moved', () => {
     expect(changeSentence({ ...ev, bottles: 0, salesCostDelta: '0', sales: 2 }, 'USD')).toBe('2 sales already made now cost the same.');
     expect(changeSentence({ ...ev, bottles: 0, sales: 0 }, 'USD')).toBe('No lot was revalued and no sale was restated.');
+    expect(changeSentence({ ...ev, bottles: 0, salesCostDelta: '1.5', sales: 1 }, 'USD')).toBe('1 sale already made now cost $1.50 more.');
   });
 });
