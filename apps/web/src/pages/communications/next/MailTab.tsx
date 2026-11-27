@@ -47,6 +47,7 @@ import {
   READ_ALL_OFFER_WORDS,
   VENDOR_ONLY_LINE,
   kindEmptyWords,
+  kindPartialWords,
   mailKindOf,
   readAllConsentPath,
   type MailKindFilter,
@@ -415,6 +416,7 @@ function People({
   waitingOnly,
   kind,
   readsEverything,
+  canReply,
   search,
   onClearSearch,
   reader,
@@ -431,6 +433,8 @@ function People({
   kind: MailKindFilter;
   /** The house said yes to reading every conversation. */
   readsEverything: boolean;
+  /** Owners and managers; staff are shown vendor mail only. */
+  canReply: boolean;
   /** The trimmed search term, '' for none (r28 mail gap 16). */
   search: string;
   onClearSearch: () => void;
@@ -443,9 +447,9 @@ function People({
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
   setupWords: string;
 }) {
-  const q = useMailPeople(waitingOnly, search);
+  const q = useMailPeople(waitingOnly, search, kind);
   const pages = q.data?.pages ?? [];
-  // The gateway has no kind filter on this route, so the list narrows to the chosen kind here.
+  // The gateway filters by kind; the same narrowing here keeps an older gateway, which ignores `kind`, right.
   const people = pages.flatMap((p) => p.people).filter((p) => kind === 'all' || mailKindOf(p) === kind);
   const listIdentity = `${kind}|${waitingOnly ? 'w' : 'a'}|${search}`;
   const ready = Boolean(q.data) && !q.isPlaceholderData;
@@ -459,8 +463,8 @@ function People({
   if (ready) shown.current = listIdentity;
   const storedKinds = pages[0]?.storedKinds ?? null;
   const house = useHouse();
-  // Remember the unfiltered first-page count so the next cold load draws that many bars.
-  const settled = Boolean(q.data) && !waitingOnly && !search;
+  // Remember the unfiltered first-page count so the next cold load draws that many bars: a kind's page is shorter.
+  const settled = Boolean(q.data) && !q.isPlaceholderData && !waitingOnly && !search && kind === 'all';
   const firstPageCount = pages[0]?.people.length ?? 0;
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
@@ -485,9 +489,14 @@ function People({
             Clear the search
           </button>
         </p>
+      ) : people.length === 0 && kind !== 'all' && q.hasNextPage ? (
+        // More people are still to be read: not "none" (ADR 0020).
+        <p data-testid="people-partial-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
+          {kindPartialWords(kind)}
+        </p>
       ) : people.length === 0 && kind !== 'all' ? (
         <p data-testid="people-empty-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
-          {kindEmptyWords(kind, readsEverything)}
+          {kindEmptyWords(kind, readsEverything, { canReply, waitingOnly })}
         </p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
@@ -949,6 +958,7 @@ export function MailTab({
             waitingOnly={waitingOnly}
             kind={kind}
             readsEverything={readAll.reads}
+            canReply={canReply}
             search={search}
             onClearSearch={clearSearch}
             reader={reader}
