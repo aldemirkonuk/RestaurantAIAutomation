@@ -1621,6 +1621,14 @@ describe('the rest of the census: keys, realtime, POS queue, count-sheet notes (
     expect(screen.queryByTestId('inventory-selbar')).toBeNull();
   });
 
+  it('Cmd/Ctrl+A over 1,200 goods selects all 1,200 while the table draws a few dozen (r104 g2)', () => {
+    mock.data = data({ rows: Array.from({ length: 1200 }, (_, i) => row({ id: `bulk${i}`, wineId: `bw${i}`, name: `Good ${i}` })) });
+    renderPage();
+    expect(document.querySelectorAll('tr.iv-row').length).toBeLessThanOrEqual(80);
+    fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
+    expect(screen.getByTestId('inventory-selbar').textContent).toMatch(/1,?200 selected/);
+  });
+
   it('the arrows step between titles and Space on a title ticks it', () => {
     mock.data = data({ rows: three() });
     renderPage();
