@@ -21,6 +21,7 @@ import { nutritionQuery } from './item-queries';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { failureReason } from './iv-failure';
 import NutritionForm from './NutritionForm';
+import HeldReading from './HeldReading';
 import './nutrition-card.css';
 import { allergenLines, figureWords, PER, SOURCE_WORDS } from './nutrition-words';
 
@@ -84,9 +85,9 @@ export default function NutritionCard({ row, restaurantId, canManage }: WhatIsIn
   }
   if (!q.data) {
     return (
-      <p className="iv-note" data-testid="ivn">
-        Reading what is in it…
-      </p>
+      <div data-testid="ivn">
+        <HeldReading say="Reading what is in it…" hold="nutrition" />
+      </div>
     );
   }
   const data = q.data;

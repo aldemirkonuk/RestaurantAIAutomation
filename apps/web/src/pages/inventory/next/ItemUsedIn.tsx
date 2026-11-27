@@ -28,6 +28,7 @@
  * and a failed read says its cards could not be read, with Read again.
  */
 import { Link, useInRouterContext } from 'react-router-dom';
+import HeldReading from './HeldReading';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
 import {
   dishHref,
@@ -338,7 +339,7 @@ export default function ItemUsedIn({
 
   let body;
   if (load.status === 'reading') {
-    body = <p className="iv-note">Reading where it is used…</p>;
+    body = <HeldReading say="Reading where it is used…" hold="used" />;
   } else if (load.status === 'failed') {
     body = (
       <p className="iv-note" role="alert">
@@ -436,7 +437,7 @@ export default function ItemUsedIn({
       <section className="ivd-used-g" data-testid="ivd-used-recipes">
         <h4 className="ivd-used-h">In dish recipes</h4>
         {dishes.status === 'reading' ? (
-          <p className="iv-note">Reading which dishes use it…</p>
+          <HeldReading say="Reading which dishes use it…" hold="dishes" />
         ) : dishes.status === 'failed' ? (
           <p className="iv-note" role="alert">
             Which dishes use this good could not be read — {dishes.reason}.{' '}

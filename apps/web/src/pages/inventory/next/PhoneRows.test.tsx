@@ -106,10 +106,10 @@ describe('/inventory on a phone', () => {
     expect(card.textContent).toContain('92');
   });
 
-  it('animates only the first 8 cards; card 9 on renders still', () => {
+  it('animates only the first 6 cards; card 7 on renders still', () => {
     draw(Array.from({ length: 12 }, (_, n) => row({ id: `r${n}`, name: `Good ${n}` })));
-    for (let n = 0; n < 8; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).hasAttribute('data-still')).toBe(false);
-    for (let n = 8; n < 12; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).getAttribute('data-still')).toBe('true');
+    for (let n = 0; n < 6; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).hasAttribute('data-still')).toBe(false);
+    for (let n = 6; n < 12; n += 1) expect(screen.getByTestId(`inv-row-r${n}`).getAttribute('data-still')).toBe('true');
     const css = readFileSync(resolve(process.cwd(), 'src/pages/inventory/next/inventory-next.css'), 'utf8');
     expect(css).toMatch(/\.ivc-card\[data-still='true'\]\s*\{\s*animation:\s*none;/);
   });

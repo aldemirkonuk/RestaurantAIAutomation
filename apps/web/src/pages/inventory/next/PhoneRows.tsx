@@ -42,8 +42,8 @@ export interface PhoneRowsProps {
   prefetch?: ReturnType<typeof useItemPrefetch>;
 }
 
-/** The first few cards rise in one after another (28 ms apart); card 9 on is just there. */
-const STAGGER_CARDS = 8;
+/** The first few cards rise in one after another (18 ms apart, 200 ms each, the last done by 308 ms); card 7 on is just there. */
+const STAGGER_CARDS = 6;
 
 /** A card's least height (inventory-next.css .ivc-card) with room for its price control; a group head's. */
 const CARD_PX = 72;
