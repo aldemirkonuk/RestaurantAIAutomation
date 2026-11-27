@@ -69,7 +69,8 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { chipMatch, priceBasisUnstated, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, readSentence, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
+import { chipMatch, priceBasisUnstated, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, readSentence, suggestedToPar, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
+import type { ItemOnOrder, ItemOpenOrder } from '../../../services/api/inventory';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -407,5 +408,38 @@ describe('useInventoryNextData — a failed lot-rollup read leaves the cost unre
     const { result } = mount();
     await waitFor(() => expect(result.current.advice.status).toBe('ready'));
     expect(result.current.unread).toContain('the lot costs, so cost, value and margin say they could not be read');
+  });
+});
+
+describe('suggestedToPar takes off what is already on its way (r110 g5)', () => {
+  const gin = { stock: 4, par: 10 } as InvRow;
+  const o = (id: string, status: string, openQty: number, unit: string | null, inBookUnit: number | null): ItemOpenOrder => ({
+    id, orderNumber: null, status, openQty, unit, expected: null, inBookUnit,
+  });
+  const ready = (sent: ItemOpenOrder[], unsent: ItemOpenOrder[], arrivingInBookUnit: number | null): ItemOnOrder => ({
+    readable: true, source: 'x', sent, unsent, arrivingInBookUnit,
+  });
+
+  it('3 IN_TRANSIT and 6 PENDING against par 10 and stock 4 gives 3: the unsent 6 are not taken off', () => {
+    expect(suggestedToPar(gin, ready([o('a', 'IN_TRANSIT', 3, 'bottle', 3)], [o('b', 'PENDING', 6, 'bottle', 6)], 3))).toBe(3);
+  });
+
+  it('takes nothing off without a readable answer: absent, reading, failed, or unread', () => {
+    expect(suggestedToPar(gin)).toBe(6);
+    expect(suggestedToPar(gin, 'reading')).toBe(6);
+    expect(suggestedToPar(gin, 'failed')).toBe(6);
+    expect(suggestedToPar(gin, { readable: false, source: 'x', sent: null, unsent: null, arrivingInBookUnit: null })).toBe(6);
+  });
+
+  it('takes nothing off for an order in another unit (arrivingInBookUnit null)', () => {
+    expect(suggestedToPar(gin, ready([o('a', 'IN_TRANSIT', 2, 'case', null)], [], null))).toBe(6);
+  });
+
+  it('is null once what is on its way reaches par or passes it, and with no par or no stock', () => {
+    expect(suggestedToPar(gin, ready([o('a', 'CONFIRMED', 6, 'bottle', 6)], [], 6))).toBeNull();
+    expect(suggestedToPar(gin, ready([o('a', 'CONFIRMED', 9, 'bottle', 9)], [], 9))).toBeNull();
+    expect(suggestedToPar(gin, ready([o('a', 'CONFIRMED', 5, 'bottle', 5)], [], 5))).toBe(1);
+    expect(suggestedToPar({ stock: 4, par: null } as InvRow, ready([], [], 0))).toBeNull();
+    expect(suggestedToPar({ stock: null, par: 10 } as InvRow, ready([], [], 0))).toBeNull();
   });
 });

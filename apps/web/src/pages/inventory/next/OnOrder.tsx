@@ -8,7 +8,7 @@
  */
 import { Link } from 'react-router-dom';
 import type { ItemOnOrder, ItemOpenOrder } from '../../../services/api/inventory';
-import { EM, fmtCount, type InvRow } from './useInventoryNextData';
+import { EM, fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
 import { fmtQty } from './ItemCards';
 
 /** The figures read as it reaches the card: reading, failed as a whole, or answered (absent from an older gateway). */
@@ -97,6 +97,70 @@ export function coverWithArriving(row: InvRow, load: OnOrderLoad): string | null
 export function openOrderCount(load: OnOrderLoad): number | null {
   if (load === 'reading' || load === 'failed' || load === undefined || !load.readable) return null;
   return distinct(load.sent) + distinct(load.unsent);
+}
+
+const isAre = (n: number) => (n === 1 ? 'is' : 'are');
+
+/** What is not taken off: orders not yet sent, and sent orders in a unit the book does not count in. */
+function notCounted(o: Extract<ItemOnOrder, { readable: true }>): string[] {
+  const out: string[] = [];
+  if (o.arrivingInBookUnit === null) {
+    const byUnit = new Map<string | null, number>();
+    for (const x of o.sent) if (x.inBookUnit === null) byUnit.set(x.unit, (byUnit.get(x.unit) ?? 0) + x.openQty);
+    const total = [...byUnit.values()].reduce((a, b) => a + b, 0);
+    const words = [...byUnit].map(([u, q]) => orderQty(q, u)).join(' + ');
+    out.push(`${words} on ${total === 1 ? 'its' : 'their'} way ${isAre(total)} not counted, as ${total === 1 ? 'it' : 'they'} could not be put in the book\u2019s unit`);
+  }
+  const k = distinct(o.unsent);
+  if (k > 0) {
+    const inBook = o.unsent.every((x) => x.inBookUnit !== null);
+    const sum = o.unsent.reduce((a, x) => a + (x.inBookUnit ?? 0), 0);
+    out.push(
+      inBook
+        ? `${fmtCount(sum)} not yet sent ${isAre(sum)} not counted`
+        : `${plural(k, 'order', 'orders')} not yet sent ${isAre(k)} not counted`,
+    );
+  }
+  return out;
+}
+
+/**
+ * The Order more sheet's sentence over the field (r110 g5): what brings it to
+ * par, and what was taken off for what is already on its way. Undefined is a
+ * sheet handed no orders: the sentence it always said.
+ */
+export function toParSentence(row: InvRow, load: OnOrderLoad): string {
+  if (row.par === null || row.par <= 0) return 'No par is set on this row, so there is no suggested quantity.';
+  if (row.stock === null) return 'The stock could not be read, so there is no suggested quantity.';
+  const plain = suggestedToPar(row);
+  if (plain === null) return 'It is at or above par, so there is no suggested quantity.';
+  const par = fmtCount(row.par);
+  if (load === undefined) return `${fmtCount(plain)} bring it back to par (${par}).`;
+  if (load === 'reading') return 'Reading what is on order\u2026';
+  if (load === 'failed' || !load.readable) {
+    return `${fmtCount(plain)} bring it to par (${par}): what is on order could not be read, so nothing on its way is taken off.`;
+  }
+  const arriving = load.arrivingInBookUnit ?? 0;
+  const k = distinct(load.sent);
+  const rest = notCounted(load);
+  const toPar = suggestedToPar(row, load);
+  const onWay = `${fmtCount(arriving)} more ${isAre(arriving)} on ${arriving === 1 ? 'its' : 'their'} way on ${plural(k, 'order', 'orders')}`;
+  if (toPar === null) {
+    const tail = rest.length > 0 ? `; ${rest.join('; ')}` : '';
+    return `With what is on its way (${fmtCount(arriving)} on ${plural(k, 'order', 'orders')}), it reaches par (${par}), so there is no suggested quantity${tail}.`;
+  }
+  const clauses = [...(arriving > 0 ? [onWay] : []), ...rest];
+  if (clauses.length === 0) return `${fmtCount(toPar)} bring it back to par (${par}).`;
+  return `${fmtCount(toPar)} bring it to par (${par}): ${clauses.join('; ')}.`;
+}
+
+/** The list's "Suggested to par" words beside the figure, so it reads as the sheet does; null adds nothing. */
+export function toParNote(load: OnOrderLoad): string | null {
+  if (load === undefined || load === 'reading') return null;
+  if (load === 'failed' || !load.readable) return 'what is on order could not be read';
+  if (load.arrivingInBookUnit === null) return 'an order in another unit is not counted';
+  if (load.arrivingInBookUnit > 0) return `less ${fmtCount(load.arrivingInBookUnit)} on its way`;
+  return null;
 }
 
 /** The evidence: each open order, its state in words, what is still to come and when. */

@@ -13,6 +13,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { InvRow } from './useInventoryNextData';
+import type { OnOrderLoad } from './OnOrder';
+import type { ItemOnOrder, ItemOpenOrder } from '../../../services/api/inventory';
 import type { Provider } from '../../../services/api/providers';
 
 const api = vi.hoisted(() => ({
@@ -274,6 +276,87 @@ describe('OrderSheet (INV-W20, INV-W21)', () => {
     expect(document.body.textContent).toContain('shown here to read before it goes');
     expect(document.body.textContent).toContain('take order emails without review');
     expect(document.body.textContent).not.toContain('nothing goes to a vendor from this sheet');
+  });
+});
+
+describe('Order more suggests par less what is already on its way (r110 g5)', () => {
+  const o = (id: string, status: string, openQty: number, unit: string | null, inBookUnit: number | null): ItemOpenOrder => ({
+    id, orderNumber: null, status, openQty, unit, expected: null, inBookUnit,
+  });
+  const ready = (sent: ItemOpenOrder[], unsent: ItemOpenOrder[], arrivingInBookUnit: number | null): ItemOnOrder => ({
+    readable: true, source: 'x', sent, unsent, arrivingInBookUnit,
+  });
+  const gin = () => row({ name: 'Gin', stock: 4, par: 10 });
+  const walk = ready([o('a', 'IN_TRANSIT', 3, 'bottle', 3)], [o('b', 'PENDING', 6, 'bottle', 6)], 3);
+  const field = () => (screen.getByRole('textbox', { name: 'Bottles' }) as HTMLInputElement).value;
+  const said = () => screen.getByTestId('iv-order-to-par').textContent;
+  const sheet = (onOrder: OnOrderLoad) => (
+    <OrderSheet row={gin()} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" onOrder={onOrder} />
+  );
+
+  it('3 IN_TRANSIT and 6 PENDING: suggests 3, and names what was taken off and what was not', () => {
+    mount(sheet(walk));
+    expect(field()).toBe('3');
+    expect(said()).toBe('3 bring it to par (10): 3 more are on their way on 1 order; 6 not yet sent are not counted.');
+  });
+
+  it('an order in another unit leaves par - stock and says that order is not counted', () => {
+    mount(sheet(ready([o('a', 'IN_TRANSIT', 2, 'case', null)], [], null)));
+    expect(field()).toBe('6');
+    expect(said()).toBe('6 bring it to par (10): 2 cases on their way are not counted, as they could not be put in the book\u2019s unit.');
+  });
+
+  it('an unread onOrder says so, and the suggestion stays par - stock', () => {
+    mount(sheet('failed'));
+    expect(field()).toBe('6');
+    expect(said()).toBe('6 bring it to par (10): what is on order could not be read, so nothing on its way is taken off.');
+  });
+
+  it('is empty while the orders read, and fills once they answer', () => {
+    const qc = new QueryClient();
+    const wrap = (node: ReactNode) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>{node}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(wrap(sheet('reading')));
+    expect(field()).toBe('');
+    expect(said()).toBe('Reading what is on order\u2026');
+    rerender(wrap(sheet(walk)));
+    expect(field()).toBe('3');
+  });
+
+  it('never overwrites a typed value, while reading or on a later reread', () => {
+    const qc = new QueryClient();
+    const wrap = (node: ReactNode) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>{node}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(wrap(sheet('reading')));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles' }), { target: { value: '5' } });
+    rerender(wrap(sheet(walk)));
+    expect(field()).toBe('5');
+    expect(said()).toContain('3 bring it to par (10)');
+  });
+
+  it('fills once: a reread with more on its way does not move the field under a thumb', () => {
+    const qc = new QueryClient();
+    const wrap = (node: ReactNode) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>{node}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(wrap(sheet(walk)));
+    expect(field()).toBe('3');
+    rerender(wrap(sheet(ready([o('a', 'IN_TRANSIT', 5, 'bottle', 5)], [], 5))));
+    expect(field()).toBe('3');
+  });
+
+  it('says when what is on its way already reaches par, and suggests nothing', () => {
+    mount(sheet(ready([o('a', 'CONFIRMED', 6, 'bottle', 6)], [], 6)));
+    expect(field()).toBe('');
+    expect(said()).toBe('With what is on its way (6 on 1 order), it reaches par (10), so there is no suggested quantity.');
   });
 });
 
