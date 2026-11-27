@@ -16,6 +16,8 @@ import { ISO_4217_CODES } from "../../common/iso-4217";
 import {
   CAP,
   FitsInBytes,
+  FitsLength,
+  needed,
   GOOGLE_PLACE_ID_MAX_BYTES,
   PLACE_ID_TOO_LONG,
 } from "../house-opening";
@@ -52,10 +54,10 @@ export class RegisterRestaurantDto {
   name: string;
   @IsEmail() email: string;
   @MinLength(8) password: string;
-  @IsString() @MaxLength(249, CAP.name) restaurantName: string;
-  @IsString() address: string;
-  @IsString() @MaxLength(100, CAP.city) city: string;
-  @IsString() @MaxLength(100, CAP.country) country: string;
+  @IsString(needed("The restaurant name")) @FitsLength(249, CAP.name) restaurantName: string;
+  @IsString(needed("The address")) address: string;
+  @IsString(needed("The city")) @FitsLength(100, CAP.city) city: string;
+  @IsString(needed("The country")) @FitsLength(100, CAP.country) country: string;
   @IsOptional() @IsString() @MaxLength(100, CAP.state) stateProvince?: string; // US: "IL", Turkey: "Antalya", UK: "Greater London"
   @IsOptional() @IsString() @MaxLength(20, CAP.postal) postalCode?: string; // US: "60601", UK: "SW1A 1AA", TR: "07050"
   @IsOptional()

@@ -483,8 +483,12 @@ describe.each([
     for (const [field, max, sentence] of caps) {
       expect(await errorsFor(field, "a".repeat(max))).toBeUndefined();
       expect(await errorsFor(field, "a".repeat(max + 1))).toEqual({
-        // The person's name has its own single-purpose length rule, so its sentence is said once.
-        [field === "name" ? "nameFitsLength" : "maxLength"]: sentence,
+        // A required field's length rule speaks only of a string (single purpose), so its sentence is said once.
+        [field === "name"
+          ? "nameFitsLength"
+          : ["restaurantName", "city", "country"].includes(field)
+            ? "fitsLength"
+            : "maxLength"]: sentence,
       });
       // `city` and `country` are plain words too; the camelCase names are not.
       if (/[A-Z]/.test(field)) expect(sentence).not.toContain(field);
@@ -492,6 +496,40 @@ describe.each([
     }
   });
 });
+
+describe.each([CreateFirstHouseDto, RegisterRestaurantDto])(
+  "$name a missing field",
+  (dto) => {
+    const base: Record<string, unknown> = {
+      name: "Selin Kaya",
+      email: "selin@example.com",
+      password: "long-enough",
+      restaurantName: "Meyhane",
+      address: "1 House Street",
+      city: "Istanbul",
+      country: "Türkiye",
+    };
+    const messagesFor = async (field: string, value: unknown) => {
+      const body = { ...base };
+      if (value === undefined) delete body[field];
+      else body[field] = value;
+      const errors = await validate(plainToInstance(dto as any, body) as object);
+      return errors
+        .filter((e) => e.property === field)
+        .flatMap((e) => Object.values(e.constraints ?? {}));
+    };
+
+    it.each([
+      ["restaurantName", "The restaurant name is needed, so nothing was recorded."],
+      ["address", "The address is needed, so nothing was recorded."],
+      ["city", "The city is needed, so nothing was recorded."],
+      ["country", "The country is needed, so nothing was recorded."],
+    ])("says %s is needed, once, and never calls it too long (D5)", async (field, sentence) => {
+      expect(await messagesFor(field, undefined)).toEqual([sentence]);
+      expect(await messagesFor(field, 42)).toEqual([sentence]);
+    });
+  },
+);
 
 /** A clock and a free or held place, for the parity tests (E2, F1). */
 const NOW = Date.UTC(2026, 9, 3, 12);
