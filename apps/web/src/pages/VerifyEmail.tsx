@@ -40,20 +40,32 @@ const POLL_FIRST_MS = 5_000
 const POLL_TROUBLE_AFTER = 2
 const POLL_TROUBLE_SENTENCE =
   'We cannot check just now whether this address was verified. This page keeps trying; you can also reload it.'
+/**
+ * Said instead, once the timer has stopped, whether or not the reads failed (r107:
+ * never "keeps trying" while it does not; r106: after ten healthy reads the tab
+ * still says "Check your email" for good if verified elsewhere with no focus). Shorter than the sentence above, so the hidden
+ * copy of that one still holds the room.
+ */
+const POLL_STOPPED_SENTENCE =
+  'This page has stopped checking. Reload it, or sign in, once you have verified.'
 
 /**
  * The poll's line, with its room held from the first paint. The live region is
  * always there and the words are put into it in place; a hidden copy of the
  * sentence sets the height, so nothing below moves when it is said (r106).
  */
-function PollSlot({ trouble, className }: { trouble: boolean; className: string }) {
+function PollSlot({ trouble, stopped, className }: { trouble: boolean; stopped: boolean; className: string }) {
   return (
     <div data-testid="verify-poll-slot" style={{ display: 'grid' }}>
       <p aria-hidden="true" className={className} style={{ gridArea: '1 / 1', visibility: 'hidden' }}>
         {POLL_TROUBLE_SENTENCE}
       </p>
       <p role="status" className={className} style={{ gridArea: '1 / 1' }}>
-        {trouble ? <span data-testid="verify-poll-trouble">{POLL_TROUBLE_SENTENCE}</span> : null}
+        {stopped ? (
+          <span data-testid="verify-poll-stopped">{POLL_STOPPED_SENTENCE}</span>
+        ) : trouble ? (
+          <span data-testid="verify-poll-trouble">{POLL_TROUBLE_SENTENCE}</span>
+        ) : null}
       </p>
     </div>
   )
@@ -189,8 +201,10 @@ export function VerifyEmail() {
   // timer after 10 minutes. A hidden tab asks nothing. No motion is added.
   const waiting = !token && !loading && Boolean(user) && user?.emailVerified !== true && !verified
   const [pollTrouble, setPollTrouble] = useState(false)
+  const [pollStopped, setPollStopped] = useState(false)
   useEffect(() => {
     if (!waiting) return
+    setPollStopped(false)
     let live = true
     const began = Date.now()
     let delay = POLL_FIRST_MS
@@ -217,7 +231,10 @@ export function VerifyEmail() {
       schedule()
     }
     const schedule = () => {
-      if (Date.now() - began + delay > POLL_GIVE_UP_MS) return
+      if (Date.now() - began + delay > POLL_GIVE_UP_MS) {
+        if (live) setPollStopped(true)
+        return
+      }
       timer = window.setTimeout(tick, delay)
     }
     const onShown = () => void ask()
@@ -534,7 +551,7 @@ export function VerifyEmail() {
                   {mailSentence}
                 </p>
               )}
-              {waiting && <PollSlot trouble={pollTrouble} className="mdv-note" />}
+              {waiting && <PollSlot trouble={pollTrouble} stopped={pollStopped} className="mdv-note" />}
               {token ? (
                 linkGate ?? (
                   <>
@@ -613,7 +630,7 @@ export function VerifyEmail() {
                         Sign in to resend
                       </Link>
                       <p className="mdv-note">After you verify, sign in to continue.</p>
-                      <Link className="mdv-link" to="/login">
+                      <Link className="mdv-link mdv-pub__verified" to="/login">
                         I verified it, sign in
                       </Link>
                     </>
@@ -713,7 +730,7 @@ export function VerifyEmail() {
           </p>
         )}
 
-        {waiting && <PollSlot trouble={pollTrouble} className="mb-4 text-sm text-gray-600 text-center" />}
+        {waiting && <PollSlot trouble={pollTrouble} stopped={pollStopped} className="mb-4 text-sm text-gray-600 text-center" />}
 
         <div className="space-y-3 my-6">
           {(mailState === 'not_sent' ? [] : [
