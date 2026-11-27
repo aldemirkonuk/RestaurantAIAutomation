@@ -1475,7 +1475,8 @@ describe("MenusService.addToInventory — N lines are O(1) reads, not O(N) (p3 s
     const tables: Record<string, Row[]> = {
       restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
       restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", master_wine_id: "wA", menu_price_current: 40 }],
-      menu_items: [{ id: "mi-0", price_flag: null }],
+      // The flag write-back is scoped to the house (.eq("restaurant_id")), so the row carries its house.
+      menu_items: [{ id: "mi-0", restaurant_id: "rest-1", price_flag: null }],
     };
     const { out } = await run(tables, [line(0, "wA", null)]);
     expect(out.priceSync.get("mi-0")).toMatchObject({ outcome: "no_price", flag: "blank_kept_last_known" });
