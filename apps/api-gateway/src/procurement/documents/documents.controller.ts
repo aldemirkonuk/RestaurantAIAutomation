@@ -1402,6 +1402,12 @@ export class DocumentsController {
     description:
       "ISO time: only papers created before it. Pass the last row's `nextBefore` to read the next older page.",
   })
+  @ApiQuery({
+    name: "beforeId",
+    required: false,
+    description:
+      "With `before`: the id of the last row read. Papers filed in the same instant share a time, so the next page starts after that exact row. Pass the last page's `nextBeforeId`.",
+  })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
@@ -1411,12 +1417,27 @@ export class DocumentsController {
     @Query("view") view?: string,
     @Query("q") q?: string,
     @Query("before") before?: string,
+    @Query("beforeId") beforeId?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
     const beforeAt = before ? new Date(before) : null;
     if (before && (!beforeAt || Number.isNaN(beforeAt.getTime())))
       throw new HttpException(
         "`before` has to be a date and time, such as 2026-11-01T00:00:00Z.",
+        HttpStatus.BAD_REQUEST,
+      );
+    // Papers filed in one transaction share a created_at, so a time alone skips
+    // the ones that tie with the page's last row (r105). The cursor is the pair
+    // (created_at, id). The time is passed through as the database wrote it
+    // (microseconds): a Date would cut it to milliseconds and move the cursor.
+    if (
+      beforeId &&
+      (!before ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(beforeId) ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}(:?\d{2})?)?$/.test(before))
+    )
+      throw new HttpException(
+        "`beforeId` goes with `before` and has to be the id of a paper, with `before` its exact time.",
         HttpStatus.BAD_REQUEST,
       );
     // Letters, digits, space and . - # / only: the rest would break the filter
@@ -1451,6 +1472,7 @@ export class DocumentsController {
       .select("*")
       .eq("restaurant_id", user.restaurantId)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(n + 1);
     if (status) query = query.eq("status", status);
     if (docType) query = query.eq("doc_type", docType);
@@ -1458,14 +1480,18 @@ export class DocumentsController {
     // The cursor is the row's own created_at string. Round-tripping it through a
     // JS Date cut it to milliseconds, and rows between the cut and the stored
     // microseconds fell out of the next page. A well-formed ISO time is passed
-    // through untouched; anything else is normalised.
-    if (beforeAt)
-      query = query.lt(
-        "created_at",
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.test(before as string)
-          ? (before as string)
-          : beforeAt.toISOString(),
-      );
+    // through untouched; anything else is normalised (r104b). Ties on that
+    // instant are broken by id (r105), so a page never splits one moment.
+    const cursorAt = beforeAt
+      ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.test(before as string)
+        ? (before as string)
+        : beforeAt.toISOString()
+      : null;
+    if (beforeId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(beforeId))
+      throw new HttpException("`beforeId` has to be a paper's id.", HttpStatus.BAD_REQUEST);
+    if (cursorAt && beforeId)
+      query = query.or(`created_at.lt.${cursorAt},and(created_at.eq.${cursorAt},id.lt.${beforeId})`);
+    else if (cursorAt) query = query.lt("created_at", cursorAt);
     if (term) {
       // A vendor is named by the provider row or by what the paper itself
       // carried (`vendorNamesFor` reads both), so the search reads both.
@@ -1496,9 +1522,9 @@ export class DocumentsController {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     const hasMore = (fetched ?? []).length > n;
     const data = (fetched ?? []).slice(0, n);
-    const nextBefore = hasMore
-      ? ((data[data.length - 1] as { created_at?: string } | undefined)?.created_at ?? null)
-      : null;
+    const lastRow = data[data.length - 1] as { created_at?: string; id?: string } | undefined;
+    const nextBefore = hasMore ? (lastRow?.created_at ?? null) : null;
+    const nextBeforeId = hasMore ? (lastRow?.id ?? null) : null;
 
     /*
      * B4 — THE INVOICE AND ITS ORDER, SIDE BY SIDE (founder, 2026-09-06 batch
@@ -1540,7 +1566,7 @@ export class DocumentsController {
     // field above was derived from it (list-summary.ts).
     if (wantsSummary(view)) items.forEach(leaveOutThePaper);
 
-    if (!orderId) return { items, hasMore, nextBefore };
+    if (!orderId) return { items, hasMore, nextBefore, nextBeforeId };
 
     const { data: order, error: orderError } = await this.db
       .getClient()

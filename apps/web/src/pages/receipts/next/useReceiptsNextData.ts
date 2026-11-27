@@ -278,6 +278,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
         limit: RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
         q: verifiedTerm || undefined,
         before: last.created_at,
+        beforeId: last.id,
       })
       .then((rows) =>
         setOlder((o) => ({ rows: [...o.rows, ...rows], lastLen: rows.length, busy: false, error: null })),

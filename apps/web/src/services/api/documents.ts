@@ -180,6 +180,8 @@ export const documentsApi = {
     q?: string
     /** Only papers created before this time: the older page (r104 g2). */
     before?: string
+    /** With `before`: the last row's id, so papers filed in one instant are not skipped (r105). */
+    beforeId?: string
   } = {}): Promise<ProcurementDocument[]> {
     const { data } = await apiClient.get('/procurement/documents', {
       params: {
@@ -189,6 +191,7 @@ export const documentsApi = {
         view: 'summary',
         q: opts.q || undefined,
         before: opts.before,
+        beforeId: opts.beforeId,
       },
     })
     return data.items ?? []
