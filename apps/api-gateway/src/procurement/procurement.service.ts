@@ -6323,7 +6323,45 @@ export class ProcurementService {
           receivingPriceNeedsACurrency(body.invoiceUnitPrice),
         );
 
-      const held = await this.heldInvoiceForOrder(restaurantId, orderId);
+    }
+
+    // The four reads below need only the order row, so they start together
+    // (perf p8 s5: about three round trips saved per verify) and are awaited in
+    // the order they used to run, so the first refusal is the same one as
+    // before: the held-invoice 409, then the ledger 503. Reads only; every
+    // write below stays serial. A read that rejects while an earlier one is
+    // being awaited must not surface as an unhandled rejection.
+    const heldRead =
+      body.invoiceUnitPrice != null
+        ? this.heldInvoiceForOrder(restaurantId, orderId)
+        : null;
+    // The immutable ledger states bottles and retains receipts after stock is
+    // consumed. It is also what "received" MEANS (ADR 0192), so the correction
+    // below is measured against the same number every screen shows.
+    const bookedRead =
+      hasMatchFields && orderRow.inventory_id
+        ? readBookedOrderBottles(
+            this.databaseService.supabase,
+            restaurantId,
+            orderId,
+            orderRow.inventory_id,
+          )
+        : Promise.resolve(0);
+    // The order's own unit, which every comparison below is anchored to. It was
+    // sitting on the row this method already reads and was never looked at:
+    // `computeMatch` got `quantity` as a bare number, so an order placed in
+    // cases of 12 and invoiced in bottles produced a confident wrong verdict.
+    const unitsRead = this.resolveOrderMatchUnits(
+      restaurantId,
+      orderId,
+      orderRow as any,
+    );
+    const agreedRead = this.readAgreedLine(restaurantId, orderId);
+    for (const read of [heldRead, bookedRead, unitsRead, agreedRead])
+      read?.catch(() => undefined);
+
+    if (heldRead) {
+      const held = await heldRead;
       if (held)
         throw new ConflictException(
           receivingPriceRefusal({
@@ -6334,29 +6372,10 @@ export class ProcurementService {
         );
     }
 
-    // The immutable ledger states bottles and retains receipts after stock is
-    // consumed. It is also what "received" MEANS (ADR 0192), so the correction
-    // below is measured against the same number every screen shows.
-    const stockedQtyInBottles =
-      hasMatchFields && orderRow.inventory_id
-        ? await readBookedOrderBottles(
-            this.databaseService.supabase,
-            restaurantId,
-            orderId,
-            orderRow.inventory_id,
-          )
-        : 0;
+    const stockedQtyInBottles = await bookedRead;
     const orderedQty = (orderRow as any).quantity ?? 0;
 
-    // The order's own unit, which every comparison below is anchored to. It was
-    // sitting on the row this method already reads and was never looked at:
-    // `computeMatch` got `quantity` as a bare number, so an order placed in
-    // cases of 12 and invoiced in bottles produced a confident wrong verdict.
-    const orderUnits = await this.resolveOrderMatchUnits(
-      restaurantId,
-      orderId,
-      orderRow as any,
-    );
+    const orderUnits = await unitsRead;
 
     // THE AGREED PRICE, IN THE UNIT THE COMPARISON IS IN — ADR 0119 phase 2.
     //
@@ -6380,7 +6399,7 @@ export class ProcurementService {
     //                                    the confident wrong verdict this
     //                                    module exists to end; `null` reads as
     //                                    "not evaluated", which is true.
-    const agreedLine = await this.readAgreedLine(restaurantId, orderId);
+    const agreedLine = await agreedRead;
     const headerPrice =
       (orderRow as any).final_price ??
       (orderRow as any).negotiated_price ??
