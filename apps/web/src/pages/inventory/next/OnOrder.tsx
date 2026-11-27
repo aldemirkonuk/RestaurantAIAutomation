@@ -24,6 +24,12 @@ export const ORDER_STATUS_WORDS: Record<string, string> = {
   PARTIALLY_RECEIVED: 'part received, the rest to come',
 };
 
+/** An order's state in words: an approved order whose letter went out is waiting for the vendor, not unsent. */
+export function orderStatusWords(o: ItemOpenOrder): string {
+  if (o.status === 'APPROVED' && o.letterSent) return "approved, waiting for the vendor's answer";
+  return ORDER_STATUS_WORDS[o.status] ?? o.status.toLowerCase();
+}
+
 const ORDER_UNIT_WORDS: Record<string, [string, string]> = {
   each: ['item', 'items'],
   liter: ['litre', 'litres'],
@@ -80,23 +86,39 @@ export function onOrderCard(load: OnOrderLoad, uom: string | null): { figure: st
 }
 
 /**
- * "with what is on its way: N days": (on hand + arriving) / usage a day. Only
- * when what arrives is in the book's unit and more than none, and the pace
- * was read and is running; otherwise null and the cover line stays as it was.
+ * "with what is on its way: N days": the Days of cover on the card (its own
+ * base, which for a counted good already has the use since the last count
+ * taken off) plus what arrives over the usage a day. Only when what arrives is
+ * in the book's unit and more than none, the pace was read and is running, and
+ * the card has a cover figure; otherwise null and the cover line stays as it was.
  */
 export function coverWithArriving(row: InvRow, load: OnOrderLoad): string | null {
   if (load === 'reading' || load === 'failed' || load === undefined || !load.readable) return null;
   const arriving = load.arrivingInBookUnit;
   if (arriving === null || arriving <= 0) return null;
-  if (!row.analyticsReadable || row.stock === null || row.velocity === null || row.velocity <= 0) return null;
-  const days = Math.round((row.stock + arriving) / row.velocity);
+  if (!row.analyticsReadable || row.runway === null || row.velocity === null || row.velocity <= 0) return null;
+  const days = Math.round(row.runway + arriving / row.velocity);
   return `With what is on its way: ${plural(days, 'day', 'days')}.`;
 }
 
-/** How many orders are open, for the Order more sheet; null while unread. */
-export function openOrderCount(load: OnOrderLoad): number | null {
+/** Every open order of the good, sent or not, for the Order more sheet; null while unread. */
+export function openOrdersOf(load: OnOrderLoad): ItemOpenOrder[] | null {
   if (load === 'reading' || load === 'failed' || load === undefined || !load.readable) return null;
-  return distinct(load.sent) + distinct(load.unsent);
+  return [...load.sent, ...load.unsent];
+}
+
+/**
+ * What the gateway merge can take: createOrder folds a hold into an open order
+ * of the SAME vendor whose status is not CONFIRMED or IN_TRANSIT (and not past
+ * them), procurement.service.ts TERMINAL_STATUSES.
+ */
+const PAST_MERGE = new Set(['CONFIRMED', 'IN_TRANSIT']);
+
+/** How the open orders stand against a hold with one vendor: changed by it, or left alone and a new order placed. */
+export function holdEffect(orders: ItemOpenOrder[], vendorId: string): { total: number; changed: number } {
+  const ids = (xs: ItemOpenOrder[]) => new Set(xs.map((x) => x.id)).size;
+  const changed = orders.filter((o) => vendorId !== '' && o.providerId === vendorId && !PAST_MERGE.has(o.status));
+  return { total: ids(orders), changed: ids(changed) };
 }
 
 /** The evidence: each open order, its state in words, what is still to come and when. */
@@ -115,7 +137,7 @@ export function OnOrderEvidence({ load }: { load: OnOrderLoad }) {
           const due = dueDay(o.expected);
           return (
             <li key={`${o.id}-${o.unit ?? ''}-${i}`}>
-              {o.orderNumber ?? 'An order with no number'} · {ORDER_STATUS_WORDS[o.status] ?? o.status.toLowerCase()} ·{' '}
+              {o.orderNumber ?? 'An order with no number'} · {orderStatusWords(o)} ·{' '}
               {orderQty(o.openQty, o.unit)} to come{due ? ` · due ${due}` : ''}
             </li>
           );
