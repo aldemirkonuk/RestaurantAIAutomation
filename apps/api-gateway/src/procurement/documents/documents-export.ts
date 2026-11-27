@@ -70,26 +70,34 @@ export function cell(v: string | null): string {
 
 const MONEY_COLUMNS = ["subtotal", "freight", "tax", "total"] as const;
 
+/**
+ * One total per (currency, paper type). INVARIANTS: two amounts are added only
+ * when both papers state the same currency (r109, DD-r109-8b) AND are the same
+ * paper type (r106: an invoice is never added to its packing slip, the
+ * vendor's statement of it or a credit memo). A paper that states no currency
+ * is added to nothing: its money could be either, and one Total row says so in
+ * words. An empty cell is never 0.
+ */
 export function verifiedCsv(rows: ExportRow[]): string {
   const lines: string[] = [EXPORT_COLUMNS.join(",")];
-  // One total per (currency, paper type): adding lira to dollars is not a
-  // total, and neither is adding an invoice to its packing slip, the vendor's
-  // statement of it and a credit memo (r106: 3200.00 printed where the house
-  // owed 800.00). A type is never netted against another type.
   type Acc = { cur: string; type: string; n: number; sum: number[]; nulls: number[] };
   const sums = new Map<string, Acc>();
+  let unstated = 0;
   for (const r of rows) {
-    const cur = (r.currency ?? "").trim();
+    const cur = (r.currency ?? "").trim().toUpperCase();
     const type = (r.doc_type ?? "").trim();
     const cents = [r.subtotal, r.freight, r.tax, r.total].map(toCents);
-    const key = `${cur}\u0000${type}`;
-    const s = sums.get(key) ?? { cur, type, n: 0, sum: [0, 0, 0, 0], nulls: [0, 0, 0, 0] };
-    s.n += 1;
-    cents.forEach((c, i) => {
-      if (c === null) s.nulls[i] += 1;
-      else s.sum[i] += c;
-    });
-    sums.set(key, s);
+    if (!cur) unstated += 1;
+    else {
+      const key = `${cur}\u0000${type}`;
+      const s = sums.get(key) ?? { cur, type, n: 0, sum: [0, 0, 0, 0], nulls: [0, 0, 0, 0] };
+      s.n += 1;
+      cents.forEach((c, i) => {
+        if (c === null) s.nulls[i] += 1;
+        else s.sum[i] += c;
+      });
+      sums.set(key, s);
+    }
     lines.push(
       [
         cell(r.doc_number),
@@ -103,15 +111,30 @@ export function verifiedCsv(rows: ExportRow[]): string {
     );
   }
   for (const s of sums.values()) {
-    // An empty cell is never 0: a column no paper printed stays empty; a column
-    // some papers left out says how many, so the total does not read as the book.
+    // A column no paper printed stays empty; a column some papers left out says
+    // how many, so the total does not read as the book.
     const figures = s.sum.map((v, i) => (s.nulls[i] === s.n ? "" : formatCents(v)));
     const notes = MONEY_COLUMNS.flatMap((name, i) =>
       s.nulls[i] > 0 && s.nulls[i] < s.n ? [`${s.nulls[i]} of ${s.n} papers printed no ${name}`] : [],
     );
     lines.push(
-      [`Total ${s.type || "unlabelled"}`, "", "", "", cell(s.cur || null), ...figures, cell(notes.join("; ") || null)].join(","),
+      [`Total ${s.type || "unlabelled"}`, "", "", "", cell(s.cur), ...figures, cell(notes.join("; ") || null)].join(","),
     );
   }
+  if (unstated > 0)
+    lines.push(
+      [
+        "Total",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        `${unstated} ${unstated === 1 ? "paper states" : "papers state"} no currency; not added up`,
+      ].join(","),
+    );
   return lines.join("\r\n") + "\r\n";
 }
