@@ -11,7 +11,7 @@ import { Pending } from '@/components/onboarding/Pending'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { prefetchWhenIdle } from '../lib/stepPrefetch'
-import { tokenHouse } from '../lib/houseMemory'
+import { tokenClaims, tokenHouse } from '../lib/houseMemory'
 import { afterVerifyIn } from '../lib/afterVerifyIn'
 import {
   CODE_REFUSAL_SENTENCE,
@@ -189,13 +189,23 @@ export function VerifyEmail() {
   // and after a reload it had no code box, no way on, and a Resend that the
   // gateway answers 409. Once the house says the address is verified, this
   // tab moves on by itself through the same finish as the link and the code.
-  // Only this page's own session is used: the pair already stored here.
+  // Only a session of the person waiting here is used: the pair already
+  // stored, and only when its token names this tab's own user. Another tab can
+  // store a different account's pair, and that one must neither be moved on
+  // with nor be reported as this address verified.
   const movedOn = useRef(false)
   const moveOnWithThisSession = () => {
     if (movedOn.current || verified) return
     const accessToken = localStorage.getItem('accessToken')
     const refreshToken = localStorage.getItem('refreshToken')
     if (!accessToken || !refreshToken) return
+    const storedFor = tokenClaims(accessToken)?.sub
+    if (!user?.userId || storedFor !== user.userId) {
+      setError(
+        'You signed in to a different account in another tab. This one is still waiting: sign in to it again to finish verifying.',
+      )
+      return
+    }
     movedOn.current = true
     void finishVerified({ accessToken, refreshToken })
   }

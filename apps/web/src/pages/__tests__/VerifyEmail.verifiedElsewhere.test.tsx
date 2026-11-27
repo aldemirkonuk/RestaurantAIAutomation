@@ -22,7 +22,8 @@ const h = vi.hoisted(() => ({
   progress: vi.fn(),
   toastSuccess: vi.fn(),
   auth: {
-    user: { email: 'owner@house.test', emailVerified: false } as null | {
+    user: { userId: 'u1', email: 'owner@house.test', emailVerified: false } as null | {
+      userId: string
       email: string
       emailVerified: boolean
     },
@@ -67,7 +68,7 @@ beforeEach(() => {
   localStorage.setItem('mudavym.design.public', 'true')
   localStorage.setItem('accessToken', ACCESS)
   localStorage.setItem('refreshToken', 'refresh-1')
-  h.auth.user = { email: 'owner@house.test', emailVerified: false }
+  h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: false }
   h.auth.loading = false
   h.auth.signInWithSession.mockResolvedValue(undefined)
   h.progress.mockResolvedValue(null)
@@ -83,7 +84,7 @@ afterEach(() => {
 
 describe('a tab whose address was verified elsewhere', () => {
   it('after a reload that reads it verified, moves on with this session: no Resend, no 409', async () => {
-    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: true }
     h.progress.mockResolvedValue({ menu_uploaded: true, menu_current: true })
     mount()
     expect(await screen.findByText('home page')).toBeInTheDocument()
@@ -152,21 +153,21 @@ describe('a tab whose address was verified elsewhere', () => {
 
   it('with no session stored here, nothing is borrowed: the tab stays', async () => {
     localStorage.removeItem('refreshToken')
-    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: true }
     mount()
     await act(async () => undefined)
     expect(h.auth.signInWithSession).not.toHaveBeenCalled()
   })
 
   it('a session read that fails after it says so, with Try again', async () => {
-    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: true }
     h.auth.signInWithSession.mockRejectedValue(new Error('me failed'))
     mount()
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 
   it('a house whose menu is only a draft goes to /menu, not the desk', async () => {
-    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: true }
     h.progress.mockResolvedValue({ menu_uploaded: true, menu_current: false })
     mount()
     expect(await screen.findByText('menu page')).toBeInTheDocument()
@@ -185,7 +186,7 @@ describe('a tab whose address was verified elsewhere', () => {
   })
 
   it('a link to a verified account keeps its own answer; this session is not borrowed', async () => {
-    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: true }
     mount('/verify-email?token=abc')
     expect(await screen.findByText('This address is already verified.')).toBeInTheDocument()
     expect(h.auth.signInWithSession).not.toHaveBeenCalled()

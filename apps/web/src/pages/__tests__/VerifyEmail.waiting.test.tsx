@@ -16,8 +16,10 @@ const h = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
   progress: vi.fn(),
+  toastSuccess: vi.fn(),
   auth: {
-    user: { email: 'owner@house.test', emailVerified: false } as null | {
+    user: { userId: 'u1', email: 'owner@house.test', emailVerified: false } as null | {
+      userId: string
       email: string
       emailVerified: boolean
     },
@@ -32,7 +34,7 @@ vi.mock('../../services/api/client', () => ({
   getErrorMessage: () => 'Request failed. Try again.',
 }))
 vi.mock('../../services/api/menus', () => ({ getOnboardingProgress: h.progress }))
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: h.toastSuccess } }))
 import { VerifyEmail } from '../VerifyEmail'
 
 function mount() {
@@ -59,7 +61,7 @@ beforeEach(() => {
   localStorage.setItem('mudavym.design.public', 'true')
   localStorage.setItem('accessToken', ACCESS)
   localStorage.setItem('refreshToken', 'refresh-1')
-  h.auth.user = { email: 'owner@house.test', emailVerified: false }
+  h.auth.user = { userId: 'u1', email: 'owner@house.test', emailVerified: false }
   h.auth.loading = false
   h.auth.signInWithSession.mockResolvedValue(undefined)
   h.progress.mockResolvedValue(null)
@@ -101,6 +103,23 @@ describe('the check-your-email tab waits for a verify done elsewhere', () => {
     expect(h.get).toHaveBeenCalledTimes(1)
     await advance(50)
     expect(screen.getByText('get-started page')).toBeInTheDocument()
+  })
+
+  it("another account's pair stored by another tab does not finish this tab", async () => {
+    // The person waits as account u1 and signs in to a verified account u2
+    // elsewhere. /auth/me answers for u2 (verified); this tab must not move on.
+    h.get.mockResolvedValue(said(true))
+    mount()
+    localStorage.setItem('accessToken', jwt({ sub: 'u2', restaurantId: HOUSE }))
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'accessToken', newValue: 'x' }))
+    })
+    await advance(50)
+    expect(h.get).toHaveBeenCalledTimes(1)
+    expect(h.auth.signInWithSession).not.toHaveBeenCalled()
+    expect(h.toastSuccess).not.toHaveBeenCalled()
+    expect(screen.queryByText('get-started page')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/different account/i)
   })
 
   it('an unrelated storage key asks nothing', async () => {
