@@ -50,7 +50,8 @@ async function order(page: Page): Promise<string[]> {
     Array.from(document.querySelectorAll('.react-grid-item'))
       .map((el) => {
         const r = el.getBoundingClientRect()
-        const name = el.querySelector('[class*="rp-grip"]')?.textContent?.replace(/^(Move|Placing) /, '') ?? el.textContent?.slice(0, 24) ?? ''
+        // The heading is on the card in both modes; the grip only while arranging.
+        const name = el.querySelector('h2.rp-cut__title')?.textContent?.trim() ?? ''
         return { name, y: Math.round(r.top), x: Math.round(r.left) }
       })
       .sort((a, b) => a.y - b.y || a.x - b.x)
@@ -124,6 +125,8 @@ for (const vp of VIEWPORTS) {
     test('a pointer drag of one cutting onto another leaves no overlap and no sideways scroll', async ({ page }) => {
       await open(page, vp.width, vp.height)
       const before = await order(page)
+      // react-grid-layout's handles mount a task after paint (useAfterPaint).
+      await expect(page.locator('.react-grid-item.react-draggable').first()).toBeVisible()
       const a = await cards(page).nth(0).boundingBox()
       const b = await cards(page).nth(1).boundingBox()
       expect(a && b).toBeTruthy()
@@ -133,7 +136,9 @@ for (const vp of VIEWPORTS) {
       await page.mouse.down()
       await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2, { steps: 12 })
       await page.mouse.up()
-      await page.waitForTimeout(400)
+      // The claim is that cards switch places by pointer: a drag the grid never
+      // picked up leaves the sheet sound too, so the order must have changed.
+      await expect.poll(() => order(page)).not.toEqual(before)
       await expectSound(page, vp.width)
       expect((await order(page)).slice().sort()).toEqual(before.slice().sort())
       expect(await cls(page), 'the drag shifted the page').toBeLessThan(0.02)
