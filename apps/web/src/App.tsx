@@ -112,6 +112,7 @@ const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/ne
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const HouseContents = lazyWithRefresh(() => import('./pages/HouseContents'))
 const HouseMenu = lazyWithRefresh(() => import('./pages/HouseMenu'))
+const HouseCount = lazyWithRefresh(() => import('./pages/HouseCount'))
 const DeliveryRedirect = lazyWithRefresh(() => import('./pages/receiving/DeliveryRedirect'))
 const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
 const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
@@ -247,6 +248,15 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <HouseMenu />
+                    </ProtectedRoute>
+                  }
+                />
+                {/* onboarding-r110-g2: the first stock count, walked from /house. */}
+                <Route
+                  path="/house/count"
+                  element={
+                    <ProtectedRoute>
+                      <HouseCount />
                     </ProtectedRoute>
                   }
                 />
