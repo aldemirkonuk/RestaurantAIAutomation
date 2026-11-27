@@ -8,7 +8,9 @@
  *
  * On hand, value, usage and days of cover come from the list row, the one
  * source the table already shows (K9). Waste, the count gap and the cost
- * trend come from GET /inventory/:rid/item/:id/figures.
+ * trend come from GET /inventory/:rid/item/:id/figures, and so does On order:
+ * what is already ordered and not yet received (r109 g1), so Order more is
+ * never pressed blind.
  */
 import type { ReactNode } from 'react';
 import type { ItemFigures, ItemNutrition } from '../../../services/api/inventory';
@@ -17,14 +19,16 @@ import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } fro
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { shortDate } from '../../cellar/next/cellar-format';
 import { formatHousePercent } from '../../../lib/house-number';
+import { coverWithArriving, onOrderCard } from './OnOrder';
 
-export type CardId = 'onhand' | 'value' | 'usage' | 'cover' | 'cost' | 'waste' | 'gap' | 'inside';
+export type CardId = 'onhand' | 'value' | 'usage' | 'cover' | 'onorder' | 'cost' | 'waste' | 'gap' | 'inside';
 
 export const CARD_TITLE: Record<CardId, string> = {
   onhand: 'On hand',
   value: 'Value',
   usage: 'Usage a day',
   cover: 'Days of cover',
+  onorder: 'On order',
   cost: 'Cost',
   waste: 'Waste (30 days)',
   gap: 'Count gap',
@@ -298,6 +302,10 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
   const reading = figures.status === 'reading';
   const failedWhy = figures.status === 'failed' ? `This item’s figures ${UNREAD} — ${figures.reason}.` : null;
   const money = (n: number | null) => cellMoney(n, currency);
+  const onOrderLoad = figures.status === 'ready' ? figures.data.onOrder : figures.status;
+  const onOrder = onOrderCard(onOrderLoad, uom);
+  // coverWithArriving itself refuses an unread pace: the one guard.
+  const withArriving = unsold ? null : coverWithArriving(row, onOrderLoad);
 
   const onHand =
     row.stock === null ? null : (
@@ -403,13 +411,15 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
                 : 'Not enough history'
         }
         source={
-          unsold
+          (unsold
             ? 'On hand divided by usage a day; its use is measured once it has been counted twice.'
             : counted
               ? `On hand less what was used since the last count${row.usageUntil ? ` (${shortDate(row.usageUntil)})` : ''}, at its usage a day between its last counts.`
-              : 'On hand divided by usage a day.'
+              : 'On hand divided by usage a day.') + (withArriving ? ` ${withArriving}` : '')
         }
       />
+      {/* Its answer is a sentence ("2 orders: 1 on its way …"), so it holds the room it fills. */}
+      <Card id="onorder" tall open={open} onOpen={onOpen} {...onOrder} />
       <Card
         id="cost"
         open={open}

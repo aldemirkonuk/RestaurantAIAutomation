@@ -199,6 +199,13 @@ describe('OrderSheet (INV-W20, INV-W21)', () => {
     expect(document.body.textContent).not.toMatch(/Order sent|Send it\?/);
   });
 
+  it('says how many orders are already open above the hold (r109 g1)', () => {
+    mount(<OrderSheet row={row()} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" alreadyOpen={0} />);
+    expect(screen.queryByTestId('iv-order-already-open')).toBeNull();
+    mount(<OrderSheet row={row()} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" alreadyOpen={2} />);
+    expect(screen.getByTestId('iv-order-already-open').textContent).toContain('2 already open for it.');
+  });
+
   it('offers no made-up quantity when the title is at or above par', () => {
     mount(<OrderSheet row={row({ stock: 10, par: 5 })} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
     expect((screen.getByRole('textbox', { name: 'Bottles' }) as HTMLInputElement).value).toBe('');
