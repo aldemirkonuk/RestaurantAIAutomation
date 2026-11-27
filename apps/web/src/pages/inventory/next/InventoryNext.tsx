@@ -63,6 +63,7 @@ import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
   PRICE_SIGNAL_WORDS,
+  UNUSED_WORDS,
   priceSignalsHaveBasis,
   priceSignalsReadable,
   chipMatch,
@@ -77,6 +78,7 @@ import {
   readSentence,
   MAP_WORDS,
   mapTone,
+  SORT_LABEL,
   sortRows,
   sortWords,
   fmtCount,
@@ -208,10 +210,13 @@ export default function InventoryNext() {
     else setV({ open: null });
     openedHere.current = false;
     setCountFirst(false);
+    setUsedFirst(false);
   };
   // The phone is a count mode for staff (critic c3 round 3, item 13); the Count bar opens the count itself.
   const phone = useIsPhone();
   const [countFirst, setCountFirst] = useState(false);
+  // The "Used in" count opens the drawer scrolled to where the good is used.
+  const [usedFirst, setUsedFirst] = useState(false);
   useEffect(() => {
     if (openParam === null) openedHere.current = false;
   }, [openParam]);
@@ -277,7 +282,10 @@ export default function InventoryNext() {
       : priceSignalsHaveBasis(rows ?? [])
         ? 'ready'
         : 'nothing';
-  const activeChip: ChipId = (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') ? 'all' : chip;
+  const activeChip: ChipId =
+    (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') || (chip === 'unused' && data.useCountsRead !== 'ready')
+      ? 'all'
+      : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
@@ -652,6 +660,20 @@ export default function InventoryNext() {
           >
             {c.label} <span className="iv-num">{EM}</span>
           </button>
+        ) : c.id === 'unused' && data.useCountsRead !== 'ready' ? (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip"
+            disabled
+            title={
+              data.useCountsRead === 'unread'
+                ? 'Which recipes use each good could not be read, so no good can be called unused'
+                : 'Reading which recipes use each good'
+            }
+          >
+            {c.label} <span className="iv-num">{EM}</span>
+          </button>
         ) : c.id === 'price' && priceRead === 'staff' ? null : c.id === 'price' && priceRead !== 'ready' ? (
           <button
             key={c.id}
@@ -673,7 +695,7 @@ export default function InventoryNext() {
             className="iv-chip iv-focus"
             aria-pressed={activeChip === c.id}
             data-on={activeChip === c.id}
-            title={c.id === 'price' ? PRICE_SIGNAL_WORDS : undefined}
+            title={c.id === 'price' ? PRICE_SIGNAL_WORDS : c.id === 'unused' ? UNUSED_WORDS : undefined}
             onClick={() => setV({ chip: c.id })}
           >
             {c.label} <span className="iv-num">{chipCount(c.id)}</span>
@@ -744,6 +766,7 @@ export default function InventoryNext() {
           { value: 'name', label: 'Name' },
           { value: 'value', label: 'Value at cost' },
           { value: 'pace', label: 'Fastest moving' },
+          { value: 'used', label: SORT_LABEL.used },
         ]}
       />
       <span className="iv-toggle" role="group" aria-label="View">
@@ -1068,6 +1091,10 @@ export default function InventoryNext() {
                 onSort={(next) => setV({ sort: next })}
                 openId={openId}
                 onToggle={openItem}
+                onUsedIn={(id) => {
+                  setUsedFirst(true);
+                  openItem(id);
+                }}
                 canManage={data.canManage}
                 currency={data.currency}
                 zoneName={zoneName}
@@ -1301,6 +1328,7 @@ export default function InventoryNext() {
           restaurantId={data.rid}
           onClose={closeItem}
           startWith={countFirst ? 'count' : undefined}
+          scrollToUsed={usedFirst}
         />
       ) : null}
     </div>

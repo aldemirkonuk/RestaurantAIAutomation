@@ -68,6 +68,8 @@ export function valuationColumns(currencyCode: string | null, nameHead = 'Title'
     { header: 'Your bottle price', value: (r) => blank(r.bottle) },
     { header: 'Your glass price', value: (r) => blank(r.glass) },
     { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+    // The number, or the words when the count was not read: never 0 for a good nobody could count.
+    { header: 'Used in (recipes)', value: (r) => (typeof r.usedIn === 'number' ? r.usedIn : r.usedIn === null ? 'could not be read' : 'not read yet') },
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
   return forHouse(goods, cols);
