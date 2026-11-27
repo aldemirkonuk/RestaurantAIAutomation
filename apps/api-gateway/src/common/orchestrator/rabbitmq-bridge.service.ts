@@ -20,6 +20,11 @@ import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { DatabaseService } from "../../database/database.service";
 import { InboundResponderService } from "./inbound-responder.service";
 import { deriveTransportSignals, looksPromotional } from "./email-triage";
+import {
+  decodeEncodedWords,
+  displayLabel,
+  parseSender,
+} from "../../communications/inbound-headers";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
@@ -622,7 +627,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const correlationId: string =
       msg?.correlation_id || payload.correlation_id || randomUUID();
     const from: string = payload.from || "";
-    const subject: string = payload.subject || "";
+    // RFC 2047 (QA round 6 N-2): `=?UTF-8?B?…?=` / Q / windows-1254 subjects
+    // were stored and notified verbatim. Decoded here, the one choke point every
+    // ingest path (shared mailbox, house inbox, webhook) publishes through.
+    const subject: string = decodeEncodedWords(payload.subject || "");
     const body: string = payload.body || "";
     const attachments: Array<{
       filename: string;
@@ -644,9 +652,21 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         : {};
     const transportSignals = deriveTransportSignals(rawHeaders, from);
 
-    const emailMatch = from.match(/<([^>]+)>/) || [null, from.trim()];
-    const senderEmail = emailMatch[1]?.toLowerCase();
-    if (!senderEmail) return;
+    // The sender is the addr-spec a real RFC 5322 parser finds, never "the
+    // first <...>" (QA round 6 N-1): `"Sales <sales@bigdist.com>"
+    // <attacker@evil.example>` is attacker@evil.example, and a From that names
+    // no single unambiguous mailbox is attributed to nobody
+    // (`inbound-headers.ts`, which records the rule).
+    const sender = parseSender(from);
+    const senderEmail = sender?.address;
+    if (!senderEmail) {
+      if (from.trim()) {
+        this.logger.warn(
+          "handleInboundEmail: From names no single unambiguous address; not attributed",
+        );
+      }
+      return;
+    }
 
     // Phase 2 — transport-derived attribution. The dedicated-domain webhook stamps the event
     // with the restaurant it resolved from the recipient address. When present we use it as the
@@ -688,8 +708,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         const promotional = looksPromotional(subject, body);
         const looksOutreach = attachments.length > 0 || promotional;
         if (looksOutreach && !isBulkBlast) {
-          const senderName =
-            (from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] || "").trim() || null;
+          // A display name carrying an address other than the sender's own
+          // never becomes the prospect's label (QA round 6 N-1).
+          const senderName = displayLabel(sender);
           // Provenance the manager can see: WHY this was captured.
           const captureReason =
             [
