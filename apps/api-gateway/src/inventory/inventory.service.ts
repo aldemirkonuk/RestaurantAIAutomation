@@ -1825,9 +1825,11 @@ export class InventoryService {
             restaurant_id: restaurantId,
             inventory_id: itemId,
             wine_id: oldItem?.master_wine_id || null,
-            old_stock_live: oldItem?.stock_live ?? 0,
+            // Unread old row: null, not 0 -- a made-up old count is as wrong
+            // as a made-up par.
+            old_stock_live: oldItem?.stock_live ?? null,
             new_stock_live: dto.stockLive,
-            old_shadow_stock: oldItem?.shadow_stock ?? 0,
+            old_shadow_stock: oldItem?.shadow_stock ?? null,
             new_shadow_stock: dto.shadowStock ?? oldItem?.shadow_stock ?? 0,
             // r104 (ADR 0372): the old row can be unread; a made-up 6 here told
             // the Buffer Manager a par nobody set. Unknown goes out as null.

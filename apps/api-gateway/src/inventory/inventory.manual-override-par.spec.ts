@@ -48,6 +48,9 @@ describe("updateInventoryItem -- stock.manual_override threshold_min", () => {
     await service.updateInventoryItem("rest-1", "inv-1", { stockLive: 4 } as any, "u1");
     expect(publishEvent).toHaveBeenCalledTimes(1);
     expect(payload().threshold_min).toBeNull();
+    // The old counts are unknown too; 0 would claim the shelf was empty.
+    expect(payload().old_stock_live).toBeNull();
+    expect(payload().old_shadow_stock).toBeNull();
   });
 
   it("sends the row's own par, a typed 0 included", async () => {

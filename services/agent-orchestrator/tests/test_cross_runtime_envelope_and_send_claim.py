@@ -136,6 +136,41 @@ class TestEnvelopeNormalization:
             == "inv-1"
         )
 
+    async def test_null_par_is_read_from_the_row_not_compared(self):
+        """r104: a present threshold_min=None raised TypeError (4 < None)."""
+        agent = _buffer_agent()
+        agent.database.get_inventory_item.return_value["threshold_min"] = 6
+        body = {
+            "payload": {
+                "inventory_id": "inv-1",
+                "new_stock_live": 4,
+                "old_stock_live": None,
+                "threshold_min": None,
+            }
+        }
+
+        await BufferManagerAgent._handle_manual_override(agent, body)
+
+        assert agent.publish.await_count == 1
+        assert (
+            agent.publish.await_args.kwargs["message_body"]["payload"]["threshold"] == 6
+        )
+
+    async def test_null_par_with_no_row_par_skips_and_says_so(self):
+        agent = _buffer_agent()
+        body = {
+            "payload": {
+                "inventory_id": "inv-1",
+                "new_stock_live": 4,
+                "threshold_min": None,
+            }
+        }
+
+        await BufferManagerAgent._handle_manual_override(agent, body)
+
+        assert agent.publish.await_count == 0
+        agent.logger.warning.assert_called()
+
     def test_existing_payload_is_never_rewritten(self):
         """The guarantee that keeps Python -> Python safe: setdefault, not set."""
         original = {"event_type": "x", "payload": {"a": 1}}
