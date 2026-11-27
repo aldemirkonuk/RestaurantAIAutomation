@@ -117,11 +117,16 @@ function openMs(): number {
   }
 }
 
-function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
-  const { row, house, canManage, currency, zoneName, restaurantId } = props;
+type EvidenceId = CardId | 'all' | null;
+
+function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId; setEvidence: (next: EvidenceId | ((cur: EvidenceId) => EvidenceId)) => void }) {
+  const { row, house, canManage, currency, zoneName, restaurantId, evidence, setEvidence } = props;
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
   const TasteCard = props.TasteCard ?? HowItTastes;
-  const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
+  // A card kept open across a step (r109 g6): this body mounted with it open, so its detail rides the body's own
+  // entry and does not also fade in, and the sheet is not scrolled again. The first press of anything ends it.
+  const [instant, setInstant] = useState(evidence !== null);
+  const carried = useRef(evidence !== null);
   // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
   const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
   const detailRef = useRef<HTMLElement | null>(null);
@@ -143,6 +148,10 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
   // It waits for the open to finish (200 ms), so the page does not scroll toward a card still at 0 height.
   useEffect(() => {
     if (evidence === null) return;
+    if (carried.current) {
+      carried.current = false;
+      return;
+    }
     const t = window.setTimeout(() => detailRef.current?.scrollIntoView?.({ block: 'nearest' }), openMs());
     return () => window.clearTimeout(t);
   }, [evidence]);
@@ -263,6 +272,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
   const toggle = (next: CardId | 'all') => {
     const switching = evidence !== null && evidence !== next;
     setSwitched(switching);
+    setInstant(false);
     if (switching && clipRef.current) clipRef.current.style.minHeight = `${clipRef.current.offsetHeight}px`;
     setEvidence((cur) => (cur === next ? null : next));
   };
@@ -291,6 +301,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
           placement="head"
           open={evidence !== null}
           onOpen={() => {
+            setInstant(false);
             setEvidence('all');
             setWantTaste(true);
           }}
@@ -330,6 +341,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
           restaurantId={restaurantId}
           open={evidence !== null}
           onOpen={() => {
+            setInstant(false);
             setEvidence('all');
             setWantTaste(true);
           }}
@@ -358,6 +370,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
           data-testid="ivd-evidence"
           data-card={evidence}
           data-switched={switched ? 'true' : undefined}
+          data-instant={instant ? 'true' : undefined}
         >
           <h3 className="iv-sec">{evidence === 'all' ? 'All the evidence' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
           {CARD_EVIDENCE[evidence].length > 0 ? (
@@ -422,6 +435,14 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, onClose, steps, restaurantId } = props;
   const qc = useQueryClient();
   const [dir, setDir] = useState<'next' | 'prev' | null>(null);
+  // The open card lives here, above the body that is remounted per good, so a step keeps it (r109 g6). A supply has
+  // no 'inside' card, so it falls back to closed there.
+  const [evidence, setEvidence] = useState<EvidenceId>(null);
+  const noInside = (house.kind ?? row?.kind ?? null) === 'supply';
+  const shownEvidence: EvidenceId = noInside && evidence === 'inside' ? null : evidence;
+  useEffect(() => {
+    if (shownEvidence !== evidence) setEvidence(shownEvidence);
+  }, [shownEvidence, evidence]);
   const at = steps && row ? steps.ids.indexOf(row.id) : -1;
   const prevId = steps && at > 0 ? steps.ids[at - 1] : null;
   const nextId = steps && at >= 0 && at < steps.ids.length - 1 ? steps.ids[at + 1] : null;
@@ -501,7 +522,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         </div>
       ) : null}
       <div key={row.id} className="ivd-stepbody" data-step={dir ?? undefined} data-testid="ivd-stepbody">
-        <DrawerBody {...props} row={row} />
+        <DrawerBody {...props} row={row} evidence={shownEvidence} setEvidence={setEvidence} />
       </div>
     </Sheet>
   );

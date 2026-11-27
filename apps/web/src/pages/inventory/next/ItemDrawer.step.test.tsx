@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import type { HouseFields } from '../../../services/api/inventory';
@@ -36,7 +36,7 @@ const mk = (id: string, name: string) =>
     usageSource: null, usageSince: null, usageUntil: null, usageQty: null, bottle: 50, glass: 10, pourMl: 150, wac: 20, costProvenance: 'invoice',
     value: 60, lastCountedAt: null, openMl: null, zones: [], providerId: null, providerName: null, standing: 'above', active: true,
   }) as InvRow;
-const ROWS = [mk('a', 'Ankara Red'), mk('b', 'Bodrum White'), mk('c', 'Cappadocia Rose')];
+const ROWS = [mk('a', 'Ankara Red'), mk('b', 'Bodrum White'), mk('c', 'Cappadocia Rose'), { ...mk('d', 'Napkins'), kind: 'supply' } as InvRow];
 const NO_HOUSE: HouseFields = { kind: null, uom: null, displayName: null };
 
 const onStep = vi.fn();
@@ -158,6 +158,80 @@ describe('stepping through the list from the drawer', () => {
     key('J');
     expect(api.figures).toHaveBeenCalledWith('c', 'r1');
     expect(api.figures).toHaveBeenCalledWith('a', 'r1');
+  });
+});
+
+describe('an open card across a step (r109 g6)', () => {
+  it('stays open on the next and the previous good; a card pressed there closes it as usual', () => {
+    mount();
+    fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
+    key('J');
+    expect(title()).toContain('Bodrum White');
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
+    key('K');
+    expect(title()).toContain('Ankara Red');
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
+    fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('a closed drawer stays closed across a step', () => {
+    mount();
+    key('J');
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('a supply has no "What\'s in it": that card falls back to closed, and stays closed on the next good', () => {
+    mount({ ids: ['a', 'd', 'b'] });
+    fireEvent.click(screen.getByTestId('ivd-card-inside'));
+    key('J');
+    expect(title()).toContain('Napkins');
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+    key('J');
+    expect(title()).toContain('Bodrum White');
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('a card a supply has is kept across it', () => {
+    mount({ ids: ['a', 'd', 'b'] });
+    fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+    key('J');
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
+  });
+
+  it('no ivd-ev-in on a step: the kept detail is marked instant for that render, and the next press is not', () => {
+    mount();
+    fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-instant')).toBeNull();
+    key('J');
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-instant')).toBe('true');
+    fireEvent.click(screen.getByTestId('ivd-card-value'));
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-instant')).toBeNull();
+  });
+
+  it('the sheet is not scrolled again on a step', () => {
+    vi.useFakeTimers();
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      mount();
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      act(() => void vi.advanceTimersByTime(400));
+      expect(spy).toHaveBeenCalledTimes(1);
+      key('J');
+      act(() => void vi.advanceTimersByTime(400));
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      vi.useRealTimers();
+    }
+  });
+
+  it('the stylesheet drops the fade on the instant detail', () => {
+    const css = readFileSync('src/pages/inventory/next/item-drawer.css', 'utf8');
+    expect(css).toMatch(/\.ivd-evidence\[data-instant='true'\] \{\s*animation: none;/);
   });
 });
 
