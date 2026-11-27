@@ -32,13 +32,21 @@ const TILL = CATALOGUE.till.select({
   ],
 });
 
-const draw = (graph: GraphType) =>
+const LEDGER = CATALOGUE.ledger.select({
+  basis: {},
+  costCoverage: { total: 10, priced: 4, unpriced: 6, complete: false },
+  inventoryValue: 1200,
+  cogs: 8400,
+  revenue: 21000,
+});
+
+const draw = (graph: GraphType, id: 'till' | 'ledger' = 'till') =>
   render(
     <MemoryRouter>
       <Cutting
-        id="till"
+        id={id}
         graph={graph}
-        register={{ data: TILL, loading: false, failure: null, refetch: vi.fn() } as never}
+        register={{ data: id === 'till' ? TILL : LEDGER, loading: false, failure: null, refetch: vi.fn() } as never}
         ctx={{ days: 30 }}
         arranging={false}
         swapOptions={ANALYSIS_IDS.map((id) => ({ id, taken: false }))}
@@ -72,5 +80,12 @@ describe('Draw as keeps the figures list its slot (phone)', () => {
     const t = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
     expect(t).toMatch(/\.rp-fig\[data-held\] \{\s*display: none;/);
     expect(t).toMatch(/@media \(max-width: 767px\) \{[^@]*\.rp-fig\[data-held\] \{\s*display: flex;\s*visibility: hidden;/);
+  });
+
+  it('[REVERT-FAILS] a table with its own layout is the list: one .rp-dl, no held rows behind it', () => {
+    const { container } = draw('table', 'ledger');
+    expect(container.querySelectorAll('.rp-dl')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-held]')).toHaveLength(0);
+    expect(container.querySelectorAll('.rp-fig').length).toBeGreaterThan(1);
   });
 });
