@@ -12,16 +12,89 @@
  * Honesty rules: a failed read says it failed (ADR 0020); no address is ever
  * invented; nothing on this page sends mail — the test letter is a `mailto:`
  * the owner sends from their own mailbox, the way a vendor would.
+ *
+ * Connecting (r28 gap 10): an owner or a manager with no sending mailbox, or
+ * whose house reads no mailbox, starts Google's permission from here and comes
+ * back HERE (`returnPath`), not to Connections. The way back says only what
+ * the provider's return said; whether a mailbox is now connected is what this
+ * page's own lists read, never the return link. A connection the deployment
+ * does not offer is not offered here: the page falls back to Connections,
+ * which says why.
  */
 
 
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { REASONS } from '../../authorize-integration/IntegrationReturnNotice';
+import { integrationsApi } from '../../../services/api/integrations';
 import { SANS } from './cm-format';
 import { senderLine, setupFailWords, type MailStatus, type SenderLineInput } from './mail-format';
 import { MailArrival } from './MailArrival';
 import { ACT, ALERT, LINK, NOT_YOURS, Part, QUIET, TEXT, TONE } from './MailSetupParts';
 import { useChooseSender, useMailSetup, type MailSenderChoice, type MailSetupView } from './useMailSetup';
+
+/** Where Google's permission returns to: this page, in the Mail tab. */
+export const MAIL_SETUP_RETURN = '/communications?tab=mail&setup=1';
+
+export function consentPath(id: 'gmail_send' | 'gmail_read'): string {
+  return `/authorize/${id}?returnPath=${encodeURIComponent(MAIL_SETUP_RETURN)}`;
+}
+
+/**
+ * Whether this deployment offers each Gmail permission. Read only for an
+ * owner or a manager; an unread or unknown catalogue offers nothing, and the
+ * page keeps its way to Connections.
+ */
+function useGmailOffered(enabled: boolean): { send: boolean; read: boolean } {
+  const q = useQuery({
+    queryKey: ['integration-catalog'],
+    queryFn: () => integrationsApi.getCatalog(),
+    enabled,
+    staleTime: 300_000,
+  });
+  const rows = Array.isArray(q.data) ? q.data : [];
+  const offered = (id: string) => rows.some((r) => r.id === id && r.available === true);
+  return { send: enabled && offered('gmail_send'), read: enabled && offered('gmail_read') };
+}
+
+const PERMISSION_NAMES: Record<string, string> = {
+  gmail_send: 'Sending from your Gmail',
+  gmail_read: 'Reading vendor replies in your Gmail',
+};
+
+/**
+ * What Google's return said, back on this page. A "connected" return is not
+ * proof: the sentence points at the lists below, which read what the house
+ * holds now.
+ */
+function ConsentReturn() {
+  const [params, setParams] = useSearchParams();
+  const status = params.get('integration_status');
+  if (!status) return null;
+  const integration = params.get('integration') ?? '';
+  const name = PERMISSION_NAMES[integration] ?? 'The permission';
+  const words =
+    status === 'connected'
+      ? `${name}: Google sent you back here. Whether it is connected is what this page reads below, not the return itself.`
+      : `${name} did not finish, so nothing was connected. ${REASONS[params.get('integration_reason') ?? ''] ?? 'The provider flow returned without a confirmed connection.'}`;
+  return (
+    <div role="status" data-testid="setup-consent-return" data-state={status === 'connected' ? 'returned' : 'unfinished'} className="grid gap-1">
+      <p style={TEXT}>{words}</p>
+      <button
+        type="button"
+        style={LINK}
+        onClick={() => {
+          const next = new URLSearchParams(params);
+          for (const key of ['integration_status', 'integration', 'integration_reason']) next.delete(key);
+          setParams(next, { replace: true });
+        }}
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}
 
 function choiceName(c: MailSenderChoice): string {
   const who = c.personName ? ` · connected by ${c.mine ? 'you' : c.personName}` : c.mine ? ' · connected by you' : '';
@@ -33,11 +106,13 @@ function Senders({
   sender,
   senderFailed,
   conversationWords,
+  sendOffered,
 }: {
   view: MailSetupView;
   sender: SenderLineInput | null;
   senderFailed: boolean;
   conversationWords: string | null;
+  sendOffered: boolean;
 }) {
   const navigate = useNavigate();
   const choose = useChooseSender();
@@ -70,14 +145,35 @@ function Senders({
         </p>
       ) : choices.length === 0 ? (
         <>
-          <p data-testid="setup-senders-none" style={TEXT}>
-            No mailbox of this house is connected for sending yet. Connect one in Connections, and it can be chosen here.
-          </p>
-          {/* `#grants` is the register the Gmail rows are drawn in; the bare
-              page opened at its top, a long scroll above them (r12 walk). */}
-          <button type="button" style={LINK} onClick={() => navigate('/connections#grants')}>
-            Open Connections
-          </button>
+          {view.canChange && sendOffered ? (
+            <>
+              <p data-testid="setup-senders-none" style={TEXT}>
+                No mailbox of this house is connected for sending yet. Connect your Gmail here; you sign in to Google
+                and come straight back to this page.
+              </p>
+              <button
+                type="button"
+                data-testid="setup-connect-send"
+                style={ACT}
+                onClick={() => navigate(consentPath('gmail_send'))}
+              >
+                Connect your Gmail to send from it
+              </button>
+              <p style={QUIET}>The mailbox is yours, not the house&rsquo;s: you can take it back in Connections.</p>
+            </>
+          ) : (
+            <>
+              <p data-testid="setup-senders-none" style={TEXT}>
+                No mailbox of this house is connected for sending yet. Connect one in Connections, and it can be chosen
+                here.
+              </p>
+              {/* `#grants` is the register the Gmail rows are drawn in; the bare
+                  page opened at its top, a long scroll above them (r12 walk). */}
+              <button type="button" style={LINK} onClick={() => navigate('/connections#grants')}>
+                Open Connections
+              </button>
+            </>
+          )}
         </>
       ) : (
         <form
@@ -175,6 +271,7 @@ export function MailSetup({
   senderFailed,
   conversationWords,
   mailboxSwitchedOff = false,
+  readerGranted = 'unknown',
   onBack,
 }: {
   /** The tab's own status line, so the two never disagree. */
@@ -186,6 +283,12 @@ export function MailSetup({
    * your mailbox is switched off", so the line alone cannot carry the switch.
    */
   mailboxSwitchedOff?: boolean;
+  /**
+   * Whether anyone in the house has let Mudavym read their Gmail (the sender
+   * read's `reader.granted`). Only a plain `false` offers to connect reading:
+   * an unread or unknown reader offers nothing rather than a guess.
+   */
+  readerGranted?: boolean | 'unknown';
   sender: SenderLineInput | null;
   senderFailed: boolean;
   /** `conversation.words` from the sender read, the intake sheet's sentence; null when not read. */
@@ -195,11 +298,13 @@ export function MailSetup({
   const q = useMailSetup();
   const navigate = useNavigate();
   const now = Date.now();
+  const offered = useGmailOffered(q.data?.canChange === true);
   return (
     <section aria-label="Mail setup" className="grid gap-3" style={{ fontFamily: SANS }} data-testid="mail-setup">
       <button type="button" onClick={onBack} style={LINK}>
         ← Back to the mail
       </button>
+      <ConsentReturn />
       <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>Mail setup</h2>
       <p data-testid="setup-status" data-state={status.state} style={{ ...TEXT, fontWeight: 600, color: TONE[status.tone] }}>
         {status.words}
@@ -228,7 +333,27 @@ export function MailSetup({
               )}
             </p>
           )}
-          <Senders view={q.data} sender={sender} senderFailed={senderFailed} conversationWords={conversationWords} />
+          {readerGranted === false && q.data.canChange && offered.read && (
+            <div className="grid gap-1" data-testid="setup-reader-none">
+              <p style={TEXT}>
+                No mailbox of this house is read, so a vendor who writes to your own Gmail is not seen here. Let
+                Mudavym read vendor replies in your Gmail; you sign in to Google and come straight back to this page.
+              </p>
+              <button type="button" data-testid="setup-connect-read" style={ACT} onClick={() => navigate(consentPath('gmail_read'))}>
+                Let vendor replies in your Gmail land here
+              </button>
+              <p style={QUIET}>
+                Reading also needs the house&rsquo;s &ldquo;Read this house&rsquo;s mailbox&rdquo; switch in Settings to be on.
+              </p>
+            </div>
+          )}
+          <Senders
+            view={q.data}
+            sender={sender}
+            senderFailed={senderFailed}
+            conversationWords={conversationWords}
+            sendOffered={offered.send}
+          />
           <MailArrival view={q.data} now={now} />
         </>
       )}

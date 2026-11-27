@@ -93,8 +93,22 @@ describe('how mail arrives', () => {
     expect((await screen.findByTestId('setup-copy')).textContent).toBe('Copied.');
     expect(writeText).toHaveBeenCalledWith('r-1a2b3c4d@in.example.test');
     const steps = screen.getByTestId('setup-forwarding').textContent ?? '';
-    expect(steps).toMatch(/forward those letters to this address/);
     expect(steps).toMatch(/cannot be confirmed from here today/);
+  });
+
+  // r28 gap 11: the page told owners to do what order letters already do, and
+  // that a hand-forwarded letter keeps the vendor's name. Neither was true.
+  it('says order letters already ask for replies here, and that a letter forwarded by hand is not the vendor\'s', async () => {
+    answer(view());
+    mount();
+    expect((await screen.findByTestId('setup-forwarding-give')).textContent).toBe(
+      'Give this address to your vendors. The order letters Mudavym sends already ask vendors to reply to it.',
+    );
+    const byHand = screen.getByTestId('setup-forwarding-by-hand').textContent ?? '';
+    expect(byHand).toMatch(/^A letter you forward by hand arrives from you, not from the vendor, so it is not filed as the vendor’s\./);
+    expect(byHand).toMatch(/keeps it only when it carries an attachment or reads as an offer/);
+    const steps = screen.getByTestId('setup-forwarding').textContent ?? '';
+    expect(steps).not.toMatch(/keeps the vendor|put it on your orders/);
   });
 
   it('a failed copy says so and never claims it copied', async () => {
