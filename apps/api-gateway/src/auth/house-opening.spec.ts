@@ -121,6 +121,7 @@ function makeService(
   const inserts: { table: string; row: Record<string, unknown> }[] = [];
   const deletes: { table: string; col: string; v: unknown }[] = [];
   const calls: string[] = [];
+  const orFilters: string[] = [];
   const singleDefault: Record<string, Result> = {
     organizations: { data: { id: "org-1" }, error: null },
     restaurants: { data: { id: "rest-1" }, error: null },
@@ -138,6 +139,10 @@ function makeService(
   const maybeSingleDefault: Record<string, Result> = {
     user_restaurant_access: { data: { role: "owner" }, error: null },
   };
+  // createFirstHouse's first read of user_restaurant_access asks whether the
+  // account already belongs to a house (it does not); the token mint's later
+  // read finds the owner row the write made.
+  let accessReads = 0;
   const next = (
     queue: Record<string, Result[]> | undefined,
     table: string,
@@ -181,10 +186,21 @@ function makeService(
         return c;
       },
       is: () => c,
+      or: (filter: string) => {
+        orFilters.push(filter);
+        return c;
+      },
+      limit: () => c,
       maybeSingle: async () => {
         log("maybeSingle");
         if (heldPlace && place === heldPlace)
           return { data: { id: "rest-0" }, error: null };
+        if (
+          table === "user_restaurant_access" &&
+          !queues.maybeSingle?.[table]?.length &&
+          accessReads++ === 0
+        )
+          return { data: null, error: null };
         return next(
           queues.maybeSingle,
           table,
@@ -243,7 +259,16 @@ function makeService(
 
   const restaurantRows = () =>
     inserts.filter((i) => i.table === "restaurants").map((i) => i.row);
-  return { svc, inserts, deletes, calls, logError, logLog, restaurantRows };
+  return {
+    svc,
+    inserts,
+    deletes,
+    calls,
+    orFilters,
+    logError,
+    logLog,
+    restaurantRows,
+  };
 }
 
 /** Another house holds the place HOUSE picks. */
@@ -607,6 +632,36 @@ describe("createFirstHouse", () => {
     expect(run.logError).toHaveBeenCalledWith(
       `createFirstHouse rolled back at place look-up: no code ${NO_ANSWER.message}`,
     );
+  });
+
+  it("refuses an account that already holds a membership, active or held, and opens nothing (r104)", async () => {
+    // A staff invitee who joined with an unproved address: users.restaurant_id
+    // is null and a held user_restaurant_access row waits for them.
+    const run = makeService({
+      maybeSingle: {
+        user_restaurant_access: [{ data: { id: "acc-1" }, error: null }],
+      },
+    });
+    const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
+    expect(exception).toBeInstanceOf(ConflictException);
+    expect((exception.getResponse() as { code: string }).code).toBe(
+      "ALREADY_IN_A_HOUSE",
+    );
+    expect(run.inserts).toEqual([]);
+    expect(run.deletes).toEqual([]);
+    // Only a live or held row counts; one that ended does not.
+    expect(run.orFilters).toEqual(["is_active.eq.true,held_since.not.is.null"]);
+  });
+
+  it("says so, and opens nothing, when the memberships cannot be read (r104)", async () => {
+    const run = makeService({
+      maybeSingle: {
+        user_restaurant_access: [{ data: null, error: NO_ANSWER }],
+      },
+    });
+    const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
+    expect(exception).toBeInstanceOf(ServiceUnavailableException);
+    expect(run.inserts).toEqual([]);
   });
 
   it("looks nothing up when no place was picked (E1d)", async () => {

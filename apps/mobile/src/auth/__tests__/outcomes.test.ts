@@ -5,6 +5,7 @@ import {
   forgotPasswordOutcome,
   routeAfterSignIn,
   routeAfterVerification,
+  routeAfterVerificationFromHouses,
   statusOf,
 } from "@/auth/outcomes";
 
@@ -137,6 +138,41 @@ describe("routeAfterVerification", () => {
     // two mistakes: there is nothing there and no explanation why.
     expect(routeAfterVerification(null)).toBe("/get-started");
     expect(routeAfterVerification({ menu_uploaded: null })).toBe("/get-started");
+  });
+});
+
+describe("routeAfterVerificationFromHouses", () => {
+  const house = { id: "h1" };
+  const waiting = { id: "h2", membershipId: "m1" };
+
+  it("nothing held and no house opens one", () => {
+    expect(routeAfterVerificationFromHouses({ houses: [], held: [] }, false)).toBe(
+      "/open-house",
+    );
+  });
+
+  it("a held membership with no house is the chooser, never /open-house (a stray tenant)", () => {
+    expect(
+      routeAfterVerificationFromHouses({ houses: [], held: [waiting] }, false),
+    ).toBe("/choose-house");
+  });
+
+  it("a person who holds houses but whose session names none (an /auth/me 429 reads as none) is the chooser", () => {
+    expect(
+      routeAfterVerificationFromHouses({ houses: [house], held: [] }, false),
+    ).toBe("/choose-house");
+  });
+
+  it("a session already in a house with nothing waiting goes on to the menu check", () => {
+    expect(
+      routeAfterVerificationFromHouses({ houses: [house], held: [] }, true),
+    ).toBeNull();
+  });
+
+  it("a session in a house with something waiting still sees the chooser", () => {
+    expect(
+      routeAfterVerificationFromHouses({ houses: [house], held: [waiting] }, true),
+    ).toBe("/choose-house");
   });
 });
 

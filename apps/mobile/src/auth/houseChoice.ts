@@ -200,3 +200,50 @@ export function orderHouses(
     lastOpenedId,
   };
 }
+
+/**
+ * A membership waiting for the person to accept it (ADR 0229 fork 13): an
+ * invite join granted it before their address was proved, so it grants
+ * nothing until they say yes. `membershipId` is what acceptance names.
+ */
+export interface HeldHouse extends HouseSummary {
+  membershipId: string;
+  role: "owner" | "manager" | "staff" | null;
+}
+
+/**
+ * What `GET /auth/houses` answered: the houses the person holds and the
+ * memberships waiting for them. `null` when the body is not that shape, so a
+ * caller says the read failed instead of treating silence as "no houses"
+ * (ADR 0020). An older gateway sends no `held`: nothing is waiting.
+ */
+export function readHouseAnswer(
+  body: unknown,
+): { houses: HouseSummary[]; held: HeldHouse[] } | null {
+  if (!body || typeof body !== "object") return null;
+  const { houses, held } = body as { houses?: unknown; held?: unknown };
+  if (!Array.isArray(houses)) return null;
+  const summary = (v: unknown): HouseSummary | null => {
+    const h = v as Partial<HouseSummary> | null;
+    return h && typeof h.id === "string" && typeof h.name === "string"
+      ? { id: h.id, name: h.name, city: typeof h.city === "string" ? h.city : null }
+      : null;
+  };
+  const roles = ["owner", "manager", "staff"] as const;
+  const waiting: HeldHouse[] = [];
+  for (const v of Array.isArray(held) ? held : []) {
+    const base = summary(v);
+    const m = v as { membershipId?: unknown; role?: unknown };
+    if (base && typeof m.membershipId === "string") {
+      waiting.push({
+        ...base,
+        membershipId: m.membershipId,
+        role: roles.find((r) => r === m.role) ?? null,
+      });
+    }
+  }
+  return {
+    houses: houses.map(summary).filter((h): h is HouseSummary => h !== null),
+    held: waiting,
+  };
+}

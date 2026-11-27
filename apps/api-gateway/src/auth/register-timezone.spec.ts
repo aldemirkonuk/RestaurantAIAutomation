@@ -34,6 +34,8 @@ function makeRegisterService() {
       },
       delete: () => c,
       eq: () => c,
+      or: () => c,
+      limit: () => c,
       maybeSingle: async () => ({ data: null, error: null }),
       single: async () => result,
       then: (resolve: (v: unknown) => unknown) =>
@@ -107,6 +109,8 @@ function makeFirstHouseService() {
       },
       delete: () => c,
       eq: () => c,
+      or: () => c,
+      limit: () => c,
       maybeSingle: async () => ({ data: null, error: null }),
       single: async () => result,
       then: (resolve: (v: unknown) => unknown) =>
