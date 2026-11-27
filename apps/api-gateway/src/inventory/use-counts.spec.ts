@@ -1,5 +1,6 @@
 import { FakeDb } from "../notifications/producers/testing/fake-db";
 import { ItemUseCountsService, USE_COUNTS_UNREAD } from "./item-use-counts.service";
+import { ItemUsedInService } from "./item-used-in.service";
 
 const A = "house-a";
 const B = "house-b";
@@ -182,3 +183,46 @@ describe("ItemUseCountsService: legacy house cocktails count, as the drawer's Us
   });
 });
 
+
+describe("the list's count is the drawer's Used in (r110 inventory-6)", () => {
+  // Every good of the house, read both ways on one seed: the list's count and the drawer's drinks
+  // (legacy cocktail rows not superseded, plus current versions), one drink once. A good no drink
+  // uses has no count and no drawer row. Dishes are not in this seed (dishes.service reads them).
+  async function bothWays(db: FakeDb, svc: ItemUseCountsService) {
+    const { counts } = await svc.counts(A);
+    const usedIn = new ItemUsedInService({ supabase: db } as any);
+    const goods = db.tables.restaurant_inventory!.filter((g) => g.restaurant_id === A).map((g) => String(g.id));
+    const drawer: Record<string, number> = {};
+    for (const id of goods) {
+      const u = await usedIn.usedIn(A, id);
+      const drinks = new Set([...(u.inCocktails.lines ?? []), ...(u.inDrinkRecipes.lines ?? [])].map((l) => l.cocktailId));
+      if (drinks.size > 0) drawer[id] = drinks.size;
+    }
+    return { counts, drawer };
+  }
+  const noDishes = (db: FakeDb) => {
+    db.tables.recipe_current_dish = [];
+    db.tables.dishes = [];
+    for (const c of db.tables.cocktails!) c.name ??= String(c.id); // the drawer names each drink
+  };
+
+  it("[REVERT-FAILS] agree on legacy rows, superseded rows, deleted drinks and another house's drinks", async () => {
+    const { db, svc } = seed();
+    noDishes(db);
+    // c-old (live, no version) names Campari the legacy way; c-sour has a version, so its legacy
+    // gin row is history; c-gone is deleted; c-b is another house's.
+    const { counts, drawer } = await bothWays(db, svc);
+    expect(drawer).toEqual({ gin: 1, campari: 1 });
+    expect(counts).toEqual(drawer);
+  });
+
+  it("[REVERT-FAILS] agree when a superseded legacy row names a good no current line does", async () => {
+    const { db, svc } = seed();
+    noDishes(db);
+    db.tables.restaurant_inventory!.push({ id: "tonic", restaurant_id: A, beverage_id: "bev-tonic", master_wine_id: null });
+    db.tables.cocktail_ingredients!.push({ id: "i9", cocktail_id: "c-sour", beverage_id: "bev-tonic", wine_id: null });
+    const { counts, drawer } = await bothWays(db, svc);
+    expect(drawer.tonic).toBeUndefined();
+    expect(counts).toEqual(drawer);
+  });
+});
