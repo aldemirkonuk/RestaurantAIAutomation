@@ -9,8 +9,8 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { dishesApi, type DishYield } from '../../../../services/api/recipes';
-import { dishesKey, recipeKey } from './useRecipe';
-import { RECIPE_UNITS, UNIT_LABEL, qtyText, readQty, type RecipeUnit } from './units';
+import { drinkFiguresKey } from './useRecipe';
+import { RECIPE_UNITS, UNIT_LABEL, qtyText, readQty, readsAsThousandAmbiguous, type RecipeUnit } from './units';
 
 /** The unit a stored batch is read back in. */
 const SHOWN: Record<string, { unit: RecipeUnit; per: number }> = { ml10: { unit: 'ml', per: 10 }, mg: { unit: 'g', per: 1000 }, each_milli: { unit: 'each', per: 1000 } };
@@ -22,6 +22,26 @@ export function yieldWords(y: DishYield | null | undefined): string | null {
 
 /** The gateway's own sentence for a batch that makes nothing (dishes.service YIELD_NEEDS_AMOUNT). */
 export const YIELD_NEEDS_AMOUNT = 'A batch makes an amount above zero.';
+
+/** Said when what was typed is not a number at all. */
+export const YIELD_NOT_A_NUMBER = 'Type the amount as a number, like 700.';
+
+/**
+ * Why a typed batch size cannot be read, each reason in its own sentence (r107f):
+ * 1.500 is above zero, so "above zero" was false for it; the real reason is that
+ * the separator could be a thousand or a decimal, said in the sheet's own words.
+ * Null when the text reads.
+ */
+export function yieldProblem(text: string, unit: RecipeUnit): string | null {
+  if (readQty(text, unit) !== null) return null;
+  const t = text.trim();
+  if (readsAsThousandAmbiguous(t, unit)) {
+    return `${t} could be ${t.replace(/[.,]/, '')} or ${t.replace(',', '.').replace(/0+$/, '').replace(/\.$/, '')}. Type it without the separator.`;
+  }
+  if (t === '') return YIELD_NEEDS_AMOUNT;
+  const n = Number(t.replace(',', '.'));
+  return Number.isFinite(n) && n <= 0 ? YIELD_NEEDS_AMOUNT : YIELD_NOT_A_NUMBER;
+}
 
 function refusal(e: unknown): string {
   const m = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
@@ -39,7 +59,7 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
   // Said only once the field has been edited, so an untouched form is not scolded.
   const [edited, setEdited] = useState(false);
   const amount = readQty(text, unit);
-  const needsAmount = edited && amount === null;
+  const problem = edited ? yieldProblem(text, unit) : null;
 
   const save = async () => {
     if (amount === null || busy || !activeRestaurantId) return;
@@ -48,8 +68,11 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
     try {
       const out = await dishesApi.setYield(activeRestaurantId, dishId, { amount, unit });
       setSaid({ ok: true, text: `One batch makes ${qtyText(out.yield.amount)} ${out.yield.unit}. Every recipe that draws it is priced again.` });
-      void qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, { kind: 'dish', id: dishId }) });
-      void qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
+      // The told "priced again" is every recipe of the house: the dish's own sheet, the
+      // dish list, every parent's sheet (all under ['recipes', house]) and the drinks
+      // list, whose figures stay fresh for a minute and would keep the old cost.
+      void qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId] });
+      void qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) });
     } catch (e) {
       setSaid({ ok: false, text: refusal(e) });
     } finally {
@@ -89,9 +112,9 @@ export default function YieldForm({ dishId, current }: { dishId: string; current
       <button type="button" className="cl-btn cl-focus" disabled={amount === null || busy} onClick={() => void save()}>
         {busy ? 'Saving…' : 'Save what a batch makes'}
       </button>
-      {needsAmount ? (
+      {problem ? (
         <p className="cl-rcp-note cl-rcp-note-warn" role="status" data-testid="yield-needs-amount">
-          {YIELD_NEEDS_AMOUNT}
+          {problem}
         </p>
       ) : null}
       {said ? (

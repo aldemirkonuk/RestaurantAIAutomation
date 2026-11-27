@@ -359,8 +359,8 @@ export class RecipesService {
     componentIds: string[],
     money: boolean,
     depth: number,
-  ): Promise<Map<string, { name: string; perBase: number | null; partial?: boolean }>> {
-    const out = new Map<string, { name: string; perBase: number | null; partial?: boolean }>();
+  ): Promise<Map<string, { name: string; perBase: number | null; partial?: boolean; baseUnit?: string | null }>> {
+    const out = new Map<string, { name: string; perBase: number | null; partial?: boolean; baseUnit?: string | null }>();
     if (!componentIds.length) return out;
     const client = this.db.getClient();
     // PostgREST answers at most 1,000 rows a request, silently. A list of drinks
@@ -373,7 +373,7 @@ export class RecipesService {
       const [dishes, pointers] = await Promise.all([
         client
           .from("dishes")
-          .select("id, name, yield_qty_base, deleted_at")
+          .select("id, name, yield_qty_base, yield_base_unit, deleted_at")
           .eq("restaurant_id", restaurantId)
           .in("id", part),
         client
@@ -415,7 +415,7 @@ export class RecipesService {
     const { items, lots } = pricing;
     const inner =
       depth >= 3
-        ? new Map<string, { name: string; perBase: number | null; partial?: boolean }>()
+        ? new Map<string, { name: string; perBase: number | null; partial?: boolean; baseUnit?: string | null }>()
         : await this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1);
     for (const d of dishRows) {
       const lines = linesOf.get(versionOf.get(d.id) ?? "") ?? [];
@@ -436,6 +436,7 @@ export class RecipesService {
         name: d.name,
         perBase: d.deleted_at || !lines.length ? null : componentPerBase(batch, d.yield_qty_base),
         partial: batch.partial > 0,
+        baseUnit: (d.yield_base_unit as string | null) ?? null,
       });
     }
     return out;

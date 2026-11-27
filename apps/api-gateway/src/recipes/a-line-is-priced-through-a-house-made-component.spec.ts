@@ -189,3 +189,29 @@ describe("a save sends the component on, and says the database's refusal", () =>
     expect(calls).toEqual([]);
   });
 });
+
+describe("a made line in another unit than its component's batch is never a figure (r106 review 2)", () => {
+  const syrupRate = { name: "Simple syrup", perBase: 1 / 7000 };
+  const draw = (made: { name: string; perBase: number | null; baseUnit?: string | null }) =>
+    recipeCost([{ role: "made", inventoryId: null, qtyBase: 400, baseUnit: "ml10", item: null, lot: null, made }], 1);
+
+  it("a batch kept in ml prices an ml line; a batch kept in g does not price it, it says unit_mismatch", () => {
+    expect(draw({ ...syrupRate, baseUnit: "ml10" }).lines[0]).toMatchObject({ costBasis: "component", costPerServe: 0.06 });
+    const bad = draw({ ...syrupRate, baseUnit: "mg" });
+    expect(bad.lines[0]).toMatchObject({ costPerServe: null, costPerServeExact: null, costBasis: "unit_mismatch", throughComponent: "Simple syrup" });
+    expect(bad).toMatchObject({ perServe: null, complete: false, priced: 0, of: 1 });
+  });
+
+  it("a past version priced today reads 'not priced' when the yield has since moved to grams, not 100x low", async () => {
+    const rows = withSyrup();
+    const v = (await new RecipesService(fakeDb(rows).db).getDishRecipe(HOUSE_A, TART, "owner")) as any;
+    expect(v.current.lines[0]).toMatchObject({ costBasis: "component" });
+    for (const d of rows.dishes) if (d.id === SYRUP) d.yield_base_unit = "mg";
+    const past = (await new RecipesService(fakeDb(rows).db).readDishVersion(HOUSE_A, TART, V_TART_2, "owner")) as any;
+    expect(past.version.lines[0]).toMatchObject({ role: "made", costPerServe: null, costBasis: "unit_mismatch" });
+    expect(past.cost).toMatchObject({ perServe: null, complete: false });
+    const now = (await new RecipesService(fakeDb(rows).db).getDishRecipe(HOUSE_A, TART, "owner")) as any;
+    expect(now.current.lines[0]).toMatchObject({ costPerServe: null, costBasis: "unit_mismatch" });
+    expect(now.cost).toMatchObject({ perServe: null, complete: false });
+  });
+});

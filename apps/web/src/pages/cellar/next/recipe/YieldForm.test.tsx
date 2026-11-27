@@ -36,6 +36,21 @@ beforeEach(() => {
 
 const button = () => screen.getByRole('button', { name: /save what a batch makes/i });
 
+describe('YieldForm keeps every cost it moved in step (r106 review 3)', () => {
+  it('invalidates the house\'s recipes and the drinks list, so the list and the drawer name one cost', async () => {
+    h.patch.mockResolvedValue({ data: { id: ID, name: 'House Sour Mix', yield: { amount: 1500, unit: 'ml', qtyBase: 15000, baseUnit: 'ml10' } } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const spy = vi.spyOn(client, 'invalidateQueries');
+    render(<YieldForm dishId={ID} current={null} />, { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+    fireEvent.change(screen.getByLabelText(/one batch makes/i), { target: { value: '1500' } });
+    fireEvent.click(button());
+    await screen.findByTestId('yield-said');
+    const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey);
+    expect(keys).toContainEqual(['recipes', RID]);
+    expect(keys).toContainEqual(['cellar', 'cocktails', RID, 'figures']);
+  });
+});
+
 describe('YieldForm', () => {
   it('sends the amount and unit to the yield route and says every recipe is priced again', async () => {
     h.patch.mockResolvedValue({ data: { id: ID, name: 'House Sour Mix', yield: { amount: 700, unit: 'ml', qtyBase: 7000, baseUnit: 'ml10' } } });
@@ -86,6 +101,29 @@ describe('YieldForm', () => {
       expect(await screen.findByTestId('yield-said')).toBeInTheDocument();
       fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: 'cl' } });
       expect(screen.queryByTestId('yield-said')).toBeNull();
+    });
+
+    it.each([
+      ['1.500', 'ml', '1.500 could be 1500 or 1.5. Type it without the separator.'],
+      ['1,000', 'g', '1,000 could be 1000 or 1. Type it without the separator.'],
+      ['abc', 'ml', 'Type the amount as a number, like 700.'],
+      ['1.5.0', 'ml', 'Type the amount as a number, like 700.'],
+      ['0', 'ml', 'A batch makes an amount above zero.'],
+      ['-3', 'ml', 'A batch makes an amount above zero.'],
+    ])('%s in %s says its own reason (r107f)', (value, unit, said) => {
+      render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
+      fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: unit } });
+      fireEvent.change(field(), { target: { value } });
+      expect(button()).toBeDisabled();
+      expect(screen.getByTestId('yield-needs-amount').textContent).toBe(said);
+    });
+
+    it('1.500 in cl reads as a litre and a half: no sentence, Save is on (r107f)', () => {
+      render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
+      fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: 'cl' } });
+      fireEvent.change(field(), { target: { value: '1.500' } });
+      expect(screen.queryByTestId('yield-needs-amount')).toBeNull();
+      expect(button()).toBeEnabled();
     });
 
     it('an untouched empty form does not scold', () => {
