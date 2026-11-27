@@ -14,7 +14,7 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
@@ -316,10 +316,19 @@ export default function InventoryTable(props: InventoryTableProps) {
   // A row opened from outside the window (not by a tap on it) is brought in and into view.
   const openAt = openId === null ? -1 : rows.findIndex((r) => r.id === openId);
   const { jumpTo, start: winStart, end: winEnd } = win;
+  // A row a link named is already drawn at the first paint (the anchor above);
+  // the page is put on it before that paint, at once, so nothing is drawn at
+  // the top and then carried a long way down (r106 F6).
+  useLayoutEffect(() => {
+    if (phone || anchor === null || anchor < 0) return;
+    document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+    // Only the first paint; a later open is the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (phone || openAt < 0 || (openAt >= winStart && openAt < winEnd)) return;
     jumpTo(openAt);
-    const t = window.requestAnimationFrame(() => document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center' }));
+    const t = window.requestAnimationFrame(() => document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center', behavior: 'instant' }));
     return () => window.cancelAnimationFrame(t);
     // Only a change of the opened row moves the window; scrolling past it must not drag it back.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -7,6 +7,7 @@
  * their own tests, and none of them is under test here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useLayoutEffect, type ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -1086,7 +1087,7 @@ describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)',
 });
 
 describe('INV-W38 — the view is the URL', () => {
-  function renderAt(url: string, before: string[] = []) {
+  function renderAt(url: string, before: string[] = [], extra: ReactNode = null) {
     const seen = { path: '', search: '', back: () => undefined as void, replace: (_to: string) => undefined as void };
     function Probe() {
       const loc = useLocation();
@@ -1107,6 +1108,7 @@ describe('INV-W38 — the view is the URL', () => {
             <Route path="/home" element={<div data-testid="home" />} />
           </Routes>
           <Probe />
+          {extra}
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -1308,6 +1310,31 @@ describe('INV-W38 — the view is the URL', () => {
     renderAt('/inventory?highlight=wb');
     expect(screen.getByTestId('inv-row-b').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByTestId('inv-row-a').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it("a link's good is scrolled to before the layout phase ends, and at once (a passive effect fails this)", () => {
+    mock.data = data({ rows: two() });
+    const log: string[] = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) {
+      log.push(`scroll:${this.id}:${JSON.stringify(o)}`);
+    };
+    function EndProbe() {
+      useLayoutEffect(() => {
+        log.push('layout-end');
+      }, []);
+      return null;
+    }
+    try {
+      renderAt('/inventory?open=b', [], <EndProbe />);
+      const mine = log.filter((l) => l.startsWith('scroll:iv-row-b'));
+      // The table (first paint) and this page both put the page on the row; each is at once and in the layout phase.
+      expect(mine.length).toBeGreaterThan(0);
+      expect(new Set(mine)).toEqual(new Set(['scroll:iv-row-b:{"block":"center","behavior":"instant"}']));
+      expect(log.lastIndexOf(mine[0])).toBeLessThan(log.indexOf('layout-end'));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
   });
 
   it('keeps what a person narrowed to in the URL, and drops it again at the default', () => {

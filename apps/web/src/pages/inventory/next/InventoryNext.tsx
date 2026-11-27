@@ -20,7 +20,7 @@
  *  - ready    — the book.
  * A figure that is pending or failed is "—", never 0.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext';
@@ -246,10 +246,12 @@ export default function InventoryNext() {
   }, [openParam, rows]);
   // A title opened by a link is brought into view once, when its row is drawn.
   const linkedOpen = useRef(openParam);
-  useEffect(() => {
+  // Before the paint and at once: a page painted at the top and then carried
+  // to a good 60,000 px down moves every row on the screen (r106 F6).
+  useLayoutEffect(() => {
     if (linkedOpen.current === null || openId === null || !rows?.some((r) => r.id === openId)) return;
     linkedOpen.current = null;
-    document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center' });
+    document.getElementById(`iv-row-${openId}`)?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
   }, [openId, rows]);
   const zoneName = (id: string | null): string => {
     if (id === null) return 'Unassigned';
