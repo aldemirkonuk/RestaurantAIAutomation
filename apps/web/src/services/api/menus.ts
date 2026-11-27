@@ -144,6 +144,9 @@ export interface MenuReadNote {
     | 'too_large'
     | 'too_precise'
     | 'unreadable'
+    | 'negative'
+    | 'more_cells_than_header'
+    | 'unclosed_quote'
   field?: string
   raw?: string
   /** The worksheet the row is on; said only when the workbook has more than one visible sheet. */
