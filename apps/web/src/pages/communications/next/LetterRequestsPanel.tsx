@@ -78,7 +78,7 @@ export function releaseBody(r: LetterRequest) {
 
 /**
  * The house's letter requests. One read, shared by this panel and the page's
- * "Waiting on you" count, so the count and the list cannot disagree.
+ * "To send" count, so the count and the list cannot disagree.
  */
 export function useLetterRequests(restaurantId: string) {
   return useQuery({
@@ -216,7 +216,7 @@ export function LetterRequestsPanel({
   if (requests.isPending) return null;
   // COMMS-W33 (founder: "A: keep, say when"): a read that fails after it has
   // answered keeps the letters it read, under a line saying when that was — they
-  // used to vanish while the page's "Waiting on you" figure still counted them.
+  // used to vanish while the page's "To send" figure still counted them.
   const stale = requests.isError && requests.data !== undefined;
   if (requests.isError && !stale) {
     return (
@@ -257,7 +257,7 @@ export function LetterRequestsPanel({
       className="mb-6 rounded-xl p-4"
       style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
     >
-      {/* COMMS-W36: under "Waiting on you", so one level below it; the line and
+      {/* COMMS-W36: under "To send", so one level below it; the line and
           spacing it had as an h2 are kept, so only its level changed. */}
       <h3 style={{ fontSize: 12, fontWeight: 600, lineHeight: '2rem', letterSpacing: '-0.02em', margin: '0 0 8px', color: 'var(--ink-2, #4F473C)' }}>
         Letters waiting for a manager · {waiting.length}
