@@ -427,7 +427,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
         <div>
           <button
             type="button"
-            className="mdv-link"
+            className="mdv-link mdv-touch"
             aria-expanded={detailsOpen}
             aria-controls="menu-read-details"
             onClick={() => setDetails((o) => !o)}
@@ -940,7 +940,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
     <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-removed-said">
       Taken off the list.{' '}
       {canManage ? (
-        <button type="button" className="cl-btn cl-focus" data-testid="menu-removed-restore" disabled={putting} onClick={() => void putBack(taken)}>
+        <button type="button" className="cl-btn cl-focus mdv-touch" data-testid="menu-removed-restore" disabled={putting} onClick={() => void putBack(taken)}>
           {putting ? 'Putting back…' : 'Put it back'}
         </button>
       ) : null}

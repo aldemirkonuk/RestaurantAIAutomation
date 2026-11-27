@@ -100,3 +100,18 @@
     min-width: 44px;
   }
 }
+
+/* Touch targets under 600 px (r107 walk finding 4): Put back, Put it back, the sheet download,
+   Add to menu and Add details were 18-30 px high. 44 px, centred; nothing else about them
+   moves. */
+@media (max-width: 599px) {
+  .mdv-touch {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
+  }
+}

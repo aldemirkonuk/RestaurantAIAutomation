@@ -1028,3 +1028,13 @@ describe('MenuVersions — the source file opens on the click (r106 menu-7, DD-r
     expect(getMenuSourceUrl).not.toHaveBeenCalled();
   });
 });
+
+describe('MenuVersions — Put it back and Add details are 44 px targets on a phone (r108 menu-3)', () => {
+  it('carries the touch class on both, and the sentence has no timer', () => {
+    const src = readFileSync(resolve(__dirname, 'MenuVersions.tsx'), 'utf8');
+    expect(src).toMatch(/className="cl-btn cl-focus mdv-touch" data-testid="menu-removed-restore"/);
+    expect(src).toMatch(/className="mdv-link mdv-touch"\s+aria-expanded=\{detailsOpen\}/);
+    const css = readFileSync(resolve(__dirname, 'menu-rows.css'), 'utf8');
+    expect(css.slice(css.lastIndexOf('@media (max-width: 599px)'))).toContain('min-height: 44px');
+  });
+});

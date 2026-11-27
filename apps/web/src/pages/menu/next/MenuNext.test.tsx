@@ -968,3 +968,41 @@ describe('MenuNext — a narrow screen gets cards, not a table to scroll (r106 m
     expect(narrow).not.toMatch(/animation|transition/);
   });
 });
+
+describe('MenuNext — the taken-off sentence is in view, and the controls are 44 px on a phone (r108 menu-3)', () => {
+  const proto = Element.prototype as { scrollIntoView?: unknown };
+  const had = Object.prototype.hasOwnProperty.call(proto, 'scrollIntoView');
+  const before = proto.scrollIntoView;
+  afterEach(() => {
+    if (had) proto.scrollIntoView = before;
+    else delete proto.scrollIntoView;
+  });
+
+  it('jumps the sentence into view the moment a line is taken off: instant, once, never before', async () => {
+    const spy = vi.fn();
+    proto.scrollIntoView = spy;
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mount();
+    const discard = await screen.findByRole('button', { name: 'Discard Raki' });
+    expect(spy).not.toHaveBeenCalled();
+    fireEvent.click(discard);
+    const said = await screen.findByTestId('menu-off-list-said');
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    expect(spy.mock.instances[0]).toBe(said);
+    expect(spy).toHaveBeenCalledWith({ block: 'nearest', behavior: 'instant' });
+  });
+
+  it('puts the controls on the 44 px rule, and the rule is static', () => {
+    const next = readFileSync('src/pages/menu/next/MenuNext.tsx', 'utf8');
+    expect(next).toMatch(/className="cl-btn cl-focus mdv-touch" disabled=\{putting\}/);
+    expect(next).toMatch(/type="submit" className="cl-btn cl-focus mdv-touch"/);
+    expect(readFileSync('src/pages/menu/next/MenuSheetButton.tsx', 'utf8')).toMatch(/className="mdv-link cl-focus mdv-touch"/);
+    const css = readFileSync('src/pages/menu/next/menu-rows.css', 'utf8');
+    const rule = css.slice(css.lastIndexOf('@media (max-width: 599px)'));
+    expect(rule).toContain('.mdv-touch');
+    expect(rule).toContain('min-height: 44px');
+    expect(rule).not.toMatch(/transition|animation/);
+  });
+});
