@@ -599,6 +599,22 @@ export interface NeverArrivedCreditClaimResult {
   };
 }
 
+/**
+ * r102 F3: the paper's currency and the order's, when BOTH are stated and they
+ * differ. Then the paper's unit cost is a different money from the estimate it
+ * would replace, and no lot or closed check may be set to it. Null when they
+ * agree, or when either side states nothing: an order with no currency cannot
+ * tell, so that case keeps today's behaviour.
+ */
+function statedCurrenciesDiffer(currencies?: {
+  invoice?: string | null;
+  order?: string | null;
+}): { invoice: string; order: string } | null {
+  const invoice = currencies?.invoice?.trim().toUpperCase() || null;
+  const order = currencies?.order?.trim().toUpperCase() || null;
+  return invoice && order && invoice !== order ? { invoice, order } : null;
+}
+
 @Injectable()
 export class ProcurementService {
   private readonly logger = new Logger(ProcurementService.name);
@@ -6003,7 +6019,7 @@ export class ProcurementService {
     userId?: string | null,
     // r102 F3: the paper's currency and the order's. When both are stated and
     // differ, the unit cost is a different money from the estimate it would
-    // be set against, so closed checks are not restated.
+    // be set against, so no lot takes it and no closed check is restated.
     currencies?: { invoice?: string | null; order?: string | null },
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
@@ -6029,6 +6045,22 @@ export class ProcurementService {
       `verifyReceipt on order ${orderId}`,
       this.logger,
     );
+
+    // A PRICE IN ANOTHER MONEY IS NOT A COST (r102 F3). A USD 12.50 estimate
+    // revalued to a TRY 400 paper is a 32x cost on every bottle left and on
+    // every closed check. One guard, ahead of every write that takes the
+    // price: the lot keeps its cost, no closed check is restated, and extra
+    // bottles are booked with no cost (the column's 'estimated') rather than
+    // at a number in the wrong money. The count still moves.
+    const foreignMoney = statedCurrenciesDiffer(currencies);
+    if (foreignMoney && unitCost != null) {
+      this.logger.warn(
+        `verifyReceipt for ${inventoryId} on order ${orderId}: the invoice is in ${foreignMoney.invoice}, ` +
+          `the order in ${foreignMoney.order}; the lot cost was not changed and no closed check was restated` +
+          (delta > 0 ? `, and the ${delta} extra bottles were booked with no cost.` : "."),
+      );
+      unitCost = null;
+    }
 
     // QUANTITY FIRST, THEN PRICE. The two are separate writes because they are
     // separate facts: `apply_stock_movement` only ever creates or consumes
@@ -6186,16 +6218,8 @@ export class ProcurementService {
       // the invoice's cost, keeping the old figure in an audit row. It runs
       // even when no live lot is left: that is exactly the case where every
       // bottle was already poured and sold. Idempotent, so a retry is safe.
-      const invoiceMoney = currencies?.invoice?.trim().toUpperCase() || null;
-      const orderMoney = currencies?.order?.trim().toUpperCase() || null;
-      if (invoiceMoney && orderMoney && invoiceMoney !== orderMoney) {
-        this.logger.warn(
-          `verifyReceipt did not restate sales for ${inventoryId} on order ${orderId}: ` +
-            `the invoice is in ${invoiceMoney} and the order is in ${orderMoney}, ` +
-            `so its unit cost cannot be set against the cost the sales carried.`,
-        );
-        return;
-      }
+      // A paper in another money never gets here: the guard above cleared
+      // unitCost before the first write.
       const { data: restated, error: restateError } =
         await this.databaseService.supabase.rpc("restate_sale_cost", {
           p_restaurant_id: restaurantId,
