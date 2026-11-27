@@ -370,7 +370,7 @@ describe('SwipeToConfirm carries the same onChallenge contract as HoldToApprove'
     fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), {
       key: ' ',
     });
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('tok-1'), { timeout: 3000 });
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('tok-1', { viaKeyboard: true }), { timeout: 3000 });
   });
 
   it('keeps the unsealed shape for a caller that passes no onChallenge', async () => {
@@ -385,7 +385,7 @@ describe('SwipeToConfirm carries the same onChallenge contract as HoldToApprove'
     fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), {
       key: ' ',
     });
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null), { timeout: 3000 });
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null, expect.objectContaining({ viaKeyboard: true })), { timeout: 3000 });
   });
 });
 
@@ -405,7 +405,7 @@ describe('completing the swipe lands the seal and then a quiet loading sign', ()
     fireEvent.keyDown(screen.getByRole('button', { name: /Swipe up to confirm/ }), {
       key: ' ',
     });
-    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null), { timeout: 3000 });
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(null, expect.objectContaining({ viaKeyboard: true })), { timeout: 3000 });
     expect(screen.getByTestId('swipe-seal')).toBeInTheDocument();
     expect(screen.getByText('Confirming…')).toBeInTheDocument();
     // The house loader's ladder: a confirm faster than 400ms shows no sign.
