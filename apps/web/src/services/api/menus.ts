@@ -416,12 +416,20 @@ export async function getMenuSourceUrl(
  * Owner or manager; the gateway refuses anyone else (403), a missing
  * fingerprint (400) and a plan that changed since it was shown (409).
  */
+/**
+ * Making a menu current carries its prices inside the one call, and a long menu
+ * can take minutes; the shared client gives up at 30 s while the gateway goes on
+ * carrying (r102 menu-func-2). Named on its own, not borrowed from the read's
+ * timeout: the background read (#1889) removes that one.
+ */
+export const MAKE_CURRENT_TIMEOUT_MS = 10 * 60 * 1000
+
 export async function makeMenuCurrent(menuId: string, fingerprint: string): Promise<MakeCurrentResult> {
   // The carry runs inside this call and can take minutes on a long menu.
   const response = await apiClient.post<MakeCurrentResult>(
     `/menu-versions/${menuId}/make-current`,
     { fingerprint },
-    { timeout: MENU_READ_TIMEOUT_MS }
+    { timeout: MAKE_CURRENT_TIMEOUT_MS }
   )
   return response.data
 }
