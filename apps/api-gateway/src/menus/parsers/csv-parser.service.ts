@@ -69,6 +69,10 @@ export interface CsvRowIssue {
     | "same_file"
     /** Not a row: whether the file was read before could not be looked up (`row` is 0). */
     | "same_file_unchecked"
+    /** The row has more cells than the header (an unquoted decimal comma): its prices are left blank. */
+    | "more_cells_than_header"
+    /** A quote opened here and never closed: that line stands alone. */
+    | "unclosed_quote"
     | Exclude<MenuPriceReason, "empty">;
   field?: keyof WineExtractItem;
   raw?: string;
@@ -80,7 +84,17 @@ type Cell = string | number;
 /** An Excel error value (`#N/A`, `#REF!`, …), kept apart so it is noted, never read as text. */
 type CellError = { error: string };
 
-const BARE_PRICE_HEADERS = new Set(["price", "fiyat", "fiyati"]);
+const PRICE_WORDS = new Set(["price", "fiyat", "fiyati"]);
+/** The first of these in a header says which price it holds. */
+const KIND_FIELDS: Record<string, keyof WineExtractItem> = {
+  bottle: "bottle_price",
+  sise: "bottle_price",
+  glass: "by_glass_price",
+  kadeh: "by_glass_price",
+};
+/** Words that may sit beside a kind or price word without changing what the column is: a size, a currency. */
+const HEADER_FILLER =
+  /^(?:per|tl|try|usd|eur|gbp|cl|ml|l|lt|oz|\d+(?:cl|ml|l|lt|oz)?)$/;
 type Rec = { cells: string[]; raw: string; row: number };
 
 function headerKey(header: string): string {
@@ -92,6 +106,40 @@ function headerKey(header: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * The field a header names, or that it names a price it cannot place.
+ * `Bottle 75cl` and `Şişe Fiyatı` are the bottle price; a bare `Fiyat (Şişe)`
+ * takes its kind from the bracket; `Bottle Size`, `Price` and `Fiyat (TL)`
+ * name no price field and are `note`d, never dropped silently.
+ */
+function readHeader(header: string): {
+  field: keyof WineExtractItem | null;
+  note: boolean;
+} {
+  const key = headerKey(header);
+  const exact = HEADER_MAP.get(key);
+  if (exact) return { field: exact, note: false };
+  const tokens = key.split("_").filter(Boolean);
+  const kindOf = (ts: string[]) => ts.find((t) => t in KIND_FIELDS);
+  const kind = kindOf(tokens);
+  const hasPrice = tokens.some((t) => PRICE_WORDS.has(t));
+  if (kind) {
+    const plain = tokens.every(
+      (t) => t === kind || PRICE_WORDS.has(t) || HEADER_FILLER.test(t),
+    );
+    return plain
+      ? { field: KIND_FIELDS[kind], note: false }
+      : { field: null, note: true };
+  }
+  if (!hasPrice) return { field: null, note: false };
+  const inner = (header.match(/\(([^)]*)\)|\[([^\]]*)\]/g) ?? [])
+    .map((g) => kindOf(headerKey(g.slice(1, -1)).split("_")))
+    .find(Boolean);
+  return inner
+    ? { field: KIND_FIELDS[inner], note: false }
+    : { field: null, note: true };
 }
 
 /** RFC 4180 records (quoted delimiter, line break, `""`), each with its source text and first row. */
@@ -203,23 +251,47 @@ export class CsvParserService {
     const text = (
       typeof csvContent === "string" ? csvContent : String(csvContent ?? "")
     ).replace(/^\uFEFF/, "");
-    const records = readAllRecords(text, sniffDelimiter(text)).records.filter(
-      (r) => r.cells.some((c) => c.trim().length > 0),
+    const read = readAllRecords(text, sniffDelimiter(text));
+    const records = read.records.filter((r) =>
+      r.cells.some((c) => c.trim().length > 0),
     );
     if (records.length < 2) return { items: [], issues: [] };
 
     const fieldMap = this.fieldMap(records[0].cells);
     const issues = this.headerIssues(records[0].cells, records[0].row);
+    if (read.unclosedRow !== null)
+      issues.push({ row: read.unclosedRow, reason: "unclosed_quote" });
     if (!fieldMap.includes("name"))
       return {
         items: [],
         issues: [...issues, { row: records[0].row, reason: "no_name_column" }],
       };
 
+    // Cells past the header's last: an unquoted decimal comma (`12,50`) split
+    // one price into two cells and shifted every price after it. Which cell is
+    // which price is unknown, so the row's prices stay blank and it is said.
+    const width = (cells: string[]) =>
+      cells.reduce((w, c, i) => (c.trim() ? i + 1 : w), 0);
+    const headerWidth = width(records[0].cells);
+
     const marks = records[0].cells.map((h) => headerMoneyMark(h));
     const items: WineExtractItem[] = [];
     for (const record of records.slice(1)) {
-      const item = this.buildItem(fieldMap, record.cells, record.row, issues, marks);
+      const shifted = width(record.cells) > headerWidth;
+      const item = this.buildItem(
+        fieldMap,
+        record.cells,
+        record.row,
+        issues,
+        marks,
+        shifted,
+      );
+      if (item && shifted)
+        issues.push({
+          row: record.row,
+          reason: "more_cells_than_header",
+          raw: record.raw.trim(),
+        });
       if (item) {
         item.raw_text = record.raw.trim();
         items.push(item);
@@ -332,11 +404,11 @@ export class CsvParserService {
   }
 
   private fieldMap(headers: string[]): Array<keyof WineExtractItem | null> {
-    const map = Array.from(
-      headers,
-      (h) => HEADER_MAP.get(headerKey(h ?? "")) ?? null,
-    );
-    const bare = this.barePriceRead(headers);
+    // A header that names its kind (`Bottle 75cl`, `Fiyat (Şişe)`) is read by
+    // readHeader (r106 #2104); the first bare Price / Fiyat is then the bottle
+    // price when no column is (r28 G8). Integration 2026-11-27 joins both.
+    const map = Array.from(headers, (h) => readHeader(h ?? "").field);
+    const bare = this.barePriceRead(headers, map);
     if (bare !== null) map[bare] = "bottle_price";
     return map;
   }
@@ -348,19 +420,28 @@ export class CsvParserService {
    * bottle price, and only when no column is already the bottle price; a glass
    * column beside it stays the glass price.
    */
-  private barePriceRead(headers: string[]): number | null {
-    const keys = Array.from(headers, (h) => headerKey(h ?? ""));
-    if (keys.some((k) => HEADER_MAP.get(k) === "bottle_price")) return null;
-    const at = keys.findIndex((k) => BARE_PRICE_HEADERS.has(k));
+  private barePriceRead(
+    headers: string[],
+    map: Array<keyof WineExtractItem | null> = Array.from(headers, (h) => readHeader(h ?? "").field),
+  ): number | null {
+    if (map.includes("bottle_price")) return null;
+    const at = Array.from(headers).findIndex(
+      (h, i) => map[i] === null && PRICE_WORDS.has(headerKey(h ?? "")),
+    );
     return at === -1 ? null : at;
   }
 
-  /** Each bare price header, said: the one read as the bottle price, and any other, not read. */
+  /**
+   * Each price header no field was read from, said: the bare one read as the
+   * bottle price, and any other (a second bare price, `Bottle Size`,
+   * `Fiyat (TL)` beside a bottle column) as not read.
+   */
   private headerIssues(headers: string[], row: number): CsvRowIssue[] {
-    const read = this.barePriceRead(headers);
+    const map = Array.from(headers, (h) => readHeader(h ?? "").field);
+    const read = this.barePriceRead(headers, map);
     const issues: CsvRowIssue[] = [];
     Array.from(headers).forEach((h, i) => {
-      if (!BARE_PRICE_HEADERS.has(headerKey(h ?? ""))) return;
+      if (i !== read && (map[i] !== null || !(PRICE_WORDS.has(headerKey(h ?? "")) || readHeader(h ?? "").note))) return;
       issues.push({
         row,
         reason: i === read ? "price_column_read_as_bottle" : "price_column_not_read",
@@ -418,6 +499,7 @@ export class CsvParserService {
     row: number,
     issues: CsvRowIssue[],
     marks: ReadonlyArray<string | null> = [],
+    skipPrices = false,
   ): WineExtractItem | null {
     const item: Partial<WineExtractItem> = {};
     const found: CsvRowIssue[] = [];
@@ -426,6 +508,8 @@ export class CsvParserService {
       if (!field) return;
       const value = cols[colIdx];
       const isPrice = PRICE_FIELDS.has(field);
+      // A row wider than its header: which cell is which price is unknown (r106 #2104).
+      if (skipPrices && isPrice) return;
       if (!isPrice && item[field] !== undefined) return;
       if (!isPrice) {
         // r108 menu-g10: a marks cell keeps only what reads as a printed legend mark.
