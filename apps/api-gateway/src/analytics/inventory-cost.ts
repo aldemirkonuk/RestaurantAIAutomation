@@ -84,6 +84,14 @@ export interface LotRollupRow {
    */
   wac_qty?: unknown;
   live_qty?: unknown;
+  /**
+   * Bottles whose lot cost came off a checked invoice (provenance 'invoice').
+   * `has_invoice_cost` is true when ANY live lot is invoiced; an order-delivered
+   * lot is booked at the PO price as 'estimated' and still counts toward
+   * `wac_qty`. When this is selected and below `wac_qty`, the WAC blends a
+   * guess in and is `invoice_lot_wac_partial`. Optional like the two above.
+   */
+  invoice_qty?: unknown;
 }
 
 /**
@@ -137,10 +145,17 @@ export function resolveUnitCost(
         Number.isFinite(covered) &&
         Number.isFinite(onHand) &&
         onHand > 0;
+      const invoiced = Number(lot?.invoice_qty);
+      const blendsEstimate =
+        lot?.invoice_qty != null &&
+        lot?.wac_qty != null &&
+        Number.isFinite(invoiced) &&
+        Number.isFinite(covered) &&
+        invoiced < covered;
       return {
         unitCost: wac,
         costBasis:
-          measurable && covered < onHand
+          (measurable && covered < onHand) || blendsEstimate
             ? "invoice_lot_wac_partial"
             : "invoice_lot_wac",
       };

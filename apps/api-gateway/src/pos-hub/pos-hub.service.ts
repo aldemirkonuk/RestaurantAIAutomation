@@ -2006,7 +2006,7 @@ export class PosHubService {
           .in("id", inventoryIds),
         db
           .from("inventory_lot_rollup")
-          .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+          .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty, invoice_qty")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", inventoryIds),
         db
