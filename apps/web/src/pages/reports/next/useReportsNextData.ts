@@ -215,6 +215,12 @@ export interface ReportsNextData {
   /** The till window is the ONLY period control on the page — see the note. */
   tillDays: number;
   setTillDays: (days: number) => void;
+  /**
+   * Reads, ahead of the click, what a till window would show. Same query key
+   * and read as the cutting itself, so the click renders from cache. A window
+   * already held fresh is not read again.
+   */
+  warmTillWindow: (days: number) => void;
   sheet: SheetState;
   saveSheet: (next: SheetState) => void;
   /** False while the preferences API has not answered — the sheet is not yet the reader's. */
@@ -270,21 +276,40 @@ export function useReportsNextData(
     return out;
   }, [active, activeRole]);
 
-  const results = useQueries({
-    queries: active.map((id) => {
+  /** One cutting's read for one till window — shared by the cutting and the warm-up. */
+  const readOf = useCallback(
+    (id: AnalysisId, days: number) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null],
-        enabled: !!rid && !heldBack.has(id),
+        queryKey: [ROOT, id, rid, spec.takesWindow ? days : null],
         staleTime: 60_000,
-        retry: 1,
         queryFn: async () => {
-          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays }));
+          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days }));
           return spec.select(data);
         },
       };
-    }),
+    },
+    [rid],
+  );
+
+  const results = useQueries({
+    queries: active.map((id) => ({
+      ...readOf(id, tillDays),
+      enabled: !!rid && !heldBack.has(id),
+      retry: 1,
+    })),
   });
+
+  const warmTillWindow = useCallback(
+    (days: number) => {
+      if (!rid || days === tillDays) return;
+      for (const id of active) {
+        if (!CATALOGUE[id].takesWindow || heldBack.has(id)) continue;
+        void qc.prefetchQuery({ ...readOf(id, days), retry: 1 });
+      }
+    },
+    [rid, tillDays, active, heldBack, qc, readOf],
+  );
 
   const kept = useRef<
     Partial<Record<AnalysisId, { reg: Register<unknown>; data: unknown; loading: boolean; error: unknown }>>
@@ -355,6 +380,7 @@ export function useReportsNextData(
     reading,
     tillDays,
     setTillDays,
+    warmTillWindow,
     sheet,
     saveSheet,
     sheetKnown: !prefsLoading,
