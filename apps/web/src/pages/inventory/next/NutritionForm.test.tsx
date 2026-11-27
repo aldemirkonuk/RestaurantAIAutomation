@@ -15,7 +15,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   lookupItemNutrition: api.lookup,
 }));
 
-import NutritionForm, { LOOKUP_UNREACHED, readFigure } from './NutritionForm';
+import NutritionForm, { LOOKUP_UNREACHED, readFigure, stricterAllergen } from './NutritionForm';
 
 const stored: StoredNutrition = {
   basis: '100g',
@@ -140,6 +140,59 @@ describe('the label lookup', () => {
     expect(body.figures).toMatchObject({ basis: '100ml', source: 'open_food_facts', sourceRef: '8690000000001', energyKcal: 38, saltG: null });
     expect(body.allergens.find((a: { allergen: string }) => a.allergen === 'milk').status).toBe('contains');
     expect(body.allergens.find((a: { allergen: string }) => a.allergen === 'gluten').status).toBe('not_stated');
+  });
+});
+
+describe('a lookup never lowers what the house stated about an allergen', () => {
+  const milkTrace = {
+    kind: 'draft' as const,
+    draft: {
+      source: 'open_food_facts' as const,
+      sourceRef: '1',
+      productName: 'Ayran',
+      basis: '100ml' as const,
+      figures: { energyKcal: 38, fatG: null, saturatesG: null, carbohydrateG: null, sugarsG: null, proteinG: null, saltG: null, abvPct: null },
+      allergens: [{ allergen: 'milk' as const, status: 'may_contain' as const }],
+      notes: [],
+      attribution: 'x',
+    },
+  };
+  const houseMilk = (status: 'contains' | 'free'): ItemNutrition => {
+    const a = answer(null);
+    return { ...a, allergens: a.allergens.map((x) => (x.allergen === 'milk' ? { ...x, status } : x)) };
+  };
+  const savedMilk = () => api.save.mock.calls[0][1].allergens.find((x: { allergen: string }) => x.allergen === 'milk').status;
+
+  it('the stricter status wins: contains > may_contain > free > not stated', () => {
+    expect(stricterAllergen('contains', 'may_contain')).toBe('contains');
+    expect(stricterAllergen('may_contain', 'contains')).toBe('contains');
+    expect(stricterAllergen('free', 'may_contain')).toBe('may_contain');
+    expect(stricterAllergen('not_stated', 'may_contain')).toBe('may_contain');
+  });
+
+  it('a seeded lookup that finds a trace leaves the house\'s contains as it was', async () => {
+    api.save.mockResolvedValue(answer(null));
+    const onDone = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <NutritionForm restaurantId="r1" itemId="i1" data={houseMilk('contains')} startWithLookup={false} onDone={onDone} seed={milkTrace} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+    expect(savedMilk()).toBe('contains');
+  });
+
+  it('a lookup run from the form leaves the house\'s contains as it was', async () => {
+    api.lookup.mockResolvedValue(milkTrace);
+    api.save.mockResolvedValue(answer(null));
+    show(houseMilk('contains'), true);
+    fireEvent.change(screen.getByLabelText('Barcode or name'), { target: { value: 'ayran' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look it up' }));
+    await screen.findByTestId('ivn-draft');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+    expect(savedMilk()).toBe('contains');
   });
 });
 
