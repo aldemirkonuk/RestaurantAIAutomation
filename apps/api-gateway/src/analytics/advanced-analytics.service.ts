@@ -23,6 +23,7 @@ import {
   windowWords,
 } from "./observed-window";
 import { pacingOver, pacingWords, purchasingSpan } from "./purchasing-span";
+import { leftOutWords, onRecordedWeekdays } from "./weekdays-recorded";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
@@ -787,7 +788,19 @@ export class AdvancedAnalyticsService {
     );
     const { dates, values } = trimToObserved(dense, observed);
 
-    const weekday = E.dayOfWeekProfile(dates, values);
+    // A weekday with no line on any of its days is not measured: it is left
+    // out of the profile, not read as the quietest (r37 w3 R-F10,
+    // weekdays-recorded.ts). The trend below still reads every day.
+    // (integ 2026-11-27: #1631 read `byDay`, the UTC-day map #1037 replaced
+    // with house days; the recorded set is the house days that hold a line.)
+    const recordedDays = new Set(
+      consumption
+        .filter((c) => c.qty != null)
+        .map((c) => houseDayOf(c.at, zone))
+        .filter((d): d is string => d != null),
+    );
+    const measured = onRecordedWeekdays(dates, values, (d) => recordedDays.has(d));
+    const weekday = E.dayOfWeekProfile(measured.dates, measured.values);
     // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
     // with no movement reported Sunday as both the busiest and the quietest
     // night. An extreme that is shared is not an extreme (ADR 0020).
@@ -816,7 +829,7 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday ${observed.since == null && observed.firstRecord !== "could_not_read" ? `over the last ${sinceDays} complete house days in ${zone}` : `${windowWords(observed, "consumption line")} (house days in ${zone})`} of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `mean bottles per weekday ${observed.since == null && observed.firstRecord !== "could_not_read" ? `over the last ${sinceDays} complete house days in ${zone}` : `${windowWords(observed, "consumption line")} (house days in ${zone})`} of wine_consumption_log; a weekday with no consumption line on any of its days is absent from weekdayProfile rather than reported as 0, and inside a weekday that has one a day with no line counts as 0${leftOutWords(measured.leftOut)}`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         // Names which extreme is withheld, not just that one is (r33 R-F2).
         extremes: E.extremesBasis(extremes, weekday.profiles.length),

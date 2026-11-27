@@ -666,22 +666,28 @@ const week = analysis<WeekRegister>({
     const best = sent ? w.bestDay : null;
     const worst = sent ? w.worstDay : null;
     const shared = w.tie === true || !sent;
+    // With fewer than two weekdays measured there is nothing to rank, and no
+    // weekday "shares" an extreme: say that, not a tie (R-F10 leaves a weekday
+    // with no line out of the profile, so one measured weekday is reachable).
+    const lone = w.weekdayProfile.length < 2;
     const figures = [
       {
         label: 'Busiest day',
         value: best ?? EM,
-        note: 'More than one weekday shares the highest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the highest mean',
       },
       {
         label: 'Quietest day',
         value: worst ?? EM,
-        note: 'More than one weekday shares the lowest mean',
+        note: lone ? 'Fewer than two weekdays have a reading' : 'More than one weekday shares the lowest mean',
       },
       { label: '28-day trend, per day', value: pct(w.trendPerDayPct) },
     ];
     const notes = !shared
       ? []
-      : !best && !worst
+      : lone
+        ? ['Busiest and quietest are left blank because fewer than two weekdays have a reading in this window, so there is nothing to rank.']
+        : !best && !worst
         ? [
             'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
           ]

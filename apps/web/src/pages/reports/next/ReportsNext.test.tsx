@@ -1234,6 +1234,29 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   });
 });
 
+describe('ReportsNext — the week with one weekday measured', () => {
+  it('says there is nothing to rank, not that weekdays share an extreme', () => {
+    hook.current = withRegister(
+      'week',
+      ok({
+        weekdayProfile: [{ day: 'Saturday', mean: 8, stdev: 0, n: 13 }],
+        bestDay: null,
+        worstDay: null,
+        tie: true,
+        trendPerDayPct: 0.01,
+        basis: {
+          weekday: 'mean units per weekday over the last 90 days',
+          extremes: 'No busiest or quietest day is named: fewer than two weekdays have a reading in this window, so there is nothing to rank.',
+        },
+      }),
+    );
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(week).getByText(/^Busiest and quietest are left blank because fewer than two weekdays have a reading/)).toBeInTheDocument();
+    expect(within(week).queryByText(/shares the extreme/)).not.toBeInTheDocument();
+  });
+});
+
 describe('ReportsNext — honesty', () => {
   it('renders an unknown as an em dash, never as a zero', () => {
     paint();
