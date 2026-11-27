@@ -1473,7 +1473,7 @@ export class DocumentsController {
     // that reads as "nothing moved" (ADR 0020).
     const { data: paper, error: paperErr } = await client
       .from("procurement_documents")
-      .select("id, currency")
+      .select("id, currency, created_at")
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -1529,23 +1529,52 @@ export class DocumentsController {
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     const last = new Map<string, number>();
     if (goods.length) {
-      const { data: lots, error: lotErr } = await client
-        .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
-        .eq("restaurant_id", user.restaurantId)
-        .eq("cost_provenance", "invoice")
-        .in("inventory_id", goods)
-        .not("unit_cost", "is", null)
-        .order("received_at", { ascending: false })
-        .limit(1000);
-      if (lotErr)
+      // "Was" is the cost known BEFORE this paper. Verifying the paper writes its
+      // own price onto its deliveries' lots (provenance 'invoice'), so without a
+      // bound the swipe would turn "up 18 percent" into "no move" (r105), and on an
+      // older paper a LATER delivery's cost would read as the earlier one.
+      const paperAt = (paper as { created_at?: string | null }).created_at ?? null;
+      if (!paperAt)
         throw new HttpException(
-          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+          "The paper's own date could not be read, so no price was compared.",
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
-      // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+      const { data: links, error: linkErr } = await client
+        .from("document_deliveries")
+        .select("delivery_id")
+        .eq("document_id", id);
+      if (linkErr)
+        throw new HttpException(
+          `The paper's deliveries could not be read, so no price was compared: ${linkErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const own = ((links ?? []) as { delivery_id: string }[]).map((l) => l.delivery_id).filter(Boolean);
+      // One newest lot per good, read per good: a single newest-first read across
+      // every good is capped by PostgREST's row limit, and a good bought once a
+      // year would fall off the end and read as "no earlier cost" (ADR 0020).
+      const reads = await Promise.all(
+        goods.map(async (good) => {
+          let q = client
+            .from("inventory_lots")
+            .select("inventory_id, unit_cost, received_at")
+            .eq("restaurant_id", user.restaurantId)
+            .eq("cost_provenance", "invoice")
+            .eq("inventory_id", good)
+            .not("unit_cost", "is", null)
+            .lt("received_at", paperAt);
+          if (own.length) q = q.or(`delivery_id.is.null,delivery_id.not.in.(${own.join(",")})`);
+          return q.order("received_at", { ascending: false }).limit(1);
+        }),
+      );
+      for (const { data: lots, error: lotErr } of reads) {
+        if (lotErr)
+          throw new HttpException(
+            `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        const lot = ((lots ?? []) as { inventory_id: string; unit_cost: number | string }[])[0];
+        if (lot) last.set(lot.inventory_id, Number(lot.unit_cost));
+      }
     }
     const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
     return {
