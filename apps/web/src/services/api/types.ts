@@ -105,6 +105,8 @@ export interface InventoryItem {
   rollupReadable?: boolean;
   /** False: the location-breakdown read failed, so locations is unknown, not [] (G15). Absent = true. */
   locationsReadable?: boolean;
+  /** True = only the newest settled deliveries were read, so a good whose earlier delivery fell outside may be missing from Price signals. */
+  settledCostsCapped?: boolean;
   locations?: WineLocationBreakdown[];
 }
 

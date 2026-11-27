@@ -134,6 +134,8 @@ export interface InvRow {
   settledCostsReadable?: boolean;
   /** How many current recipes use this good. Null: the read failed (never 0). Absent: not read yet. */
   usedIn?: number | null;
+  /** True when the gateway read only the newest settled deliveries; the chip then says its count is partial. */
+  settledCostsCapped?: boolean;
   velocity: number | null;
   /** Days of cover. Null at zero velocity: a title nobody buys has no runway. */
   runway: number | null;
@@ -325,6 +327,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     settledCostsReadable,
     settledCostTaxBasis:
       settledCostsReadable && (r.settledCostTaxBasis === 'net' || r.settledCostTaxBasis === 'gross_cost') ? r.settledCostTaxBasis : null,
+    settledCostsCapped: settledCostsReadable && r.settledCostsCapped === true,
     velocity,
     runway,
     daysSinceSale: num(r.daysSinceSale),
@@ -552,6 +555,11 @@ export function priceMovePct(row: InvRow): number | null {
 /** Whether the house has anything to compare: the read answered and some good has two settled costs. */
 export function priceSignalsReadable(rows: InvRow[]): boolean {
   return rows.length > 0 && rows.every((r) => r.settledCostsReadable !== false);
+}
+/** The chip's count is partial when the gateway read only the newest settled deliveries. */
+export const PRICE_SIGNAL_CAPPED_WORDS = 'Only the newest settled deliveries were read, so a good whose earlier delivery is older may be missing here';
+export function priceSignalsCapped(rows: InvRow[]): boolean {
+  return rows.some((r) => r.settledCostsCapped === true);
 }
 export function priceSignalsHaveBasis(rows: InvRow[]): boolean {
   return rows.some((r) => priceMovePct(r) !== null);

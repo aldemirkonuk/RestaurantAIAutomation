@@ -118,6 +118,7 @@ export function normalizeInventoryItem(
     settledCostsReadable: item.settledCostsReadable,
     settledCostTaxBasis:
       item.settledCostTaxBasis === 'net' || item.settledCostTaxBasis === 'gross_cost' ? item.settledCostTaxBasis : undefined,
+    settledCostsCapped: item.settledCostsCapped,
     locations: item.locationsReadable === false ? undefined : (item.locations ?? []),
   } as InventoryItem;
 }
