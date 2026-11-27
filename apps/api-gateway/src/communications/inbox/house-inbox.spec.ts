@@ -109,6 +109,8 @@ function build(
         rec.tables.push(table);
         return chain(table, rows[table] ?? []);
       },
+      // Every read takes its grant's lease first (Check now, DD-r108-47).
+      rpc: async () => ({ data: { claimed: true, token: "lease-1" }, error: null }),
     },
   } as unknown as DatabaseService;
 

@@ -171,6 +171,20 @@ export const HOUSE_INBOX_CRON = "*/5 * * * *";
 export const HOUSE_INBOX_INTERVAL_MINUTES = 5;
 
 /**
+ * 'Check now' (DD-r106-9 / DD-r108-47): a person may ask for one read sooner,
+ * at most once a minute per grant. The floor and the lease both live in
+ * `house_inbox_cursors` (migration check_now_reads_the_house_mailbox_once_a_minute_at_most),
+ * never in this process, because gateway instances do not share memory.
+ */
+export const READ_NOW_FLOOR_SECONDS = 60;
+/**
+ * How long one read holds its grant. Shorter than the 5-minute interval, so a
+ * read that died costs at most one skipped run; far longer than a real read
+ * (250 messages at a few hundred ms each).
+ */
+export const READ_LEASE_SECONDS = 270;
+
+/**
  * Addresses per `from:(...)` clause. Gmail's `q` travels in the query string;
  * 25 addresses is roughly 600 characters, which keeps every request well inside
  * the practical URL length whatever a vendor's address looks like. More chunks
@@ -247,6 +261,8 @@ export interface GrantReadOutcome {
     | "empty_book"
     | "superseded"
     | "house_revoked"
+    | "busy"
+    | "too_soon"
     | "error";
   says: string;
   bookAddresses: number;
@@ -255,6 +271,8 @@ export interface GrantReadOutcome {
   discarded: number;
   mirrored: number;
   cursorAdvancedTo: number | null;
+  /** On `too_soon`: seconds until this grant takes a press again. */
+  waitSeconds?: number;
 }
 
 export interface InboxReadRun {
@@ -266,6 +284,25 @@ export interface InboxReadRun {
   /** A run that could not enumerate grants at all. Not the same as zero grants. */
   error: string | null;
 }
+
+/** What a person's 'Check now' did, said plainly (POST communications/letters/reader/check). */
+export interface ReadNowResult {
+  /** `read`: at least one grant was read. `too_soon` / `busy`: refused, nothing read. */
+  outcome: "read" | "too_soon" | "busy" | "no_grant" | "error";
+  /** Seconds until a press would be taken, when refused for the floor. */
+  retryAfterSeconds: number;
+  mirrored: number;
+  says: string;
+  outcomes: GrantReadOutcome[];
+}
+
+/** The lease a read took on one grant's cursor row. */
+type ReadLease =
+  | { kind: "held"; token: string }
+  | { kind: "no_cursor" }
+  | { kind: "busy" }
+  | { kind: "too_soon"; waitSeconds: number }
+  | { kind: "error"; message: string };
 
 interface GmailListed {
   id: string;
@@ -330,6 +367,105 @@ export class HouseInboxService {
     }
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    const outcomes = await this.readGrants(rows, nowMs, 0);
+
+    return {
+      at,
+      grants: rows.length,
+      mirrored: outcomes.reduce((n, o) => n + o.mirrored, 0),
+      discarded: outcomes.reduce((n, o) => n + o.discarded, 0),
+      outcomes,
+      error: null,
+    };
+  }
+
+  /**
+   * 'Check now': one read of THIS house's grants, sooner than the 5-minute run.
+   * The same grants, the same scope rule, the same vendor-book bound and the
+   * same lease as the run; the only difference is the 60 s floor, held in the
+   * database. A press refused for the floor or for a read already in progress
+   * reads nothing.
+   */
+  async readNow(restaurantId: string, nowMs = Date.now()): Promise<ReadNowResult> {
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id, user_id, restaurant_id, integration_id, scopes, revoked_at")
+      .eq("restaurant_id", restaurantId)
+      .in("integration_id", [...READING_INTEGRATION_IDS])
+      .is("revoked_at", null);
+    if (error) {
+      return {
+        outcome: "error",
+        retryAfterSeconds: 0,
+        mirrored: 0,
+        outcomes: [],
+        says: `The house's reading grants could not be read (${error.message}), so nothing was read. This is a failed read, not an absence of grants.`,
+      };
+    }
+    const rows = ((data ?? []) as unknown as Record<string, unknown>[]).filter(
+      (r) => String(r.restaurant_id ?? "") === restaurantId,
+    );
+    if (rows.length === 0) {
+      return {
+        outcome: "no_grant",
+        retryAfterSeconds: 0,
+        mirrored: 0,
+        outcomes: [],
+        says: "Nobody in this house has connected a mailbox for reading, so there is nothing to check.",
+      };
+    }
+    const outcomes = await this.readGrants(rows, nowMs, READ_NOW_FLOOR_SECONDS);
+    const mirrored = outcomes.reduce((n, o) => n + o.mirrored, 0);
+    if (outcomes.some((o) => o.outcome === "read" || o.outcome === "seeded")) {
+      return {
+        outcome: "read",
+        retryAfterSeconds: 0,
+        mirrored,
+        outcomes,
+        says:
+          mirrored === 0
+            ? "Checked. Nothing new has arrived."
+            : `Checked. ${mirrored} new ${mirrored === 1 ? "letter was" : "letters were"} filed.`,
+      };
+    }
+    const wait = Math.max(0, ...outcomes.map((o) => (o.outcome === "too_soon" ? (o.waitSeconds ?? 0) : 0)));
+    if (outcomes.some((o) => o.outcome === "too_soon")) {
+      return {
+        outcome: "too_soon",
+        retryAfterSeconds: Math.max(1, wait),
+        mirrored: 0,
+        outcomes,
+        says: `The mailbox was read less than a minute ago. Check again in ${Math.max(1, wait)} s.`,
+      };
+    }
+    if (outcomes.some((o) => o.outcome === "busy")) {
+      return {
+        outcome: "busy",
+        retryAfterSeconds: 0,
+        mirrored: 0,
+        outcomes,
+        says: "The mailbox is being read right now. Its letters will show when that read ends.",
+      };
+    }
+    // Switched off, an empty book, a revoked or failing grant: each says why.
+    return {
+      outcome: "error",
+      retryAfterSeconds: 0,
+      mirrored: 0,
+      outcomes,
+      says: outcomes[0]?.says ?? "Nothing was read.",
+    };
+  }
+
+  /**
+   * The rules every read applies to a list of grants, the run's and a press's.
+   * `floorSeconds` 0 is the 5-minute run; above 0 is a person's press.
+   */
+  private async readGrants(
+    rows: Record<string, unknown>[],
+    nowMs: number,
+    floorSeconds: number,
+  ): Promise<GrantReadOutcome[]> {
     const outcomes: GrantReadOutcome[] = [];
 
     // A person who holds BOTH the vendor-only and the wider grant in one house
@@ -367,17 +503,91 @@ export class HouseInboxService {
         );
         continue;
       }
-      outcomes.push(await this.readOneGrant(row, nowMs));
+      outcomes.push(await this.readOneGrantLeased(row, nowMs, floorSeconds));
     }
+    return outcomes;
+  }
 
-    return {
-      at,
-      grants: rows.length,
-      mirrored: outcomes.reduce((n, o) => n + o.mirrored, 0),
-      discarded: outcomes.reduce((n, o) => n + o.discarded, 0),
-      outcomes,
-      error: null,
-    };
+  /**
+   * One grant, under its lease. The lease is taken before anything else is
+   * read and released when the read ends, whichever way it ends, so two reads
+   * of one grant never overlap: the second finds it held and leaves it.
+   */
+  private async readOneGrantLeased(
+    row: Record<string, unknown>,
+    nowMs: number,
+    floorSeconds: number,
+  ): Promise<GrantReadOutcome> {
+    const connectionId = String(row.id);
+    const restaurantId = row.restaurant_id ? String(row.restaurant_id) : null;
+    // A grant with no house is refused by readOneGrant before any read.
+    if (!restaurantId) return this.readOneGrant(row, nowMs);
+
+    const lease = await this.claimRead(connectionId, restaurantId, floorSeconds);
+    if (lease.kind === "error") {
+      return this.blank(row, "error", {
+        says: `Whether another read holds this grant could not be checked (${lease.message}), so nothing was read: reading without the lease could file a letter twice.`,
+      });
+    }
+    if (lease.kind === "busy") {
+      return this.blank(row, "busy", {
+        says: "Another read holds this grant right now, so this one left it alone. Nothing is filed twice.",
+      });
+    }
+    if (lease.kind === "too_soon") {
+      return this.blank(row, "too_soon", {
+        says: `This mailbox was read less than ${floorSeconds} s ago, so it was not read again.`,
+        waitSeconds: lease.waitSeconds,
+      });
+    }
+    try {
+      return await this.readOneGrant(row, nowMs);
+    } finally {
+      if (lease.kind === "held") await this.releaseRead(connectionId, lease.token);
+    }
+  }
+
+  /** The lease, from the one atomic claim in the database. */
+  private async claimRead(
+    connectionId: string,
+    restaurantId: string,
+    floorSeconds: number,
+  ): Promise<ReadLease> {
+    const { data, error } = await this.db.client.rpc("house_inbox_claim_read", {
+      p_connection_id: connectionId,
+      p_restaurant_id: restaurantId,
+      p_floor_seconds: floorSeconds,
+      p_lease_seconds: READ_LEASE_SECONDS,
+    });
+    if (error) return { kind: "error", message: error.message };
+    const r = (data ?? {}) as Record<string, unknown>;
+    if (r.claimed === true && typeof r.token === "string") {
+      return { kind: "held", token: r.token };
+    }
+    if (r.claimed === false && r.exists === false) return { kind: "no_cursor" };
+    if (r.claimed === false && r.busy === true) return { kind: "busy" };
+    if (r.claimed === false && r.exists === true) {
+      const w = Number(r.wait_seconds);
+      return floorSeconds > 0
+        ? { kind: "too_soon", waitSeconds: Number.isFinite(w) ? w : floorSeconds }
+        : { kind: "busy" };
+    }
+    return { kind: "error", message: "the claim answered in a shape this reader does not know" };
+  }
+
+  /** Clears the lease, only if this read still holds it. */
+  private async releaseRead(connectionId: string, token: string): Promise<void> {
+    const { error } = await this.db.client
+      .from("house_inbox_cursors")
+      .update({ reading_until: null, reading_token: null })
+      .eq("connection_id", connectionId)
+      .eq("reading_token", token);
+    if (error) {
+      // The lease expires on its own; the next run is late, never doubled.
+      this.logger.error(
+        `House inbox: the read lease for ${connectionId} could not be released — ${error.message}`,
+      );
+    }
   }
 
   /**

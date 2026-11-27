@@ -63,7 +63,11 @@ function build(rows: Record<string, Rows>) {
     return self;
   };
   return {
-    client: { from: (table: string) => chain(rows[table] ?? []) },
+    client: {
+      from: (table: string) => chain(rows[table] ?? []),
+      // Every read takes its grant's lease first (Check now, DD-r108-47).
+      rpc: async () => ({ data: { claimed: true, token: "lease-1" }, error: null }),
+    },
   } as unknown as DatabaseService;
 }
 
