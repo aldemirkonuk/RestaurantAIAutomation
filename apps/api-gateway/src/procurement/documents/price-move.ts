@@ -39,7 +39,7 @@ export const money = (v: number) => {
 };
 
 /** Whole percent, but one decimal near the threshold so "up 10 percent" never names a moved 10.4. */
-const speakPct = (pct: number, thresholdPct: number) => {
+export const speakPct = (pct: number, thresholdPct: number) => {
   const a = Math.abs(pct);
   return Math.abs(a - thresholdPct) < 1 ? a.toFixed(1) : String(Math.round(a));
 };
