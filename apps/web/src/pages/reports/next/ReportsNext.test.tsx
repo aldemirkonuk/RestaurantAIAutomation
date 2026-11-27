@@ -1783,7 +1783,7 @@ describe('till window chips warm the read before the click (perf-p6-4)', () => {
     hook.current = { ...hook.current, warmTillWindow: warm };
     render(
       <MemoryRouter>
-        <ReportsNext ground="dark" />
+        <ReportsNext ground="charcoal" />
       </MemoryRouter>,
     );
     const chip = screen.getAllByRole('button', { name: '90d' })[0];
