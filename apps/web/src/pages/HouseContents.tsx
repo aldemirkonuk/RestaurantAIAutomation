@@ -12,6 +12,7 @@ import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
 import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
+import { HOUSE_ROWS, houseStanding } from '../lib/houseStanding'
 import { settingsApi } from '../services/api/settings'
 import { documentsApi } from '../services/api/documents'
 import { skipFolio } from '../services/api/arrival'
@@ -152,7 +153,11 @@ export default function HouseContents() {
   // read says nothing, never "not set". r41 onboarding gap 8: the setup read
   // carries that fact (`next_steps.money_set`, #1593), so the money is asked
   // on its own only when the setup read did not answer it.
-  const [moneyUnset, setMoneyUnset] = useState(false)
+  // null = not read (or the read failed): never counted as unset (ADR 0020).
+  const [moneySet, setMoneySet] = useState<boolean | null>(null)
+  const moneyUnset = moneySet === false
+  // Whether the setup read itself failed: then the vendor and the menu are unknown, not unset.
+  const [progressFailed, setProgressFailed] = useState(false)
   const [readCount, setReadCount] = useState(0)
   useEffect(() => {
     let live = true
@@ -160,20 +165,22 @@ export default function HouseContents() {
       settingsApi
         .houseCurrency()
         .then((money) => {
-          if (live && money?.readable === true && money.code == null) setMoneyUnset(true)
+          if (live && money?.readable === true) setMoneySet(money.code != null)
         })
         .catch(() => {})
     getOnboardingProgress()
       .then((progress) => {
         if (!live) return
+        setProgressFailed(false)
         setVendorRead(progress?.vendor_added ? 'on-book' : 'ask')
         setMenuStanding(menuKept(progress))
         const moneySet = moneySetIn(progress)
         if (moneySet === null) void askMoney()
-        else setMoneyUnset(!moneySet)
+        else setMoneySet(moneySet)
       })
       .catch(() => {
         if (!live) return
+        setProgressFailed(true)
         setVendorRead((now) => (now === 'on-book' ? now : 'ask'))
         setMenuStanding('unread')
         void askMoney()
@@ -220,6 +227,14 @@ export default function HouseContents() {
     }
   }
 
+  // The four the house counts. The invoice is this visit's own fact (the page
+  // holds no read of an earlier send), so an unanswered ask is "not yet".
+  const vendorSet = saved || vendorRead === 'on-book' ? true : vendorRead === 'reading' || progressFailed ? null : false
+  const menuSet =
+    menuStanding === 'current' ? true : menuStanding === 'draft' || menuStanding === 'none' ? false : null
+  const standingNow = houseStanding([menuSet, vendorSet, paper === 'sent' || paper === 'skipped', moneySet])
+  const houseIsSet = standingNow.kind === 'counted' && standingNow.set === HOUSE_ROWS
+
   const saveSupplier = async () => {
     if (!supplier.trim() || email === null) return
     setSaving(true)
@@ -264,6 +279,32 @@ export default function HouseContents() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house is open</p>
         <h1 className="mt-3 font-serif text-5xl">Your house.</h1>
         <p className="mt-4 text-[#6d685f]">One thing at a time. The rest can wait.</p>
+
+        {standingNow.kind === 'reading' ? (
+          <p className="mt-8 font-serif text-xl text-[#b7b2a8]" role="status" data-testid="house-standing">
+            Looking at your house…
+          </p>
+        ) : (
+          <div className="mt-8" data-testid="house-standing">
+            <p className="font-serif text-xl" role="status">
+              {houseIsSet ? 'The house is set.' : `${standingNow.set} of ${HOUSE_ROWS} set`}
+            </p>
+            <div className="relative mt-3 h-px bg-[#211f1b]/15" aria-hidden="true">
+              <span
+                data-testid="house-standing-fill"
+                className="absolute inset-0 origin-left bg-[#1a5e6b] transition-transform duration-[240ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none rtl:origin-right"
+                style={{ transform: `scaleX(${standingNow.set / HOUSE_ROWS})` }}
+              />
+              {[1, 2, 3].map((gap) => (
+                <span
+                  key={gap}
+                  className="absolute inset-y-0 w-1 -translate-x-1/2 bg-[#fbfaf7]"
+                  style={{ left: `${(gap * 100) / HOUSE_ROWS}%` }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-12 divide-y divide-[#211f1b]/15 border-y border-[#211f1b]/15">
           <div className="py-6">
@@ -560,7 +601,10 @@ export default function HouseContents() {
 
         <Link
           to="/"
-          className="mt-10 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white"
+          data-testid="house-go-to-desk"
+          className={`mt-10 inline-block px-5 py-2.5 ${
+            houseIsSet ? 'bg-[#1a5e6b] text-white' : 'border border-[#211f1b]/25 text-[#211f1b]'
+          }`}
         >
           Go to the desk
         </Link>
