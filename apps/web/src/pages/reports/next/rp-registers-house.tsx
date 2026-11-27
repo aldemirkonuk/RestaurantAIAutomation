@@ -374,7 +374,7 @@ const seats = analysis<SeatsRegister>({
   view: (s, ctx) => {
     const money = moneyIn(ctx.currency);
     const basis = [
-      `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
+      `Checks that were not voided, that the till put at a shown table, over the last ${s.sinceDays} days.`,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
     // ADR 0303: tables are learned from the till, so nothing is drawn. A check
@@ -574,7 +574,7 @@ const service = analysis<ServiceRegister>({
   view: (s, ctx) => {
     const money = moneyIn(ctx.currency);
     const basis = [
-      `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
+      `Checks that were not voided, grouped by the server the till named, over the last ${s.sinceDays} days.`,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
       s.adjusted?.method ?? null,
     ];
