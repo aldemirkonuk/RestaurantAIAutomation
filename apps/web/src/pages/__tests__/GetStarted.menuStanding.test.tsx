@@ -140,8 +140,17 @@ describe('GetStarted: the menu step waits for where the menu stands', () => {
     // r103: it holds the menu step's height so the page does not shift (CLS).
     expect(screen.getByTestId('menu-standing-reading')).toHaveStyle({ minHeight: '378px' })
     expect(screen.queryByText('Drop the menu here')).toBeNull()
-    // r103: the page's own heading is already there, so nothing moves when the read lands.
-    expect(screen.getByRole('heading', { name: 'Your menu' })).toBeInTheDocument()
+    // r103 review: the heading and the upload line hold their room (same text,
+    // so the same box) but are hidden from the eye and from a screen reader,
+    // because an owner whose menu is current is moved on and must not be
+    // told to upload one.
+    expect(screen.queryByRole('heading', { name: 'Your menu' })).toBeNull()
+    const held = screen.getByText('Your menu', { selector: 'h1' })
+    expect(held).toHaveAttribute('aria-hidden', 'true')
+    expect(held).toHaveStyle({ visibility: 'hidden' })
+    const heldVoice = screen.getByText(/A photo, a file, or a few typed lines/)
+    expect(heldVoice).toHaveAttribute('aria-hidden', 'true')
+    expect(heldVoice).toHaveStyle({ visibility: 'hidden' })
   })
 
   it('a current menu goes on to /house without the menu step ever painting', async () => {
@@ -161,6 +170,7 @@ describe('GetStarted: the menu step waits for where the menu stands', () => {
       answer(standing)
       expect(await screen.findByText('Drop the menu here')).toBeInTheDocument()
       expect(screen.queryByTestId('menu-standing-reading')).toBeNull()
+      expect(screen.getByRole('heading', { name: 'Your menu' })).toBeVisible()
       view.unmount()
       readHouseMenuStanding.mockClear()
     }
