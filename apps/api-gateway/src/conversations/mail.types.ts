@@ -73,6 +73,12 @@ export interface MailPersonRow {
    * null for a caller whose house letters are withheld.
    */
   awaitingSince: string | null;
+  /**
+   * With a search: about 140 characters of the newest letter that holds the words, centred on the
+   * first match (r109 mail-gap g5). Null with no search, or when the person was found by name,
+   * subject or order number only; the row then keeps its lastLine.
+   */
+  hitLine: string | null;
 }
 
 export interface MailPeoplePage {
