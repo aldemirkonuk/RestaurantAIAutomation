@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   ForbiddenException,
@@ -21,6 +22,7 @@ import { MailService } from "./mail.service";
 import type {
   MailAttachmentLink,
   MailNoReplyAnswer,
+  MailNotNowAnswer,
   MailPeoplePage,
   MailSummary,
   MailThreadPage,
@@ -43,9 +45,9 @@ function houseOf(user: AuthUser | undefined): string {
 
 /**
  * GET /mail/* — the read model behind the /communications Mail tab (founder
- * /goal 2026-11-07). Its one write is the "needs no reply" mark on a letter
- * (r28 mail gap 4), which only an owner or manager may set; that is enforced
- * in MailService, for the reason below.
+ * /goal 2026-11-07). Its writes are the "needs no reply" mark on a letter
+ * (r28 mail gap 4) and "Not now" on a thread (r110), which only an owner or
+ * manager may set; that is enforced in MailService, for the reason below.
  *
  * Signed-in only, and deliberately no role decorator anywhere in this file:
  * every member of the house may read its vendor mail (draft ADR 0357 answer 3, PR #747, staff
@@ -207,5 +209,50 @@ export class MailController {
     @Param("id") id: string,
   ): Promise<MailNoReplyAnswer> {
     return this.mail.setNoReply(houseOf(user), role, user?.userId, id, false);
+  }
+
+  // "Not now" (r110 mail, DD-r109-13). The thread is named the way GET
+  // /mail/thread names it, by query: a `mid:` key can hold a slash.
+  @Post("thread/not-now")
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      "Put a vendor thread off until a time on the house's clock: it stops waiting until then, or until the vendor writes again",
+  })
+  @ApiQuery({ name: "key", required: true })
+  @ApiQuery({ name: "with", required: true, description: "vendor:<provider uuid>" })
+  putOff(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+    @Query("key") key?: string,
+    @Query("with") withKey?: string,
+    @Body() body?: { choice?: unknown },
+  ): Promise<MailNotNowAnswer> {
+    return this.mail.setNotNow(
+      houseOf(user),
+      role,
+      user?.userId,
+      { key, with: withKey, choice: body?.choice },
+      true,
+    );
+  }
+
+  @Delete("thread/not-now")
+  @ApiOperation({ summary: "Take back a thread's \"Not now\"" })
+  @ApiQuery({ name: "key", required: true })
+  @ApiQuery({ name: "with", required: true, description: "vendor:<provider uuid>" })
+  takeBackPutOff(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+    @Query("key") key?: string,
+    @Query("with") withKey?: string,
+  ): Promise<MailNotNowAnswer> {
+    return this.mail.setNotNow(
+      houseOf(user),
+      role,
+      user?.userId,
+      { key, with: withKey },
+      false,
+    );
   }
 }
