@@ -7,7 +7,7 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { WinesService } from "./wines.service";
+import { WinesService, WINE_LIST_COLUMNS } from "./wines.service";
 import { WinesController } from "./wines.controller";
 import { GetWinesQueryDto, WineSuggestionsQueryDto } from "./dto/wines.dto";
 
@@ -287,5 +287,30 @@ describe("GetWinesQueryDto and WineSuggestionsQueryDto bound their inputs", () =
     expect(
       await errorsFor(WineSuggestionsQueryDto, { text: "Barolo", limit: "10" }),
     ).toEqual([]);
+  });
+});
+
+describe("GET /wines selects the columns the list maps, not every column (p2 s3)", () => {
+  it("sends an explicit column list, without the embedding, the search vector or other unmapped columns", async () => {
+    const { service, calls } = recordingClient();
+    await service.searchWines({} as GetWinesQueryDto);
+    const select = calls[0].url.searchParams.get("select") ?? "";
+    expect(select).not.toBe("*");
+    const cols = select.split(",");
+    for (const heavy of ["embedding", "search_vector", "sensory_profile", "ml_derived_features"]) {
+      expect(cols).not.toContain(heavy);
+    }
+    expect(cols).toEqual(expect.arrayContaining(["id", "name", "wine_structure", "data_enrichment"]));
+  });
+
+  it("covers every column mapWine reads, so the wire answer is the one select(*) gave", () => {
+    const { service } = recordingClient();
+    const read = new Set<string>();
+    const row = new Proxy({}, { get: (_t, k) => (read.add(String(k)), undefined) });
+    (service as any).mapWine(row);
+    // `tasting_notes` is not a column of master_wine_library; it was always undefined.
+    read.delete("tasting_notes");
+    const cols = new Set(WINE_LIST_COLUMNS.split(","));
+    expect([...read].filter((k) => !cols.has(k))).toEqual([]);
   });
 });

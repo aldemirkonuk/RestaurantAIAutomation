@@ -64,6 +64,47 @@ export function ilikeAnyOf(columns: readonly string[], term: string): string {
 const LIBRARY_READ_FAILED =
   "The wine library could not be read. That is a failed read, not an empty result.";
 
+/**
+ * The columns `mapWine` reads, and no others. `select("*")` carried about sixty
+ * columns a row, fifteen of them jsonb, an embedding and the search vector, for
+ * a list that maps thirty (p2 s3). `tasting_notes` is deliberately absent: the
+ * table has no such column (the list never carried it; `mapWine` yields
+ * undefined for it either way), and naming a missing column would fail the read.
+ * Add a column here when `mapWine` starts reading it.
+ */
+export const WINE_LIST_COLUMNS = [
+  "id",
+  "name",
+  "display_name",
+  "producer",
+  "vintage",
+  "price_reference",
+  "retail_price_avg",
+  "primary_type",
+  "region",
+  "country",
+  "appellation",
+  "grape_variety",
+  "producer_story",
+  "bottle_size_ml",
+  "abv_percent",
+  "created_at",
+  "updated_at",
+  "beverage_kind",
+  "classification_status",
+  "library_tier",
+  "review_status",
+  "field_confidences",
+  "data_enrichment",
+  "enrichment_observed_at",
+  "wine_structure",
+  "primary_aromas",
+  "serving_temp_celsius",
+  "glass_type",
+  "decanting_recommended",
+  "aging_potential_years",
+].join(",");
+
 interface WineRow {
   id: string;
   wine_id?: string;
@@ -489,7 +530,9 @@ export class WinesService {
 
   async searchWines(query: GetWinesQueryDto) {
     const client = this.dbService.getClient();
-    let supa = client.from("master_wine_library").select("*");
+    let supa = client
+      .from("master_wine_library")
+      .select(WINE_LIST_COLUMNS);
 
     if (query.ids) {
       const ids = query.ids
@@ -575,7 +618,11 @@ export class WinesService {
       throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
     }
 
-    return (data || []).map((row: WineRow) => this.mapWine(row));
+    // `select` takes the column list as a plain string, which the client
+    // cannot parse into a row type; the rows are exactly `WineRow`.
+    return ((data as unknown as WineRow[]) || []).map((row) =>
+      this.mapWine(row),
+    );
   }
 
   async getWineById(wineId: string) {
