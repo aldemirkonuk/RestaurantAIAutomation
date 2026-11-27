@@ -123,6 +123,23 @@ describe("InventoryService", () => {
       expect(insertCall.threshold_max).toBe(24);
     });
 
+    it("adds nothing when the house's par could not be read", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockResolvedValue({
+        data: null,
+        error: { message: "timeout" },
+      });
+      mockSupabaseChain.insert.mockClear();
+      await expect(
+        service.createInventoryItem("rest-1", {
+          wineId: "mw-par-unread",
+          stockLive: 0,
+          providerId: null,
+        } as any),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+    });
+
     it("gives a house that stated none the same 3 the menu path gives, not 6", async () => {
       queueNewWine();
       await service.createInventoryItem("rest-1", {

@@ -15,6 +15,7 @@ One house-wide low-stock par was written five ways: the `restaurant_inventory.th
 1. The inventory add paths (`createInventoryItem`, the bulk receive line) read the house value through the one reader the menu path uses (`readHouseThresholdMin`, `inventory/house-par.ts`) when the caller gave no par. A typed par, including 0, is kept and the house is not asked (PR #801 made `||` into `??`).
 2. A house that stated none takes the column's own default, 3, on both paths. 6 is gone from the add paths.
 3. The menu path's private fallback constant is removed; it calls the same reader.
+4. A read that fails is not "the house stated none". The reader throws a 503 ("The house's par could not be read; nothing was added.") so the add refuses and writes nothing, rather than holding a house that stated 12 to a guessed 3 (r103 review, ADR 0116).
 
 ## Rejected
 
@@ -27,3 +28,4 @@ One house-wide low-stock par was written five ways: the `restaurant_inventory.th
 - Unstated houses still read as 3 rather than "not set" (needs the nullable column).
 - `import_restaurant_data` still defaults 5.
 - ThresholdStep is still not mounted; with no screen writing the value, most houses are unstated and read 3.
+- Reach (r103 review): this reaches the API add and the scan/receipt bulk lines only. The Add-wine modal always sends its own par (`useState(10)`, and `wine.threshold || 10` turns a 0 into 10) and the auction carry sends 0, so a person adding through those still gets 10 or 0, not the house's par. Seeding the modal from the house par needs the web store to carry `default_threshold_min` and a way to state it (ThresholdStep); that is a product surface this change does not decide.
