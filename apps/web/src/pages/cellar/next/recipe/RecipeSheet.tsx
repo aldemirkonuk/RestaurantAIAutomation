@@ -67,7 +67,7 @@ import type { CocktailRecipe, RecipeLine, RecipeVersion, SaveRecipeBody } from '
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
 import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
-import { qtyText, readsAsThousandAmbiguous } from './units';
+import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import {
@@ -645,7 +645,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
             {proposed.lines.map((p, i) => (
               <li key={i} className="cl-rcp-line" data-role={p.role} data-testid="recipe-proposed-line">
                 <div className="cl-rcp-read">
-                  <span className="cl-num cl-rcp-amt">{p.qty != null ? `${qtyText(p.qty)} ${p.unit ?? ''}`.trim() : ''}</span>
+                  <span className="cl-num cl-rcp-amt">{p.qty != null ? amountWithUnit(p.qty, p.unit) : ''}</span>
                   <span>
                     {p.label}
                     {p.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}

@@ -10,7 +10,7 @@
 import { useId, useState } from 'react';
 import { Link2, Trash2 } from 'lucide-react';
 import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
-import { RECIPE_UNITS, UNIT_LABEL, qtyText, readQty, type RecipeUnit } from './units';
+import { RECIPE_UNITS, amountWithUnit, qtyText, readQty, unitWord, type RecipeUnit } from './units';
 import ShelfPicker, { kindWords } from './ShelfPicker';
 
 export interface DraftRow {
@@ -147,7 +147,7 @@ function Note({ note }: { note: { tone: 'warn' | 'ink'; text: string } | null })
 function amountWords(row: DraftRow): string {
   const q = rowQty(row);
   if (q === null) return '';
-  return `${qtyText(q)} ${row.unit ? UNIT_LABEL[row.unit] : ''}`.trim();
+  return amountWithUnit(q, row.unit);
 }
 
 /** A line as a staff member reads it: no inputs, no money, and no warning that is not theirs to act on. */
@@ -258,7 +258,7 @@ export default function LineRow({
         >
           <option value="">unit</option>
           {RECIPE_UNITS.map((u) => (
-            <option key={u} value={u}>{UNIT_LABEL[u]}</option>
+            <option key={u} value={u}>{unitWord(u, rowQty(row))}</option>
           ))}
         </select>
 
