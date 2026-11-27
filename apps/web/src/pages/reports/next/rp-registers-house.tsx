@@ -41,6 +41,9 @@ const quadrants = analysis<QuadrantRegister>({
   answers: 'Which wines earn their place: margin against how fast they move',
   window: () => 'the list as it stands, against 90 days of movement',
   path: (rid) => `/analytics/menu-engineering/${rid}`,
+  // Margin per bottle is the menu price less what the house paid (ADR 0348, r108):
+  // staff keep the page, not this figure, and the card says so.
+  readers: ['owner', 'manager'],
   graphs: ['scatter', 'bars', 'table'],
   graphNote:
     'The scatter is the only drawing that shows both measures at once; bars and the table rank on margin alone. No line or area — these are wines, not a sequence, and joining them would draw a trend through an alphabet.',

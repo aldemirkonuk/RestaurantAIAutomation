@@ -148,7 +148,7 @@ const PAGE: Record<ExportableCutting, PageRead> = {
   pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID, HOLDER) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
-  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID) },
+  quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID, { role: "owner" }) },
   ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, HOLDER) },
   seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
   service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
