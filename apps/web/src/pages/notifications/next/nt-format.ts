@@ -124,6 +124,9 @@ export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   // api-gateway notifications/producers/menu-due.producer.ts. Its link opens
   // /menu, so its register is the page's own name.
   menu_due: 'Menu',
+  // A long menu read ended, done or failed (DD-r108-18): api-gateway
+  // menus.service.ts tellReadEnded. Its link opens /menu too.
+  menu_read: 'Menu',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',
