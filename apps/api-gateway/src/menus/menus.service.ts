@@ -26,7 +26,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
-import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
+import { flagReasonOf, isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
@@ -1583,9 +1583,11 @@ export class MenusService {
 
   /**
    * Brings a discarded line back (r107 menu-4, DD-r106-18). The undo of
-   * `discardMenuItem`: the row was kept, so its status goes back to `approved`
-   * (a discard keeps no earlier status, and a line on the current menu was
-   * one a person could see). ONLY the line's status is written: restoring never
+   * `discardMenuItem`: the row was kept. A discard writes only the status and
+   * leaves `review_notes`, so a line that was flagged (a manager's correction,
+   * a line added by hand, one past the free plan's limit) goes back to
+   * `flagged` and keeps saying why; any other line goes back to `approved`.
+   * ONLY the line's status is written: restoring never
    * touches the house's inventory or its sale state; a drink a manager took off
    * sale stays off sale.
    *   - another house's line, or none: 404 (the house is the caller's own);
@@ -1596,10 +1598,10 @@ export class MenusService {
   async restoreMenuItem(
     restaurantId: string,
     menuItemId: string,
-  ): Promise<{ menuItemId: string; status: "approved" }> {
+  ): Promise<{ menuItemId: string; status: "approved" | "flagged" }> {
     const { data: row, error: readErr } = await this.dbService.supabase
       .from("menu_items")
-      .select("id, restaurant_id, status, menu_id")
+      .select("id, restaurant_id, status, menu_id, review_notes")
       .eq("id", menuItemId)
       .maybeSingle();
     if (readErr) {
@@ -1629,9 +1631,11 @@ export class MenusService {
         "The menu this line was on is no longer the current one, so it cannot be put back on the menu. Nothing was changed.",
       );
     }
+    const why = flagReasonOf("flagged", row.review_notes);
+    const status: "approved" | "flagged" = why && why.reason !== "unknown" ? "flagged" : "approved";
     const { data: written, error: writeErr } = await this.dbService.supabase
       .from("menu_items")
-      .update({ status: "approved" })
+      .update({ status })
       .eq("id", menuItemId)
       .eq("restaurant_id", restaurantId)
       .eq("status", "discarded")
@@ -1644,7 +1648,7 @@ export class MenusService {
     if (!written || written.length === 0) {
       throw new ConflictException("This line changed while it was being put back, so nothing was changed. Read the menu again.");
     }
-    return { menuItemId, status: "approved" };
+    return { menuItemId, status };
   }
 
   /**

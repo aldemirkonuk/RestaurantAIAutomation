@@ -3323,6 +3323,10 @@ describe("a discarded line, and a failed read taken off the list, can be put bac
       { id: "l-on", menu_id: "m-cur", restaurant_id: "rest-1", name: "Chianti", status: "approved" },
       { id: "l-old", menu_id: "m-old", restaurant_id: "rest-1", name: "Soave", status: "discarded" },
       { id: "l-other", menu_id: "m-cur", restaurant_id: "rest-2", name: "Rioja", status: "discarded" },
+      { id: "l-fix", menu_id: "m-cur", restaurant_id: "rest-1", name: "Nebbiolo", status: "discarded", review_notes: "Manager corrected bottle_price" },
+      { id: "l-hand", menu_id: "m-cur", restaurant_id: "rest-1", name: "Gavi", status: "discarded", review_notes: "Manually added during review" },
+      { id: "l-free", menu_id: "m-cur", restaurant_id: "rest-1", name: "Orvieto", status: "discarded", review_notes: "Free tier: past the limit" },
+      { id: "l-odd", menu_id: "m-cur", restaurant_id: "rest-1", name: "Verdicchio", status: "discarded", review_notes: "something unrecognised" },
     ],
   });
 
@@ -3333,6 +3337,19 @@ describe("a discarded line, and a failed read taken off the list, can be put bac
     expect(tables.menu_items.find((l) => l.id === "l-off")!.status).toBe("approved");
     expect(tables.restaurant_inventory[0]).toMatchObject({ is_active: false, menu_price_current: 60 });
     expect((await service.getMenu("rest-1")).items.map((l: { id: string }) => l.id).sort()).toEqual(["l-off", "l-on"]);
+  });
+
+  it("a discarded line that was flagged comes back flagged with its reason, not laundered into 'as read' (r107 menu-4 follow-up)", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    for (const [id, status] of [["l-fix", "flagged"], ["l-hand", "flagged"], ["l-free", "flagged"], ["l-odd", "approved"]] as const) {
+      await expect(service.restoreMenuItem("rest-1", id)).resolves.toEqual({ menuItemId: id, status });
+      expect(tables.menu_items.find((l) => l.id === id)!.status).toBe(status);
+    }
+    const items = (await service.getMenu("rest-1")).items as Array<Record<string, unknown>>;
+    expect(items.find((l) => l.id === "l-fix")).toMatchObject({ status: "flagged", flag_reason: "corrected", flag_field: "bottle_price" });
+    expect(items.find((l) => l.id === "l-free")).toMatchObject({ status: "flagged", flag_reason: "past_free_limit" });
+    expect(items.find((l) => l.id === "l-hand")).toMatchObject({ status: "flagged", flag_reason: "added_by_hand" });
   });
 
   it("another house's line is a 404; a line that is not discarded is a 409; both stay as they were", async () => {
