@@ -306,9 +306,12 @@ CREATE OR REPLACE FUNCTION public.list_mail_threads_other(
     SET search_path = ''
     AS $$
 WITH t AS (
-    SELECT o.thread_key, count(*) AS n, count(*) FILTER (WHERE NOT o.automatic) AS letters,
-           max(o.at) AS last_at,
-           (array_agg(o.dir ORDER BY o.at DESC, o.id DESC))[1] AS dir,
+    -- Letters only, as a vendor's thread: automatic mail is not counted, and does not set the thread's time or
+    -- last writer unless it is all the thread holds (then count 0 reads "Only automatic mail").
+    SELECT o.thread_key, count(*) FILTER (WHERE NOT o.automatic) AS n,
+           count(*) FILTER (WHERE NOT o.automatic) AS letters,
+           COALESCE(max(o.at) FILTER (WHERE NOT o.automatic), max(o.at)) AS last_at,
+           (array_agg(o.dir ORDER BY o.automatic ASC, o.at DESC, o.id DESC))[1] AS dir,
            (array_agg(o.subject ORDER BY o.at ASC, o.id ASC)
               FILTER (WHERE o.subject IS NOT NULL))[1] AS subject
     FROM public.mail_other_rows(p_restaurant_id, p_withhold_house_letters, p_kind, p_address) o

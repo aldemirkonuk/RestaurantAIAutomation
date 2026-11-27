@@ -71,4 +71,18 @@ SELECT pg_temp.ok((SELECT count(*) FROM public.mail_thread_letters_other('888888
 SELECT pg_temp.ok((SELECT open_threads FROM public.list_mail_people('88888888-8888-4888-8888-888888888888', false) WHERE key = 'guest:pat@x.example') = 1, 'person-has-one-open-thread');
 SELECT pg_temp.ok((SELECT in_today FROM public.mail_inbox_summary('88888888-8888-4888-8888-888888888888', false, 'UTC')) = 2, 'header-counts-two-letters-not-four');
 
+-- A thread counts letters only, as a vendor's thread does: an auto-reply is not a message, does not set the
+-- thread's time or last writer, and a thread of nothing else says so by counting 0.
+INSERT INTO public.restaurants (id, name, slug, timezone) VALUES
+  ('99999999-9999-4999-8999-999999999999', 'Rules J', 'rules-j-test', 'UTC');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, kind, from_address, direction, channel, message_text, status, thread_key, message_id, received_at, sent_at, created_at, email_headers) VALUES
+  ('d7000000-0000-4000-8000-0000000000a1', '99999999-9999-4999-8999-999999999999', NULL, 'guest', 'quin@x.example', 'inbound', 'email', 'Table?', 'DELIVERED', 'gm:q1', '<q1@x.example>', now() - interval '20 minutes', NULL, now() - interval '20 minutes', '{}'),
+  ('d7000000-0000-4000-8000-0000000000a2', '99999999-9999-4999-8999-999999999999', NULL, 'guest', 'quin@x.example', 'outbound', 'email', 'Yes, at eight', 'SENT', 'gm:q1', '<q2@h.example>', NULL, now() - interval '10 minutes', now() - interval '10 minutes', '{}'),
+  ('d7000000-0000-4000-8000-0000000000a3', '99999999-9999-4999-8999-999999999999', NULL, 'guest', 'quin@x.example', 'inbound', 'email', 'Automatic reply: Table?', 'DELIVERED', 'gm:q1', '<q3@x.example>', now() - interval '1 minute', NULL, now() - interval '1 minute', '{"transport":{"autoSubmitted":"true"}}'),
+  ('d7000000-0000-4000-8000-0000000000a4', '99999999-9999-4999-8999-999999999999', NULL, 'guest', 'quin@x.example', 'inbound', 'email', 'Automatic reply: Hello', 'DELIVERED', 'gm:q2', '<q4@x.example>', now() - interval '2 minutes', NULL, now() - interval '2 minutes', '{"transport":{"autoSubmitted":"true"}}');
+SELECT pg_temp.ok((SELECT message_count FROM public.list_mail_threads_other('99999999-9999-4999-8999-999999999999', 'guest', 'quin@x.example', false) WHERE thread_key = 'gm:q1') = 2, 'thread-counts-letters-not-auto-replies');
+SELECT pg_temp.ok((SELECT last_direction FROM public.list_mail_threads_other('99999999-9999-4999-8999-999999999999', 'guest', 'quin@x.example', false) WHERE thread_key = 'gm:q1') = 'outbound'
+  AND (SELECT last_at FROM public.list_mail_threads_other('99999999-9999-4999-8999-999999999999', 'guest', 'quin@x.example', false) WHERE thread_key = 'gm:q1') < now() - interval '5 minutes', 'thread-time-and-writer-are-the-last-letters');
+SELECT pg_temp.ok((SELECT message_count FROM public.list_mail_threads_other('99999999-9999-4999-8999-999999999999', 'guest', 'quin@x.example', false) WHERE thread_key = 'gm:q2') = 0, 'auto-only-thread-counts-zero');
 rollback;
