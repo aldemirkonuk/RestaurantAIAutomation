@@ -69,7 +69,7 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { chipMatch, priceBasisUnstated, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
+import { chipMatch, priceBasisUnstated, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, readSentence, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -374,5 +374,38 @@ describe('Price signals: chipMatch reads the last two settled delivery costs (r1
     expect(priceSignalsHaveBasis([two(null, null)])).toBe(false);
     expect(priceSignalsReadable([two(11, 10)])).toBe(true);
     expect(priceSignalsReadable([{ ...two(11, 10), settledCostsReadable: false }])).toBe(false);
+  });
+});
+
+// r103 review: the lot rollup carries the cost too, so a failed rollup is an unread cost, never "no cost yet".
+describe('useInventoryNextData — a failed lot-rollup read leaves the cost unread (r103)', () => {
+  const failed = { id: 'i1', restaurantId: 'r1', wineId: 'w1', wineName: 'Barolo', stockLive: 6, rollupReadable: false, locations: [] };
+  const cur = { state: 'recorded', code: 'EUR' } as never;
+
+  it('toRow carries no cost, value or provenance for it, and says the rollup was not read', () => {
+    const r = toRow({ ...failed, wac: 40, costProvenance: 'invoice' } as never);
+    expect(r.rollupReadable).toBe(false);
+    expect(r.wac).toBeNull();
+    expect(r.value).toBeNull();
+    expect(r.costProvenance).toBeNull();
+  });
+
+  it('the read sentence says the lot costs could not be read, not that no title has a cost', () => {
+    const s = readSentence([toRow(failed as never)], cur, true);
+    expect(s).toContain('The lot costs could not be read');
+    expect(s).not.toContain('has a cost on the books yet');
+  });
+
+  it('a house that read some lots still names the ones it could not', () => {
+    const ok = toRow({ id: 'i2', wineName: 'B', stockLive: 2, wac: 10, rollupReadable: true } as never);
+    const s = readSentence([ok, toRow(failed as never)], cur, true);
+    expect(s).toContain('1 of them because their lot costs could not be read');
+  });
+
+  it('the unread banner names the lot costs and what says so', async () => {
+    m.items = [failed];
+    const { result } = mount();
+    await waitFor(() => expect(result.current.advice.status).toBe('ready'));
+    expect(result.current.unread).toContain('the lot costs, so cost, value and margin say they could not be read');
   });
 });

@@ -104,3 +104,26 @@ describe('a hold ends when the reading settles (r107 g3)', () => {
     expect(css.indexOf("[data-settled='true']")).toBeGreaterThan(css.indexOf('min-height: 94px'));
   });
 });
+
+describe('a failed lot-rollup read leaves the cost and value cards unread (r103)', () => {
+  const unreadRow = { rollupReadable: false, wac: null, value: null, costProvenance: null } as Partial<InvRow>;
+
+  it('Cost and Value say they could not be read, never "No cost yet"', () => {
+    draw(unreadRow, reading as never);
+    expect(screen.getByTestId('ivd-card-cost').textContent).toContain('could not be read');
+    expect(screen.getByTestId('ivd-card-cost').textContent).not.toContain('No cost yet');
+    expect(screen.getByTestId('ivd-card-value').textContent).toContain('could not be read');
+    expect(screen.getByTestId('ivd-card-value').textContent).not.toContain('No cost yet');
+  });
+
+  it('an unread cost does not take the tall room a sentence needs', () => {
+    draw(unreadRow, reading as never);
+    expect(hold('cost')).toBeNull();
+  });
+
+  it('a read house with no cost still says "No cost yet"', () => {
+    draw({ rollupReadable: true, wac: null, value: null }, reading as never);
+    expect(screen.getByTestId('ivd-card-cost').textContent).toContain('No cost yet');
+    expect(screen.getByTestId('ivd-card-value').textContent).toContain('No cost yet');
+  });
+});

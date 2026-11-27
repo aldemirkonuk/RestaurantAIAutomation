@@ -323,7 +323,9 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
     cost = 'Not shown';
     costSource = 'Cost is shown to owners and managers.';
   } else {
-    if (row.wac !== null) {
+    if (row.rollupReadable === false) {
+      cost = UNREAD;
+    } else if (row.wac !== null) {
       const u = perUnit(row.wac, uom);
       cost = `${money(u.amount)} ${u.per}`;
     } else {
@@ -366,10 +368,12 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
           id="value"
           open={open}
           onOpen={onOpen}
-          unread={row.stock === null}
+          unread={row.stock === null || row.rollupReadable === false}
           figure={row.value === null ? 'No cost yet' : money(row.value)}
           source={
-            row.value === null
+            row.rollupReadable === false
+              ? 'On hand at the average cost; the lot costs could not be read.'
+              : row.value === null
               ? 'On hand at the average cost; no received lot of this item has a cost yet.'
               : 'On hand at the average cost of what was received.'
           }
@@ -427,9 +431,10 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
         onOpen={onOpen}
         // The gateway answers every owner's Cost card with the cost-trend sentence (COST_TREND_NOT_KEPT: points
         // null, several lines, no sparkline), costed good or not, so it holds the tall room for all of them. Staff
-        // get no sentence and no attribute (it would reveal whether a good is costed). If a trend with points is
-        // ever served again, hold only when figures carry fewer than two (r103).
-        tall={canManage}
+        // get no sentence and no attribute (it would reveal whether a good is costed). A cost the lot rollup could
+        // not read says so in one line and takes no tall room (r103).
+        tall={canManage && row.rollupReadable !== false}
+        unread={canManage && row.rollupReadable === false}
         figure={cost}
         extra={costExtra}
         source={costSource}
