@@ -600,6 +600,11 @@ function ReadScope({ canAnswer, inboxSwitchedOff, storedKinds }: { canAnswer: bo
     );
   }
   const all = grants.reads;
+  // The line for a vendors-only reading speaks for the rows kept (readScopeLine), which arrive with
+  // the first people page. Until then they are unknown, so hold the place: drawing "vendor mail
+  // only" first and swapping it for a longer sentence would claim what the rows may contradict.
+  // (A failed people read says so in the list itself.)
+  if (!all && storedKinds === null) return <div aria-hidden="true" data-testid="read-scope-pending" className={inboxSwitchedOff ? READ_SCOPE_HOLD.two : READ_SCOPE_HOLD.one} />;
   return (
     <div className="grid gap-1.5" data-testid="read-scope" data-state={all ? 'all' : 'vendors'}>
       <p style={{ ...QUIET, margin: 0 }}>

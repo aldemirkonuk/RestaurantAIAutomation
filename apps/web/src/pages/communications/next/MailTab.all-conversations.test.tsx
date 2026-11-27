@@ -354,6 +354,27 @@ describe('reading every conversation', () => {
     expect(screen.getByTestId('read-scope').getAttribute('data-state')).toBe('all');
   });
 
+  it('draws no scope sentence until the kept letters are known, then the right one (r105 review)', async () => {
+    stored = ['vendor', 'team', 'guest'];
+    let open: () => void = () => {};
+    const gate = new Promise<void>((r) => (open = r));
+    const answer = api.get.getMockImplementation()!;
+    api.get.mockImplementation(async (url: string, cfg?: unknown) => {
+      if (url === '/mail/people') await gate;
+      return answer(url, cfg as never);
+    });
+    mount();
+    await screen.findByTestId('read-scope-pending');
+    // The grants have long since answered; only the people page is held back.
+    await waitFor(() => expect(api.get.mock.calls.some(([u]) => u === '/integrations/oauth/house-grants')).toBe(true));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId('read-scope')).toBeNull();
+    expect(document.body.textContent).not.toContain('vendor mail only');
+    open();
+    await waitFor(() => expect(screen.getByTestId('read-scope')).toHaveTextContent('Letters already kept with your team and guests are listed here too.'));
+    expect(screen.queryByTestId('read-scope-pending')).toBeNull();
+  });
+
   it('staff are told what the tab reads, are offered no act, and the owner-only grants are never asked for', async () => {
     auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
     mount();
