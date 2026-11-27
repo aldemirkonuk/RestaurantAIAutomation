@@ -26,7 +26,8 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, lazy, type ReactNode, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ReplyHoldsContext } from './held-words';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -359,6 +360,7 @@ function PersonRow({
   tabStop?: boolean;
 }) {
   const unsent = unsentWords(p.unsentStatus ?? null);
+  const draft = useContext(ReplyHoldsContext)?.people.has(p.key) ?? false;
   return (
     <li
       className={enterPlace === undefined ? undefined : 'mail-fade-in'}
@@ -386,6 +388,12 @@ function PersonRow({
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
             {p.name ?? NO_NAME[mailKindOf(p)]}
           </span>
+          {draft && (
+            // r109 mail-gap g2: a reply to them is held in this tab. Quiet, and drawn with no motion.
+            <span data-testid="mail-person-draft" style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', flex: 'none' }}>
+              Draft
+            </span>
+          )}
           <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)', flex: 'none' }}>
             {fmtWhen(p.lastAt)}
           </span>
@@ -898,7 +906,7 @@ export function MailTab({
   /** The page's own openReply: the drafted reply and its sealed approve, untouched. */
   onOpenReply: (orderId: string) => void;
   /** The page's composer, opened on a reply to a thread's newest letter (gap 3). */
-  onAnswer?: (answer: MailAnswer) => void;
+  onAnswer?: (answer: MailAnswer, at?: { threadKey: string; personKey: string | null }) => void;
   /**
    * The page's composer, opened on a new letter to a vendor from the vendor's
    * person page (r107 DD-r106-8). The recipient is the vendor-book address, which

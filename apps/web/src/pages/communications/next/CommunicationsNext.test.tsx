@@ -53,11 +53,13 @@ vi.mock('./Compose/ComposeSheet', async () => {
     prefill,
     onClose,
     onHold,
+    onQueued,
   }: {
     open: boolean;
     prefill?: { draftId?: string; subject?: string; body?: string } | null;
     onClose: () => void;
     onHold?: (w: typeof HELD_LETTER) => void;
+    onQueued?: () => void;
   }) {
     const [mount] = useState(() => ++composerMounts.n);
     return open ? (
@@ -70,6 +72,12 @@ vi.mock('./Compose/ComposeSheet', async () => {
           }}
         >
           Leave with words
+        </button>
+        <button type="button" onClick={() => onQueued?.()}>
+          Queue it
+        </button>
+        <button type="button" onClick={onClose}>
+          Leave unchanged
         </button>
       </div>
     ) : null;
@@ -159,15 +167,23 @@ vi.mock('./MailTab', () => ({
   MailTab: ({
     draftedOrderIds,
     onOpenReply,
+    onAnswer,
     whoIsWriting,
   }: {
     draftedOrderIds: ReadonlySet<string>;
     onOpenReply: (id: string) => void;
+    onAnswer?: (a: unknown, at?: { threadKey: string; personKey: string | null }) => void;
     whoIsWriting?: React.ReactNode;
   }) => (
     <section aria-label="Mail" data-testid="mail-tab-stub" data-drafted={[...draftedOrderIds].join(',')}>
       <button type="button" onClick={() => onOpenReply([...draftedOrderIds][0] ?? '')}>
         stub open reply
+      </button>
+      <button
+        type="button"
+        onClick={() => onAnswer?.({ providerId: 'p1', answers: 'v1', subject: 'Re: Friday' }, { threadKey: 'gm:t1', personKey: 'vendor:p1' })}
+      >
+        stub write a reply
       </button>
       {whoIsWriting}
     </section>
@@ -1231,5 +1247,56 @@ describe('Mail and Letters', () => {
     expect(screen.getByTestId('mail-tab-stub').getAttribute('data-drafted')).toBe('o1');
     fireEvent.click(screen.getByText('stub open reply'));
     expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+  });
+});
+
+// r109 mail-gap g2: a reply torn in a thread is held on that thread, in this tab.
+describe('a half-written reply stays on its own thread (r109 g2)', () => {
+  const KEY = 'mail-reply:u1:r1:gm:t1';
+  const REPLY = { ...HELD_LETTER, to: null, subject: 'Re: Friday', body: 'Six cases, and the Rioja.', answers: 'v1' };
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    mockAuth.current = { user: { userId: 'u1', role: 'manager', restaurantId: 'r1' }, activeRole: 'manager', activeRestaurantId: 'r1' };
+    mockHeld.current = REPLY;
+  });
+
+  it('a torn reply is held under its thread, never as a new letter, and Write a reply resumes it', () => {
+    render(<CommunicationsNext />, '/communications?tab=mail');
+    fireEvent.click(screen.getByText('stub write a reply'));
+    expect(screen.getByTestId('composer').getAttribute('data-body')).toBe('');
+    fireEvent.click(screen.getByText('Leave with words'));
+    expect(screen.queryByTestId('composer')).toBeNull();
+    expect(JSON.parse(window.sessionStorage.getItem(KEY) ?? 'null')).toMatchObject({
+      words: { body: 'Six cases, and the Rioja.' },
+      answer: { answers: 'v1' },
+      personKey: 'vendor:p1',
+    });
+    fireEvent.click(screen.getByText('stub write a reply'));
+    expect(screen.getByTestId('composer').getAttribute('data-body')).toBe('Six cases, and the Rioja.');
+    // Resumed, not let go: the words stay in the tab while the sheet is open.
+    expect(window.sessionStorage.getItem(KEY)).not.toBeNull();
+    // Write a letter opens on its own (empty) sheet, not on the reply.
+    fireEvent.click(screen.getByRole('tab', { name: /Letters/ }));
+    fireEvent.click(screen.getByText('Write a letter'));
+    expect(screen.getByTestId('composer').getAttribute('data-body')).toBe('');
+    expect(screen.queryByText(/Six cases, and the Rioja/)).toBeNull();
+  });
+
+  it('a queued reply (202) lets the words go', () => {
+    render(<CommunicationsNext />, '/communications?tab=mail');
+    fireEvent.click(screen.getByText('stub write a reply'));
+    fireEvent.click(screen.getByText('Leave with words'));
+    fireEvent.click(screen.getByText('stub write a reply'));
+    fireEvent.click(screen.getByText('Queue it'));
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('a reply closed with nothing to keep leaves nothing in the tab', () => {
+    render(<CommunicationsNext />, '/communications?tab=mail');
+    fireEvent.click(screen.getByText('stub write a reply'));
+    fireEvent.click(screen.getByText('Leave with words'));
+    fireEvent.click(screen.getByText('stub write a reply'));
+    fireEvent.click(screen.getByText('Leave unchanged'));
+    expect(window.sessionStorage.getItem(KEY)).toBeNull();
   });
 });

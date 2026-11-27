@@ -47,7 +47,7 @@ import {
   type FailedRead,
 } from './cm-format';
 import { TemplateSheet, type HeldTemplate } from './TemplateSheet';
-import { changedLine, heldLine, useHeldWords } from './held-words';
+import { changedLine, heldLine, ReplyHoldsContext, useHeldWords, useReplyHolds } from './held-words';
 import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
 import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
@@ -158,7 +158,7 @@ export default function CommunicationsNext() {
   // reply), a person, a draft or a reply asks for them, once.
   const lettersRead = tab === 'letters' || params.has('thread') || params.has('with') || params.has('draft') || params.has('reply');
   const data = useCommsNextData({ enabled: lettersRead });
-  const { user, activeRole } = useAuth();
+  const { user, activeRole, activeRestaurantId } = useAuth();
   const manages = managesHouse(activeRole, user?.role);
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
   const letterStanding = useLetterSenderStanding();
@@ -183,6 +183,11 @@ export default function CommunicationsNext() {
   // "Write a reply" in a Mail thread (r28 gap 3): the composer opens on an
   // answer to that thread's newest letter.
   const [answerFrom, setAnswerFrom] = useState<MailAnswer | null>(null);
+  // r109 mail-gap g2: a reply is held on its own thread, never under 'new'. Which
+  // thread the open reply sheet answers, and whether this close held its words.
+  const replies = useReplyHolds<HeldLetter, MailAnswer>(user?.userId, activeRestaurantId ?? user?.restaurantId);
+  const [replyOn, setReplyOn] = useState<{ threadKey: string; personKey: string | null } | null>(null);
+  const heldOnClose = useRef(false);
   // A new letter to a vendor, opened from the vendor's person page in Mail (r107 DD-r106-8).
   const [writeTo, setWriteTo] = useState<{ providerId: string } | null>(null);
   const [templateFrom, setTemplateFrom] = useState<HeldTemplate | null>(null);
@@ -206,7 +211,15 @@ export default function CommunicationsNext() {
   const openCompose = () => {
     // The composer stays mounted, so a held letter is still in it. A reply
     // opened from Mail and left unwritten is not a new letter: a fresh sheet.
-    if ((answerFrom || writeTo) && !letters.words('new')) {
+    if (replyOn) {
+      // The mounted sheet holds a reply, which is its thread's: the new letter
+      // opens on its own held words, or empty.
+      setComposeFrom(letters.words('new'));
+      setAnswerFrom(null);
+      setWriteTo(null);
+      setReplyOn(null);
+      setComposeKey((k) => k + 1);
+    } else if ((answerFrom || writeTo) && !letters.words('new')) {
       setAnswerFrom(null);
       setWriteTo(null);
       setComposeKey((k) => k + 1);
@@ -218,15 +231,19 @@ export default function CommunicationsNext() {
     // A fresh sheet for the new letter: a letter held from before is left held.
     setComposeFrom(null);
     setAnswerFrom(null);
+    setReplyOn(null);
     setWriteTo({ providerId });
     setComposeKey((k) => k + 1);
     setCompose(true);
   };
-  const openAnswer = (a: MailAnswer) => {
-    // A fresh sheet for the reply: a letter held from before is left held.
-    setComposeFrom(null);
+  const openAnswer = (a: MailAnswer, at?: { threadKey: string; personKey: string | null }) => {
+    // A reply held on this thread opens with its words (g2); otherwise a fresh
+    // sheet, and a letter held from before is left held.
+    const held = at ? replies.take(at.threadKey) : null;
+    setComposeFrom(held ? held.words : null);
     setWriteTo(null);
-    setAnswerFrom(a);
+    setReplyOn(at ?? null);
+    setAnswerFrom(held ? held.answer : a);
     setComposeKey((k) => k + 1);
     setCompose(true);
   };
@@ -488,6 +505,7 @@ export default function CommunicationsNext() {
 
         <div role="tabpanel" id="comms-panel" aria-labelledby={`comms-tab-${tab}`}>
         {tab === 'mail' ? (
+          <ReplyHoldsContext.Provider value={replies}>
           <MailTab
             draftedOrderIds={draftedOrderIds}
             onOpenReply={openReply}
@@ -503,6 +521,7 @@ export default function CommunicationsNext() {
               </Suspense>
             }
           />
+          </ReplyHoldsContext.Provider>
         ) : (
         <>
 
@@ -885,8 +904,21 @@ export default function CommunicationsNext() {
       <ComposeSheet
         key={composeKey}
         open={compose}
-        onClose={() => setCompose(false)}
-        onHold={(w) => letters.hold('new', w)}
+        onClose={() => {
+          setCompose(false);
+          // A reply closed with nothing to keep (or queued) leaves no words in the tab.
+          if (replyOn && !heldOnClose.current) replies.clear(replyOn.threadKey);
+          heldOnClose.current = false;
+        }}
+        onHold={(w) => {
+          if (replyOn && answerFrom) {
+            heldOnClose.current = true;
+            replies.hold(replyOn.threadKey, w, answerFrom, replyOn.personKey);
+          } else letters.hold('new', w);
+        }}
+        onQueued={() => {
+          if (replyOn) replies.clear(replyOn.threadKey);
+        }}
         prefill={
           composeFrom
             ? {
