@@ -309,6 +309,7 @@ function People({
   onClearSearch,
   reader,
   summary,
+  reading,
   onOpenPerson,
   onSetup,
   setupWords,
@@ -321,6 +322,8 @@ function People({
   onClearSearch: () => void;
   reader: MailboxReader | null;
   summary: Parameters<typeof emptyListWords>[1];
+  /** Which of the two reads is still in flight (not failed). */
+  reading: { reader: boolean; summary: boolean };
   onOpenPerson: (key: string) => void;
   onSetup: () => void;
   /** setupLinkWords(canReply): staff are not told to set up what they cannot change. */
@@ -351,7 +354,7 @@ function People({
         </p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
-          {emptyListWords(reader, summary, { waitingOnly, on })}{' '}
+          {emptyListWords(reader, summary, { waitingOnly, on, reading })}{' '}
           {!waitingOnly && (
             <button type="button" data-testid="empty-setup" onClick={onSetup} style={LINK_BUTTON}>
               {setupWords}
@@ -681,6 +684,7 @@ export function MailTab({
             onClearSearch={clearSearch}
             reader={reader}
             summary={summary}
+            reading={{ reader: senderQ.isPending, summary: summaryQ.isPending }}
             onOpenPerson={(key) => go({ with: key })}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}

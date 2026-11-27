@@ -812,7 +812,12 @@ export function setupLinkWords(canChange: boolean): string {
 export function emptyListWords(
   reader: MailboxReader | null,
   summary: MailSummary | null,
-  opts: { waitingOnly: boolean; on: WaitingOn },
+  opts: {
+    waitingOnly: boolean;
+    on: WaitingOn;
+    /** A read still in flight is "still being read", never "could not be read" (r41 mail gap 6). */
+    reading?: { reader: boolean; summary: boolean };
+  },
 ): string {
   if (opts.waitingOnly) return `No vendor is waiting on ${opts.on}.`;
   const open: string[] = [];
@@ -822,9 +827,11 @@ export function emptyListWords(
   else if (reader?.granted === true && reader.enabled) open.push('your mailbox');
   else if (reader?.granted === false) shut.push('your mailbox is not connected');
   else if (reader && reader.granted === true && !reader.enabled) shut.push('your mailbox is connected but not being read');
+  else if (opts.reading?.reader) shut.push('whether your mailbox is connected is still being read');
   else shut.push('whether your mailbox is connected could not be read');
   if (summary?.address.address) open.push(`your Mudavym address (${summary.address.address})`);
   else if (summary) shut.push('the house has no Mudavym address');
+  else if (opts.reading?.summary) shut.push('whether the house has a Mudavym address is still being read');
   else shut.push('whether the house has a Mudavym address could not be read');
   const lead = 'No vendor mail has been stored yet.';
   const opened = open.length ? ` Mail is read from ${open.join(' and ')}.` : ' Nothing is known to be connected for this house yet.';
