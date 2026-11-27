@@ -43,6 +43,8 @@ describe('MenuManualEntry takes any line', () => {
     expect(screen.getByRole('columnheader', { name: /^Name/ })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'What it is' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Add another line/ })).toBeInTheDocument()
+    // r109: a 44 px tap target at 375 (it measured 20 px).
+    expect(screen.getByRole('button', { name: /Add another line/ }).className).toContain('min-h-11')
     const text = document.body.textContent ?? ''
     expect(text).not.toContain('Wine Name')
     expect(text).not.toContain('wine name')
