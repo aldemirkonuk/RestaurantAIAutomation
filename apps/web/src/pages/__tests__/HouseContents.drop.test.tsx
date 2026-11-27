@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   list: vi.fn(),
   skipFolio: vi.fn(),
   getOnboardingProgress: vi.fn(),
+  role: 'owner' as string,
 }))
 vi.mock('../../services/api/documents', () => ({
   documentsApi: { upload: h.upload, detail: h.detail, list: h.list },
@@ -23,6 +24,7 @@ vi.mock('../../services/api/vendors', () => ({ addCustomProvider: vi.fn() }))
 vi.mock('../../services/api/menus', () => ({ getOnboardingProgress: h.getOnboardingProgress }))
 vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn().mockResolvedValue(null) } }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: h.role } }) }))
 
 import HouseContents from '../HouseContents'
 
@@ -35,6 +37,7 @@ beforeEach(() => {
   h.getOnboardingProgress.mockResolvedValue({ vendor_added: true, next_steps: { money_set: true } })
   h.upload.mockResolvedValue({ documentId: 'doc-1' })
   h.skipFolio.mockResolvedValue(undefined)
+  h.role = 'owner'
 })
 
 describe('folio 0 on /house', () => {
@@ -84,6 +87,15 @@ describe('folio 0 on /house', () => {
     expect(h.upload).not.toHaveBeenCalled()
     // #1649's link to Receipts stays as the secondary way.
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
+  })
+
+  it.each(['staff', 'waiter'])('a %s session is not offered the skip, which only an owner or a manager can record', (role) => {
+    h.role = role
+    page()
+    expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
+    // the drop stays: POST /procurement/documents is open to everyone
+    expect(screen.getByLabelText('Your last invoice')).toBeInTheDocument()
+    expect(h.skipFolio).not.toHaveBeenCalled()
   })
 
   it('says so when the skip could not be noted', async () => {

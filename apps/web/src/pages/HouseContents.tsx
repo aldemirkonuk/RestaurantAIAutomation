@@ -9,6 +9,7 @@ import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
 import { settingsApi } from '../services/api/settings'
 import { documentsApi } from '../services/api/documents'
 import { skipFolio } from '../services/api/arrival'
+import { useAuth } from '../contexts/AuthContext'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
 const PAPER_MAX_BYTES = 10 * 1024 * 1024
@@ -69,6 +70,10 @@ function vendorNotSaved(cause: unknown, name: string): string {
 
 export default function HouseContents() {
   const navigate = useNavigate()
+  // POST /arrival/skip is owner or manager only (arrival.service.ts manage()):
+  // a staff skip would be refused for good, and said as a passing failure.
+  const { user } = useAuth()
+  const canSkip = user?.role === 'owner' || user?.role === 'manager'
   const proof = readProof()
   const standing = proof ? proofStanding(proof.items) : null
   const [supplier, setSupplier] = useState('')
@@ -391,13 +396,15 @@ export default function HouseContents() {
                         : 'We could not send it just now. Try again, or send it on Receipts.'}
                   </p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => void skipPaper()}
-                  className="mt-2 min-h-[44px] font-sans text-sm text-[#6d685f] underline underline-offset-4"
-                >
-                  Skip for now
-                </button>
+                {canSkip && (
+                  <button
+                    type="button"
+                    onClick={() => void skipPaper()}
+                    className="mt-2 min-h-[44px] font-sans text-sm text-[#6d685f] underline underline-offset-4"
+                  >
+                    Skip for now
+                  </button>
+                )}
               </div>
             )}
             {(paper === 'ask' || paper === 'sent') && (
