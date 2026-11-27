@@ -208,6 +208,40 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
     expect(plan).not.toHaveTextContent('Gimlet: not swapped: counted by volume, keeps');
   });
 
+  it('Confirm stays off until the reads land, so a second click never sends a stale version (r108 fix)', async () => {
+    await choose('Better gin');
+    let release: (v: unknown) => void = () => {};
+    const held = new Promise((r) => (release = r));
+    const was = h.get.getMockImplementation()!;
+    h.get.mockImplementation(async (url: string) => {
+      if (url.includes('loose-lines')) await held;
+      return was(url);
+    });
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('swap-confirm')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('swap-confirm'));
+    expect(h.put).toHaveBeenCalledTimes(2);
+    await act(async () => release(null));
+    await waitFor(() => expect(screen.getByTestId('swap-confirm')).not.toBeDisabled());
+  });
+
+  it('when the re-read fails Confirm stays off and the sheet says so, instead of swapping from stale versions (r100 P2)', async () => {
+    await choose('Better gin');
+    const was = h.get.getMockImplementation()!;
+    h.get.mockImplementation(async (url: string) => {
+      if (url.includes('loose-lines')) throw Object.assign(new Error('503'), { response: { status: 503, data: {} } });
+      return was(url);
+    });
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    await screen.findByTestId('swap-reread-failed');
+    expect(screen.getByTestId('swap-reread-failed')).toHaveTextContent('The drinks could not be read again; close and reopen before the next swap.');
+    expect(screen.getByTestId('swap-confirm')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('swap-confirm'));
+    expect(h.put).toHaveBeenCalledTimes(2);
+  });
+
   it('says each drink’s outcome: one saved, one someone saved first', async () => {
     h.put
       .mockReset()
