@@ -136,7 +136,7 @@ describe('CatPlot with a prior', () => {
     const { container, unmount } = wrap(k, true);
     const dashed = Array.from(container.querySelectorAll('path.recharts-curve')).filter((p) => p.getAttribute('stroke-dasharray'));
     expect(dashed.length).toBeGreaterThan(0);
-    expect(container.querySelector('[role="img"]')?.getAttribute('aria-label')).toContain('the prior 30 days dashed beside it');
+    expect(container.querySelector('.rp-plot')?.getAttribute('aria-label')).toContain('the prior 30 days dashed beside it');
     unmount();
     const bare = wrap(k, false).container;
     expect(Array.from(bare.querySelectorAll('path.recharts-curve')).filter((p) => p.getAttribute('stroke-dasharray'))).toHaveLength(0);

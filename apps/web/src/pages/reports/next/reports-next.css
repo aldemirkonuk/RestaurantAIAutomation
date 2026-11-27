@@ -264,6 +264,20 @@
   position: absolute;
   inset: 0;
 }
+/* The chart's own surface is the one tab stop (recharts' accessibilityLayer); the ring is drawn on the plot, inside its
+   clip, in the house ring's colour. The browser's own outline on the SVG is off so there is one ring, not two. */
+.rp-plot .recharts-surface:focus {
+  outline: none;
+}
+.rp-plot:has(.recharts-surface:focus-visible) {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+/* Escape has hidden the tip: its crosshair goes with it until the next arrow or pointer move. */
+.rp-plot[data-tip-hidden] .recharts-tooltip-cursor {
+  display: none;
+}
 
 /* What a plot is drawing, said once above it (N-03): 11 px, 60% ink, in the
    reader's order. It stands in for the rotated value-axis titles, which sat on
