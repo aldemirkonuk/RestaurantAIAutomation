@@ -356,9 +356,9 @@ export default function Cutting({
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
      labelled with its own days (ADR 0020); never for a first read or another house. */
-  const lastRead = useRef<{ data: unknown; days: number } | null>(null);
+  const lastRead = useRef<{ data: unknown; days: number; compare?: boolean } | null>(null);
   if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
-    lastRead.current = { data: register.data, days: ctx.days };
+    lastRead.current = { data: register.data, days: ctx.days, compare: ctx.compare };
   const standIn =
     spec.takesWindow &&
     register?.loading &&
@@ -367,7 +367,8 @@ export default function Cutting({
     lastRead.current.days !== ctx.days
       ? lastRead.current
       : null;
-  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
+  /* The stand-in keeps the compare it was read with: a 2N read shown as N days would double the money. */
+  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days, compare: standIn.compare } : ctx;
   const windowLine = spec.window(viewCtx);
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.

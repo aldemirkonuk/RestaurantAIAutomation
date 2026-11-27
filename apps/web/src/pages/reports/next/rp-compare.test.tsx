@@ -8,7 +8,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CatPlot } from './rp-plot';
-import { TillWindowPicker } from './Cutting';
+import Cutting, { TillWindowPicker } from './Cutting';
+import { ANALYSIS_IDS } from './rp-sheet';
+import type { ArrangeApi } from './rp-arrange';
 import { compareOffered, daysBetween, splitTill, till } from './rp-registers-trade';
 import type { CatSeries } from './rp-view';
 
@@ -178,5 +180,40 @@ describe('the compare toggle', () => {
     expect(screen.getByRole('button', { name: 'Against the prior 30 days' }).getAttribute('aria-pressed')).toBe('true');
     rerender(<TillWindowPicker days={30} onChange={() => {}} />);
     expect(screen.queryByRole('button', { name: /Against the prior/ })).toBeNull();
+  });
+});
+
+describe('the stand-in while a new window is read', () => {
+  const noop = vi.fn();
+  const arrange: ArrangeApi = {
+    ...{ picked: null, origin: null, message: '', cols: 12, keyDown: () => noop },
+    ...{ pickUp: noop, place: noop, cancel: noop, nudge: noop, resize: noop },
+  };
+  const sheet = (data: unknown, loading: boolean, days: number, compare: boolean) => (
+    <MemoryRouter>
+      <Cutting
+        id="till"
+        graph="table"
+        register={{ data, loading, failure: null, refetch: vi.fn() }}
+        ctx={{ days, compare }}
+        arranging={false}
+        swapOptions={ANALYSIS_IDS.map((id) => ({ id, taken: false }))}
+        arrange={arrange}
+        onGraph={vi.fn()}
+        onSwap={vi.fn()}
+        onRemove={vi.fn()}
+        onDays={vi.fn()}
+      />
+    </MemoryRouter>
+  );
+
+  it('[REVERT-FAILS] a 2N compare read stays split as its window while 365 (no compare) is read', () => {
+    const raw = till.select(payload());
+    const { rerender, container } = render(sheet(raw, false, 30, true));
+    expect(container.textContent).toContain('3,900');
+    rerender(sheet(undefined, true, 365, false));
+    expect(container.querySelector('.rp-standin')).toHaveAttribute('data-stale');
+    expect(container.textContent).toContain('3,900');
+    expect(container.textContent).not.toContain('6,800');
   });
 });
