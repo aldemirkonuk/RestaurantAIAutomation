@@ -60,6 +60,7 @@ import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, t
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { projectCuttings, useArrange } from './rp-arrange';
 import { readsRegister } from './rp-spec';
+import { isUndoKey, pushStep, undoLabel, undoneWords, type UndoStep } from './rp-undo';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
 import { failureLine } from './rp-format';
 import {
@@ -102,6 +103,7 @@ function Action({
   strong,
   tour,
   disabled,
+  label,
 }: {
   children: React.ReactNode;
   onClick: () => void;
@@ -109,6 +111,8 @@ function Action({
   /** The page tour's anchor (guidance/content/reports.ts). */
   tour?: string;
   disabled?: boolean;
+  /** The accessible name, when it says more than the visible word ("Undo: …"). */
+  label?: string;
 }) {
   return (
     <button
@@ -117,6 +121,7 @@ function Action({
       data-strong={strong}
       data-tour={tour}
       disabled={disabled}
+      aria-label={label}
       onClick={onClick}
     >
       {children}
@@ -195,6 +200,31 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   }, []);
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
+  /* Arranging keeps a step history (r108 g4): each write pushes the WHOLE draft
+     it replaced (rp-undo.ts), so an undo puts a displaced neighbour back too.
+     The writes read the draft from a ref, so the history is pushed outside the
+     state updater and a double-run updater never pushes twice. */
+  const draftRef = useRef<SheetState | null>(draft);
+  draftRef.current = draft;
+  const [past, setPast] = useState<UndoStep[]>([]);
+  const [undone, setUndone] = useState('');
+  const writeDraft = useCallback((next: SheetState) => {
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
+  /** One step of arranging: `fn` writes the draft and the step before it is kept. */
+  const commit = useCallback(
+    (fn: (s: SheetState) => SheetState, id: AnalysisId | null) => {
+      const d = draftRef.current;
+      if (!d) return;
+      const next = fn(d);
+      if (next === d) return;
+      setPast((p) => pushStep(p, { sheet: d, id }, next));
+      setUndone('');
+      writeDraft(next);
+    },
+    [writeDraft],
+  );
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
   // another analysis reads it immediately, rather than shimmering until the
   // sheet is ruled off. You cannot choose an analysis you cannot see.
@@ -267,9 +297,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const startArranging = useCallback(() => {
     if (!data.sheetKnown) return;
     setSaveFailed(false);
-    setDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
+    // The history starts empty, after a rule-off too: undoing to the start
+    // leaves the sheet as it is now, and a saved sheet is never rewritten by an undo.
+    setPast([]);
+    setUndone('');
+    writeDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
     setArranging(true);
-  }, [data.sheet, data.sheetKnown]);
+  }, [data.sheet, data.sheetKnown, writeDraft]);
 
   const ruleOff = useCallback(async () => {
     if (saving) return;
@@ -304,11 +338,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   /** The paper takes edits only while it is being arranged and not being saved. */
   const editing = arranging && !saving;
 
-  const putBack = useCallback(() => setDraft(defaultSheet()), []);
+  /* Starts again from the default sheet, and is a step like any other: Undo takes it back. */
+  const putBack = useCallback(() => commit(() => defaultSheet(), null), [commit]);
 
   const edit = useCallback(
-    (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
-    [],
+    (fn: (s: SheetState) => SheetState, id: AnalysisId | null = null) => commit(fn, id),
+    [commit],
   );
 
   /* Which measure is the bars and which the line is part of how the reader
@@ -324,7 +359,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       });
       if (saving) return;
       if (draft) {
-        edit(withPick);
+        edit(withPick, id);
         return;
       }
       if (!data.sheetKnown) {
@@ -344,9 +379,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
      handed as its `layouts` prop, and the same state `onMove` writes when a
      pointer finishes a drag. One layout, two ways in. */
   const sheetEl = useRef<HTMLElement | null>(null);
+  /* A held keyboard move writes the draft at every arrow press; the hold is
+     ONE step, pushed when it is placed (below), and a cancelled hold is none. */
   const applyCuttings = useCallback(
-    (next: SheetSlotCutting[]) => setDraft((d) => (d ? { cuttings: next } : d)),
-    [],
+    (next: SheetSlotCutting[]) => {
+      if (draftRef.current) writeDraft({ cuttings: next });
+    },
+    [writeDraft],
   );
   const arrange = useArrange({
     cuttings: draft?.cuttings ?? null,
@@ -354,6 +393,52 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     sheetRef: sheetEl,
     arranging: editing,
   });
+  const holdBase = useRef<UndoStep | null>(null);
+  useEffect(() => {
+    if (arrange.picked) {
+      if (!holdBase.current && draftRef.current) holdBase.current = { sheet: draftRef.current, id: arrange.picked };
+      return;
+    }
+    const base = holdBase.current;
+    holdBase.current = null;
+    const now = draftRef.current;
+    if (base && now) setPast((p) => pushStep(p, base, now));
+  }, [arrange.picked]);
+
+  const titleOf = useCallback((id: AnalysisId) => CATALOGUE[id].title, []);
+  /** Step back once. While a cutting is held from the keyboard the first press cancels the hold, as Escape does. */
+  const undo = useCallback(() => {
+    if (saving) return;
+    if (arrange.picked) {
+      arrange.cancel();
+      return;
+    }
+    const step = past[past.length - 1];
+    const now = draftRef.current;
+    if (!step || !now) return;
+    setUndone(undoneWords(step, now, titleOf, arrange.cols));
+    setPast((p) => p.slice(0, -1));
+    writeDraft(step.sheet);
+  }, [saving, arrange, past, titleOf, writeDraft]);
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  /* Cmd-Z / Ctrl-Z while arranging; a field (a select, an input) keeps its own. */
+  useEffect(() => {
+    if (!arranging) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!isUndoKey(e)) return;
+      e.preventDefault();
+      undoRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [arranging]);
+  const undoName =
+    arrange.picked != null
+      ? 'Undo: cancel the move'
+      : past.length > 0 && draft
+        ? undoLabel(past[past.length - 1], draft, titleOf, arrange.cols)
+        : 'Undo: nothing to undo yet';
   const holdSheetEl = useCallback((node: HTMLDivElement | null) => {
     sheetEl.current = node;
   }, []);
@@ -368,16 +453,18 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (which: HouseLayoutId) => {
       const ids = HOUSE_LAYOUT_CUTTINGS[which];
       const slots = packSlots(ids);
-      setDraft({
-        cuttings: ids.map((id) => ({ id, slot: slots[id], graph: defaultGraph(id) })),
-      });
+      const next = { cuttings: ids.map((id) => ({ id, slot: slots[id], graph: defaultGraph(id) })) };
+      const d = draftRef.current;
+      setPast((p) => (d ? pushStep(p, { sheet: d, id: null }, next) : []));
+      setUndone('');
+      writeDraft(next);
       setArranging(true);
     },
-    [],
+    [writeDraft],
   );
 
   const onMove = useCallback(
-    (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[]) =>
+    (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[], moved?: AnalysisId) =>
       edit((d) => {
         const moved = d.cuttings.map((c) =>
           slots[c.id] ? { ...c, slot: slots[c.id] as Slot } : c,
@@ -392,12 +479,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             (a, b) => (rank.get(a.id) ?? last) - (rank.get(b.id) ?? last),
           ),
         };
-      }),
+      }, moved ?? null),
     [edit],
   );
 
   const onRemove = useCallback(
-    (id: AnalysisId) => edit((d) => ({ cuttings: d.cuttings.filter((c) => c.id !== id) })),
+    (id: AnalysisId) => edit((d) => ({ cuttings: d.cuttings.filter((c) => c.id !== id) }), id),
     [edit],
   );
 
@@ -414,7 +501,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             { id, slot: { ...DEFAULT_SLOTS[id], x: 0, y: foot }, graph: defaultGraph(id) },
           ],
         };
-      }),
+      }, id),
     [edit],
   );
 
@@ -432,13 +519,15 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
                 c.id === from ? { id: to, slot: swapSlot(c.slot, to), graph: defaultGraph(to) } : c,
               ),
             },
+        // Undoing a swap brings back the cutting that was swapped out.
+        from,
       ),
     [edit],
   );
 
   const onGraph = useCallback(
     (id: AnalysisId, graph: GraphType) =>
-      edit((d) => ({ cuttings: d.cuttings.map((c) => (c.id === id ? { ...c, graph } : c)) })),
+      edit((d) => ({ cuttings: d.cuttings.map((c) => (c.id === id ? { ...c, graph } : c)) }), id),
     [edit],
   );
 
@@ -472,23 +561,24 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       // button is disabled then, and this keeps any other caller honest.
       if (saving) return;
       if (cut.days !== null) setTillDays(cut.days);
-      setDraft((d) => {
-        const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
-        if (base.cuttings.some((c) => c.id === cut.id))
-          return {
-            cuttings: base.cuttings.map((c) => (c.id === cut.id ? { ...c, graph: cut.graph } : c)),
+      const d = draftRef.current;
+      const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
+      const foot = base.cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
+      const next = base.cuttings.some((c) => c.id === cut.id)
+        ? { cuttings: base.cuttings.map((c) => (c.id === cut.id ? { ...c, graph: cut.graph } : c)) }
+        : {
+            cuttings: [
+              ...base.cuttings,
+              { id: cut.id, slot: { ...DEFAULT_SLOTS[cut.id], x: 0, y: foot }, graph: cut.graph },
+            ],
           };
-        const foot = base.cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
-        return {
-          cuttings: [
-            ...base.cuttings,
-            { id: cut.id, slot: { ...DEFAULT_SLOTS[cut.id], x: 0, y: foot }, graph: cut.graph },
-          ],
-        };
-      });
+      // Opened from reading, the proposal is the first step: Undo leaves the reader's sheet.
+      setPast((p) => pushStep(d ? p : [], { sheet: base, id: cut.id }, next));
+      setUndone('');
+      writeDraft(next);
       setArranging(true);
     },
-    [data.sheet, data.sheetKnown, saving],
+    [data.sheet, data.sheetKnown, saving, writeDraft],
   );
   placeRef.current = placeProposed;
 
@@ -628,6 +718,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             <Action tour="reports-ask" onClick={() => setAsking(true)}>Ask the book ⌘K</Action>
             {arranging ? (
               <>
+                <Action
+                  onClick={undo}
+                  disabled={saving || (past.length === 0 && arrange.picked == null)}
+                  label={undoName}
+                >
+                  Undo
+                </Action>
                 <Action onClick={putBack} disabled={saving}>
                   Put it all back
                 </Action>
@@ -768,6 +865,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       {/* One live region for the whole sheet. It reports the position the
           RULING gave, never the one that was asked for — see `rp-arrange.ts`. */}
       <ArrangeAnnouncer message={arrange.message} />
+      <div className="rp-sr-only" aria-live="polite" aria-atomic="true" data-undone>
+        {undone}
+      </div>
 
       <AskTheBook open={asking} onClose={() => setAsking(false)} reading={data.reading} />
     </div>
