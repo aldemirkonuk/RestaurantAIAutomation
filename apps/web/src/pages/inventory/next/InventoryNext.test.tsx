@@ -476,6 +476,38 @@ describe('chips', () => {
     expect(screen.queryByTestId('inv-row-has')).toBeNull();
   });
 
+  it('Nutrition not recorded never counts or lists a supply: it holds nothing to state', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 3 });
+    mock.data = data({
+      rows: [row({ id: 'has' }), row({ id: 'none1' }), row({ id: 'sup', wineId: null, name: 'Napkins', type: null, kind: null })],
+      rawItems: [{ id: 'sup', kind: 'supply', uom: 'each', display_name: 'Napkins' }],
+    });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const nut = (await within(chips).findByRole('button', { name: /^Nutrition not recorded 1$/ })) as HTMLButtonElement;
+    fireEvent.click(nut);
+    expect(screen.getByTestId('inv-row-none1')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-sup')).toBeNull();
+  });
+
+  it('Nutrition not recorded is held, not shown at its old count, when a later re-read fails', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 2 });
+    mock.data = data({ rows: [row({ id: 'has' }), row({ id: 'none1' })] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await within(screen.getByTestId('inventory-chips')).findByRole('button', { name: /^Nutrition not recorded 1$/ });
+    nutCov.read.mockRejectedValueOnce(Object.assign(new Error('status 503'), { response: { status: 503, data: {} } }));
+    await qc.invalidateQueries({ queryKey: ['inventory', 'r1', 'nutrition', 'coverage'] });
+    await waitFor(() => expect(screen.getByTestId('iv-chip-nutrition-unread')).toBeTruthy());
+    expect((screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('Nutrition not recorded says it could not be read, never 0 and never every good, when the read fails', async () => {
     nutCov.read.mockRejectedValueOnce(Object.assign(new Error('status 503'), { response: { status: 503, data: {} } }));
     mock.data = data({ rows: [row({ id: 'a' }), row({ id: 'b' })] });

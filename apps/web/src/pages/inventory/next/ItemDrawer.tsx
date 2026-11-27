@@ -22,7 +22,7 @@ import HowItTastes from './TasteCard';
 import TasteSummary from './TasteSummary';
 import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
-import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
+import { holdsContents, noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import './item-drawer.css';
 
 const KIND_WORDS: Record<string, string> = {
@@ -139,7 +139,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const id = row?.id ?? '';
   // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
   // allergens to state, so the drawer neither reads nor offers them.
-  const hasContents = (house.kind ?? row?.kind ?? null) !== 'supply';
+  const hasContents = holdsContents(house.kind ?? row?.kind ?? null);
 
   const enabled = row !== null && restaurantId !== null;
   const figuresQ = useQuery({
