@@ -2697,3 +2697,114 @@ describe('ReportsNext — the phone till card holds the compare answer (r107 g5)
     expect(on - off).toBe(66);
   });
 });
+
+describe('ReportsNext — arranging keeps an undo history (r108 g4)', () => {
+  const undoButton = () => screen.getByRole('button', { name: /^Undo/ });
+  const savedCuttings = () =>
+    (saveSheet.mock.calls[0][0] as { cuttings: Array<{ id: string; slot: unknown; graph: string }> }).cuttings;
+  const stacked = () => ({
+    ...base(),
+    sheet: {
+      cuttings: [
+        { id: 'till', slot: { x: 0, y: 0, w: 6, h: 4 }, graph: 'area' },
+        { id: 'ledger', slot: { x: 0, y: 4, w: 6, h: 4 }, graph: 'table' },
+      ],
+    },
+  });
+
+  it('[REVERT-FAILS] Undo sits before "Put it all back", and is off until there is a step', () => {
+    paint();
+    arrange();
+    const undo = undoButton();
+    expect(undo).toBeDisabled();
+    expect(undo).toHaveAccessibleName('Undo: nothing to undo yet');
+    expect(undo.compareDocumentPosition(screen.getByRole('button', { name: 'Put it all back' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('[REVERT-FAILS] a swap undone puts both cuttings back on their squares', async () => {
+    paint();
+    arrange();
+    const quad = screen.getByRole('region', { name: 'Margin against movement' });
+    fireEvent.change(within(quad).getByLabelText('Show instead of Margin against movement'), {
+      target: { value: 'seats' },
+    });
+    expect(undoButton()).toHaveAccessibleName(/^Undo: Margin against movement back to /);
+    fireEvent.click(undoButton());
+    expect(screen.getByRole('region', { name: 'Margin against movement' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'The room' })).toBeNull();
+    expect(document.querySelector('[data-undone]')?.textContent).toMatch(/^Undone\. Margin against movement is back at /);
+    await ruleItOff();
+    expect(savedCuttings()).toEqual(defaultSheet().cuttings);
+  });
+
+  it('[REVERT-FAILS] a keyboard move that pushed its neighbour is one step, and undoing it puts both back', async () => {
+    hook.current = stacked();
+    paint();
+    arrange();
+    const grip = gripFor('Figures of record');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowUp' });
+    fireEvent.keyDown(grip, { key: 'Enter' });
+    // The ledger went above the till, and the till was pushed down under it.
+    expect(undoButton()).toHaveAccessibleName(/^Undo: Figures of record back to column 1 of 12, row 5,/);
+    fireEvent.click(undoButton());
+    // One undo was the whole hold, so there is nothing left to undo.
+    expect(undoButton()).toBeDisabled();
+    await ruleItOff();
+    expect(savedCuttings()).toEqual(stacked().sheet.cuttings);
+  });
+
+  it('[REVERT-FAILS] "Put it all back" is undoable, back to the reader’s own sheet', async () => {
+    hook.current = stacked();
+    paint();
+    arrange();
+    fireEvent.click(screen.getByRole('button', { name: 'Put it all back' }));
+    expect(undoButton()).toHaveAccessibleName('Undo: the sheet as it was');
+    fireEvent.click(undoButton());
+    await ruleItOff();
+    expect(savedCuttings()).toEqual(stacked().sheet.cuttings);
+  });
+
+  it('[REVERT-FAILS] Cmd-Z steps back on the sheet, and does nothing in a select', async () => {
+    hook.current = stacked();
+    paint();
+    arrange();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    const drawAs = within(till).getByLabelText('Draw Through the till as');
+    fireEvent.change(drawAs, { target: { value: 'bars' } });
+    fireEvent.keyDown(drawAs, { key: 'z', metaKey: true });
+    expect(undoButton()).toBeEnabled();
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    expect(undoButton()).toBeDisabled();
+    await ruleItOff();
+    expect(savedCuttings()).toEqual(stacked().sheet.cuttings);
+  });
+
+  it('[REVERT-FAILS] during a held keyboard move the first Cmd-Z cancels the hold', async () => {
+    hook.current = stacked();
+    paint();
+    arrange();
+    const grip = gripFor('Figures of record');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowUp' });
+    expect(undoButton()).toHaveAccessibleName('Undo: cancel the move');
+    fireEvent.keyDown(grip, { key: 'z', metaKey: true });
+    expect(grip).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('status', { name: '' }).textContent).toContain('Move cancelled');
+    expect(undoButton()).toBeDisabled();
+    await ruleItOff();
+    expect(savedCuttings()).toEqual(stacked().sheet.cuttings);
+  });
+
+  it('[REVERT-FAILS] a ruled-off sheet starts the next arranging with no history', async () => {
+    saveSheet.mockResolvedValue(undefined);
+    hook.current = stacked();
+    paint();
+    arrange();
+    fireEvent.click(screen.getByRole('button', { name: 'Put it all back' }));
+    expect(undoButton()).toBeEnabled();
+    await ruleItOff();
+    arrange();
+    expect(undoButton()).toBeDisabled();
+  });
+});
