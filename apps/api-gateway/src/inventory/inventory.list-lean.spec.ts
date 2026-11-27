@@ -103,6 +103,18 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
     });
   });
 
+  it("also drops beverage_id and identity_provenance, which no reader touches", async () => {
+    const out: any[] = await make().getRestaurantInventory("r1", { lean: true });
+    for (const c of ["beverage_id", "identity_provenance"]) {
+      expect(InventoryService.LIST_UNREAD_COLUMNS).toContain(c);
+      expect(out[0]).not.toHaveProperty(c);
+    }
+    // the full reader keeps them
+    const full: any[] = await make().getRestaurantInventory("r1");
+    expect(full[0]).toHaveProperty("beverage_id");
+    expect(full[0]).toHaveProperty("identity_provenance");
+  });
+
   it("keeps the whole row when the caller is not the web list", async () => {
     const out: any[] = await make().getRestaurantInventory("r1");
     expect(out[0]).toHaveProperty("alert_count");

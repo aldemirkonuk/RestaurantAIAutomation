@@ -511,6 +511,10 @@ export class InventoryService {
     "shelf_life_days",
     "shelf_life_days_set_at",
     "shelf_life_days_set_by",
+    // r108-8: carried from #2193's audit (grep over apps/web/src, apps/mobile,
+    // packages/ui/src, 2026-11-27: no reader of either spelling).
+    "beverage_id",
+    "identity_provenance",
   ] as const;
 
   /**
