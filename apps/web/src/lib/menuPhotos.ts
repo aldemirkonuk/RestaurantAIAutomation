@@ -77,10 +77,21 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   })
 }
 
-/** One photo as the bare base64 of a JPEG, at most `maxEdge` (a single photo's ONE_PAGE_EDGE) on its long side. */
-export async function photoToJpegBase64(file: File, maxEdge = ONE_PAGE_EDGE): Promise<string> {
+/** A page's quarter turns, clockwise, as the owner set them on the strip. */
+export type PageTurn = 0 | 90 | 180 | 270
+
+/**
+ * One photo as the bare base64 of a JPEG, at most `maxEdge` (a single photo's ONE_PAGE_EDGE) on its
+ * long side, turned `turn` degrees clockwise so the reader gets the page upright.
+ */
+export async function photoToJpegBase64(file: File, maxEdge = ONE_PAGE_EDGE, turn: PageTurn = 0): Promise<string> {
   const img = await loadImage(file)
-  const { width, height } = fitWithin(img.naturalWidth, img.naturalHeight, maxEdge)
+  const sideways = turn === 90 || turn === 270
+  const { width, height } = fitWithin(
+    sideways ? img.naturalHeight : img.naturalWidth,
+    sideways ? img.naturalWidth : img.naturalHeight,
+    maxEdge,
+  )
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -89,18 +100,26 @@ export async function photoToJpegBase64(file: File, maxEdge = ONE_PAGE_EDGE): Pr
   // A transparent PNG would turn black as a JPEG: paper is white.
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, width, height)
-  ctx.drawImage(img, 0, 0, width, height)
+  if (turn === 0) {
+    ctx.drawImage(img, 0, 0, width, height)
+  } else {
+    ctx.translate(width / 2, height / 2)
+    ctx.rotate((turn * Math.PI) / 180)
+    const dw = sideways ? height : width
+    const dh = sideways ? width : height
+    ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh)
+  }
   const dataUrl = canvas.toDataURL('image/jpeg', QUALITY)
   const bare = dataUrl.split(',', 2)[1] ?? ''
   if (!bare) throw new Error(`${file.name} could not be prepared in this browser. Try another browser.`)
   return bare
 }
 
-/** Every chosen photo ready to send, in the order chosen. */
-export async function photosToPages(files: File[]): Promise<string[]> {
+/** Every chosen photo ready to send, in the order chosen, each turned as `turns` (by index) says. */
+export async function photosToPages(files: File[], turns: Record<number, PageTurn> = {}): Promise<string[]> {
   const pages: string[] = []
   // One photo keeps the single-photo edge; several are shrunk to fit together.
   const edge = files.length === 1 ? ONE_PAGE_EDGE : MAX_EDGE
-  for (const f of files) pages.push(await photoToJpegBase64(f, edge))
+  for (const [i, f] of files.entries()) pages.push(await photoToJpegBase64(f, edge, turns[i] ?? 0))
   return pages
 }

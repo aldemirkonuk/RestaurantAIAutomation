@@ -20,6 +20,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyArt } from './emptyArt';
+import { DropZonePages, type Turn } from './DropZonePages';
 import { formatBytes } from '../../lib/uploadAccept';
 import './drop-zone.css';
 
@@ -45,6 +46,9 @@ export interface DropZoneProps {
   prompt?: string;
   hint?: string;
   disabled?: boolean;
+  /** A page's quarter turns, by its index, drawn on the thumbnail and applied when the pages are sent. */
+  turns?: Record<number, Turn>;
+  onTurn?: (index: number, turn: Turn) => void;
 }
 
 /** Is the primary pointer a finger? Read once and followed. */
@@ -98,6 +102,8 @@ export function DropZone({
   prompt = 'Drop a menu, a photo, or a PDF',
   hint,
   disabled = false,
+  turns,
+  onTurn,
 }: DropZoneProps) {
   const pickRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -285,6 +291,9 @@ export function DropZone({
           </div>
         )}
       </div>
+      {files.length > 1 ? (
+        <DropZonePages files={files} onFiles={onFiles} turns={turns} onTurn={onTurn} disabled={disabled || reading} />
+      ) : null}
     </div>
   );
 }
