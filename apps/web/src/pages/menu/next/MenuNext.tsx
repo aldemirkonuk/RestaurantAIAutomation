@@ -51,6 +51,7 @@ import { MenuSheetButton } from './MenuSheetButton';
 import { MenuVersions, useKeptMenuName, useKeptMenuSource } from './MenuVersions';
 import { MenuSourcePane } from './MenuSourcePane';
 import { LockedPrices } from './LockedPrices';
+import { MenuReprice } from './MenuReprice';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { housePriceHint } from '@/lib/house-number';
@@ -799,6 +800,10 @@ export default function MenuNext() {
                   </table>
                 </div>
               </section>
+            ) : null}
+            {/* r108 menu-g9: prices moved by a percent into a new draft, through its plan. */}
+            {canManage && q.data?.menuId && lines.length > 0 ? (
+              <MenuReprice menuId={q.data.menuId} lines={lines} money={(v) => money(v, currency)} />
             ) : null}
             {discard.isError ? (
               <div role="alert" data-testid="menu-discard-error" style={{ marginTop: 8, display: 'grid', gap: 8, justifyItems: 'start' }}>
