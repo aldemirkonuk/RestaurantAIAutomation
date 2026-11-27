@@ -230,6 +230,17 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && nDishes + nDrinks > 0
       ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : ''].filter(Boolean).join(', ')}`
       : null;
+  // The line's 44 px is held from first paint, under the cards so the taste line stays first (r103 review): the chip lands after three reads, and a
+  // conditional line pushed the taste line, the cards and the acts down 44 px under the finger. Pending says
+  // so, a failed read says so (ADR 0020), a good used nowhere says that; the chip is only the settled answer.
+  const usedReads = [usedIn.status, dishes.status, drinks.status];
+  const usedSlot: { state: 'reading' | 'unread' | 'none' | 'chip'; words: string } = usedReads.includes('reading')
+    ? { state: 'reading', words: 'Reading where it is used…' }
+    : usedReads.includes('failed') || !cardsRead
+      ? { state: 'unread', words: 'Where it is used could not be read.' }
+      : usedChip
+        ? { state: 'chip', words: usedChip }
+        : { state: 'none', words: 'Not used in a dish or drink' };
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
   const held = row.zones?.filter((z) => z.qty > 0) ?? null;
@@ -261,18 +272,6 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <p className="ivd-head" data-testid="ivd-head">
         {head}
       </p>
-      {usedChip ? (
-        <button
-          type="button"
-          className="ivd-usedchip iv-focus"
-          data-testid="ivd-used-chip"
-          onClick={() =>
-            document.getElementById('ivd-used')?.scrollIntoView?.({ block: 'start', behavior: openMs() === 0 ? 'auto' : 'smooth' })
-          }
-        >
-          {usedChip}
-        </button>
-      ) : null}
       {hasContents ? (
         <TasteSummary
           id={id}
@@ -296,6 +295,22 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         open={evidence === 'all' ? null : evidence}
         onOpen={toggle}
       />
+      <div className="ivd-usedslot" data-testid="ivd-used-slot" data-state={usedSlot.state}>
+        {usedSlot.state === 'chip' ? (
+          <button
+            type="button"
+            className="ivd-usedchip iv-focus"
+            data-testid="ivd-used-chip"
+            onClick={() =>
+              document.getElementById('ivd-used')?.scrollIntoView?.({ block: 'start', behavior: openMs() === 0 ? 'auto' : 'smooth' })
+            }
+          >
+            {usedSlot.words}
+          </button>
+        ) : (
+          <span className="ivd-usedsaid">{usedSlot.words}</span>
+        )}
+      </div>
       {/* The acts sit under the cards, always: a count or a write-off never waits on opening a card. */}
       <RowDropdown
         row={row}

@@ -230,6 +230,16 @@ button.ivd-card:active {
   margin: 0 0 6px;
 }
 
+/* The line under the head holds its 44 px from first paint, so the chip landing after three reads moves nothing. */
+.ivd-usedslot {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.ivd-usedsaid {
+  font-size: 13px;
+  color: var(--ink-2);
+}
 /* The one-line "Used in 3 dishes, 2 drinks" under the head: a 44 px tap that scrolls to where it is used. */
 .ivd-usedchip {
   display: inline-flex;

@@ -3,6 +3,8 @@
  * said as failed and never 0, no money for staff, a food in its own unit.
  * The page wiring (a row opens it, Back closes it) is in InventoryNext.test.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -390,6 +392,41 @@ describe('the item drawer', () => {
     await screen.findByTestId('ivd-used');
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+  });
+
+  it('holds the used-in line from first paint: the slot is there reading, and settles in place as the chip, a failure or none (r103)', async () => {
+    const used = { section: null, price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null, uses: [{ label: 'Flour', qtyEntered: 5, unitCode: 'g' }] };
+    const none = { readable: true, lines: [], source: 's' };
+    const usedInNone = { item: { id: 'i1', kind: 'spirit', displayName: 'x' }, soldAs: none, inCocktails: none, inDrinkRecipes: none, namedNotLinked: none };
+    api.usedIn.mockResolvedValue(usedInNone);
+    api.dishes.mockResolvedValue({ dishes: [{ ...used, dishId: 'd1', name: 'd1' }] });
+    api.drinks.mockResolvedValue({ drinks: [] });
+    open(row());
+    // First paint: the three reads have not answered, and the line's room is already there.
+    const slot = screen.getByTestId('ivd-used-slot');
+    expect(slot.getAttribute('data-state')).toBe('reading');
+    expect(slot.textContent).toBe('Reading where it is used…');
+    expect(screen.getByTestId('ivd-cards').nextElementSibling).toBe(slot);
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+    // The same element settles into the chip; it is not inserted above the cards later.
+    const chip = await screen.findByTestId('ivd-used-chip');
+    expect(screen.getByTestId('ivd-used-slot')).toBe(slot);
+    expect(slot.contains(chip)).toBe(true);
+    cleanup();
+    api.dishes.mockResolvedValue({ dishes: [] });
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-used-slot').getAttribute('data-state')).toBe('none'));
+    expect(screen.getByTestId('ivd-used-slot').textContent).toBe('Not used in a dish or drink');
+    cleanup();
+    api.drinks.mockRejectedValue(new Error('down'));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-used-slot').getAttribute('data-state')).toBe('unread'));
+    expect(screen.getByTestId('ivd-used-slot').textContent).toBe('Where it is used could not be read.');
+  });
+
+  it('the used-in slot holds 44 px in the stylesheet (r103)', () => {
+    const css = readFileSync(resolve(__dirname, 'item-drawer.css'), 'utf8');
+    expect(css).toMatch(/\.ivd-usedslot \{[^}]*min-height: 44px;/);
   });
 
   it('the detail card sits in a wrapper that stays mounted: data-open flips, the content mounts and goes at once (r102 motion-1)', () => {
