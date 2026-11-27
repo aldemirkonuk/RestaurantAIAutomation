@@ -390,8 +390,8 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
   );
 }
 
-/** The shortcut keys the sheet answers to while focus is in it and not in a field or a menu. */
-const STEP_KEYS: Record<string, 'next' | 'prev'> = { j: 'next', J: 'next', ArrowDown: 'next', k: 'prev', K: 'prev', ArrowUp: 'prev' };
+/** The shortcut keys the sheet answers to while focus is in it and not in a field or a menu. J and K only, as aria-keyshortcuts says: the arrow keys stay with scrolling and the Sheet grabber. */
+const STEP_KEYS: Record<string, 'next' | 'prev'> = { j: 'next', J: 'next', k: 'prev', K: 'prev' };
 
 /**
  * The drawer: one Sheet that stays up while the good in it changes. Stepping to the next or the previous good

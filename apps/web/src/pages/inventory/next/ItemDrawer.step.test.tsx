@@ -80,17 +80,18 @@ beforeEach(() => {
 });
 
 describe('stepping through the list from the drawer', () => {
-  it('J opens the row below in the list order it was handed, K the row above; the arrows do the same', () => {
+  it('J opens the row below in the list order it was handed, K the row above; the arrow keys are left to scrolling', () => {
     mount({ ids: ['c', 'a', 'b'], start: 'a' });
     key('J');
     expect(onStep).toHaveBeenLastCalledWith('b');
     expect(title()).toContain('Bodrum White');
     key('K');
     expect(onStep).toHaveBeenLastCalledWith('a');
-    key('ArrowUp');
-    expect(onStep).toHaveBeenLastCalledWith('c');
-    key('ArrowDown');
-    expect(onStep).toHaveBeenLastCalledWith('a');
+    onStep.mockClear();
+    // Not stepped, and not cancelled, so the browser still scrolls the drawer.
+    expect(key('ArrowUp', document.querySelector('.iv-drawer')!)).toBe(true);
+    expect(key('ArrowDown', document.querySelector('.iv-drawer')!)).toBe(true);
+    expect(onStep).not.toHaveBeenCalled();
   });
 
   it('the buttons are 44 px, say what they do, name their key, and disable at the ends with no wrap', () => {
@@ -107,7 +108,6 @@ describe('stepping through the list from the drawer', () => {
     key('J', screen.getByRole('button', { name: 'Previous good' }));
     expect(onStep).toHaveBeenCalledTimes(2);
     expect(title()).toContain('Cappadocia Rose');
-    key('ArrowUp', screen.getByRole('button', { name: 'Previous good' }));
     key('K', screen.getByRole('button', { name: 'Previous good' }));
     key('K', screen.getByRole('button', { name: 'Previous good' }));
     expect(onStep).toHaveBeenLastCalledWith('a');
