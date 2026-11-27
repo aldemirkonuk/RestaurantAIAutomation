@@ -15,6 +15,7 @@ describe("a sale priced by an agreed lot WAC keeps that basis", () => {
     expect(snapshotLineCost(agreed, "whole_bottle", 0, 750, 2)).toEqual({
       cost_at_sale: 40,
       cost_basis: "agreed_lot_wac",
+      cost_unit_at_sale: 20,
       cost_source_lot_id: "lot-1",
       cost_source_order_id: null,
     });
