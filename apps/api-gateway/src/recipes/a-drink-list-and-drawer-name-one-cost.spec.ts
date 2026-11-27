@@ -74,7 +74,7 @@ describe("at scale: many drinks drawing wide mixes (PostgREST's 1,000-row cap)",
   function many(n: number, linesPer: number): { rows: Record<string, Row[]>; ids: string[] } {
     const rows = sourTest();
     const ids: string[] = [];
-    const pad = (i: number, k: number) => `${k}0000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    const pad = (i: number, k: string) => `${k}0000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
     for (let i = 0; i < n; i++) {
       const drink = pad(i + 1, "a");
       const mix = pad(i + 1, "b");
