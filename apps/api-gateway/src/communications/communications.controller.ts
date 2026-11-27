@@ -24,6 +24,7 @@ import { GmailPushAuthService } from "./gmail-push-auth.service";
 // The one Gmail MIME walk, shared with the house-inbox reader. See gmail-mime.ts.
 import {
   extractEmailContent as extractGmailContent,
+  fromHeader,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_B64_LEN,
 } from "./gmail-mime";
@@ -1242,8 +1243,8 @@ export class CommunicationsController {
 
       for (const msg of newMessages) {
         const headers = msg.payload?.headers || [];
-        const from =
-          headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
+        // Every From header, not the first (QA round 22, N-1).
+        const from = fromHeader(headers);
         const subject =
           headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
         const messageId =
@@ -1391,8 +1392,8 @@ export class CommunicationsController {
         if (!fullMsg) continue;
 
         const headers = fullMsg.payload?.headers || [];
-        const from =
-          headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
+        // Every From header, not the first (QA round 22, N-1).
+        const from = fromHeader(headers);
         const subject =
           headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
         const messageIdHeader =

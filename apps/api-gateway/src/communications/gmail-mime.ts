@@ -168,6 +168,25 @@ export function addressInFromHeader(from: string | null | undefined): string | n
   return senderAddress(from);
 }
 
+/**
+ * Every `From` header of a message, joined as one list. A message with two
+ * From headers is then two mailboxes and `senderAddress` names nobody.
+ * [QA round 22, N-1, 2026-11-07: `headerValue` returns the first From and
+ * the bridge's header map keeps the last, so a forger who sent two chose
+ * which one each reader believed.]
+ */
+export function fromHeader(
+  headers:
+    | Array<{ name?: string | null; value?: string | null }>
+    | null
+    | undefined,
+): string {
+  return (headers ?? [])
+    .filter((h) => (h?.name ?? "").toLowerCase() === "from")
+    .map((h) => h?.value ?? "")
+    .join(", ");
+}
+
 /** Case-insensitive header lookup over Gmail's `payload.headers` array. */
 export function headerValue(
   headers: Array<{ name?: string | null; value?: string | null }> | null | undefined,

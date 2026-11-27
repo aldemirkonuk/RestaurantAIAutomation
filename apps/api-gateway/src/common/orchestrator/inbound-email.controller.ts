@@ -131,10 +131,16 @@ export class InboundEmailController {
     // we never received. Reads below (`headerMap["from"]` etc.) then treat
     // that as a present value.
     const headerMap: Record<string, string> = Object.create(null);
+    // Every From in the Headers array, not the last one (QA round 22, N-1):
+    // two From headers become a two-mailbox list that names nobody.
+    const fromHeaders: string[] = [];
     if (Array.isArray(b.Headers)) {
       for (const h of b.Headers)
-        if (h?.Name)
-          headerMap[String(h.Name).toLowerCase()] = String(h.Value ?? "");
+        if (h?.Name) {
+          const name = String(h.Name).toLowerCase();
+          headerMap[name] = String(h.Value ?? "");
+          if (name === "from") fromHeaders.push(String(h.Value ?? ""));
+        }
     }
     if (
       b.headers &&
@@ -146,7 +152,11 @@ export class InboundEmailController {
     }
 
     const from: string =
-      b.FromFull?.Email || b.From || b.from || headerMap["from"] || "";
+      b.FromFull?.Email ||
+      b.From ||
+      b.from ||
+      (fromHeaders.length > 1 ? fromHeaders.join(", ") : headerMap["from"]) ||
+      "";
     // RFC 2047 words decoded (QA round 6 N-2) — Postmark's `Subject` arrives
     // decoded, a raw `headers.subject` does not; decoding plain text is a no-op.
     const subject: string = decodeEncodedWords(

@@ -103,6 +103,7 @@ import {
 import {
   addressInFromHeader,
   extractEmailContent,
+  fromHeader,
   headerValue,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_B64_LEN,
@@ -434,7 +435,7 @@ export class HouseInboxService {
           name?: string | null;
           value?: string | null;
         }>;
-        const sender = addressInFromHeader(headerValue(headers, "from"));
+        const sender = addressInFromHeader(fromHeader(headers));
 
         // BOUND 2. Gmail's `from:` matches display names and partial tokens, so
         // a message from outside the book can come back from a query that only
@@ -470,7 +471,7 @@ export class HouseInboxService {
 
       for (const message of admissible) {
         const { headers, internalDate } = message;
-        const from = headerValue(headers, "from");
+        const from = fromHeader(headers);
         const { text, attachmentRefs } = extractEmailContent(message.payload);
         let body = text;
         if (!body && message.payload.body?.data) {
