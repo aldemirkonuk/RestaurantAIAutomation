@@ -1093,11 +1093,33 @@ describe('the read box: a drop zone, with the optional fields behind "Add detail
 });
 
 // r104 walk w-menu: a read sent slower than the 30 s wait said "timeout of 30000ms exceeded".
-describe('reasonOf — a request that got no answer in time', () => {
-  it('says so in the house\'s words, and that the menu may be kept already', async () => {
+describe('a request that got no answer in time', () => {
+  const timeout = () => Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' });
+
+  it('reasonOf says so in the house\'s words, and nothing about what was kept', async () => {
     const { reasonOf } = await import('./MenuVersions');
-    const said = reasonOf(Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' }));
-    expect(said).toBe('Mudavym did not answer in time. The menu may have been kept: look in Menus kept before you send it again.');
+    expect(reasonOf(timeout())).toBe('Mudavym did not answer in time.');
+  });
+
+  it('the read form adds that the menu may be kept; the kept list\'s own timeout does not point at itself', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockRejectedValue(timeout());
+    mount(true);
+    const file = new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(
+      'The menu was not read: Mudavym did not answer in time. The menu may have been kept: look in Menus kept before you send it again.',
+    );
+  });
+
+  it('a kept-list read that times out does not tell the person to look in Menus kept', async () => {
+    mockList.mockRejectedValue(timeout());
+    mount(true);
+    const said = await screen.findByTestId('menu-versions-error');
+    expect(said).toHaveTextContent('Mudavym did not answer in time.');
+    expect(said.textContent).not.toMatch(/Menus kept/);
+    expect(screen.getByTestId('menu-versions-error-detail').textContent).not.toMatch(/Menus kept/);
   });
 });
 

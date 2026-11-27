@@ -2352,7 +2352,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       restaurant_menus: [
         { id: "m1", restaurant_id: "rest-1", status: "draft", lines_extracted: 1 },
         { id: "m2", restaurant_id: "rest-1", status: "draft", lines_extracted: 2 },
-        { id: "m3", restaurant_id: "rest-1", status: "draft", lines_extracted: 3 },
+        { id: "m3", restaurant_id: "rest-1", status: "draft", lines_extracted: 1 },
         { id: "m4", restaurant_id: "rest-1", status: "draft", lines_extracted: null },
       ],
       menu_items: [
@@ -2365,7 +2365,21 @@ describe("MenusService — every menu read is kept as its own version", () => {
     };
     const r = await makeService(tables).listVersions("rest-1");
     const n = (id: string) => r.versions.find((v) => v.menuId === id)!.linesExtracted;
-    expect([n("m1"), n("m2"), n("m3"), n("m4")]).toEqual([0, 1, 3, null]);
+    expect([n("m1"), n("m2"), n("m3"), n("m4")]).toEqual([0, 1, 1, null]);
+  });
+
+  // r104 fix: only a read writes lines_extracted, so an ADDED line on a menu with no discard was never counted.
+  it("a menu with an added line and no discard counts it: lines_extracted + 1", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "m1", restaurant_id: "rest-1", status: "active", lines_extracted: 2 }],
+      menu_items: [
+        { id: "i1", restaurant_id: "rest-1", menu_id: "m1", status: "active" },
+        { id: "i2", restaurant_id: "rest-1", menu_id: "m1", status: "active" },
+        { id: "i3", restaurant_id: "rest-1", menu_id: "m1", status: "active" },
+      ],
+    };
+    const r = await makeService(tables).listVersions("rest-1");
+    expect(r.versions.find((v) => v.menuId === "m1")!.linesExtracted).toBe(3);
   });
 
   it("a kept menu's line count that cannot be read fails the list in words, never a stale count", async () => {

@@ -177,7 +177,11 @@ function useActiveMenu(restaurantId: string | null) {
       if (!q.data?.menuId) throw new Error('No active menu to add to');
       return addMenuItem(q.data.menuId, fields);
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
+    onSuccess: () => {
+      // The kept list counts this menu's lines too: an added line moves its count, as a discard does.
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
+      void queryClient.invalidateQueries({ queryKey: key });
+    },
   });
 
   return { q, discard, add };

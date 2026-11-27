@@ -333,6 +333,20 @@ describe('MenuNext — add', () => {
     await waitFor(() => expect(nameField).toHaveValue(''));
   });
 
+  it('reads the kept list again after a line is added, so its line count follows the page', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm1', items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    mockVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockVersions.mockClear();
+    mount();
+    const nameField = await screen.findByLabelText('Name');
+    await waitFor(() => expect(mockVersions).toHaveBeenCalledTimes(1));
+    fireEvent.change(nameField, { target: { value: 'Efes' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    await waitFor(() => expect(mockVersions).toHaveBeenCalledTimes(2));
+  });
+
   it('keeps the person\'s typed entry after a FAILED add — a draft is not lost on error', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
     mockAdd.mockRejectedValue(new Error('Forbidden'));
