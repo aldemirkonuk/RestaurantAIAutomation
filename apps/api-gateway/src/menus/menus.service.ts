@@ -35,6 +35,7 @@ import {
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
+import { byPrintedOrder } from "./current-menu-lines";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 
@@ -529,7 +530,7 @@ function menusUnreadable(error: { message?: string }): InternalServerErrorExcept
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, line_no";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -1081,6 +1082,7 @@ export class MenusService {
       if (page.length < PAGE_ROWS) break;
       after = String(page[page.length - 1].id);
     }
+    live.sort(byPrintedOrder);
     const asRead = new Map((Array.isArray(reply.items) ? reply.items : []).map((i) => [i.menuItemId, i]));
     const money = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
     const items: MenuImportReviewItem[] = live.map((line) => {
@@ -1507,6 +1509,7 @@ export class MenusService {
       userId,
       "manual",
       isCurrent,
+      await this.nextLineNo(menu.id, callerRestaurantId),
     );
 
     // Manager-added rows are always flagged for review, regardless of match.
@@ -1532,6 +1535,39 @@ export class MenusService {
     }
 
     return { ...reviewItem, needsReview: true };
+  }
+
+  /**
+   * r108 menu-g14: where a typed line goes on its menu -- after the last
+   * numbered line, discarded ones included, so a place is never handed out
+   * twice in turn. A menu whose lines are all unnumbered (read before
+   * line_no) keeps them so: the typed line is unnumbered too, and the menu
+   * stays in the one order it has. An empty menu starts at 0. A failed read
+   * is an error, never a guessed place.
+   */
+  private async nextLineNo(menuId: string, restaurantId: string): Promise<number | null> {
+    const sb = this.dbService.supabase;
+    const { data, error } = await sb
+      .from("menu_items")
+      .select("line_no")
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .not("line_no", "is", null)
+      .order("line_no", { ascending: false })
+      .limit(1);
+    if (error) {
+      throw new InternalServerErrorException(`The menu's last line could not be read, so nothing was added (${error.message}).`);
+    }
+    const numbered = ((data ?? []) as Array<{ line_no?: number | null }>)
+      .map((r) => r.line_no)
+      .filter((n): n is number => n !== null && n !== undefined)
+      .map(Number);
+    if (numbered.length > 0) return Math.max(...numbered) + 1;
+    const any = await sb.from("menu_items").select("id").eq("menu_id", menuId).eq("restaurant_id", restaurantId).limit(1);
+    if (any.error) {
+      throw new InternalServerErrorException(`The menu's lines could not be read, so nothing was added (${any.error.message}).`);
+    }
+    return (any.data ?? []).length > 0 ? null : 0;
   }
 
   /**
@@ -1859,7 +1895,7 @@ export class MenusService {
 
   /**
    * Every live line of one menu of this house, keyset-paged on id and then
-   * ordered for reading (section, then name). A failed page is an error, never
+   * put in the menu's printed order (`line_no`, then id; r108 menu-g14). A failed page is an error, never
    * a shorter menu. Each row goes through `lineForViewer`: the allowlisted
    * keys and `kitchen_line` for everyone, the raw line only when the caller
    * says the viewer may see it (default: not). The plan, make-current and
@@ -1891,11 +1927,9 @@ export class MenusService {
       if (rows.length < PAGE_ROWS) break;
       after = String(rows[rows.length - 1].id);
     }
-    const key = (v: unknown) => (v === null || v === undefined ? "" : String(v));
-    out.sort(
-      (a, b) =>
-        key(a.category).localeCompare(key(b.category)) || key(a.name).localeCompare(key(b.name)),
-    );
+    // r108 menu-g14: the menu's printed order, after the whole read (the
+    // paging stays on id). Section-then-name lost the order the menu prints.
+    out.sort(byPrintedOrder);
     return out.map((row) => lineForViewer(row, view));
   }
 
@@ -2735,6 +2769,9 @@ export class MenusService {
     // lines seed the house's inventory and set its prices (ADR 0193, menu
     // versions); a kept menu's lines wait for `makeCurrent`.
     current: boolean,
+    // r108 menu-g14: the place of the first of these lines on its menu. A read
+    // starts at 0 (the parse index); a typed add starts after the menu's last.
+    firstLineNo: number | null = 0,
   ): Promise<MenuImportReviewItem[]> {
     if (items.length === 0) return [];
 
@@ -2879,6 +2916,7 @@ export class MenusService {
       by_glass_price: item.by_glass_price ?? null,
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
+      line_no: firstLineNo === null ? null : firstLineNo + idx,
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,

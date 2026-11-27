@@ -23,7 +23,8 @@ import { readAll, type Row } from "../providers/vendor-menu-supply";
  * "no current menu" is a named state (ADR 0193), not an empty menu.
  *
  * Lines are keyset-paged on `id` through `readAll`, so a menu past PostgREST's
- * 1000-row stop is read whole and the rows arrive in `id` order. Discarded
+ * 1000-row stop is read whole; the rows arrive in `id` order and are then
+ * put in the menu's printed order (r108 menu-g14). Discarded
  * lines are left out (migration a_discarded_menu_line_leaves_the_ledger_too).
  * A failed read on either table THROWS; it never returns a shorter menu.
  *
@@ -38,12 +39,35 @@ import { readAll, type Row } from "../providers/vendor-menu-supply";
  * migrations; an inlined list is a read nobody is checking.
  */
 export const CURRENT_MENU_LINE_COLUMNS =
-  "id, menu_id, name, producer, category, bottle_price, by_glass_price, created_at";
+  "id, menu_id, name, producer, category, bottle_price, by_glass_price, created_at, line_no";
+
+/**
+ * The menu's printed order (r108 menu-g14): `line_no` first, a line with none
+ * after every numbered one, and `id` breaking every tie. Applied AFTER the
+ * whole keyset read on id, never as the paging key: `line_no` is not unique,
+ * so paging on it would skip or repeat lines at a page edge.
+ */
+export function byPrintedOrder(a: Row, b: Row): number {
+  const na = a.line_no === null || a.line_no === undefined ? null : Number(a.line_no);
+  const nb = b.line_no === null || b.line_no === undefined ? null : Number(b.line_no);
+  if (na !== nb) {
+    if (na === null) return 1;
+    if (nb === null) return -1;
+    return na - nb;
+  }
+  const ia = String(a.id);
+  const ib = String(b.id);
+  return ia < ib ? -1 : ia > ib ? 1 : 0;
+}
 
 export interface CurrentMenuLines {
   /** How many menus are current (`status = 'active'`). 0 is "no current menu". */
   currentMenus: number;
-  /** Their live lines, unioned, in `id` order. Empty when `currentMenus` is 0. */
+  /**
+   * Their live lines, unioned, menu by menu in the order the menus were
+   * read, each menu in its printed order (`byPrintedOrder`). Empty when
+   * `currentMenus` is 0.
+   */
   rows: Row[];
 }
 
@@ -76,6 +100,11 @@ export async function readCurrentMenuLines(
       if (after) q = q.gt("id", after);
       return q;
     },
+  );
+  const place = new Map(menuIds.map((id, i) => [id, i]));
+  rows.sort(
+    (a, b) =>
+      (place.get(String(a.menu_id)) ?? 0) - (place.get(String(b.menu_id)) ?? 0) || byPrintedOrder(a, b),
   );
   return { currentMenus: menuIds.length, rows };
 }
