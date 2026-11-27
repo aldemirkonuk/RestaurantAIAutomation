@@ -5,12 +5,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
-const auth = vi.hoisted(() => ({ role: 'owner' as string }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: 'r1', activeRole: auth.role }) }));
+const auth = vi.hoisted(() => ({ role: 'owner' as string, rid: 'r1' as string }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: auth.role }) }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 vi.mock('@/hooks/useUserPreferences', () => ({
   useUserPreferences: () => ({
@@ -223,5 +223,102 @@ describe('a staff till kept from the reader reads once, whatever the window (r10
     rerender({ days: 90, r: 'manager' });
     await waitFor(() => expect(tillReads()).toContain('/analytics/pos-revenue/r1?days=90'));
     await waitFor(() => expect(result.current.registers.till?.data).toMatchObject({ salesWithheld: false }));
+  });
+});
+
+describe('a kept-back till keeps its read key by house, role, window and compare (r110 reports-5)', () => {
+  const WITHHELD = {
+    restaurantId: 'r1', from: null, to: null, days: 30, timezone: null, zoneUnset: false,
+    posConnected: true, salesWithheld: true, revenue: null, checkCount: null, dailySeries: null,
+  };
+  type P = { days: number; role: string; rid: string; compare: boolean };
+  const answers = { withheld: true };
+  let qc: QueryClient;
+  const mount = (p: P) => {
+    auth.role = p.role;
+    auth.rid = p.rid;
+    answers.withheld = p.role === 'staff';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) =>
+      path.startsWith('/analytics/pos-revenue/') ? { data: answers.withheld ? WITHHELD : N_READ } : { data: { insights: [] } },
+    );
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    return renderHook(
+      (q: P) => {
+        auth.role = q.role;
+        auth.rid = q.rid;
+        return useReportsNextData(q.days, () => {}, ['till'], undefined, q.compare);
+      },
+      { wrapper, initialProps: p },
+    );
+  };
+  const reads = () => api.get.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith('/analytics/pos-revenue/'));
+  const first = (r: ReturnType<typeof mount>) => waitFor(() => expect(r.result.current.registers.till?.data).toBeDefined());
+  const STAFF: P = { days: 30, role: 'staff', rid: 'r1', compare: false };
+  beforeEach(() => {
+    auth.role = 'owner';
+    auth.rid = 'r1';
+  });
+
+  it('[REVERT-FAILS] the first click after the withheld answer keeps the withheld read\u2019s key, not the clicked window\u2019s', async () => {
+    const m = mount(STAFF);
+    await first(m);
+    const held = m.result.current.registers.till;
+    m.rerender({ ...STAFF, days: 90 });
+    expect(m.result.current.registers.till).toBe(held);
+    expect(m.result.current.registers.till?.loading).toBe(false);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reads()).toEqual(['/analytics/pos-revenue/r1?days=30']);
+  });
+
+  it('[REVERT-FAILS] a switch back to a window already read fires no read, for staff and for an owner', async () => {
+    const s = mount(STAFF);
+    await first(s);
+    s.rerender({ ...STAFF, days: 90 });
+    s.rerender({ ...STAFF, days: 30 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reads()).toEqual(['/analytics/pos-revenue/r1?days=30']);
+    const O: P = { ...STAFF, role: 'owner' };
+    const o = mount(O);
+    await first(o);
+    o.rerender({ ...O, days: 90 });
+    await waitFor(() => expect(reads()).toContain('/analytics/pos-revenue/r1?days=90'));
+    o.rerender({ ...O, days: 30 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reads().sort()).toEqual(['/analytics/pos-revenue/r1?days=30', '/analytics/pos-revenue/r1?days=90']);
+  });
+
+  it('[REVERT-FAILS] a house that moves is asked again, at the window on screen', async () => {
+    const m = mount(STAFF);
+    await first(m);
+    m.rerender({ ...STAFF, days: 90 });
+    m.rerender({ ...STAFF, days: 90, rid: 'r2' });
+    await waitFor(() => expect(reads()).toContain('/analytics/pos-revenue/r2?days=90'));
+  });
+
+  it('[REVERT-FAILS] the compare toggle keeps the withheld key too: no read for it either way', async () => {
+    const m = mount({ ...STAFF, compare: true });
+    await first(m);
+    const before = reads();
+    const held = m.result.current.registers.till;
+    m.rerender({ ...STAFF, days: 90, compare: false });
+    m.rerender({ ...STAFF, days: 7, compare: true });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(reads()).toEqual(before);
+    expect(m.result.current.registers.till).toBe(held);
+  });
+
+  it('[REVERT-FAILS] a read that stops saying withheld releases the hold: the next click reads its window', async () => {
+    const m = mount(STAFF);
+    await first(m);
+    m.rerender({ ...STAFF, days: 90 });
+    answers.withheld = false;
+    await act(async () => {
+      await qc.invalidateQueries();
+    });
+    await waitFor(() => expect(m.result.current.registers.till?.data).toMatchObject({ salesWithheld: false }));
+    m.rerender({ ...STAFF, days: 90 });
+    await waitFor(() => expect(reads()).toContain('/analytics/pos-revenue/r1?days=90'));
   });
 });
