@@ -114,14 +114,17 @@ function notice(o: {
   };
 }
 
-function gmail(messages: Row[]) {
+function gmail(messages: Row[], endless = false) {
   const urls: string[] = [];
   const impl = (async (input: unknown) => {
     const url = String(input);
     urls.push(url);
     const q = url.includes("/messages?") ? new URL(url).searchParams.get("q") ?? "" : "";
     if (url.includes("/messages?"))
-      return { ok: true, status: 200, json: async () => ({ messages: q.startsWith("from:(mailer-daemon") ? messages.map((m) => ({ id: m.id })) : [] }) };
+      return { ok: true, status: 200, json: async () => {
+          const notices = q.startsWith("from:(mailer-daemon");
+          return { messages: notices ? messages.map((m) => ({ id: m.id })) : [], ...(notices && endless ? { nextPageToken: "more" } : {}) };
+        } };
     const id = /\/messages\/([^?/]+)/.exec(url)?.[1] ?? "";
     return { ok: true, status: 200, json: async () => messages.find((m) => m.id === id) ?? null };
   }) as unknown as typeof fetch;
@@ -143,13 +146,13 @@ function rows(letters: Row[]) {
   };
 }
 
-async function run(letters: Row[], messages: Row[], failWrite = false) {
+async function run(letters: Row[], messages: Row[], failWrite = false, endless = false) {
   const t = build(rows(letters), failWrite);
   const publish = jest.fn().mockResolvedValue(undefined);
   const oauth = { getAccessToken: jest.fn().mockResolvedValue("ya29.token") } as unknown as IntegrationsOauthService;
   const letterSvc = new HouseLettersService(t.db, new HouseSenderService(t.db, { get: () => undefined } as never), oauth);
   const service = new HouseInboxService(t.db, { publishEvent: publish } as unknown as OrchestratorService, oauth, letterSvc);
-  const g = gmail(messages);
+  const g = gmail(messages, endless);
   service.fetchImpl = g.impl;
   const out = await service.readDue(CURSOR + 300_000);
   const marks = t.updates.filter((u) => u.table === "procurement_conversations");
@@ -243,6 +246,12 @@ describe("the cursor", () => {
     const r = await run([LETTER], [notice()], true);
     expect(r.out.outcomes[0].outcome).toBe("error");
     expect(r.cursor).toEqual([CURSOR]);
+  });
+
+  it("a listing cut at the page cap marks what it read but never moves the cursor past the notices", async () => {
+    const r = await run([LETTER], [notice()], false, true);
+    expect(r.marks).toHaveLength(1);
+    expect(r.cursor).not.toContain(AT);
   });
 
   it("a dropped notice is passed: it will never be kept", async () => {
