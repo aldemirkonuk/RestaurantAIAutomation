@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { KeepOnPhone } from '../components/onboarding/KeepOnPhone'
@@ -99,23 +99,32 @@ export default function HouseContents() {
   const [matches, setMatches] = useState<VendorMatchCandidate[]>([])
   const [listOpen, setListOpen] = useState(false)
   const countryRead = useRef<Promise<string | undefined> | null>(null)
+  // The house's ISO country, read once. The typeahead and the invoice proposal
+  // both match the catalogue inside it, so a house is never offered another
+  // country's vendor. undefined = unknown (the read failed or none is set).
+  const readCountry = useCallback(() => {
+    countryRead.current ??= (async () => {
+      try {
+        const money = await settingsApi.houseCurrency()
+        return money?.country ?? undefined
+      } catch {
+        return undefined
+      }
+    })()
+    return countryRead.current
+  }, [])
+  // The name an invoice prefilled into the vendor box: its typeahead stays shut
+  // until the person types something else.
+  const prefilled = useRef<string | null>(null)
   useEffect(() => {
     const typed = supplier.trim()
-    if (typed.length < 2) {
+    if (typed.length < 2 || typed === prefilled.current) {
       setMatches([])
       return
     }
     let live = true
     const timer = setTimeout(() => {
-      countryRead.current ??= (async () => {
-        try {
-          const money = await settingsApi.houseCurrency()
-          return money?.country ?? undefined
-        } catch {
-          return undefined
-        }
-      })()
-      void countryRead.current
+      void readCountry()
         .then((country) => matchVendorCatalogue(typed, undefined, country))
         .then((rows) => {
           if (!live) return
@@ -130,7 +139,7 @@ export default function HouseContents() {
       live = false
       clearTimeout(timer)
     }
-  }, [supplier])
+  }, [supplier, readCountry])
   const [error, setError] = useState<string | null>(null)
   // The supplier asked here is on the house's row (vendor_added), not in this
   // page's state: after a reload it asked "Who supplies you?" again (walk
@@ -489,9 +498,18 @@ export default function HouseContents() {
                     vendorOpen={vendorRead === 'ask' && !saved}
                     moneyUnset={moneyUnset}
                     busy={saving}
+                    readCountry={readCountry}
                     onPrefill={(name) => {
-                      setSupplier((now) => (now.trim() ? now : name))
-                      vendorInput.current?.focus()
+                      // The read lands seconds to minutes after the drop. Write
+                      // only into an empty box, and take the focus only when
+                      // nothing else holds it: someone typing the vendor's email
+                      // or a menu line must keep their keystrokes.
+                      const box = vendorInput.current
+                      if (!box || box.value.trim()) return
+                      prefilled.current = name.trim()
+                      setSupplier(name)
+                      const held = document.activeElement
+                      if (!held || held === document.body) box.focus()
                     }}
                     onPick={(row) => void pickRow(row)}
                   />
