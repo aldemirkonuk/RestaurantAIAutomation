@@ -529,7 +529,7 @@ export default function Cutting({
       {strip && <RuledOff />}
       {/* Not a <header>: the section's heading is the h2 below it, and a nested
           banner landmark per cutting would drown the page's own. */}
-      <div className="rp-cut__head">
+      <div className="rp-cut__head" data-window={(spec.takesWindow && !arranging) || undefined}>
         <div style={{ minWidth: 0 }}>
           <h2 className="rp-cut__title">{spec.title}</h2>
           <p className="rp-cut__window">{windowLine}</p>

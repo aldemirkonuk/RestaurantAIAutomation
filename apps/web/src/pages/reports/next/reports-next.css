@@ -1176,6 +1176,9 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 /* r107 g5: the till card on a phone settles to the compare answer's room, never snaps (160 ms, `ink`). */
 .rp-stack__item[data-holds] {
   transition: height 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* The hold is what the card is set to, never less than its content: a line the hold fell short of would be
+     cut off by the card's overflow (r108 walk 4: "Show the working" hidden at 375 with compare off). */
+  min-height: min-content;
 }
 /* The prior's dashed line draws left to right once, when compare is switched on (a refetch keeps it). */
 .rp-prior {
@@ -1201,6 +1204,25 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 @media (max-width: 767px) {
   .rp-page__inner {
     overflow-x: clip;
+  }
+  /* r109: the till's head on a phone is two rows, not two columns. Side by side the window picker took the width
+     and the sub-line wrapped to five lines (card 24 px over its slot, r108 walk 4); now the title and a one-line
+     sub-line stand over the picker, which has the row to itself and keeps its labels apart. */
+  .rp-cut__head[data-window] {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .rp-cut__head[data-window] > div:first-child,
+  .rp-cut__head[data-window] > .rp-row {
+    flex: 1 1 100%;
+  }
+  .rp-cut__head[data-window] .rp-cut__window {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rp-cut__head[data-window] .rp-seg {
+    flex: 1 1 220px;
   }
   /* A figure the drawing does not show keeps its row's space, invisible, so Draw as does not move the card's content (r103). */
   .rp-fig[data-held] {
