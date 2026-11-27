@@ -134,6 +134,8 @@ export interface Fig {
 export interface AnalysisView {
   /** When set, this sentence IS the rendering. No chart is drawn. */
   say?: ReactNode;
+  /** The read was kept from this reader by role: the card offers no compare over it. */
+  withheld?: boolean;
   /** With `say`: a short plain line shown above it, and the cutting keeps its slot instead of folding to a strip. */
   empty?: string;
   cats?: CatSeries;

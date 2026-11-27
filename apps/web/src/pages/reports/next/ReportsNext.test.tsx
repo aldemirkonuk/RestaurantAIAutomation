@@ -3104,3 +3104,17 @@ describe('Reports strip title and window (css contract)', () => {
     expect(css).toMatch(/@media \(max-width: 480px\) \{\s*(?:\/\*[\s\S]*?\*\/\s*)?\.rp-cut\[data-strip\] \.rp-cut__window \{\s*display: none/);
   });
 });
+
+describe('ReportsNext — no compare for a reader who is not sent the takings (r107 fix on #2162)', () => {
+  const tillCard = () => screen.getByRole('region', { name: 'Through the till' });
+
+  it('[REVERT-FAILS] offers no compare button to staff on the first read, and still offers it to an owner', () => {
+    hook.current = { ...withRegister('till', pending), salesKept: true };
+    paint('/reports');
+    expect(within(tillCard()).queryByRole('button', { name: /Against the prior/ })).toBeNull();
+    cleanup();
+    hook.current = { ...withRegister('till', pending), salesKept: false };
+    paint('/reports');
+    expect(within(tillCard()).getByRole('button', { name: /Against the prior/ })).toBeInTheDocument();
+  });
+});

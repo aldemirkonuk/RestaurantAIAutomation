@@ -373,6 +373,7 @@ const till = analysis<TillWindow>({
     if (w.salesWithheld)
       return {
         say: 'The till register is written for owners and managers. Nothing below is claimed.',
+        withheld: true,
         figures: [],
         notes: [],
         basis: [],
