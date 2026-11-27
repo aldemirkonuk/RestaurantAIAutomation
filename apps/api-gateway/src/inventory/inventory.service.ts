@@ -28,6 +28,7 @@ import {
   type HouseItemResearchView,
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
+import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import {
   SETTLED_PRICES,
   settledMovesFrom,
@@ -329,14 +330,26 @@ export class InventoryService {
     }
   }
 
-  async getRestaurantInventory(restaurantId: string) {
+  /**
+   * `viewer` is the caller's role when a person asked (the controller always
+   * passes it). A role whose policy does not see `money` gets no settled-cost
+   * figures and the gateway does not read them (ADR 0360 d9). A caller with no
+   * `viewer` is the gateway itself.
+   */
+  async getRestaurantInventory(
+    restaurantId: string,
+    viewer?: { role?: string | null },
+  ) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
+    const money = viewer === undefined || seesHouseAmounts(viewer.role);
     const [data, rollup, locations, analytics, settled] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),
-      this.fetchSettledMoves(restaurantId),
+      money
+        ? this.fetchSettledMoves(restaurantId)
+        : { map: new Map<string, SettledMove>(), ok: true, capped: false },
     ]);
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
@@ -352,8 +365,9 @@ export class InventoryService {
       analyticsReadable: analytics.ok,
       // r104 g3: false = the settled-price read failed, so "no price move" is
       // unknown, not "none"; `settledCostsCapped` = only the newest rows were read.
-      settledCostsReadable: settled.ok,
-      settledCostsCapped: settled.capped,
+      ...(money
+        ? { settledCostsReadable: settled.ok, settledCostsCapped: settled.capped }
+        : {}),
     }));
   }
 

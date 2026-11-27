@@ -107,4 +107,23 @@ describe("the list read carries the settled costs", () => {
     expect(out[0].settledCostsReadable).toBe(false);
     expect(out[0].lastSettledCost).toBeUndefined();
   });
+
+  it("a role that does not see money gets no settled cost, and the table is not read for it", async () => {
+    const data = [rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z"), rv("g1", "o1", 10, "2026-01-01T00:00:00Z")];
+    for (const role of ["waiter", "bartender", "host", undefined]) {
+      const { svc, calls } = service({ data });
+      const out: any[] = await svc.getRestaurantInventory("r1", { role });
+      expect(JSON.stringify(out)).not.toMatch(/SettledCost/);
+      expect(calls.some((c) => c.table === "inventory_lot_revaluations")).toBe(false);
+    }
+  });
+
+  it("an owner and a manager still read them", async () => {
+    const data = [rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z"), rv("g1", "o1", 10, "2026-01-01T00:00:00Z")];
+    for (const role of ["owner", "manager"]) {
+      const { svc } = service({ data });
+      const out: any[] = await svc.getRestaurantInventory("r1", { role });
+      expect(out[0]).toMatchObject({ lastSettledCost: 11.2, previousSettledCost: 10 });
+    }
+  });
 });
