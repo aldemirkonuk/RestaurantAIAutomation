@@ -44,6 +44,7 @@ import {
 } from "./delivery-item-to-name";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
+import { canonicalMessageId } from "../communications/rfc822-message-id";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
   CreateOrderDto,
@@ -771,7 +772,9 @@ export class ProcurementService {
       restaurantId,
       providerId: row.provider_id || (order as any).provider_id,
       gmailThreadId: row.gmail_thread_id || null,
-      inboundRfc822MessageId: row.message_id || headers.message_id || null,
+      inboundRfc822MessageId:
+        canonicalMessageId(row.message_id) ||
+        canonicalMessageId(headers.message_id),
       inboundReferences: headers.references || null,
       inboundSubject: headers.subject || null,
       inboundAttachments: inboundAttachments.length
@@ -7704,7 +7707,9 @@ export class ProcurementService {
           gmail_thread_id: (lastInbound as any)?.gmail_thread_id || null,
           email_headers: {
             subject: inHeaders.subject || `Re: Order Request: ${wineName}`,
-            in_reply_to: (lastInbound as any)?.message_id || inHeaders.message_id || null,
+            in_reply_to:
+              canonicalMessageId((lastInbound as any)?.message_id) ||
+              canonicalMessageId(inHeaders.message_id),
             references: inHeaders.references || null,
           },
           // Written out (not `...request`): check_order_capture_contract.py
@@ -7904,7 +7909,7 @@ export class ProcurementService {
     // message_id on an outbound draft, so a value here is always a prior
     // attempt of ours.
     const outboundMessageId =
-      ((conv as any).message_id as string | null) || this.mintRfc822MessageId();
+      canonicalMessageId((conv as any).message_id) || this.mintRfc822MessageId();
     const { data: claimed } = await this.databaseService.supabase
       .from("procurement_conversations")
       .update({ status: "SENDING", message_id: outboundMessageId })
@@ -8455,7 +8460,8 @@ export class ProcurementService {
     return {
       gmailMessageId: result.messageId,
       gmailThreadId: result.threadId,
-      rfc822MessageId: result.rfc822MessageId,
+      // One stored shape for every door (rfc822-message-id.ts).
+      rfc822MessageId: canonicalMessageId(result.rfc822MessageId) ?? undefined,
     };
   }
 
@@ -8952,7 +8958,9 @@ export class ProcurementService {
     const subject = inHeaders.subject || `Re: Order Request: ${wineName}`;
     const threadId = (lastInbound as any)?.gmail_thread_id || undefined;
     const inReplyTo =
-      (lastInbound as any)?.message_id || inHeaders.message_id || undefined;
+      canonicalMessageId((lastInbound as any)?.message_id) ||
+      canonicalMessageId(inHeaders.message_id) ||
+      undefined;
     const references = inHeaders.references || undefined;
 
     const ids = await this.sendProviderEmail({
@@ -9827,7 +9835,9 @@ export class ProcurementService {
           `Please send an order confirmation along with the expected delivery date.\n\n` +
           `Thank you!`;
         const inReplyTo: string | undefined =
-          (lastInbound as any)?.message_id || inHeaders.message_id || undefined;
+          canonicalMessageId((lastInbound as any)?.message_id) ||
+          canonicalMessageId(inHeaders.message_id) ||
+          undefined;
         const references: string | undefined =
           inHeaders.references || undefined;
         const ids = await this.sendProviderEmail({

@@ -1,5 +1,6 @@
 import { RabbitMqBridgeService } from "./rabbitmq-bridge.service";
 import { DocumentIntakeService } from "../../procurement/documents/document-intake.service";
+import { threadingHeader } from "../../communications/mime-headers";
 
 /**
  * A GUESSED ORDER DOES NOT LINK THE PAPER.
@@ -263,7 +264,12 @@ function bridgeWorld(opts: {
     {} as any,
   );
   let n = 0;
-  const deliver = async (m: { thread: string; invoice?: boolean }) => {
+  const deliver = async (m: {
+    thread: string;
+    invoice?: boolean;
+    /** The Message-ID the door published; `<vendor-n@vendor.test>` when unset. */
+    messageIdHeader?: string;
+  }) => {
     n += 1;
     await (bridge as any).handleInboundEmail({
       payload: {
@@ -275,7 +281,7 @@ function bridgeWorld(opts: {
         attachments: m.invoice ? [INVOICE] : [],
         gmail_thread_id: m.thread,
         gmail_message_id: `gmail-msg-${n}`,
-        message_id_header: `<vendor-${n}@vendor.test>`,
+        message_id_header: m.messageIdHeader ?? `<vendor-${n}@vendor.test>`,
         restaurant_id: HOUSE,
       },
     });
@@ -668,5 +674,38 @@ describe("document intake's linking, which this change leaves as it was", () => 
         confidence: 1,
       }),
     ]);
+  });
+});
+
+describe("an inbound letter's Message-ID is stored in one shape (rfc822-message-id.ts)", () => {
+  it("a door that published the bare id stores <id>, and the reply drafted to it threads", async () => {
+    const w = bridgeWorld({ openOrder: null, responderStages: "PENDING_APPROVAL" });
+    w.letter("house-thread", THREAD_ORDER);
+    await w.deliver({ thread: "house-thread", messageIdHeader: " bare-1@vendor.test " });
+
+    const row = w.inbound()[0];
+    expect(row.message_id).toBe("<bare-1@vendor.test>");
+    expect(row.email_headers.message_id).toBe("<bare-1@vendor.test>");
+    expect(w.responder.analyzeAndDraftReply).toHaveBeenCalledWith(
+      expect.objectContaining({ inboundRfc822MessageId: "<bare-1@vendor.test>" }),
+    );
+    // The draft's In-Reply-To survives the wire writer, so the reply threads.
+    expect(threadingHeader("In-Reply-To", w.drafts[0].email_headers.in_reply_to)).toBe(
+      "In-Reply-To: <bare-1@vendor.test>",
+    );
+  });
+
+  it("the bracketed id from the Gmail door is stored as it came", async () => {
+    const w = bridgeWorld({ openOrder: null });
+    w.letter("house-thread", THREAD_ORDER);
+    await w.deliver({ thread: "house-thread", messageIdHeader: "<CAGX@mail.gmail.com>" });
+    expect(w.inbound()[0].message_id).toBe("<CAGX@mail.gmail.com>");
+  });
+
+  it("a letter with no Message-ID stores null, as before", async () => {
+    const w = bridgeWorld({ openOrder: null });
+    w.letter("house-thread", THREAD_ORDER);
+    await w.deliver({ thread: "house-thread", messageIdHeader: "" });
+    expect(w.inbound()[0].message_id).toBeNull();
   });
 });
