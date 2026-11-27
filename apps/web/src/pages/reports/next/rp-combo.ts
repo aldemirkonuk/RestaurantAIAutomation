@@ -37,6 +37,9 @@ export interface ComboRow {
   full: string;
   bar: number | null;
   line: number | null;
+  /** The measure's own words for this point (`Measure.tips`), or null. */
+  barTip: string | null;
+  lineTip: string | null;
 }
 
 export interface ComboPlan {
@@ -99,6 +102,8 @@ export function planCombo(series: CatSeries, want?: Partial<ComboPick>): ComboPl
       full: d.full ?? d.label,
       bar: bars.values[i] ?? null,
       line: line.values[i] ?? null,
+      barTip: bars.tips?.[i] ?? null,
+      lineTip: line.tips?.[i] ?? null,
     })),
   };
 }

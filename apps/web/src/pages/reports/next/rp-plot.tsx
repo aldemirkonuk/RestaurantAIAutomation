@@ -71,7 +71,7 @@ import {
 } from 'recharts';
 import { tipMotion, useAfterPaint, useDrawIn } from './rp-draw';
 import { EM, MONO } from './rp-format';
-import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
+import { choose, planCombo, type ComboPick, type ComboPlan, type ComboRow } from './rp-combo';
 import type { CatSeries, PointSeries } from './rp-view';
 import { NO_STRETCH, stretchSpan, stretchStep } from './rp-stretch';
 
@@ -978,6 +978,13 @@ export function ComboPlot({
         </ComposedChart>
       </Plot>
       <p className="rp-cap">{words}</p>
+      {[bars, line].map((m) =>
+        m.note ? (
+          <p key={m.key} className="rp-cap">
+            {m.note}
+          </p>
+        ) : null,
+      )}
     </>
   );
 }
@@ -989,7 +996,7 @@ function ComboTip({
   plan,
 }: {
   active?: boolean;
-  payload?: Array<{ payload?: { full?: string; bar: number | null; line: number | null } }>;
+  payload?: Array<{ payload?: ComboRow }>;
   plan: ComboPlan;
 }) {
   const row = active ? payload?.[0]?.payload : undefined;
@@ -998,13 +1005,14 @@ function ComboTip({
         head: row.full ?? '',
         lines: (
           [
-            [row.bar, plan.bars],
-            [row.line, plan.line],
-          ] as Array<[number | null, ComboPlan['bars']]>
-        ).map(([v, m]) => ({
+            [row.bar, plan.bars, row.barTip],
+            [row.line, plan.line, row.lineTip],
+          ] as Array<[number | null, ComboPlan['bars'], string | null | undefined]>
+        ).map(([v, m, tip]) => ({
           name: m.label,
           value: v == null ? null : m.format(v),
-          tail: v == null ? '' : ` ${m.unit}`,
+          // A measure's own words after its figure (#2394: "over 5 trading days").
+          tail: `${v == null ? '' : ` ${m.unit}`}${tip ? ` ${tip}` : ''}`,
         })),
       }
     : null;
