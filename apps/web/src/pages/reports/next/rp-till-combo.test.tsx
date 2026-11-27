@@ -51,7 +51,7 @@ describe('the till offers bars and a line', () => {
 
   it("[REVERT-FAILS] reads each day's checks off the payload, and a day without one as unknown", () => {
     const w = read({ ...COUNTED, dailySeries: [{ date: '2026-11-11', revenue: 5 }] });
-    expect(w.dailySeries).toEqual([{ date: '2026-11-11', revenue: 5, checks: null }]);
+    expect(w.dailySeries).toEqual([{ date: '2026-11-11', revenue: 5, checks: null, pricedChecks: null }]);
     expect(read(COUNTED).dailySeries[1].checks).toBe(20);
   });
 
@@ -109,5 +109,40 @@ describe('the till offers bars and a line', () => {
     const m = tillMeasures(w, ['2026-11-11'], moneyIn('TRY'))!;
     expect(m[0].values).toEqual([0]);
     expect(m[1].values).toEqual([null]);
+  });
+});
+
+describe('a check with no total is not in the average (r101 review)', () => {
+  const PARTLY = {
+    ...COUNTED,
+    revenue: 500,
+    checkCount: 15,
+    // 10 checks totalling $500 and 5 that carry no total: $50 a priced check, not $33.
+    dailySeries: [{ date: '2026-11-11', revenue: 500, checks: 15, pricedChecks: 10 }],
+  };
+
+  it('[REVERT-FAILS] a day averages over the checks that carry a total', () => {
+    const m = tillMeasures(read(PARTLY), ['2026-11-11'], moneyIn('TRY'))!;
+    expect(m[0].values).toEqual([15]); // the bar is still every check
+    expect(m[1].values).toEqual([50]);
+  });
+
+  it('[REVERT-FAILS] says how many checks carried no total, and says nothing when all did', () => {
+    expect(till.view(read(PARTLY), { days: 1, currency: 'TRY' }).notes).toEqual([
+      "5 of the window's 15 checks carried no total, so each day's average check is over the checks that did.",
+    ]);
+    expect(till.view(read(COUNTED), ctx).notes).toEqual([]);
+    const all = { ...PARTLY, dailySeries: [{ date: '2026-11-11', revenue: 500, checks: 15, pricedChecks: 15 }] };
+    expect(till.view(read(all), { days: 1, currency: 'TRY' }).notes).toEqual([]);
+  });
+
+  it('an older gateway that sends no pricedChecks keeps dividing by every check, with no note', () => {
+    const m = tillMeasures(read(COUNTED), ['2026-11-11', '2026-11-12', '2026-11-13'], moneyIn('TRY'))!;
+    expect(m[1].values).toEqual([120, null, 90]);
+  });
+
+  it('a day whose checks all carry no total has no average, never a division by zero', () => {
+    const w = read({ ...COUNTED, dailySeries: [{ date: '2026-11-11', revenue: 0, checks: 4, pricedChecks: 0 }] });
+    expect(tillMeasures(w, ['2026-11-11'], moneyIn('TRY'))![1].values).toEqual([null]);
   });
 });
