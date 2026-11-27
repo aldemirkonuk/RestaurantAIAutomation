@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
-import { AuthService } from "./auth.service";
+import { AuthService, signedInNow } from "./auth.service";
 import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import {
@@ -770,5 +770,35 @@ describe("registerRestaurant (DD-r104-6 PR 2: one door, one rule)", () => {
       { table: "restaurants", col: "id", v: "rest-1" },
       { table: "organizations", col: "id", v: "org-1" },
     ]);
+  });
+
+  it("refuses a place another house holds, and says so (F-006 OPEN-1)", async () => {
+    const run = proved(makeService({}, HELD));
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, ConflictException, HOUSE_ALREADY_AT_PLACE);
+    expect(run.restaurantRows()).toEqual([]);
+    expect(run.deletes).toEqual([
+      { table: "organizations", col: "id", v: "org-1" },
+    ]);
+  });
+
+  it("refuses a place taken between the look-up and the insert", async () => {
+    const run = proved(
+      makeService({
+        single: { restaurants: [{ data: null, error: PLACE_HELD }] },
+      }),
+    );
+    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
+    expectPlain(exception, ConflictException, HOUSE_ALREADY_AT_PLACE);
+    expect(run.restaurantRows()).toHaveLength(1);
+  });
+
+  it("mints the pair with auth_time, as sign-in does, so a passkey can follow", async () => {
+    const run = proved(makeService());
+    await run.svc.registerRestaurant(REGISTRATION);
+    const mint = (run.svc as any).generateTokens as jest.Mock;
+    expect(mint).toHaveBeenCalledTimes(1);
+    expect(mint.mock.calls[0][3]).toBe(signedInNow());
+    expect(mint.mock.calls[0][3]).not.toBeNull();
   });
 });
