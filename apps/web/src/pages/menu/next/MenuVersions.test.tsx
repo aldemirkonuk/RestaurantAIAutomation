@@ -1253,6 +1253,14 @@ describe('MenuVersions — the source file opens on the click (r106 menu-7, DD-r
     expect(await screen.findByText(/blocked the new tab/)).toBeInTheDocument();
     expect(getMenuSourceUrl).not.toHaveBeenCalled();
   });
+
+  it('leaves the setup\'s matchMedia stub alone, so a later test still draws the drop zone', async () => {
+    // The drop zone on the gap's base reads window.matchMedia; restoreAllMocks would empty the stub.
+    expect(window.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(false);
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount(true);
+    expect(await screen.findByLabelText('Menu to read')).toBeInTheDocument();
+  });
 });
 
 describe('MenuVersions — Put it back and Add details are 44 px targets on a phone (r108 menu-3)', () => {
