@@ -62,6 +62,7 @@ import {
 import {
   useMailIntake,
   useMailListsFollowSummary,
+  useMailLookAhead,
   useMailPeople,
   useMailSender,
   useMailSummary,
@@ -184,7 +185,7 @@ function PeoplePlaceholder() {
   );
 }
 
-function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
+function PersonRow({ p, on, onOpen, onLook }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void; onLook: () => void }) {
   const unsent = unsentWords(p.unsentStatus ?? null);
   return (
     <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -192,6 +193,9 @@ function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen:
         type="button"
         data-testid="mail-person"
         onClick={onOpen}
+        onPointerEnter={onLook}
+        onFocus={onLook}
+        onTouchStart={onLook}
         className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
         style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
       >
@@ -257,6 +261,7 @@ function PersonThreads({
   onOpenThread: (key: string) => void;
 }) {
   const q = useMailThreads(withKey);
+  const lookAhead = useMailLookAhead();
   const pages = q.data?.pages ?? [];
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
@@ -287,6 +292,9 @@ function PersonThreads({
                   type="button"
                   data-testid="mail-thread-row"
                   onClick={() => onOpenThread(t.key)}
+                  onPointerEnter={() => lookAhead.thread(t.key, withKey)}
+                  onFocus={() => lookAhead.thread(t.key, withKey)}
+                  onTouchStart={() => lookAhead.thread(t.key, withKey)}
                   className="cm-row grid w-full gap-0.5 px-1 py-2.5 text-left"
                   style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: SANS }}
                 >
@@ -360,6 +368,7 @@ function People({
   setupWords: string;
 }) {
   const q = useMailPeople(waitingOnly, search);
+  const lookAhead = useMailLookAhead();
   const pages = q.data?.pages ?? [];
   const people = pages.flatMap((p) => p.people);
   const storedKinds = pages[0]?.storedKinds ?? null;
@@ -394,7 +403,7 @@ function People({
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
           {people.map((p) => (
-            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} />
+            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} onLook={() => lookAhead.threads(p.key)} />
           ))}
         </ul>
       )}

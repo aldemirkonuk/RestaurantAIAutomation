@@ -135,17 +135,61 @@ export function useMailPeople(waitingOnly: boolean, search = '') {
   });
 }
 
+async function readThreadsPage(withKey: string, pageParam: unknown): Promise<MailThreadsPage> {
+  const params: Record<string, string> = { with: withKey };
+  if (pageParam) params.after = String(pageParam);
+  return (await apiClient.get<MailThreadsPage>('/mail/threads', { params })).data;
+}
+
+async function readThreadPage(key: string, pageParam: unknown, withKey: string | null = null): Promise<MailThreadPage> {
+  const params: Record<string, string> = { key };
+  // One key can be two threads (one Gmail thread to two vendors): naming
+  // the person reads only theirs (gateway GET /mail/thread `with`).
+  if (withKey) params.with = withKey;
+  if (pageParam) params.before = String(pageParam);
+  return (await apiClient.get<MailThreadPage>('/mail/thread', { params })).data;
+}
+
+/**
+ * Start the read a click is about to ask for, when the pointer reaches a row,
+ * focus lands on it or a finger touches it (r56 mail). Both reads only read: the
+ * "seen" mark is a separate POST sent by the open thread, so looking ahead marks
+ * nothing. It shares the open view's cache entry and its 15 s freshness, so a
+ * row passed over twice is read once, and a failed read just leaves the click
+ * to read it, and say so, as it always did.
+ */
+export function useMailLookAhead() {
+  const house = useHouse();
+  const client = useQueryClient();
+  return {
+    threads: (withKey: string) => {
+      if (!house || !withKey) return;
+      void client.prefetchInfiniteQuery<MailThreadsPage>({
+        queryKey: mailKeys.threads(house, withKey),
+        initialPageParam: null as string | null,
+        queryFn: ({ pageParam }) => readThreadsPage(withKey, pageParam),
+        staleTime: 15_000,
+      });
+    },
+    thread: (key: string, withKey: string | null = null) => {
+      if (!house || !key) return;
+      void client.prefetchInfiniteQuery<MailThreadPage>({
+        queryKey: mailKeys.thread(house, key, withKey ?? ''),
+        initialPageParam: null as string | null,
+        queryFn: ({ pageParam }) => readThreadPage(key, pageParam, withKey),
+        staleTime: 15_000,
+      });
+    },
+  };
+}
+
 /** GET /mail/threads?with=<kind>:<id>, newest first. */
 export function useMailThreads(withKey: string | null) {
   const house = useHouse();
   return useInfiniteQuery<MailThreadsPage>({
     queryKey: mailKeys.threads(house, withKey ?? ''),
     initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, string> = { with: withKey ?? '' };
-      if (pageParam) params.after = String(pageParam);
-      return (await apiClient.get<MailThreadsPage>('/mail/threads', { params })).data;
-    },
+    queryFn: ({ pageParam }) => readThreadsPage(withKey ?? '', pageParam),
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: Boolean(house && withKey),
     staleTime: 15_000,
@@ -163,14 +207,7 @@ export function useMailThread(key: string | null, withKey: string | null = null)
   return useInfiniteQuery<MailThreadPage>({
     queryKey: mailKeys.thread(house, key ?? '', withKey ?? ''),
     initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, string> = { key: key ?? '' };
-      // One key can be two threads (one Gmail thread to two vendors): naming
-      // the person reads only theirs (gateway GET /mail/thread `with`).
-      if (withKey) params.with = withKey;
-      if (pageParam) params.before = String(pageParam);
-      return (await apiClient.get<MailThreadPage>('/mail/thread', { params })).data;
-    },
+    queryFn: ({ pageParam }) => readThreadPage(key ?? '', pageParam, withKey),
     getNextPageParam: (last) => last.before ?? undefined,
     enabled: Boolean(house && key),
     staleTime: 15_000,
