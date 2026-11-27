@@ -8,13 +8,15 @@
  * number ("500") is refused and asked about: 500 g of saffron and 500 kg of it
  * are both whole numbers, and reading one as the other is a thousandfold slip
  * one hold away from the book. A decimal cannot be grams (the book holds whole
- * grams), so it is read as kg or l. Zero is zero in any unit. Anything that
- * does not land on a whole g or ml is refused, never rounded: half a gram the
+ * grams), so it is read as kg or l. A lone point or comma then exactly three
+ * digits ("2.000", "1,500 ml") is a thousands mark in one house and a decimal
+ * in another, so it is asked about, never read. Zero is zero in any unit.
+ * Anything that does not land on a whole g or ml is refused, never rounded: half a gram the
  * book cannot hold would be a quiet change to what was counted. A good kept in
  * bottles, cases, kegs, packs or items takes a whole number, as before.
  */
 import { fmtQty } from './ItemCards';
-import { fmtCount } from './useInventoryNextData';
+import { fmtCount, houseNumber } from './useInventoryNextData';
 
 export interface AmountUnit {
   /** The book's unit: 'g', 'ml', or a counted unit ('bottle' when none is recorded). */
@@ -52,7 +54,7 @@ const COUNTED: Record<string, string> = {
  * one-place "11.8 kg" the list rounds to, since this is what is about to be booked.
  */
 function exactMeasure(n: number, small: string, large: string): string {
-  const exact = (v: number) => v.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  const exact = (v: number) => houseNumber(v, 3);
   return Math.abs(n) >= 1000 ? `${exact(n / 1000)} ${large}` : `${exact(n)} ${small}`;
 }
 
@@ -77,9 +79,23 @@ function bareWhole(typed: string): number | null {
   return n === 0 ? null : n;
 }
 
+/**
+ * One point or comma then exactly three digits, after one to three digits that
+ * are not just 0 ("2.000", "1,250 ml"): a thousands mark or a decimal, and a
+ * lira house and a pound house read it opposite ways. Both readings, in the
+ * unit typed (or the field's), so the person can say which; null when it is not
+ * this shape. "0.035" is only a decimal, so it is read.
+ */
+function ambiguousMark(typed: string, fieldUnit: string): { low: string; high: string; unit: string } | null {
+  const m = MEASURED.exec(typed.trim());
+  if (!m || m[2] === undefined || m[2].length !== 3 || m[1].length > 3 || Number(m[1]) === 0) return null;
+  return { low: String(Number(`${m[1]}.${m[2]}`)), high: String(Number(`${m[1]}${m[2]}`)), unit: m[3] ? m[3].toLowerCase() : fieldUnit };
+}
+
 function measuredParser(factors: Record<string, number>) {
   return (typed: string): number | null => {
     if (bareWhole(typed) !== null) return null;
+    if (ambiguousMark(typed, '') !== null) return null;
     const m = MEASURED.exec(typed.trim());
     if (!m) return null;
     const factor = factors[m[3].toLowerCase()];
@@ -106,8 +122,11 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
       hint: 'In kilograms with a point, as 2.25 or 0.5; or say the unit, as 2 kg or 250 g.',
       parse: measuredParser({ '': 1000, kg: 1000, g: 1 }),
       why: (typed) => {
+        const a = ambiguousMark(typed, 'kg');
+        if (a) return `Say which: ${a.low} ${a.unit} or ${a.high} ${a.unit}.`;
         const n = bareWhole(typed);
-        return n === null ? null : `Say which: ${fmtCount(n)} g or ${fmtCount(n)} kg.`;
+        // Said without a thousands mark: the person retypes this number, and "20.000" is not 20,000 everywhere.
+        return n === null ? null : `Say which: ${n} g or ${n} kg.`;
       },
       words: (n) => exactMeasure(n, 'g', 'kg'),
     };
@@ -120,8 +139,10 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
       hint: 'In litres with a point, as 1.5 or 0.75; or say the unit, as 2 l, 70 cl or 330 ml.',
       parse: measuredParser({ '': 1000, l: 1000, cl: 10, ml: 1 }),
       why: (typed) => {
+        const a = ambiguousMark(typed, 'l');
+        if (a) return `Say which: ${a.low} ${a.unit} or ${a.high} ${a.unit}.`;
         const n = bareWhole(typed);
-        return n === null ? null : `Say which: ${fmtCount(n)} ml or ${fmtCount(n)} l.`;
+        return n === null ? null : `Say which: ${n} ml or ${n} l.`;
       },
       words: (n) => exactMeasure(n, 'ml', 'l'),
     };
