@@ -141,6 +141,23 @@ describe('the 1440 till card holds the compare answer in rows', () => {
   });
 });
 
+describe('a thinned 365-day caption stays one line (r109)', () => {
+  const days365 = (): CatSeries => ({
+    data: Array.from({ length: 365 }, (_, i) => ({ label: `d${i + 1}`, value: 100 + ((i * 37) % 91) })),
+    xLabel: 'day', yLabel: 'taken', unit: 'taken', format: String,
+  });
+
+  it('[REVERT-FAILS] the caption names the thinning in a short clause; the long sentence moves to the label', () => {
+    const { container } = render(<MemoryRouter><CatPlot series={days365()} kind="bars" /></MemoryRouter>);
+    const cap = container.querySelector('.rp-plot-cap')?.textContent ?? '';
+    expect(cap).toMatch(/ of 365, highest per stretch$/);
+    // three lines at 343 px grew the card after the read; the whole caption is held to one line's worth
+    expect(cap.length).toBeLessThanOrEqual(56);
+    expect(cap).not.toMatch(/the table has every one/);
+    expect(container.querySelector('[role="img"]')?.getAttribute('aria-label') ?? '').toMatch(/the table has every one/);
+  });
+});
+
 describe('the prior line draws once', () => {
   const series = (k: number): CatSeries => ({
     data: [1, 2, 3, 4].map((i) => ({ label: `d${i}`, value: i * 10 * k, prior: i * 8 * k })),
