@@ -148,7 +148,7 @@ describe('the pure parts', () => {
 
   it('a copied drink carries the share, so the copy costs what its source does', () => {
     const body = copyRecipeBody(drink());
-    expect(body !== null && body !== 'cannot' && body.lines.map((l) => l.usablePct)).toEqual([null, 45]);
+    expect(body !== null && body !== 'cannot' && body.lines.map((l) => l.usablePct)).toEqual([undefined, 45]);
   });
 
   it('a kept line on a different good, or at another place, takes null, never another line\'s share', () => {
