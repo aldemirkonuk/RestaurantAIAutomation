@@ -36,12 +36,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invalidateItemReads } from '../../inventory/next/item-queries';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
+import { recipesApi } from '../../../services/api/recipes';
+import { copyFields, copyRecipeBody, type CopySource } from './recipe/copyDrink';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import { apiClient } from '../../../services/api/client';
+import { managesHouse } from '../../communications/next/cm-format';
 import type { Wine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
 import {
@@ -1021,6 +1024,19 @@ export interface RecipeLineVM {
   sort_order?: number | null;
 }
 
+/**
+ * Whether this person may change the house's cocktail list: an owner or a
+ * manager OF THIS HOUSE (r34 walk w1 F13). The gateway refuses the four
+ * cocktail writes to anyone else with 403 (`@Roles("owner", "manager")` on
+ * BeveragesController), so the register does not offer them. Read the way the
+ * rest of the app reads it (`managesHouse`): the house role first, the
+ * account role only while no house is active, anything else is staff.
+ */
+export function useCocktailManages(): boolean {
+  const { activeRole, user } = useAuth();
+  return managesHouse(activeRole, user?.role);
+}
+
 export function useCocktailWrites() {
   const { activeRestaurantId } = useAuth();
   const queryClient = useQueryClient();
@@ -1061,21 +1077,33 @@ export function useCocktailWrites() {
     onSuccess: invalidateUse,
   });
 
-  const setRecipe = useMutation({
-    mutationFn: async (v: {
-      id: string;
-      lines: { freeText?: string; quantity?: number; unit?: string; sortOrder?: number }[];
-    }) => {
-      const r = await apiClient.put(
-        `/cocktails/${activeRestaurantId}/${v.id}/ingredients`,
-        { lines: v.lines },
-      );
-      return r.data;
+  /**
+   * Copy a drink: read its recipe, make the new drink, write the recipe onto it.
+   * `recipe_failed`: the drink exists and its recipe write was refused (it is kept).
+   * `cannot`: a line cannot be carried, nothing was written.
+   */
+  const copy = useMutation({
+    mutationFn: async (src: CopySource): Promise<{ state: 'copied' | 'recipe_failed'; id: string } | { state: 'cannot'; id: null }> => {
+      const body = copyRecipeBody(await recipesApi.get(activeRestaurantId as string, src.id));
+      if (body === 'cannot') return { state: 'cannot', id: null };
+      const made = (await apiClient.post(`/cocktails/${activeRestaurantId}`, copyFields(src))).data as { id: string };
+      if (!body) return { state: 'copied', id: made.id };
+      try {
+        await recipesApi.save(activeRestaurantId as string, made.id, body);
+      } catch {
+        return { state: 'recipe_failed', id: made.id };
+      }
+      return { state: 'copied', id: made.id };
     },
-    onSuccess: invalidateUse,
+    onSuccess: () => {
+      // A copied drink's lines are new uses of goods (invalidateUse, inventory r10x).
+      invalidateUse();
+      void queryClient.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] });
+      void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId ?? null, 'figures'] });
+    },
   });
 
-  return { create, amend, retire, setRecipe };
+  return { create, amend, retire, copy };
 }
 
 /** One cocktail's recipe lines. Read only when the leaf for it is open. */

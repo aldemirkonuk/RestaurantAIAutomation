@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
     error: string | null;
   },
   figureIds: [] as string[],
+  bareIds: [] as string[],
 }));
 vi.mock('../../../services/api/client', () => ({
   apiClient: { get: h.get, post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -38,6 +39,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 vi.mock('./recipe/RecipeSheet', () => ({ default: () => <div data-testid="sheet" /> }));
 vi.mock('./useCellarNextData', () => ({
   useCocktailRegister: () => h.list,
+  useCocktailManages: () => true,
   useCocktailWrites: () => ({
     create: { mutateAsync: vi.fn(), isPending: false },
     amend: { mutateAsync: vi.fn(), isPending: false },
@@ -55,15 +57,19 @@ const loaded = {
   count: 2, truncated: false, referenceRows: 0, recipesAvailable: true, scopeNote: 'scope',
 };
 let offerAnswer: (() => Promise<unknown>) | null = null;
+let figuresAnswer: (() => Promise<unknown>) | null = null;
 
 beforeEach(() => {
   h.list = { data: null, loading: true, error: null };
   h.figureIds = [];
   offerAnswer = null;
+  figuresAnswer = null;
+  h.bareIds = [];
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: null, readable: true, reason: null, statedAt: null } };
     if (url === `/recipes/${RID}/drinks/figures`) {
-      return { data: { costsUnread: false, drinks: h.figureIds.map((cocktailId) => ({ cocktailId, hasRecipe: true, allergens: null })) } };
+      if (figuresAnswer) return figuresAnswer();
+      return { data: { costsUnread: false, drinks: h.figureIds.map((cocktailId) => ({ cocktailId, hasRecipe: !h.bareIds.includes(cocktailId), allergens: null })) } };
     }
     if (url === `/recipes/${RID}/menu-prices`) return { data: { amountsWithheld: false, currentMenus: 0, dishes: [], drinks: [] } };
     if (url === `/recipes/${RID}/drinks/from-menu`) {
@@ -207,6 +213,50 @@ describe('the menu offer holds its line while the menu is read', () => {
   });
 });
 
+describe('the no-recipe line holds its room while the figures are read (r105, walk r104 FAIL 14)', () => {
+  const css = readFileSync(resolve(__dirname, 'cellar-next.css'), 'utf8');
+  const answer = (bare: string[]) => ({
+    data: { costsUnread: false, drinks: ['c1', 'c2'].map((cocktailId) => ({ cocktailId, hasRecipe: !bare.includes(cocktailId), allergens: null })) },
+  });
+
+  it('draws the room empty at first paint, then the line lands inside the same room: nothing is added to the page', async () => {
+    let release: (v: unknown) => void = () => {};
+    figuresAnswer = () => new Promise((r) => { release = r; });
+    h.list = { data: loaded, loading: false, error: null };
+    mount();
+    const room = screen.getByTestId('no-recipe-room');
+    expect(room).toHaveClass('cl-norecipe-room');
+    expect(room.textContent).toBe('');
+    expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
+    await act(async () => { release(answer(['c2'])); });
+    const line = await screen.findByTestId('no-recipe-yet');
+    expect(screen.getByTestId('no-recipe-room')).toBe(room);
+    expect(room).toContainElement(line);
+  });
+
+  it('keeps the room, empty, for a house where every drink has a recipe: it is not given back', async () => {
+    let release: (v: unknown) => void = () => {};
+    figuresAnswer = () => new Promise((r) => { release = r; });
+    h.list = { data: loaded, loading: false, error: null };
+    mount();
+    const room = screen.getByTestId('no-recipe-room');
+    await act(async () => { release(answer([])); });
+    await waitFor(() => expect(h.get).toHaveBeenCalledWith(`/recipes/${RID}/drinks/figures`));
+    expect(screen.getByTestId('no-recipe-room')).toBe(room);
+    expect(screen.queryByTestId('no-recipe-yet')).toBeNull();
+    expect(room.textContent).toBe('');
+  });
+
+  it('holds one line and the top margin, two lines at a phone, with no transition', () => {
+    const rule = (re: RegExp) => css.match(re)?.[0] ?? '';
+    const base = rule(/\.cl-norecipe-room \{[^}]*\}/);
+    expect(base).toMatch(/display: flow-root;/);
+    expect(base).toMatch(/min-height: calc\(12px \+ 1lh\);/);
+    expect(rule(/@media \(max-width: 640px\) \{ \.cl-norecipe-room \{[^}]*\} \}/)).toMatch(/min-height: calc\(12px \+ 2lh\);/);
+    expect(base + css.match(/\.cl-norecipe-room[^{]*\{[^}]*\}/g)?.join('')).not.toMatch(/transition|animation/);
+  });
+});
+
 describe('the signature waits with the register', () => {
   const css = readFileSync(resolve(__dirname, 'cellar-next.css'), 'utf8');
   const cellarNext = readFileSync(resolve(__dirname, 'CellarNext.tsx'), 'utf8');
@@ -216,5 +266,23 @@ describe('the signature waits with the register', () => {
     expect(cellarNext).toContain('className="cl-signature"');
     // An inline 'visible' would beat the stylesheet rule above.
     expect(cellarNext).not.toMatch(/visibility:[^,\n]*'visible'/);
+  });
+});
+
+describe('the cocktail rows hold their height from first paint (r106, walk r105 FAIL 14)', () => {
+  const css = readFileSync(resolve(__dirname, 'cellar-next.css'), 'utf8');
+
+  it('the reading rows and the loaded rows are the same table class, with one held row height and no motion', async () => {
+    let release: (v: unknown) => void = () => {};
+    figuresAnswer = () => new Promise((r) => { release = r; });
+    h.list = { data: loaded, loading: false, error: null };
+    const { container } = mount();
+    const tables = () => Array.from(container.querySelectorAll('table.cl-table--drinks'));
+    expect(tables().length).toBeGreaterThan(0);
+    await act(async () => { release({ data: { costsUnread: false, drinks: [] } }); });
+    expect(tables().length).toBeGreaterThan(0);
+    const rule = css.match(/\.cl-table--drinks tbody tr \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toMatch(/height: 53px;/);
+    expect(rule).not.toMatch(/transition|animation|opacity/);
   });
 });

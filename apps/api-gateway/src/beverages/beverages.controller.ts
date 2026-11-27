@@ -15,6 +15,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { BeveragesService } from "./beverages.service";
 import { isRegisterId } from "../cellar/cellar-registers";
 import {
@@ -23,7 +25,6 @@ import {
   ListCocktailsQueryDto,
   ReadRegisterQueryDto,
   ReadRowRecordQueryDto,
-  SetCocktailIngredientsDto,
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
 
@@ -39,6 +40,13 @@ import {
  * table has no `restaurant_id` — and the response says so in `scope`; the path
  * parameter is there so the read is attributable and gated, not to imply the
  * rows belong to the house.
+ *
+ * WHO MAY WRITE. Recording, amending and retiring a cocktail, and replacing its
+ * recipe, are an owner's or a manager's, like every other change to what the
+ * house sells (RolesGuard, exact: admin and a role-less session are refused).
+ * Until 2026-11-13 the four writes carried only `JwtAuthGuard`, so a staff
+ * member could put a drink on the list or take one off (r34 walk w1 F13).
+ * The reads stay open to the whole house.
  *
  * WRITES, AND WHERE THEY STOP. `public.cocktails` carries a `restaurant_id`
  * and is this house's own list, so it has full CRUD here. `public.beverages`
@@ -182,6 +190,8 @@ export class BeveragesController {
   /* ── cocktails: create, amend, retire, and record the recipe ───────────── */
 
   @Post("cocktails/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Record a cocktail on this house's list" })
   @ApiResponse({ status: 201, description: "The row as it was written" })
   async createCocktail(
@@ -192,6 +202,8 @@ export class BeveragesController {
   }
 
   @Patch("cocktails/:restaurantId/:cocktailId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Amend one of this house's cocktails" })
   async updateCocktail(
     @Param("restaurantId") restaurantId: string,
@@ -204,6 +216,8 @@ export class BeveragesController {
   }
 
   @Delete("cocktails/:restaurantId/:cocktailId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Take a cocktail off the list (soft — the row is kept, dated)",
   })
@@ -227,18 +241,23 @@ export class BeveragesController {
     );
   }
 
+  /**
+   * Retired. A recipe is the versioned one (PUT /recipes/:restaurantId/cocktails/:id,
+   * which saves a whole version in one call and is what cost, taste and the
+   * drawer read). This route deleted every old line and then inserted the new
+   * ones as two calls with no transaction, so a failed insert left the drink
+   * with no recipe at all, and it kept a second truth. The old rows stay
+   * readable (GET above); nothing writes them any more.
+   */
   @Put("cocktails/:restaurantId/:cocktailId/ingredients")
-  @ApiOperation({
-    summary:
-      "Replace one cocktail's recipe. The first writer cocktail_ingredients has ever had.",
-  })
-  async setIngredients(
-    @Param("restaurantId") restaurantId: string,
-    @Param("cocktailId", new ParseUUIDPipe()) cocktailId: string,
-    @Body() dto: SetCocktailIngredientsDto,
-  ) {
-    return this.guard(() =>
-      this.beverages.setCocktailIngredients(restaurantId, cocktailId, dto),
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Retired: save the recipe through PUT /recipes/:restaurantId/cocktails/:id" })
+  @ApiResponse({ status: 410, description: "This writer is retired." })
+  setIngredients(): never {
+    throw new HttpException(
+      "The old recipe box no longer saves. Save the recipe from the drink's recipe sheet, which saves through PUT /recipes/{restaurantId}/cocktails/{cocktailId}; nothing was written.",
+      HttpStatus.GONE,
     );
   }
 

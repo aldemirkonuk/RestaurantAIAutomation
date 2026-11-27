@@ -208,6 +208,10 @@
 .cl-table tbody tr {
   cursor: pointer;
 }
+/* The cocktail list's rows are 53 px from first paint: a row is 35 px with its figures unread and 53 px once a
+   cost cell carries its second line, so the rows moved by 18 px each when the figures landed (r105 walk, FAIL 14).
+   The height is a floor, so a taller row still grows. No transition, and none under reduced motion (ADR 0112). */
+.cl-table--drinks tbody tr { height: 53px; }
 .cl-table tbody tr:hover td {
   background: var(--paper-1);
 }
@@ -932,6 +936,26 @@ textarea.cl-field {
   text-decoration: underline;
 }
 .cl-rcp-flag { color: var(--warn); }
+.cl-rcp-kept { display: block; margin-top: 3px; font-size: 11.5px; opacity: 0.75; }
+.cl-rcp-undo { margin: 6px 0 0; font-size: 11.5px; color: var(--ink-2); animation: cl-rcp-undo-in 220ms cubic-bezier(0.34, 1.4, 0.64, 1); }
+.cl-rcp-undo[data-spent='true'] { visibility: hidden; animation: none; }
+.cl-rcp-undo-btn { background: none; border: 0; padding: 0 2px; font: inherit; text-decoration: underline; cursor: pointer; color: inherit; }
+@keyframes cl-rcp-undo-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cl-rcp-undo { animation: none; } }
+/* A linked line leads to its good's drawer on /inventory. */
+.cl-rcp-good {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 11.5px;
+  /* --ink-4, not --ink-3: the higher-contrast caption token (see .cl-note). */
+  color: var(--ink-4);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.cl-rcp-good:hover { color: var(--ink-1); }
+.cl-rcp-read .cl-rcp-good { margin-left: auto; }
 .cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
 .cl-rcp-note-warn {
   padding: 4px 8px;
@@ -940,6 +964,13 @@ textarea.cl-field {
   color: var(--ink-1);
   border-left: 3px solid var(--warn);
 }
+/* The weight a line waits for (r28 gap 7): label, box, g and Keep wrap on a phone. */
+.cl-rcp-weigh { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.cl-rcp-weigh .cl-rcp-note { flex-basis: 100%; }
+/* Adding a good from a line that found none (r28 gap 8): one column on a phone. */
+.cl-rcp-add { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 6px 8px; align-items: center; margin-top: 8px; font-size: 12px; }
+.cl-rcp-add > span, .cl-rcp-add > .cl-rcp-note { grid-column: 1 / -1; }
+@media (max-width: 480px) { .cl-rcp-add { grid-template-columns: minmax(0, 1fr); } }
 .cl-rcp-picker { margin-top: 8px; padding: 8px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-0); }
 .cl-rcp-picks { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
 .cl-rcp-pick {
@@ -1016,6 +1047,12 @@ textarea.cl-field {
 .cl-rcp-card[data-known='false'] .cl-rcp-card-fig { color: var(--ink-4); font-size: 15px; }
 .cl-rcp-card[data-warn='true'] { border-color: var(--warn); }
 .cl-rcp-card-said { font-size: 11.5px; line-height: 1.4; color: var(--ink-4); }
+/* The card a figure opens shows where the focus landed, by key or by mouse:
+   a moved focus is not :focus-visible after a click (r39 walk). */
+.cl-rcp-target:focus {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
 .cl-rcp-nutrition {
   margin-bottom: 12px;
   padding: 10px 12px;
@@ -1060,6 +1097,7 @@ textarea.cl-field {
   .cl-rcp .cl-btn,
   .cl-rcp .cl-linkish,
   .cl-rcp-link,
+  .cl-rcp-good,
   .cl-rcp-pick { min-height: 44px; }
   .cl-rcp .cl-field { font-size: 16px; }
   .cl-rcp .cl-btn { font-size: 14px; }
@@ -1128,4 +1166,54 @@ textarea.cl-field {
     height: 44px;
     min-height: 44px;
   }
+}
+
+/* The "N drinks have no recipe yet" line over the cocktail list: it lands with the figures, so its
+   room is held from first paint. The line's own 12px top margin is inside the room (flow-root), and
+   one line wide holds 1lh, two at a phone. No transition, and none under reduced motion (ADR 0112). */
+.cl-norecipe-room { display: flow-root; min-height: calc(12px + 1lh); }
+@media (max-width: 640px) { .cl-norecipe-room { min-height: calc(12px + 2lh); } }
+
+/* The figures line over the cocktail list (r104 drinks need 3): its room is the
+   same loading and loaded, so the table under it does not move when the list lands. */
+.cl-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; min-height: 36px; }
+@media (max-width: 640px) { .cl-strip { min-height: 84px; } }
+.cl-sort { background: none; border: 0; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.cl-sort-mark { display: inline-block; width: 1.1ch; text-align: left; margin-left: 3px; }
+
+/* One sentence under a table of shares (the tax basis, said once). Its room is held from first
+   paint, so reading the basis moves nothing: one line wide, two on a phone. No transition (ADR 0112). */
+.cl-share-caption {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+@media (max-width: 640px) {
+  .cl-share-caption {
+    min-height: 2.8em;
+  }
+}
+
+/* The register nav ("Wines ... Soft drinks, Menu") sits in the page header. At a phone it wraps to two
+   rows of 30px buttons with a 4px gap once the web font lands; before that it can paint on one row, and
+   the header then drops 34px and drags the page with it (walk r106: owner 375, CLS 0.2195 at 536 ms).
+   Its two-row room is held from first paint. No transition, and none under reduced motion (ADR 0112). */
+@media (max-width: 640px) {
+  .cl-spine-nav { min-height: 64px; align-content: flex-start; }
+}
+
+/* The recipe card (r104 drinks need 4): hidden on screen; drawn alone on paper
+   while the button has set html[data-print-card]. No animation, no overlay. */
+.cl-rcp-print { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 8px; }
+.cl-print-card { display: none; }
+@media print {
+  html[data-print-card] body > *:not(.cl-print-card) { display: none !important; }
+  html[data-print-card] .cl-print-card {
+    display: block; width: 100%; box-sizing: border-box;
+    padding: 24px; color: #000; background: #fff; font-size: 14px; line-height: 1.5;
+  }
+  .cl-print-card h1 { font-size: 26px; margin: 0 0 6px; }
+  .cl-print-card ol { padding-left: 18px; margin: 12px 0; }
+  .cl-print-card .cl-print-method { white-space: pre-wrap; }
 }

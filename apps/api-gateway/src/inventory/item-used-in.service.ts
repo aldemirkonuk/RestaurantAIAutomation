@@ -135,10 +135,19 @@ export class ItemUsedInService {
       this.inDrinkRecipes(client, restaurantId, item),
     ]);
 
+    // A cocktail with a versioned recipe is shown once, from that recipe (the
+    // real source for cost and taste); its old lines stay only for a cocktail
+    // that has none. If the versioned read failed we cannot tell, so keep both.
+    const versioned = new Set((inDrinkRecipes.lines ?? []).map((l) => l.cocktailId));
+    const legacy: Group<CocktailLine> =
+      inCocktails.readable && inCocktails.lines && inDrinkRecipes.readable
+        ? { ...inCocktails, lines: inCocktails.lines.filter((l) => !versioned.has(l.cocktailId)) }
+        : inCocktails;
+
     return {
       item: { id: item.id, kind: item.kind, displayName: item.displayName },
       soldAs: menu.soldAs,
-      inCocktails,
+      inCocktails: legacy,
       inDrinkRecipes,
       namedNotLinked: menu.namedNotLinked,
     };

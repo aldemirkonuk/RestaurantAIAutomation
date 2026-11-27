@@ -28,8 +28,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useSortFlip } from './useSortFlip';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
@@ -39,19 +40,26 @@ import {
   type HouseBookId,
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
+import { COPY_CANNOT_CARRY, COPY_RECIPE_FAILED, copyFields } from './recipe/copyDrink';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
-import { pourCostShare } from './recipe/DrinkCards';
+import { ShareBasisCaption, ShareFigure, marginPerServe, pourCostShare } from './recipe/DrinkCards';
+import { ExportMenu } from '../../../components/ui/ExportMenu';
+import { exportTable, type TableExportFormat } from '../../../lib/tableExport';
+import { FIRST_DIR, drinkNumbers, exportColumns, sortDrinks, stripFor, type SortDir, type SortKey } from './registerFigures';
+import { useListTax } from './recipe/useListTax';
+import type { ListTax } from './recipe/listTax';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
 import { AllergenCell, AllergenCheck, keptFor } from './recipe/ListAllergens';
-import { CostWaits, NoRecipeYet } from './recipe/ListCostWaits';
+import { CostWaits, NoCostYet, NoRecipeYet, costNotKnown } from './recipe/ListCostWaits';
 import { MENU_PRICES_UNREAD, MenuPriceCell } from './recipe/MenuPriceCell';
 import UseMenuPrice from './recipe/UseMenuPrice';
 import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
 import type { DrinkFigureRow } from '../../../services/api/recipes';
 import { SHEET_HOLD_ROOM } from './recipe/holdRoom';
 import {
+  useCocktailManages,
   useCocktailRegister,
   useCocktailWrites,
   type CocktailInput,
@@ -123,12 +131,14 @@ function drinkCells(
   read: boolean,
   say: (n: number | null | undefined) => string,
   sayPct: SayPercent,
+  tax: ListTax,
 ) {
   const dim = <span className="cl-dim">{EM}</span>;
-  if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim };
+  if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim, margin: dim };
   const per = f.cost?.complete ? f.cost.perServe : null;
   const part = f.cost?.partial ?? 0;
-  const share = pourCostShare(f.cost, price);
+  const share = pourCostShare(f.cost, price, tax);
+  const m = marginPerServe(f.cost, price, tax);
   return {
     cost:
       per == null ? (
@@ -146,7 +156,8 @@ function drinkCells(
       ) : (
         say(per)
       ),
-    share: 'pct' in share ? sayPct(share.pct) : 'Not known',
+    share: 'pct' in share ? <ShareFigure text={sayPct(share.pct)} tax={tax} /> : 'Not known',
+    margin: 'margin' in m ? (m.margin < 0 ? `\u2212${say(-m.margin)}` : say(m.margin)) : 'Not known',
   };
 }
 
@@ -178,7 +189,10 @@ export default function CocktailRegister({
   registerLoading: boolean;
 }) {
   const { data, loading, error } = useCocktailRegister(true);
-  const { create, amend, retire } = useCocktailWrites();
+  const { create, amend, retire, copy } = useCocktailWrites();
+  // Recording, amending and retiring a cocktail are an owner's or a manager's;
+  // the gateway refuses them to staff with 403, so staff are not offered them.
+  const manages = useCocktailManages();
   // The house's money, as the drink's own cards print it: the cellar's
   // `money()` wrote $ for every house, so a lira list read "$14.00" beside
   // cards that read "₺14.00" (r7 browser check, 2026-11-12).
@@ -193,6 +207,7 @@ export default function CocktailRegister({
   const menu = useMenuPrices('drink', seesCost);
   const showMenu = Boolean(seesCost && menu.byId && (menu.currentMenus ?? 0) > 0);
   const sayPct = useHousePercent();
+  const tax = useListTax();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
@@ -232,6 +247,7 @@ export default function CocktailRegister({
   const [query, setQuery] = useState('');
   const [allergen, setAllergen] = useState('');
   const [onlyBare, setOnlyBare] = useState(false);
+  const [onlyUncosted, setOnlyUncosted] = useState(false);
 
   // A link to a drink this house's list does not hold is said, not ignored.
   const linkedRow = openParam ? (data?.rows ?? []).find((c) => c.id === openParam) ?? null : null;
@@ -246,7 +262,52 @@ export default function CocktailRegister({
   const byAllergen = searched.filter((c) => keptFor(figures.byId?.get(c.id)?.allergens, allergen));
   // Which drinks have no recipe: known only once the figures are read.
   const bareIds = figures.byId ? (data?.rows ?? []).filter((c) => !figures.byId?.get(c.id)?.hasRecipe).map((c) => c.id) : [];
-  const rows = seesCost && onlyBare ? byAllergen.filter((c) => bareIds.includes(c.id)) : byAllergen;
+  // Drinks with a recipe whose cost is not known (a line has no price). Said only once the figures are read.
+  const uncostedIds =
+    figures.byId && !figures.costsUnread
+      ? (data?.rows ?? []).filter((c) => {
+          const f = figures.byId?.get(c.id);
+          return Boolean(f?.hasRecipe) && costNotKnown(f?.cost);
+        }).map((c) => c.id)
+      : [];
+  const rows = !seesCost
+    ? byAllergen
+    : onlyBare
+      ? byAllergen.filter((c) => bareIds.includes(c.id))
+      : onlyUncosted
+        ? byAllergen.filter((c) => uncostedIds.includes(c.id))
+        : byAllergen;
+  const figuresRead = Boolean(figures.byId) && !figures.costsUnread;
+  const numbersOf = (c: (typeof rows)[number]) => drinkNumbers(c.price ?? null, figures.byId?.get(c.id), figuresRead, tax);
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
+  const bodyRef = useRef<HTMLTableSectionElement | null>(null);
+  const flip = useSortFlip(bodyRef, `${sort?.key ?? ''}:${sort?.dir ?? ''}`);
+  const pressSort = (key: SortKey) => {
+    flip.before();
+    setSort((cur) => {
+      if (!cur || cur.key !== key) return { key, dir: FIRST_DIR[key] };
+      if (cur.dir === FIRST_DIR[key]) return { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' };
+      return null;
+    });
+  };
+  const shown = sortDrinks(rows, sort?.key ?? null, sort?.dir ?? 'asc', numbersOf);
+  const strip = stripFor(rows.map(numbersOf));
+  const sortHead = (key: SortKey, label: string) => (
+    <th scope="col" style={{ textAlign: 'right' }} aria-sort={sort?.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="cl-sort cl-focus" onClick={() => pressSort(key)} data-testid={`sort-${key}`}>
+        {label}
+        <span aria-hidden className="cl-sort-mark">{sort?.key === key ? (sort.dir === 'asc' ? '\u2191' : '\u2193') : ''}</span>
+      </button>
+    </th>
+  );
+  const exportList = (format: TableExportFormat) =>
+    exportTable({
+      format,
+      rows: shown.map((c) => ({ ...c, numbers: numbersOf(c) })),
+      columns: exportColumns(seesCost),
+      filename: 'cocktails',
+      title: 'Cocktails',
+    });
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
   // A drink a link named opens only once the table under it has laid out: the
   // stand first draws closed, then (after a forced style flush, so the change is
@@ -305,6 +366,23 @@ export default function CocktailRegister({
     }
   };
 
+  // Copy: a new drink (own id) with the source's section, glass, method, garnish
+  // and recipe lines; the form then opens on the new drink so its name is edited.
+  const doCopy = async (c: (typeof rows)[number]) => {
+    const label = c.display_name ?? c.name;
+    try {
+      const out = await copy.mutateAsync(c);
+      if (out.state === 'cannot') return setSaid(COPY_CANNOT_CARRY);
+      if (out.state === 'recipe_failed') setSaid(COPY_RECIPE_FAILED);
+      else setSaid(`“${label}” was copied. Give the copy its name.`);
+      setEditId(out.id);
+      setDraft({ ...copyFields(c), priceText: '' });
+      setOpenId(out.id);
+    } catch (e) {
+      setSaid(`Nothing was copied${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`);
+    }
+  };
+
   const doRetire = async (id: string, name: string) => {
     try {
       await retire.mutateAsync(id);
@@ -331,26 +409,34 @@ export default function CocktailRegister({
           onChange={(e) => setQuery(e.target.value)}
           style={{ minWidth: 220, flex: '1 1 220px' }}
         />
-        <button
-          type="button"
-          className="cl-btn cl-focus"
-          data-on={draft !== null && editId === null}
-          onClick={() => {
-            changeDraft(draft && editId === null ? null : {});
-            setEditId(null);
-          }}
-          style={{ marginLeft: 'auto' }}
-        >
-          <Plus size={13} aria-hidden />
-          Add a cocktail
-        </button>
+        {manages ? (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            data-on={draft !== null && editId === null}
+            onClick={() => {
+              changeDraft(draft && editId === null ? null : {});
+              setEditId(null);
+            }}
+            style={{ marginLeft: 'auto' }}
+          >
+            <Plus size={13} aria-hidden />
+            Add a cocktail
+          </button>
+        ) : null}
       </div>
+      {manages ? null : (
+        <p className="cl-note" data-testid="cocktail-who-writes">
+          An owner or a manager keeps this list: adding, amending or taking a
+          cocktail off, and writing its recipe, are theirs.
+        </p>
+      )}
 
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
 
       {seesCost ? <MenuDrinksOffer /> : null}
 
-      {draft ? (
+      {draft && manages ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
           <h3 className="cl-h2" style={{ fontSize: 19 }}>
             {editId ? 'Amend this cocktail' : 'A cocktail on this house’s list'}
@@ -417,12 +503,13 @@ export default function CocktailRegister({
           <p className="cl-note" role="status" style={{ minHeight: '2lh' }}>
             Reading this house’s cocktails…
           </p>
+          <div aria-hidden="true" className="cl-strip" data-testid="cocktails-strip-room" />
           <div
             aria-hidden="true"
             data-testid="cocktails-reading-room"
             style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}
           >
-            <table className="cl-table">
+            <table className="cl-table cl-table--drinks">
               <thead>
                 <tr>
                   <th scope="col">Cocktail</th>
@@ -496,7 +583,14 @@ export default function CocktailRegister({
           {data.rows.length > 0 ? (
             <>
               {seesCost ? (
-                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={setOnlyBare} />
+                // The line lands when the figures do (about 225 ms in), so its room is held from the first paint:
+                // empty while they load and for a house where every drink has a recipe, never given back (r104 FAIL 14).
+                <div className="cl-said cl-norecipe-room" data-testid="no-recipe-room">
+                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={(v) => { setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
+                </div>
+              ) : null}
+              {seesCost ? (
+                <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} onOnly={(v) => { setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
               ) : null}
               <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="drinks" />
             </>
@@ -505,12 +599,27 @@ export default function CocktailRegister({
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
               {data.rows.length === 0
-                ? 'This house has recorded no cocktails. That read succeeded — the list is empty, not unread. Add one above and it becomes this house’s own row, with a recipe if you want one.'
+                ? manages
+                  ? 'This house has recorded no cocktails. That read succeeded — the list is empty, not unread. Add one above and it becomes this house’s own row, with a recipe if you want one.'
+                  : 'This house has recorded no cocktails. That read succeeded — the list is empty, not unread.'
                 : 'No cocktail matches this reading.'}
             </p>
           ) : (
+            <>
+            <div className="cl-strip" data-testid="cocktails-strip">
+              <p className="cl-note" style={{ margin: 0, flex: '1 1 240px' }}>
+                {seesCost ? (
+                  !figuresRead
+                    ? 'Pour cost: not read just now.'
+                    : `${strip.averageShare == null ? 'Average pour cost: not known' : `Average pour cost ${sayPct(strip.averageShare)}`} over ${strip.priced} priced ${strip.priced === 1 ? 'drink' : 'drinks'} · ${strip.unpriced} not priced · ${strip.noRecipe} with no recipe`
+                ) : (
+                  `${rows.length} ${rows.length === 1 ? 'drink' : 'drinks'}`
+                )}
+              </p>
+              <ExportMenu variant="soft" size="sm" label="Export" count={rows.length} onExport={exportList} title="Export the drinks shown, in the order shown" />
+            </div>
             <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
-              <table className="cl-table">
+              <table className="cl-table cl-table--drinks">
                 <thead>
                   <tr>
                     <th scope="col">Cocktail</th>
@@ -518,22 +627,24 @@ export default function CocktailRegister({
                     <th scope="col">Method</th>
                     <th scope="col">Glass</th>
                     <th scope="col">Garnish</th>
-                    <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                    {sortHead('price', 'Price')}
                     {showMenu ? <th scope="col" style={{ textAlign: 'right' }}>Menu</th> : null}
-                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Cost per serve</th> : null}
-                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Pour cost</th> : null}
+                    {seesCost ? sortHead('cost', 'Cost per serve') : null}
+                    {seesCost ? sortHead('share', 'Pour cost') : null}
+                    {seesCost ? sortHead('margin', 'Margin') : null}
                     <th scope="col">Allergens</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rows.map((c) => {
+                <tbody ref={bodyRef}>
+                  {shown.map((c) => {
                     const fc = seesCost
-                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId) && !figures.costsUnread, money, sayPct)
+                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), figuresRead, money, sayPct, tax)
                       : null;
                     return (
                     <tr
                       key={c.id}
+                      data-row={c.id}
                       data-selected={c.id === openId}
                       tabIndex={0}
                       onClick={() => toggleOpen(c.id)}
@@ -565,6 +676,9 @@ export default function CocktailRegister({
                       {fc ? (
                         <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-share-${c.id}`}>{fc.share}</td>
                       ) : null}
+                      {fc ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-margin-${c.id}`}>{fc.margin}</td>
+                      ) : null}
                       <AllergenCell id={c.id} a={figures.byId?.get(c.id)?.allergens} />
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {shortDate((c as { created_at?: string }).created_at)}
@@ -575,6 +689,8 @@ export default function CocktailRegister({
                 </tbody>
               </table>
             </div>
+            {seesCost ? <ShareBasisCaption tax={tax} /> : null}
+            </>
           )}
 
           {/* the leaf: recipe + the two acts a house can take on its own row */}
@@ -595,6 +711,7 @@ export default function CocktailRegister({
                               <p className="cl-said" style={{ marginTop: 4 }}>{c.description}</p>
                             ) : null}
                           </div>
+                          {manages ? (
                           <span style={{ display: 'inline-flex', gap: 6 }}>
                             <button
                               type="button"
@@ -615,6 +732,18 @@ export default function CocktailRegister({
                               <Pencil size={13} aria-hidden />
                               Amend
                             </button>
+                            {seesCost ? (
+                              <button
+                                type="button"
+                                className="cl-btn cl-focus"
+                                data-testid="cocktail-copy"
+                                disabled={copy?.isPending}
+                                onClick={() => void doCopy(c)}
+                              >
+                                <Copy size={13} aria-hidden />
+                                Copy
+                              </button>
+                            ) : null}
                             {/* Two-step, not a seal: the house ceremony is
                                 rationed to the one act that spends money. */}
                             <button
@@ -632,6 +761,7 @@ export default function CocktailRegister({
                               {confirmRetire === c.id ? 'Take it off — confirm' : 'Take it off the list'}
                             </button>
                           </span>
+                          ) : null}
                         </div>
                         {/* The menu's price, offered while the drink differs from it (gap 2,
                             slice 2). Not while the drink's own form is open: a price taken

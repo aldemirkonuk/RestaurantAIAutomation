@@ -9,9 +9,16 @@
 import { useId } from 'react';
 import type { ListCost } from '../../../../services/api/recipes';
 
+/**
+ * The one definition of "a cost that is not known": a read cost with a line
+ * unpriced. `costWaits` (the words under the cell) and the "only without a
+ * cost" switch both ask this, so the two can never disagree about a row.
+ */
+export const costNotKnown = (cost: ListCost | undefined): cost is NonNullable<ListCost> => Boolean(cost) && !(cost as NonNullable<ListCost>).complete;
+
 /** Under a "Not known" cost: what it waits for; null when the cost is known or absent. */
 export function costWaits(cost: ListCost | undefined): string | null {
-  if (!cost || cost.complete) return null;
+  if (!costNotKnown(cost)) return null;
   if (cost.of === 0) return 'no ingredient from the shelf yet';
   return `${cost.priced} of ${cost.of} ingredients priced`;
 }
@@ -49,6 +56,34 @@ export function NoRecipeYet({
       <label htmlFor={`${id}-only`} style={{ whiteSpace: 'nowrap' }}>
         <input id={`${id}-only`} type="checkbox" className="cl-focus" checked={only} onChange={(e) => onOnly(e.target.checked)} /> Show
         only {bare === 1 ? 'that one' : 'those'}
+      </label>
+    </p>
+  );
+}
+
+/** "3 of 20 drinks have a cost that is not known…", with a box that shows only those; nothing when none. */
+export function NoCostYet({
+  unknown,
+  of,
+  noun,
+  only,
+  onOnly,
+}: {
+  unknown: number;
+  of: number;
+  noun: 'dishes' | 'drinks';
+  only: boolean;
+  onOnly: (v: boolean) => void;
+}) {
+  const id = useId();
+  if (unknown === 0) return null;
+  const one = noun === 'dishes' ? 'dish' : 'drink';
+  return (
+    <p className="cl-said" style={{ marginTop: 12 }} data-testid="no-cost-yet">
+      {unknown} of {of} {of === 1 ? one : noun} {unknown === 1 ? 'has' : 'have'} a recipe with a line that has no price, so what{' '}
+      {unknown === 1 ? 'it costs' : 'they cost'} is not known.{' '}
+      <label htmlFor={`${id}-only`} style={{ whiteSpace: 'nowrap' }}>
+        <input id={`${id}-only`} type="checkbox" className="cl-focus" checked={only} onChange={(e) => onOnly(e.target.checked)} /> Only without a cost
       </label>
     </p>
   );

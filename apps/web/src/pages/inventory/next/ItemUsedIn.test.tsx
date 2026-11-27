@@ -8,12 +8,14 @@ import { MemoryRouter } from 'react-router-dom';
 import ItemUsedIn, {
   DRINKS_DO_NOT_DRAW,
   DRINK_RECIPES_UNREAD,
+  OLD_RECIPE_BOX,
   drinkHref,
   drinkGroups,
-  foodCostShare,
   type DishesLoad,
   type DrinksLoad,
 } from './ItemUsedIn';
+import { pourCostShare } from '../../cellar/next/recipe/DrinkCards';
+import type { ListTax } from '../../cellar/next/recipe/listTax';
 import type { ItemDish, ItemDrink } from '../../../services/api/itemDishes';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
@@ -52,6 +54,16 @@ describe('Used in', () => {
     );
     expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(DRINKS_DO_NOT_DRAW);
     expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain(DRINKS_DO_NOT_DRAW);
+  });
+
+  it('a drink only the old recipe box holds is marked read only, with its quantity (r103 need 7)', () => {
+    render(
+      <MemoryRouter>
+        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load()} canManage currency={EUR} onRetry={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(`40 ml · ${OLD_RECIPE_BOX}`);
+    expect(OLD_RECIPE_BOX).toBe('old recipe box, read only');
   });
 
   it('a drink that uses the good opens that drink, in the app and outside it', () => {
@@ -181,9 +193,23 @@ describe('Used in', () => {
       />,
     );
     const items = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
-    expect(items.map((li) => li.textContent)).toEqual(['Rakı sour0.3 oz', 'Rakı sour0.3 oz', 'Lion milk29.57 ml']);
+    expect(items.map((li) => li.textContent)).toEqual(['Rakı sour0.3 oz · old recipe box, read only', 'Rakı sour0.3 oz · old recipe box, read only', 'Lion milk29.57 ml · old recipe box, read only']);
     expect(err.mock.calls.flat().join(' ')).not.toMatch(/same key/);
     err.mockRestore();
+  });
+
+  it('writes a recipe quantity in the house form: a lira house gets the decimal comma', () => {
+    render(
+      <ItemUsedIn
+        dishes={NO_DISHES}
+        onRetryDishes={vi.fn()}
+        load={load({ inCocktails: ok([{ cocktailId: 'c2', name: 'Lion milk', quantity: 29.5735295625, unit: 'ml' }]) })}
+        canManage
+        currency={{ state: 'recorded', code: 'TRY' }}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('listitem').textContent).toBe('Lion milk29,57 ml · old recipe box, read only');
   });
 
   it('shows menu prices to owners and managers only', () => {
@@ -243,7 +269,7 @@ describe('Used in', () => {
     it('lists a drink once: its recipe line, not its card again', () => {
       draw({ inCocktails: ok([c('c1', 'Rakı sour'), c('c3', 'Old card')]), inDrinkRecipes: ok([d('c1', 'Rakı sour')]) });
       const cards = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
-      expect(cards.map((li) => li.textContent)).toEqual(['Old card40 ml']);
+      expect(cards.map((li) => li.textContent)).toEqual(['Old card40 ml · old recipe box, read only']);
       expect(within(screen.getByTestId('ivd-used-drink-recipes')).getByText(/Rakı sour/)).toBeTruthy();
     });
 
@@ -311,7 +337,9 @@ describe('In dish recipes', () => {
     expect(t('cost')).toContain('2.50');
     expect(t('price')).toContain('10');
     expect(t('food-cost')).toContain('25.0%');
-    expect(t('food-cost')).toContain('of the price as your list has it; whether that price includes tax is not recorded');
+    expect(t('food-cost')).toContain('Of the price as your list has it; whether that price includes tax is not recorded.');
+    // Unset: the figure is in the warn tone, the sentence directly under it (r103 need 2).
+    expect(screen.getByTestId('ivd-dish-d1-food-cost').querySelector('.ivd-card-v')).toHaveAttribute('data-warn', 'true');
   });
 
   it('an incomplete cost is Not known with how many lines are priced', () => {
@@ -326,7 +354,7 @@ describe('In dish recipes', () => {
     mount(ready(dish({ price: null })));
     expect(t('price')).toContain('Not on the dish');
     expect(t('food-cost')).toContain('Not known');
-    expect(t('food-cost')).toContain('the dish has no price');
+    expect(t('food-cost')).toContain('your list has no price for it');
   });
 
   it('staff see no cost, price or food cost, only the quantity', () => {
@@ -343,23 +371,22 @@ describe('In dish recipes', () => {
   });
 });
 
-describe('foodCostShare', () => {
+describe('the drawer share is the shared one (pourCostShare)', () => {
   const c = (over = {}) => ({ perServe: 2.5, perServeExact: 2.5, priced: 3, of: 3, complete: true, partial: 0, ...over });
   it('is the exact cost over the price, one decimal', () => {
-    expect(foodCostShare(c(), 10)).toEqual({ pct: 25 });
-    expect(foodCostShare(c({ perServeExact: 1 }), 3)).toEqual({ pct: 33.3 });
+    expect(pourCostShare(c(), 10)).toEqual({ pct: 25 });
+    expect(pourCostShare(c({ perServeExact: 1 }), 3)).toEqual({ pct: 33.3 });
   });
   it('is missing when the price is 0 or null', () => {
-    expect(foodCostShare(c(), 0)).toEqual({ missing: ['the dish has no price'] });
-    expect(foodCostShare(c(), null)).toEqual({ missing: ['the dish has no price'] });
+    expect(pourCostShare(c(), 0)).toEqual({ missing: ['the price on your list is 0'] });
+    expect(pourCostShare(c(), null)).toEqual({ missing: ['your list has no price for it'] });
   });
   it('is missing when the cost is incomplete, or null', () => {
-    expect(foodCostShare(c({ complete: false }), 10)).toEqual({ missing: ['the cost is not complete'] });
-    expect(foodCostShare(c({ perServeExact: null }), 10)).toEqual({ missing: ['the cost is not complete'] });
-    expect(foodCostShare(null, 10)).toEqual({ missing: ['the cost is not complete'] });
+    expect(pourCostShare(c({ complete: false }), 10)).toEqual({ missing: ['the cost is not complete'] });
+    expect(pourCostShare(null, 10)).toEqual({ missing: ['the cost is not complete'] });
   });
   it('names both when both are missing', () => {
-    expect(foodCostShare(c({ complete: false }), 0)).toEqual({ missing: ['the cost is not complete', 'the dish has no price'] });
+    expect(pourCostShare(c({ complete: false }), 0)).toEqual({ missing: ['the cost is not complete', 'the price on your list is 0'] });
   });
 });
 
@@ -429,7 +456,7 @@ describe('In drink recipes, with their cards (the same as a dish)', () => {
     expect(dt('cost')).toContain('Not known');
     expect(dt('cost')).toContain('1 of 2 lines priced');
     expect(dt('price')).toContain('Not on the drink');
-    expect(dt('pour-cost')).toContain('the cost is not complete and the drink has no price');
+    expect(dt('pour-cost')).toContain('the cost is not complete and your list has no price for it');
     expect(dt('pour-cost')).not.toMatch(/%/);
   });
 
@@ -469,13 +496,50 @@ describe('In drink recipes, with their cards (the same as a dish)', () => {
       over: { inCocktails: ok([{ cocktailId: 'c1', name: 'House G&T', quantity: 50, unit: 'ml' }, { cocktailId: 'c3', name: 'Old card', quantity: 1, unit: 'ml' }]) },
     });
     const cards = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
-    expect(cards.map((li) => li.textContent)).toEqual(['Old card1 ml']);
+    expect(cards.map((li) => li.textContent)).toEqual(['Old card1 ml · old recipe box, read only']);
     expect(screen.getByTestId('ivd-drink-c1')).toBeTruthy();
   });
 });
 
-describe('foodCostShare for a drink', () => {
-  it('names the drink when the price is missing', () => {
-    expect(foodCostShare(null, null, 'drink')).toEqual({ missing: ['the cost is not complete', 'the drink has no price'] });
+describe('the drawer share follows the house tax basis (r103 need 2, DD-r102-32)', () => {
+  const include = (ratePct: number | null): ListTax => ({ basis: 'prices_include_tax', ratePct });
+  const withTax = (tax: ListTax) =>
+    render(
+      <MemoryRouter>
+        <ItemUsedIn
+          dishes={{ status: 'ready', data: { dishes: [dish()] } }}
+          onRetryDishes={vi.fn()}
+          load={load()}
+          canManage
+          currency={EUR}
+          tax={tax}
+          onRetry={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  const food = () => screen.getByTestId('ivd-dish-d1-food-cost');
+
+  it('a tax-inclusive house reads its food cost over the price before tax, and says so, in the plain tone', () => {
+    withTax(include(20));
+    // 10 on the list is 8.33 before 20 % tax: 2.5 / 8.333 = 30.0 %.
+    expect(food().textContent).toContain('30.0%');
+    expect(food().textContent).toContain('of the price before tax');
+    expect(food().querySelector('.ivd-card-v')).not.toHaveAttribute('data-warn');
+  });
+
+  it('an unset or unread basis is in the warn tone with its sentence under it, never "before tax"', () => {
+    for (const tax of [{ basis: 'unset' }, { basis: 'unread', failed: true }] as ListTax[]) {
+      const { unmount } = withTax(tax);
+      expect(food().querySelector('.ivd-card-v')).toHaveAttribute('data-warn', 'true');
+      expect(food().textContent).not.toContain('before tax');
+      expect(food().textContent).toContain('whether that price includes tax');
+      unmount();
+    }
+  });
+
+  it('a tax-inclusive house with no rate recorded gets no figure and says why', () => {
+    withTax(include(null));
+    expect(food().textContent).toContain('Not known');
+    expect(food().textContent).toContain('no tax rate for them is recorded');
   });
 });

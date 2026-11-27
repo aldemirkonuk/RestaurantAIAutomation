@@ -6,7 +6,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
 import { DishesService } from "./dishes.service";
-import { CreateDishDto, PreviewCostDto, SaveRecipeDto, ShelfMatchDto, TakeMenuPricesDto, TakeOffMenuDto, UpdateDishDto } from "./dto/recipes.dto";
+import { CreateDishDto, PreviewCostDto, SaveRecipeDto, SetYieldDto, ShelfMatchDto, TakeMenuPricesDto, TakeOffMenuDto, UpdateDishDto } from "./dto/recipes.dto";
 
 /**
  * A dish and its recipe (ADR 0366), on the drinks' recipe routes. Every route
@@ -79,6 +79,21 @@ export class DishesController {
     @Body() dto: UpdateDishDto,
   ) {
     return this.dishes.updateDish(restaurantId, dishId, dto);
+  }
+
+  @Patch(":restaurantId/dishes/:dishId/yield")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Set what one batch of a house-made component makes (owner/manager); every drink or dish that draws it is priced again from this figure",
+  })
+  setYield(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("dishId", ParseUUIDPipe) dishId: string,
+    @Body() dto: SetYieldDto,
+  ) {
+    return this.dishes.setYield(restaurantId, dishId, dto);
   }
 
   @Delete(":restaurantId/dishes/:dishId")

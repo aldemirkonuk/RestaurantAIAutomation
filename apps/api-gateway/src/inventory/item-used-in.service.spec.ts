@@ -234,6 +234,59 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
   });
 });
 
+describe("the legacy cocktail group (cocktail_ingredients has no restaurant_id)", () => {
+  /** PostgREST hands back at most 1,000 rows however many match. */
+  const cap = (db: FakeDb) => {
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      const q: any = real(t);
+      const then = q.then.bind(q);
+      q.then = (ok: any, no: any) => then((r: any) => ok({ ...r, data: r.data ? r.data.slice(0, 1000) : r.data }), no);
+      return q;
+    };
+  };
+  it("a house's three cocktails still show when another house's 1,200 lines of the same drink come first", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.tables.cocktails = [
+      ...["c1", "c2", "c3"].map((id) => ({ id, restaurant_id: H, name: `Mine ${id}`, display_name: null, deleted_at: null })),
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `x${k}`, restaurant_id: "house-2", name: `Theirs ${k}`, display_name: null, deleted_at: null })),
+    ];
+    db.tables.cocktail_ingredients = [
+      ...Array.from({ length: 1200 }, (_, k) => ({ cocktail_id: `x${k}`, beverage_id: "bev-1", quantity: 40, unit: "ml" })),
+      ...["c1", "c2", "c3"].map((id) => ({ cocktail_id: id, beverage_id: "bev-1", quantity: 50, unit: "ml" })),
+    ];
+    cap(db);
+    const out = await svc.usedIn(H, I);
+    expect(out.inCocktails.readable).toBe(true);
+    expect(out.inCocktails.lines!.map((l) => l.cocktailId).sort()).toEqual(["c1", "c2", "c3"]);
+  });
+  it("a cocktail with a versioned recipe is listed once, from that recipe; one with only old lines stays", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.tables.cocktails = [
+      { id: "c-new", restaurant_id: H, name: "New", display_name: null, deleted_at: null },
+      { id: "c-old", restaurant_id: H, name: "Old", display_name: null, deleted_at: null },
+    ];
+    db.tables.cocktail_ingredients = [
+      { cocktail_id: "c-new", beverage_id: "bev-1", quantity: 50, unit: "ml" },
+      { cocktail_id: "c-old", beverage_id: "bev-1", quantity: 30, unit: "ml" },
+    ];
+    db.tables.recipe_current = [{ restaurant_id: H, cocktail_id: "c-new", version_id: "v1" }];
+    db.tables.recipe_lines = [{ id: "l1", version_id: "v1", restaurant_id: H, inventory_id: I, position: 1, label: "Unx", qty_entered: 45, unit_code: "ml" }];
+    const out = await svc.usedIn(H, I);
+    expect(out.inDrinkRecipes.lines!.map((l) => l.cocktailId)).toEqual(["c-new"]);
+    expect(out.inCocktails.lines!.map((l) => l.cocktailId)).toEqual(["c-old"]);
+  });
+  it("keeps both groups when the versioned read failed, since it cannot say which cocktails it covers", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });
+    db.tables.cocktails = [{ id: "c-new", restaurant_id: H, name: "New", display_name: null, deleted_at: null }];
+    db.tables.cocktail_ingredients = [{ cocktail_id: "c-new", beverage_id: "bev-1", quantity: 50, unit: "ml" }];
+    db.failures.recipe_lines = "boom";
+    const out = await svc.usedIn(H, I);
+    expect(out.inDrinkRecipes.readable).toBe(false);
+    expect(out.inCocktails.lines!.map((l) => l.cocktailId)).toEqual(["c-new"]);
+  });
+});
+
 describe("ItemUsedInService reads its groups at once (the drawer waits for the slowest, not the sum)", () => {
   it("starts the drink reads while the menu read is still out, and still answers every group", async () => {
     const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: "bev-1", master_wine_id: null });

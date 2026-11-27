@@ -11,6 +11,9 @@ import {
 } from "../analytics/inventory-cost";
 
 export type BaseUnit = "ml10" | "mg" | "each_milli";
+
+/** What a base unit is called to a person: never the stored token (ml10, mg, each_milli). */
+export const BASE_UNIT_WORDS: Record<BaseUnit, string> = { ml10: "millilitres", mg: "grams", each_milli: "pieces" };
 export type LineStatus = "linked" | "not_linked" | "untracked";
 /**
  * Why a linked line has no price, beside the cost bases (round 17, D6):
@@ -20,7 +23,15 @@ export type LineStatus = "linked" | "not_linked" | "untracked";
  * - unit_mismatch: the line is measured one way (volume, weight, pieces) and
  *   the shelf counts the item another way.
  */
-export type LineCostBasis = CostBasis | "size_not_known" | "pack_size_not_known" | "unit_mismatch";
+export type LineCostBasis =
+  | CostBasis
+  | "size_not_known"
+  | "pack_size_not_known"
+  | "unit_mismatch"
+  // A line made in the house (ADR 0397): priced through its component, or the
+  // component has no price yet (its own recipe is not whole, or is not readable).
+  | "component"
+  | "component_not_priced";
 
 export interface CostItem extends InventoryCostRow {
   uom: string;
@@ -44,7 +55,7 @@ export interface CostItem extends InventoryCostRow {
 export type BridgeNeeded = "piece_grams" | "ml_grams";
 
 export interface CostLineInput {
-  role: "stocked" | "untracked";
+  role: "stocked" | "untracked" | "made";
   inventoryId: string | null;
   qtyBase: number;
   baseUnit: BaseUnit;
@@ -57,6 +68,12 @@ export interface CostLineInput {
    * recipes gap 5).
    */
   usablePct?: number | string | null;
+  /**
+   * For a made line (ADR 0397): the component it draws and what one base unit
+   * of it costs, or null when that is not known. Absent on a made line is the
+   * same as null: a line that cannot say what it draws is not priced.
+   */
+  made?: { name: string; perBase: number | null } | null;
 }
 
 export interface LineCost {
@@ -81,6 +98,8 @@ export interface LineCost {
    * and let a mistyped weight be changed (r28 gap 7).
    */
   weighed?: StatedBridge;
+  /** Set on a made line: the component it was priced through, or waits for. */
+  throughComponent?: string;
 }
 
 /** A stated weight a line was priced through. */
@@ -231,6 +250,29 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
     exact.push(null);
     if (line.role === "untracked") return { status: "untracked", costPerServe: null, costPerServeExact: null, costBasis: null };
     of += 1;
+    if (line.role === "made") {
+      const name = line.made?.name;
+      const perBase = line.made?.perBase;
+      const unknown: LineCost = {
+        status: "linked",
+        costPerServe: null,
+        costPerServeExact: null,
+        costBasis: "component_not_priced",
+        ...(name ? { throughComponent: name } : {}),
+      };
+      if (perBase == null || !Number.isFinite(perBase)) return unknown;
+      const cost = (Number(line.qtyBase) * perBase) / serves;
+      if (!Number.isFinite(cost)) return unknown;
+      exact[exact.length - 1] = cost;
+      priced += 1;
+      return {
+        status: "linked",
+        costPerServe: round2(round6(cost)),
+        costPerServeExact: round6(cost),
+        costBasis: "component",
+        ...(name ? { throughComponent: name } : {}),
+      };
+    }
     if (!line.inventoryId || !line.item) {
       return { status: "not_linked", costPerServe: null, costPerServeExact: null, costBasis: null };
     }
@@ -259,4 +301,16 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
 
   const sum = exact.reduce<number>((a, x) => a + (x ?? 0), 0);
   return { lines: out, perServe: round2(round6(sum)), perServeExact: round6(sum), priced, of, complete, partial };
+}
+
+/**
+ * What one base unit of a house-made component costs (ADR 0397): the cost of
+ * one batch, priced as a recipe of one serve, over what the batch makes. Null
+ * unless that batch is wholly priced: a component with an unpriced line prices
+ * nothing, never a smaller figure (ADR 0051).
+ */
+export function componentPerBase(batch: RecipeCost, yieldQtyBase: number | string | null | undefined): number | null {
+  const made = Number(yieldQtyBase);
+  if (!batch.complete || batch.perServeExact == null || !Number.isFinite(made) || made <= 0) return null;
+  return batch.perServeExact / made;
 }

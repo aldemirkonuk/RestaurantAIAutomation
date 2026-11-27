@@ -17,7 +17,18 @@ import { invalidateItemReads } from '../../../inventory/next/item-queries';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
-import { dishesApi, ownerOf, recipesApi, type DishBody, type DishChange, type MenuPrice, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
+import {
+  dishesApi,
+  ownerOf,
+  recipesApi,
+  type DishBody,
+  type DishChange,
+  type MenuPrice,
+  type PreviewCostBody,
+  type RecipeOwner,
+  type SaveRecipeBody,
+  type StateWeightsBody,
+} from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { isUnreachable } from '../../../../lib/unreachable';
 import { managesHouse } from '../../../communications/next/cm-format';
@@ -337,6 +348,21 @@ export function useSaveRecipe(cocktailId: string | RecipeOwner) {
       else void qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) });
       return qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) });
     },
+  });
+}
+
+/**
+ * States what one piece or one ml of a good weighs (r28 gap 7). A good is in
+ * many recipes, so every recipe read of the house is read again: each sheet,
+ * its cost preview, and the dish list's cost per plate.
+ */
+export function useStateWeights() {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ itemId, body }: { itemId: string; body: StateWeightsBody }) =>
+      recipesApi.stateWeights(activeRestaurantId as string, itemId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] }),
   });
 }
 

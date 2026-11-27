@@ -21,9 +21,16 @@ import {
 export const RECIPE_UNITS = ["ml", "cl", "l", "oz", "tsp", "tbsp", "dash", "barspoon", "g", "kg", "each"] as const;
 
 export class RecipeLineDto {
-  @ApiProperty({ enum: ["stocked", "untracked"] })
-  @IsIn(["stocked", "untracked"])
-  role!: "stocked" | "untracked";
+  @ApiProperty({ enum: ["stocked", "untracked", "made"] })
+  @IsIn(["stocked", "untracked", "made"])
+  role!: "stocked" | "untracked" | "made";
+
+  /** The house-made component a `made` line draws (a dish with a yield; ADR 0397). */
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  componentId?: string | null;
 
   /** The house item; absent or null on a stocked line means "not linked yet". */
   @ApiPropertyOptional({ nullable: true })
@@ -188,6 +195,17 @@ export class UpdateDishDto {
   @IsString()
   @MaxLength(4000)
   description?: string | null;
+}
+
+/** What one batch of a house-made component makes (ADR 0397): an amount and a unit, stored in the unit's base. */
+export class SetYieldDto {
+  @ApiProperty({ example: 700 })
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 3 })
+  amount!: number;
+
+  @ApiProperty({ enum: RECIPE_UNITS })
+  @IsIn(RECIPE_UNITS)
+  unit!: string;
 }
 
 /** The dishes whose price should become the current menu's price (the ids the manager confirmed). */
