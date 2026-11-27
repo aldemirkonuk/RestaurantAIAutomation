@@ -665,24 +665,29 @@ export class AnalyticsService {
         : null;
 
     return {
+      // These three sentences are read by the house: /reports prints them
+      // under "Show the working" and the report export prints them in the
+      // download. They name no table and no `$` (r9 left list, 2026-11-12:
+      // "procurement_orders" and "$0 would claim the first" reached a lira
+      // house). A zero is a claim in no currency, so it is said as "a zero".
       basis: {
         cogs: t.basis.cogs,
         revenue: t.basis.revenue,
         deliveredPurchases:
           orders.length === 0
-            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
+            ? "Delivered orders over the last 365 days — left blank: no delivered order was returned for this window, which is either no purchasing or a read that failed, and a zero would claim the first"
             : ordersUncosted > 0
-              ? `delivered procurement_orders (trailing 365d) — null: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as $0 would understate what was bought`
-              : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
+              ? `Delivered orders over the last 365 days — left blank: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as zero would understate what was bought`
+              : `Delivered orders over the last 365 days — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
         shelfValueAtMenuPrice:
           inventory.length === 0
-            ? "unit_price × on-hand qty — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
-            : `unit_price × on-hand qty — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued at menu price. Not sales: it feeds no ratio`,
+            ? "The menu price × the bottles on hand — left blank: no inventory row was returned, which is either an empty cellar or a read that failed, and a zero would claim the first"
+            : `The menu price × the bottles on hand — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued at menu price. Not sales: it feeds no ratio`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
-        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
+        deadStock: `Bottles on hand with nothing poured or sold in ${DEAD_STOCK_WINDOW_DAYS} days; left blank when the house records no pouring or sales at all, or when any idle line has no recorded cost`,
         costDerived: t.basis.costDerived,
       },
       costCoverage,

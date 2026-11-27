@@ -240,7 +240,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(0);
     expect(out.deliveredPurchases).toBeNull();
-    expect(out.basis.deliveredPurchases).toContain("null");
+    expect(out.basis.deliveredPurchases).toContain("left blank");
   });
 
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {

@@ -163,7 +163,7 @@ describe("deadStockCapital measures movement, not depth", () => {
     const out = await svc.getFinancialSummary(RESTAURANT);
     expect(out.deadStockCapital).toBeNull();
     expect(out.deadStockTop).toEqual([]);
-    expect(out.basis.deadStock).toContain("wine_consumption_log");
+    expect(out.basis.deadStock).toContain("nothing poured or sold in 90 days");
   });
 
   it("keeps the recommendation from firing on a null", async () => {
