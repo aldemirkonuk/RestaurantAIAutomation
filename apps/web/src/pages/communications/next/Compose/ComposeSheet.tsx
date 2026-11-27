@@ -62,6 +62,7 @@ import { RecipientField, type Recipient } from './RecipientField';
 import { InsightPicker } from './InsightPicker';
 import { MailMotionStyles } from '../mail-motion';
 import { SenderLine } from './SenderLine';
+import { leavesAt, SendAtMenu, type SendAtChoice, type SendAtChosen } from './SendAtMenu';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
@@ -91,6 +92,7 @@ type SendState =
       says: string;
       undoMs: number | null;
       notices: GuardrailHit[];
+      sendAtChosen: SendAtChosen | null;
     }
   | { kind: 'cancelled'; says: string }
   | { kind: 'asked'; says: string }
@@ -393,7 +395,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     }
   }, [letter]);
 
-  const queue = useCallback(async (held?: string | null) => {
+  const queue = useCallback(async (held?: string | null, sendAt?: SendAtChoice) => {
     if (!to || !letter) return;
     setSend({ kind: 'queueing' });
     const challenge = held ?? (await mint());
@@ -413,7 +415,8 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
         undoMs: number | null;
         notices: GuardrailHit[];
         insightsRecorded: number;
-      }>('/communications/letters', letter, {
+        sendAtChosen?: SendAtChosen | null;
+      }>('/communications/letters', sendAt ? { ...letter, sendAt } : letter, {
         headers: { 'X-Seal-Challenge': challenge },
       });
       setSend({
@@ -423,6 +426,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
         says: result.says,
         undoMs: result.undoMs,
         notices: result.notices ?? [],
+        sendAtChosen: result.sendAtChosen ?? null,
       });
       onQueued?.();
       data.refetchQueued();
@@ -803,7 +807,9 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
                 }}
               >
                 <Undo2 {...ICON} aria-hidden />
-                Pull it back ({remaining}s)
+                {send.sendAtChosen && remaining > 60 && leavesAt(send.sendAtChosen)
+                  ? `Leaves ${leavesAt(send.sendAtChosen)} · Pull it back`
+                  : `Pull it back (${remaining}s)`}
               </button>
             )}
             {remaining === 0 && (
@@ -920,6 +926,11 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
             >
               {send.kind === 'queueing' ? 'Queueing…' : 'Send'}
             </button>
+          )}
+          {/* A time on the house's clock (r110 g1): an owner's or a manager's
+              own letter, on the click ceremony; the gateway refuses it else. */}
+          {!mayAsk && ceremony !== 'seal' && (standing?.basis === 'owner' || standing?.basis === 'manager') && (
+            <SendAtMenu disabled={!canSend} onChoose={(choice) => void queue(undefined, choice)} />
           )}
           {draftId && send.kind !== 'queued' && discarded === null && (
             <button
