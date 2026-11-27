@@ -111,7 +111,7 @@ export class PriceMovedProducer {
 
     const { data, error } = await client
       .from("procurement_documents")
-      .select("id, doc_type, doc_number, provider_id, currency, verified_at")
+      .select("id, doc_type, doc_number, provider_id, currency, verified_at, doc_date")
       .eq("restaurant_id", restaurantId)
       .eq("status", "verified")
       .gte("verified_at", since)
@@ -198,7 +198,7 @@ export class PriceMovedProducer {
       try {
         moves = await this.movesOn(
           restaurantId,
-          doc.id,
+          doc,
           paperCurrency,
           linesByDoc.get(doc.id) ?? [],
         );
@@ -256,7 +256,7 @@ export class PriceMovedProducer {
   /** The moved lines of one paper: price-move.ts's verdict, line by line. */
   private async movesOn(
     restaurantId: string,
-    paperId: string,
+    doc: { id: string; doc_date?: string | null; verified_at?: string | null },
     currency: string,
     lines: any[],
   ): Promise<Moved[]> {
@@ -265,10 +265,14 @@ export class PriceMovedProducer {
     ];
     const last = await readLastPrintedPrices(
       this.databaseService.getClient(),
-      paperId,
+      doc.id,
       currency,
       goods,
       restaurantId,
+      // The same bound the paper's own page uses (#2370): only papers checked
+      // before this one, dated on or before it. Without it two papers checked
+      // in one window are compared with each other and a real rise is lost.
+      { status: "verified", doc_date: doc.doc_date ?? null, verified_at: doc.verified_at ?? null },
     );
     const out: Moved[] = [];
     for (const l of lines) {

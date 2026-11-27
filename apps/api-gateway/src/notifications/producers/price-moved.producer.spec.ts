@@ -44,6 +44,7 @@ class Q {
   in(c: string, vs: any[]) { return this.add(c, (x) => vs.includes(x)); }
   gte(c: string, v: any) { return this.add(c, (x) => x != null && x >= v); }
   gt(c: string, v: any) { return this.add(c, (x) => Number(x) > v); }
+  lt(c: string, v: any) { return this.add(c, (x) => x != null && x < v); }
   not(c: string, _op: string, v: string) {
     const set = v.replace(/[()]/g, "").split(",");
     return this.add(c, (x) => !set.includes(x));
@@ -179,6 +180,19 @@ describe("PriceMovedProducer", () => {
     paper(tables, { id: "lira", currency: "TRY", verified_at: "2026-11-27T11:00:00Z" }, [{ line_total: 84 }]);
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     expect(sent(notifications)).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] two papers checked in one window are each compared with what came before, not with each other", async () => {
+    const { tables, notifications, producer } = build();
+    earlier(tables, { doc_date: "2026-10-01" }); // 5.00 a bottle
+    // A new paper at 10.00, checked first; then a late-filed older paper, also 10.00.
+    paper(tables, { id: "doc-new", doc_date: "2026-11-26", verified_at: "2026-11-27T09:00:00Z" }, [{ line_total: 120 }]);
+    paper(tables, { id: "doc-late", doc_number: "4300", doc_date: "2026-10-15", verified_at: "2026-11-27T10:00:00Z" }, [{ line_total: 120 }]);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(sent(notifications).map((r: any) => r.actionUrl)).toContain("/receipts?doc=doc-new");
+    expect(sent(notifications).find((r: any) => r.actionUrl === "/receipts?doc=doc-new").message).toBe(
+      "Anadolu Wines, invoice 4471: House Red up 100% (5.00 -> 10.00).",
+    );
   });
 
   it("[REVERT-FAILS] a re-run writes nothing", async () => {
