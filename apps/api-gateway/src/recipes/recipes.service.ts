@@ -130,7 +130,7 @@ export class RecipesService {
     const { data, error } = await this.db
       .getClient()
       .from("dishes")
-      .select("id, name, menu_section, price, description")
+      .select("id, name, menu_section, price, description, yield_qty_base, yield_base_unit")
       .eq("id", dishId)
       .eq("restaurant_id", restaurantId)
       .is("deleted_at", null)
@@ -185,6 +185,8 @@ export class RecipesService {
         price: money && dish.price != null ? Number(dish.price) : null,
         description: dish.description ?? null,
       },
+      // What one batch makes, when the house said (ADR 0397); not money, every role reads it.
+      yield: dish.yield_qty_base != null && dish.yield_base_unit ? { qtyBase: Number(dish.yield_qty_base), baseUnit: dish.yield_base_unit as BaseUnit } : null,
       current,
       cost,
       whatIsIn,

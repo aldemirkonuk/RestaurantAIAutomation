@@ -9,10 +9,10 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
-import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
+import { BASE_UNIT_WORDS, BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { serveNutrition, type Allergen, type AllergenStatus } from "./recipe-nutrition";
-import { CreateDishDto, UpdateDishDto } from "./dto/recipes.dto";
-import { DISH_NOT_THIS_HOUSE, RecipesService } from "./recipes.service";
+import { CreateDishDto, SetYieldDto, UpdateDishDto } from "./dto/recipes.dto";
+import { DISH_NOT_THIS_HOUSE, MAX_LINE_QTY, RecipesService } from "./recipes.service";
 import { foldName } from "./name-fold";
 import { readCurrentMenuLines } from "../menus/current-menu-lines";
 import { menuIndex, menuPriceFor, type MenuLine } from "./menu-price-match";
@@ -33,6 +33,13 @@ export const TAKE_OFF_UNREAD = "The menu or the dishes could not be read just no
 export const DISH_NAME_NEEDED = "A dish needs a name.";
 export const DISH_NOT_SAVED = "The dish could not be saved. Nothing was changed.";
 export const DISH_NOT_REMOVED = "The dish could not be taken off your list. Nothing was changed.";
+export const YIELD_NEEDS_AMOUNT = "A batch makes an amount above zero.";
+export const YIELD_UNKNOWN_UNIT = "That unit is not one we know. Use ml, cl, l, oz, tsp, tbsp, dash, barspoon, g, kg or each.";
+export const YIELD_TOO_SMALL = "That is too small an amount to measure.";
+export const YIELD_UNREAD = "The dish or the recipes that draw it could not be read just now. Nothing was changed.";
+export const yieldTooBig = (unit: string) => `A batch makes at most ${MAX_LINE_QTY.toLocaleString("en-US")} ${unit}.`;
+export const yieldUnitInUse = (made: string) =>
+  `This is made in ${made}, and a recipe in use draws it in ${made}. Take it out of those recipes before changing what kind of unit it is made in. Nothing was changed.`;
 export const dishNameTaken = (name: string) => `A dish named "${name}" is already on your list.`;
 
 /** PostgREST answers at most this many rows a request; every read here pages past it. */
@@ -910,6 +917,85 @@ export class DishesService {
     if (error) this.writeFailed(error, name);
     if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
     return this.dishOut(data);
+  }
+
+  /**
+   * Say what one batch of a house-made component makes (ADR 0397), stored in the
+   * unit's base (700 ml is 7000 ml10). Every price that draws the component is
+   * read from this figure at the moment it is asked for, so the change prices
+   * every parent again with nothing else to write. It touches no recipe line, so
+   * the chain a component may sit in (no cycle, at most three deep) is exactly
+   * as it was. The kind of unit is not changed silently: a component some
+   * current recipe draws in millilitres is never turned into grams (the
+   * database refuses that line), so that change is refused while it is drawn.
+   */
+  async setYield(restaurantId: string, dishId: string, dto: SetYieldDto) {
+    const amount = Number(dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException(YIELD_NEEDS_AMOUNT);
+    if (amount > MAX_LINE_QTY) throw new BadRequestException(yieldTooBig(dto.unit));
+    const client = this.db.getClient();
+
+    const dish = await client
+      .from("dishes")
+      .select("id, name, yield_base_unit")
+      .eq("id", dishId)
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (dish.error) this.failed("yield dish read", dish.error, YIELD_UNREAD);
+    if (!dish.data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
+
+    const conv = await client.rpc("recipe_qty_base", { p_qty: amount, p_unit: dto.unit });
+    if (conv.error) this.failed("yield conversion", conv.error, YIELD_UNREAD);
+    const row = (Array.isArray(conv.data) ? conv.data[0] : conv.data) as { qty_base?: unknown; base_unit?: unknown } | null;
+    if (!row || row.qty_base == null || row.base_unit == null) throw new BadRequestException(YIELD_UNKNOWN_UNIT);
+    const qtyBase = Number(row.qty_base);
+    const baseUnit = row.base_unit as BaseUnit;
+    if (!(qtyBase >= 1)) throw new BadRequestException(YIELD_TOO_SMALL);
+
+    const was = (dish.data as { yield_base_unit: BaseUnit | null }).yield_base_unit;
+    if (was && was !== baseUnit && (await this.isDrawn(restaurantId, dishId))) {
+      throw new BadRequestException(yieldUnitInUse(BASE_UNIT_WORDS[was]));
+    }
+
+    const { data, error } = await client
+      .from("dishes")
+      .update({ yield_qty_base: qtyBase, yield_base_unit: baseUnit, updated_at: new Date().toISOString() })
+      .eq("id", dishId)
+      .eq("restaurant_id", restaurantId)
+      .is("deleted_at", null)
+      .select("id, name, yield_qty_base, yield_base_unit")
+      .maybeSingle();
+    if (error) this.writeFailed(error, undefined);
+    if (!data) throw new NotFoundException(DISH_NOT_THIS_HOUSE);
+    return {
+      id: data.id,
+      name: data.name,
+      yield: { amount, unit: dto.unit, qtyBase: Number(data.yield_qty_base), baseUnit: data.yield_base_unit as BaseUnit },
+    };
+  }
+
+  /** Does a current recipe (a drink's or a dish's) draw this component? Old versions do not count. */
+  private async isDrawn(restaurantId: string, dishId: string): Promise<boolean> {
+    const lines = await this.all<{ version_id: string }>("yield drawn read", YIELD_UNREAD, (from, to) =>
+      this.db
+        .getClient()
+        .from("recipe_lines")
+        .select("id, version_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("component_dish_id", dishId)
+        .order("id")
+        .range(from, to),
+    );
+    const versions = [...new Set(lines.map((l) => l.version_id))];
+    for (const part of chunks(versions)) {
+      for (const table of ["recipe_current_dish", "recipe_current"]) {
+        const { data, error } = await this.db.getClient().from(table).select("version_id").eq("restaurant_id", restaurantId).in("version_id", part);
+        if (error) this.failed("yield drawn read", error, YIELD_UNREAD);
+        if ((data ?? []).length) return true;
+      }
+    }
+    return false;
   }
 
   /**

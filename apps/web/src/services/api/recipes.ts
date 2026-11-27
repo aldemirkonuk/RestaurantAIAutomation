@@ -170,6 +170,8 @@ export interface CocktailRecipe {
   whatIsIn?: WhatIsIn | null;
   versionCount: number;
   legacyLines: LegacyRecipeLine[];
+  /** A dish: what one batch makes (ADR 0397); null until the house says. Absent on a drink. */
+  yield?: DishYield | null;
 }
 
 export interface RecipeVersionSummary {
@@ -269,6 +271,12 @@ const ownerPath = (restaurantId: string, owner: string | RecipeOwner) => {
   const o = ownerOf(owner);
   return `${base(restaurantId)}/${o.kind === 'dish' ? 'dishes' : 'cocktails'}/${encodeURIComponent(o.id)}`;
 };
+
+/** What one batch makes, as stored: 700 ml is 7000 of ml10. */
+export interface DishYield {
+  qtyBase: number;
+  baseUnit: 'ml10' | 'mg' | 'each_milli' | string;
+}
 
 /** GET /dishes/:dishId as the gateway sends it. */
 interface DishRecipeAnswer extends Omit<CocktailRecipe, 'cocktail' | 'kind'> {
@@ -572,6 +580,13 @@ export const dishesApi = {
     const r = await apiClient.post<TakeOffMenuAnswer>(`${base(restaurantId)}/dishes/take-off-menu`, { ids });
     // An answer without its lists is not a result: the page must not say "done" for it.
     if (!Array.isArray(r.data?.removed) || !Array.isArray(r.data?.skipped)) throw new Error('The answer came back without saying which dishes came off.');
+    return r.data;
+  },
+
+  /** Takes the dish off the list (a soft delete); its recipe versions are kept. */
+  /** Says what one batch of a house-made component makes; owner and manager only. Every recipe that draws it is priced again. */
+  async setYield(restaurantId: string, dishId: string, body: { amount: number; unit: string }): Promise<{ id: string; name: string; yield: { amount: number; unit: string; qtyBase: number; baseUnit: string } }> {
+    const r = await apiClient.patch<{ id: string; name: string; yield: { amount: number; unit: string; qtyBase: number; baseUnit: string } }>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}/yield`, body);
     return r.data;
   },
 
