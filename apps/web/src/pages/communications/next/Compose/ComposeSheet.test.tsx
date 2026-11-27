@@ -664,6 +664,14 @@ describe('a reply opened from Mail (r28 gap 3)', () => {
     );
   });
 
+  it('a reply opens with the cursor in the letter, a new letter does not (r109 mail-7b)', () => {
+    const { unmount } = render(<MemoryRouter><ComposeSheet open onClose={() => {}} prefill={REPLY} /></MemoryRouter>);
+    expect(document.activeElement).toBe(screen.getByLabelText('The letter'));
+    unmount();
+    open();
+    expect(document.activeElement).not.toBe(screen.getByLabelText('The letter'));
+  });
+
   it("a new letter from the vendor's person page is addressed to the vendor's own book address and answers nothing", async () => {
     mockData.current = {
       ...base,
