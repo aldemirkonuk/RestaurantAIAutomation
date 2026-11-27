@@ -214,11 +214,12 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const fromPage = (await PAGE[id].call(controller, days)) as Record<string, unknown>;
       const fromExport = await reader.read(RID, id, id === "till" ? days : null);
       if (id === "till") {
-        // The endpoint also attaches a per-wine consumption breakdown that the
-        // till cutting never reads; everything else must match.
-        const { consumption, ...rest } = fromPage;
-        expect(consumption).toBeDefined();
-        expect(fromExport).toEqual(rest);
+        // The page's call does not ask for the per-wine breakdown (r41 gap 8),
+        // so the endpoint and the export answer the same window, on the wire.
+        expect(fromPage.consumption).toBeUndefined();
+        expect(JSON.parse(JSON.stringify(fromExport))).toStrictEqual(
+          JSON.parse(JSON.stringify(fromPage)),
+        );
       } else if (id === "reading") {
         // The page's last step is the person's own snoozes (ADR 0191 round 3);
         // with no one looking it drops nothing and says it read no one's. The

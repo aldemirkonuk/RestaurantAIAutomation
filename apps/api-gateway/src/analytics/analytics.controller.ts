@@ -1211,7 +1211,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Sales revenue booked through the POS, over a day range",
     description:
-      "Sum of non-voided `pos_checks.total` plus the per-wine bottle/glass breakdown for the same window. " +
+      "Sum of non-voided `pos_checks.total` and, with `include=consumption`, the per-wine bottle/glass breakdown for the same window. " +
       "`posConnected: false` means this restaurant has never had a POS check land — `revenue` and `checkCount` " +
       "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
       "Reuses the same query goal progress runs on, so the two can never disagree. " +
@@ -1229,12 +1229,19 @@ export class AnalyticsController {
     description:
       "`prior` also answers the same-length window just before this one, as `prior`. Any other value is ignored.",
   })
+  @ApiQuery({
+    name: "include",
+    required: false,
+    description:
+      "`consumption` also reads the per-wine breakdown for the window. Not read otherwise: no page draws it.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @Query("compare") compare?: string,
     @CurrentUser() user?: { role?: string | null },
+    @Query("include") include?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
@@ -1269,6 +1276,13 @@ export class AnalyticsController {
               "prior",
             )
           : await this.goalsService.getPosRevenueWindow(restaurantId, span);
+      // The breakdown is a whole-window read of the consumption log, every
+      // page of it after every page of the checks. No reader of this route
+      // draws it (the till reads the figures and the daily series; the export
+      // reads the window alone), so it is read only when asked for. The key is
+      // `undefined`, so the JSON body drops it.
+      if (!wantsConsumption(include))
+        return { ...window, consumption: undefined };
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
       // trips to discover. Skipped too when the house has no zone: its days
@@ -1697,4 +1711,15 @@ export class AnalyticsController {
       timestamp: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * Whether `GET /analytics/pos-revenue` was asked for its per-wine breakdown:
+ * `include=consumption`, alone or in a comma list. Anything else is not asking.
+ */
+export function wantsConsumption(include: string | undefined): boolean {
+  return (include ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .includes("consumption");
 }
