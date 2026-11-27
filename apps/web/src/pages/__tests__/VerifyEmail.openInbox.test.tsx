@@ -29,6 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.stubEnv('VITE_MUDAVYM_PUBLIC', '')
   localStorage.clear()
+  sessionStorage.clear()
   localStorage.setItem('mudavym.design.public', 'true')
 })
 afterEach(() => {
@@ -53,4 +54,14 @@ it('offers no button for a domain it does not know', () => {
   mount()
   expect(screen.queryByTestId('verify-open-inbox')).toBeNull()
   expect(screen.getByRole('button', { name: 'Resend verification email' })).toBeInTheDocument()
+})
+
+// r105 review: a gmail.com sign-up whose mail failed showed the red "not sent"
+// alert and then "Open Gmail" as the primary button, and Resend as secondary.
+it('offers no inbox button when the mail was not sent, and Resend is the seal', () => {
+  h.auth.user = { email: 'owner@gmail.com', emailVerified: false }
+  sessionStorage.setItem('mudavym:verification-mail', JSON.stringify({ outcome: 'not_sent', email: 'owner@gmail.com' }))
+  mount()
+  expect(screen.queryByTestId('verify-open-inbox')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Resend verification email' })).toHaveClass('mdv-btn--seal')
 })
