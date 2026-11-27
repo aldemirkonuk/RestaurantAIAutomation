@@ -3347,7 +3347,7 @@ describe("Edit as a new draft: a price corrected on the current menu after the c
     const tables = house();
     const service = makeService(tables, { rpc: writer(tables) });
     const draft = await service.copyMenuIntoDraft("rest-1", "menu-cur", "user-1");
-    expect(draft.name).toBe("Wine List, draft of 27 Nov 2026");
+    expect(draft).toMatchObject({ name: "Wine List, draft of 27 Nov 2026", lines: 1, timezone: "Europe/Istanbul" });
 
     // An hour later the manager corrects the Chianti on the CURRENT menu by hand: 50 -> 58.
     jest.setSystemTime(new Date("2026-11-27T10:00:00Z"));
