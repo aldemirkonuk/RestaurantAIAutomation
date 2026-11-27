@@ -2162,34 +2162,38 @@ export class MenusService {
     // user_id, so an invitee who joins after the owner already uploaded a
     // menu would otherwise see "Upload your wine menu" as still pending.
     // Auto-satisfy it from the restaurant's actual state instead.
+    // The menu read and the threshold read need only the row's restaurant_id,
+    // so they start together: two waits after the row, not three.
     let menuUploaded = !!data.menu_uploaded;
-    if (!menuUploaded) {
-      const { data: activeMenu } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("id")
-        .eq("restaurant_id", data.restaurant_id)
-        .eq("status", "active")
-        .maybeSingle();
+    const [menuRead, { data: restaurant }] = await Promise.all([
+      menuUploaded
+        ? Promise.resolve(null)
+        : this.dbService.supabase
+            .from("restaurant_menus")
+            .select("id")
+            .eq("restaurant_id", data.restaurant_id)
+            .eq("status", "active")
+            .maybeSingle(),
+      this.dbService.supabase
+        .from("restaurants")
+        .select("threshold_configured")
+        .eq("id", data.restaurant_id)
+        .maybeSingle(),
+    ]);
 
-      if (activeMenu) {
-        menuUploaded = true;
-        const { error: healErr } = await this.dbService.supabase
-          .from("user_onboarding_progress")
-          .update({ menu_uploaded: true })
-          .eq("id", data.id);
-        if (healErr) {
-          this.logger.warn(
-            `Failed to self-heal menu_uploaded for onboarding row ${data.id}: ${healErr.message}`,
-          );
-        }
+    if (menuRead?.data) {
+      menuUploaded = true;
+      const { error: healErr } = await this.dbService.supabase
+        .from("user_onboarding_progress")
+        .update({ menu_uploaded: true })
+        .eq("id", data.id);
+      if (healErr) {
+        this.logger.warn(
+          `Failed to self-heal menu_uploaded for onboarding row ${data.id}: ${healErr.message}`,
+        );
       }
     }
 
-    const { data: restaurant } = await this.dbService.supabase
-      .from("restaurants")
-      .select("threshold_configured")
-      .eq("id", data.restaurant_id)
-      .maybeSingle();
     const thresholdConfigured = !!restaurant?.threshold_configured;
 
     return {
