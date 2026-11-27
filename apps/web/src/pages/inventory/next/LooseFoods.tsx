@@ -115,7 +115,7 @@ export async function linkGroup(rid: string, answer: LooseDishAnswer, group: Loo
     }
     const lines = d.lines.map((l, i) => (indexes.includes(i) ? { ...l, inventoryId: itemId } : l));
     try {
-      await recipesApi.save(
+      const saved = await recipesApi.save(
         rid,
         { kind: 'dish', id: dishId },
         {
@@ -127,6 +127,10 @@ export async function linkGroup(rid: string, answer: LooseDishAnswer, group: Loo
           lines,
         },
       );
+      // The next name linked in this dish starts from what was just saved,
+      // so it is not refused as stale by this sheet's own write.
+      d.versionId = saved.versionId;
+      d.lines = lines;
       out.linked.push(d.name);
     } catch (err) {
       out.kept.push({

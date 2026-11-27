@@ -124,6 +124,23 @@ describe('LooseFoodsSheet', () => {
     expect(salad.lines.map((l: { inventoryId: string | null }) => l.inventoryId)).toEqual(['i-leaf', 'i-new']);
   });
 
+  it('a second name linked in the same dish starts from the version the first saved, keeping its link', async () => {
+    api.save.mockResolvedValueOnce({ versionId: 'v-p3', version: 3, lines: [] });
+    wrap(<LooseFoodsSheet rid={R} answer={answer()} onClose={() => {}} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add as a good' })[0]);
+    hold(screen.getByRole('button', { name: /Hold to add Parmesan/ }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(2));
+    api.add.mockResolvedValue({ id: 'i-oil', kind: 'food', uom: 'ml', displayName: 'Olive oil' });
+    const oil = screen.getAllByTestId('iv-loose-group')[1];
+    fireEvent.click(screen.getByRole('button', { name: 'Add as a good' }));
+    fireEvent.change(oil.querySelector('select') as HTMLSelectElement, { target: { value: 'ml' } });
+    hold(screen.getByRole('button', { name: /Hold to add Olive oil/ }));
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(3));
+    const [, , pasta] = api.save.mock.calls[2];
+    expect(pasta.expectedVersionId).toBe('v-p3');
+    expect(pasta.lines.map((l: { inventoryId: string | null }) => l.inventoryId)).toEqual(['i-new', 'i-spag', 'i-oil']);
+  });
+
   it('a group whose lines disagree on a unit asks for one before the hold can run', async () => {
     wrap(<LooseFoodsSheet rid={R} answer={answer()} onClose={() => {}} />);
     const oil = screen.getAllByTestId('iv-loose-group')[1];
