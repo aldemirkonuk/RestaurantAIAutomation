@@ -16,6 +16,8 @@ export type SaleCostBasis =
   | "invoice_lot_wac_partial"
   | "agreed_lot_wac"
   | "last_purchase_price"
+  /** A whole-bottle line costed from the lots its ledger row says it drew (measured, not recorded). */
+  | "ledger_lot_draw"
   /** A pour's share of a bottle costed at the recorded WAC: no ledger row prices a pour (r105). */
   | "pour_lot_wac"
   | "pour_lot_wac_partial";
@@ -62,6 +64,9 @@ export const NO_COST_SNAPSHOT: CostSnapshot = {
 };
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
+// cost_unit_at_sale is a six-place column; restate_sale_cost divides by it, so a
+// four-place figure drifts about 0.0001 a line (31.00 over 3 bottles is 10.333333).
+const round6 = (n: number) => Math.round(n * 1000000) / 1000000;
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === "") return null;
@@ -143,8 +148,19 @@ export function ledgerUnitCost(
     return null;
   }
   if (-moved !== qty) return null;
-  return { unitCost: round4(total / qty), total };
+  // The ledger's own six-place unit cost when it agrees with the total, else the
+  // total spread over the bottles; never a figure that disagrees with cost_total.
+  const derived = total / qty;
+  const own = num(row.unit_cost);
+  const unitCost = own !== null && Math.abs(own - derived) < 0.0001 ? own : derived;
+  return { unitCost: round6(unitCost), total };
 }
+
+/** What a measured (drawn) line is worded as: the invoiced-lot words mean a recorded WAC, so a draw gets its own. */
+const DRAWN_BASIS: Partial<Record<SaleCostBasis, SaleCostBasis>> = {
+  invoice_lot_wac: "ledger_lot_draw",
+  invoice_lot_wac_partial: "ledger_lot_draw",
+};
 
 const POUR_BASIS: Partial<Record<SaleCostBasis, SaleCostBasis>> = {
   invoice_lot_wac: "pour_lot_wac",
@@ -168,9 +184,13 @@ export function snapshotLineCost(
   bottleMl: number | null,
   qty: number,
   ledgerRow?: SaleLedgerRow | null,
+  part: "whole" | "fraction" = "whole",
 ): CostSnapshot {
   if (!source) return NO_COST_SNAPSHOT;
-  const drawn = mode === "whole_bottle" ? ledgerUnitCost(ledgerRow, qty) : null;
+  // The fractional share of a bottle-mode line is a pour (record_glass_pour): it
+  // has no ledger row and is worded as a pour, whatever mode the line is in.
+  const pour = mode === "volume" || part === "fraction";
+  const drawn = !pour ? ledgerUnitCost(ledgerRow, qty) : null;
   const cost =
     mode === "whole_bottle"
       ? drawn
@@ -199,7 +219,12 @@ export function snapshotLineCost(
   }
   return {
     cost_at_sale: round4(cost),
-    cost_basis: mode === "volume" ? (POUR_BASIS[source.basis] ?? source.basis) : source.basis,
+    // A last-price basis keeps its word either way: a verified invoice restates it.
+    cost_basis: pour
+      ? (POUR_BASIS[source.basis] ?? source.basis)
+      : drawn
+        ? (DRAWN_BASIS[source.basis] ?? source.basis)
+        : source.basis,
     cost_unit_at_sale: drawn ? drawn.unitCost : source.unitCost,
     cost_source_lot_id: named ? source.lotId : null,
     cost_source_order_id: named ? source.orderId : null,
