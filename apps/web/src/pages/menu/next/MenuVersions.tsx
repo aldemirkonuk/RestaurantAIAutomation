@@ -843,7 +843,9 @@ function DueSentence({ due }: { due: MenuVersionsReply['due'] }) {
   if (!due || due.state === 'ok') return null;
   return (
     <p className="cl-said" role="status" style={{ marginTop: 6 }} data-testid="menu-due">
-      This menu was made current {agoWords(due.daysSince)} and you keep it {CADENCE_WORD[due.cadence] ?? due.cadence}.{' '}
+      {/* Due and overdue are told apart (DD-r108-17), in the words the due note in the bell uses. */}
+      This menu was made current {agoWords(due.daysSince)} and you keep it {CADENCE_WORD[due.cadence] ?? due.cadence}, so a
+      newer one is {due.state === 'overdue' ? 'overdue' : 'due'}.{' '}
       <button
         type="button"
         className="cl-btn cl-focus"
