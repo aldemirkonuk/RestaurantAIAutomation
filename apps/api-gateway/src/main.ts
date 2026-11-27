@@ -20,6 +20,9 @@ async function bootstrap() {
     cors: {
       origin: buildCorsOrigins(),
       credentials: true,
+      // A cross-origin page reads only what is exposed; the resend countdown
+      // needs Retry-After.
+      exposedHeaders: ["Retry-After"],
     },
   });
 

@@ -37,9 +37,16 @@ export function useResendCooldown() {
   return { secondsLeft, start }
 }
 
-/** The server's `Retry-After` in seconds, or null when it names none we can read. */
+/**
+ * The server's wait in seconds, or null when it names none we can read. The
+ * body's `retryAfter` comes first: it survives a cross-origin call, where the
+ * `Retry-After` header is hidden unless the server exposes it.
+ */
 export function retryAfterSeconds(err: unknown): number | null {
-  const headers = (err as { response?: { headers?: Record<string, unknown> } })?.response?.headers
+  const response = (err as { response?: { data?: unknown; headers?: Record<string, unknown> } })?.response
+  const fromBody = Number((response?.data as { retryAfter?: unknown } | undefined)?.retryAfter)
+  if (Number.isFinite(fromBody) && fromBody > 0) return fromBody
+  const headers = response?.headers
   const raw = headers?.['retry-after'] ?? headers?.['Retry-After']
   const n = typeof raw === 'string' || typeof raw === 'number' ? Number(raw) : NaN
   return Number.isFinite(n) && n > 0 ? n : null

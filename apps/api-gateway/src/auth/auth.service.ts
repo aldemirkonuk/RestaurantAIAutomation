@@ -344,6 +344,23 @@ export interface LoginCredentials {
   lastHouses?: unknown;
 }
 
+/**
+ * The mailer's own one-minute wait between two resends, said as a 429 whose
+ * body carries the seconds left (`retryAfter`, as the rate-limit guard does),
+ * so the web page can count down from it without reading a header a
+ * cross-origin page may not see (r105 onboarding review).
+ */
+function resendWait(secondsLeft: number): HttpException {
+  return new HttpException(
+    {
+      statusCode: HttpStatus.TOO_MANY_REQUESTS,
+      message: "Please wait 1 minute before resending",
+      retryAfter: Math.max(1, Math.ceil(secondsLeft)),
+    },
+    HttpStatus.TOO_MANY_REQUESTS,
+  );
+}
+
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
 /** The `auth_time` of a sign-in happening now, in seconds (ADR 0229). */
 export function signedInNow(nowMs: number = Date.now()): number {
@@ -3781,11 +3798,8 @@ export class AuthService {
         const lastActivity = new Date(
           recent.last_resent_at ?? recent.created_at,
         ).getTime();
-        if ((Date.now() - lastActivity) / 1000 < 60) {
-          throw new BadRequestException(
-            "Please wait 1 minute before resending",
-          );
-        }
+        const since = (Date.now() - lastActivity) / 1000;
+        if (since < 60) throw resendWait(60 - since);
       }
 
       // queueEmailVerification inserts the row and sends in one step, and
@@ -3796,9 +3810,7 @@ export class AuthService {
     if (verif.last_resent_at) {
       const secondsSinceLast =
         (Date.now() - new Date(verif.last_resent_at).getTime()) / 1000;
-      if (secondsSinceLast < 60) {
-        throw new BadRequestException("Please wait 1 minute before resending");
-      }
+      if (secondsSinceLast < 60) throw resendWait(60 - secondsSinceLast);
     }
 
     await this.databaseService.supabase
