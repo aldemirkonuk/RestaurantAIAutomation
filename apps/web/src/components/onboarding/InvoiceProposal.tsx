@@ -41,7 +41,6 @@ export function InvoiceProposal({
   vendorOpen,
   moneyUnset,
   busy,
-  readCountry,
   onPrefill,
   onPick,
 }: {
@@ -50,8 +49,6 @@ export function InvoiceProposal({
   vendorOpen: boolean
   moneyUnset: boolean
   busy: boolean
-  /** The house's ISO country, or undefined when unknown. The catalogue is asked only inside it. */
-  readCountry: () => Promise<string | undefined>
   onPrefill: (name: string) => void
   onPick: (row: VendorMatchCandidate) => void
 }) {
@@ -68,18 +65,11 @@ export function InvoiceProposal({
     if (!seller || !vendorOpen || asked.current) return
     asked.current = true
     let live = true
-    // Without the house's country a match could be another country's vendor,
-    // and one press would bring in its email: offer no press, prefill only.
-    readCountry()
-      .catch(() => undefined)
-      .then((country) =>
-        country
-          ? matchVendorCatalogue(seller, undefined, country).then((rows) => {
-              const top = Array.isArray(rows) ? rows[0] : undefined
-              return top && top.name_similarity >= MATCH_FLOOR ? top : null
-            })
-          : null,
-      )
+    matchVendorCatalogue(seller)
+      .then((rows) => {
+        const top = Array.isArray(rows) ? rows[0] : undefined
+        return top && top.name_similarity >= MATCH_FLOOR ? top : null
+      })
       .catch(() => null)
       .then((row) => {
         if (!live) return
@@ -89,7 +79,7 @@ export function InvoiceProposal({
     return () => {
       live = false
     }
-  }, [seller, vendorOpen, readCountry])
+  }, [seller, vendorOpen])
 
   useEffect(() => {
     let live = true
