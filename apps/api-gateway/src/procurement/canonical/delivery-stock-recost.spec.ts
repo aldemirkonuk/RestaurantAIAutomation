@@ -147,7 +147,7 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
     given({ orderId: ORD, corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
     const r = await recost("lines[0].netAmount");
     expect(restated().map((c) => c.args)).toEqual([
-      { p_restaurant_id: REST, p_inventory_id: ITEM, p_source_order_id: ORD, p_unit_cost: 55, p_performed_by: USER },
+      { p_restaurant_id: REST, p_inventory_id: ITEM, p_source_order_id: ORD, p_unit_cost: 55, p_performed_by: USER, p_delivery_id: DEL },
     ]);
     expect(r.ok && r.value.deliveries[0].salesRestated).toBe(2);
   });
