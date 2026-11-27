@@ -431,8 +431,9 @@ export function useReportsNextData(
             // The gateway answered that this role may not read the register
             // (r108): that is a held-back register, not an empty one.
             if (isWithheldAnswer(whole.value)) throw new RegisterWithheld();
-            const shownOk = shown.status === 'fulfilled' && !isWithheldAnswer(shown.value);
-            return spec.withShown(spec.select(whole.value), shownOk ? spec.select(shown.value) : null);
+            // A withheld shown read is a dash too, never a figure.
+            const shownRead = shown.status === 'fulfilled' && !isWithheldAnswer(shown.value) ? { raw: shown.value } : null;
+            return spec.withShown(spec.select(whole.value), shownRead ? spec.select(shownRead.raw) : null);
           }
           const raw = await readRaw(spec.path!(rid as string, ctx));
           // The gateway answered that this role may not read the register
