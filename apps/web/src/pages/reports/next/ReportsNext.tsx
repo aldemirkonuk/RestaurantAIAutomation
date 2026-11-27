@@ -60,7 +60,7 @@ import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, t
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { failureLine } from './rp-format';
+import { failureLine, withheldSentenceWords } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -445,8 +445,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const opening = useMemo(() => {
     if (data.reading.failure) return failureLine('insight register', data.reading.failure);
     if (data.reading.loading || !data.reading.data) return 'Reading the registers…';
-    const top = data.reading.data[0];
-    return top ? top.sentence : 'The engine has nothing to say about this restaurant yet.';
+    const top = data.reading.data.rows[0];
+    if (top) return top.sentence;
+    // Every sentence kept back for this role is not a quiet house (r108).
+    return data.reading.data.withheld > 0
+      ? withheldSentenceWords(data.reading.data.withheld)
+      : 'The engine has nothing to say about this restaurant yet.';
   }, [data.reading]);
 
   const swapOptions = useMemo(

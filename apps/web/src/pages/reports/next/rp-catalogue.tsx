@@ -43,6 +43,7 @@ export type { AnalysisSpec, ViewCtx } from './rp-spec';
 export type {
   AheadRegister,
   PacingRegister,
+  ReadingFeed,
   ReadingRow,
   TillWindow,
   WeekRegister,
