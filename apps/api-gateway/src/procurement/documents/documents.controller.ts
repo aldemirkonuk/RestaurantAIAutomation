@@ -1495,24 +1495,33 @@ export class DocumentsController {
       doc.storage_path ?? null,
     );
 
-    // The rate a manager filed this paper at, from the newest audit row that
-    // carries one, so the card still says "filed at ..." after a reload. A
-    // failed read says so; it is never read as "filed at no rate" (ADR 0020).
+    // The rate a manager filed this paper at, from the NEWEST currency-change
+    // row, so the card still says "filed at ..." after a reload. A later
+    // restatement without a rate (the route's own advice: restate as EUR, then
+    // convert) must clear the line, so the newest row is read whatever its rate
+    // and counts only when it carries one and still names the paper's currency.
+    // A failed read says so; it is never read as "filed at no rate" (ADR 0020).
     const { data: fxRows, error: fxError } = await this.db
       .getClient()
       .from("procurement_document_currency_changes")
       .select("paper_currency, new_currency, exchange_rate, rate_date")
       .eq("document_id", id)
       .eq("restaurant_id", user.restaurantId)
-      .not("exchange_rate", "is", null)
       .limit(1)
       .order("changed_at", { ascending: false });
-    const fxFiled = ((fxRows ?? []) as {
+    const newestFx = ((fxRows ?? []) as {
       paper_currency: string;
       new_currency: string;
-      exchange_rate: number | string;
+      exchange_rate: number | string | null;
       rate_date: string;
     }[])[0] ?? null;
+    const fxFiled =
+      newestFx &&
+      newestFx.exchange_rate != null &&
+      (newestFx.new_currency ?? "").trim().toUpperCase() ===
+        String((doc as { currency?: string | null }).currency ?? "").trim().toUpperCase()
+        ? (newestFx as typeof newestFx & { exchange_rate: number | string })
+        : null;
     const filedAt = fxFiled
       ? {
           from: fxFiled.paper_currency,

@@ -112,7 +112,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
   });
 
   it("a reload still says what rate the paper was filed at", async () => {
-    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-4", storage_path: null }, error: null });
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-4", storage_path: null, currency: "USD" }, error: null });
     mockOrder
       .mockResolvedValueOnce({ data: [] }) // the lines
       .mockResolvedValueOnce({
@@ -126,6 +126,19 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       rate: 1.084,
       sentence: "filed at 1 EUR = 1.0840 USD on 20 Nov",
     });
+  });
+
+  it("a restatement without a rate after the conversion clears filedAt (r106 fz)", async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-6", storage_path: null, currency: "EUR" }, error: null });
+    mockOrder
+      .mockResolvedValueOnce({ data: [] })
+      // newest first: the restate to EUR (no rate), then the EUR -> USD conversion at 1.1
+      .mockResolvedValueOnce({
+        data: [{ paper_currency: "USD", new_currency: "EUR", exchange_rate: null, rate_date: null }],
+        error: null,
+      });
+    const result: any = await controller.detail("doc-6", user);
+    expect(result.document.filedAt).toBeNull();
   });
 
   it("a paper never converted has no filedAt, and a failed read says it failed", async () => {
