@@ -1402,6 +1402,7 @@ describe("AnalyticsService.getPosConsumptionBreakdown", () => {
   });
 });
 
+// A holder reads the till: staff are answered withheld (pos-revenue-withheld-from-staff.spec.ts).
 describe("GET /analytics/pos-revenue/:restaurantId", () => {
   let controller: AnalyticsController;
   const goals = { getPosRevenueWindow: jest.fn() };
@@ -1567,9 +1568,9 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       checkCount: null,
       dailySeries: [],
     });
-    await controller.getPosRevenue("r1", "30", "prior");
+    await controller.getPosRevenue("r1", "30", "prior", { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "prior");
-    await controller.getPosRevenue("r1", "30", "year");
+    await controller.getPosRevenue("r1", "30", "year", { role: "manager" });
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
   });
 
