@@ -28,9 +28,25 @@ const db = {
     rpc: (name: string, payload: unknown) => start({ kind: "rpc", name, payload, calls: [] }),
   },
 };
+/** The one read of a house's guest letters by From header (select has from_header, kind is guest). */
+const isGuestRead = (q: Q) =>
+  q.kind === "from" &&
+  q.name === "procurement_conversations" &&
+  q.calls.some((c) => c[0] === "select" && String(c[1]).includes("from_header")) &&
+  q.calls.some((c) => c[0] === "eq" && c[1] === "kind" && c[2] === "guest");
+/** Guest letters on file. A real ILIKE (case-blind, accent-sensitive) is applied if the read asks for one. */
+let guestHeaders = ["Jane Roe <j@x.example>"];
+const guestRows = (q: Q) => {
+  const ilike = q.calls.find((c) => c[0] === "ilike");
+  const pattern = ilike ? String(ilike[2]).replace(/^%|%$/g, "").replace(/\\(.)/g, "$1").toLowerCase() : null;
+  return guestHeaders
+    .filter((h) => pattern === null || h.toLowerCase().includes(pattern))
+    .map((h) => ({ from_address: "j@x.example", from_header: h }));
+};
 const svc = () => new MailService(db as any, { get: () => undefined } as any);
 beforeEach(() => {
   queries = [];
+  guestHeaders = ["Jane Roe <j@x.example>"];
   resolve = () => ({ data: [], error: null });
 });
 
@@ -49,9 +65,7 @@ const read = (q: Q): R => {
   }
   if (q.name === "user_restaurant_access") return { data: [{ user_id: "u1", role: "staff" }], error: null };
   if (q.name === "users") return { data: [{ user_id: "u1", email: "Sam@H.Example", name: "Sam Staff", role: "staff" }], error: null };
-  if (q.name === "procurement_conversations" && q.calls.some((c) => c[0] === "ilike")) {
-    return { data: [{ from_address: "j@x.example", from_header: "Jane Roe <j@x.example>" }], error: null };
-  }
+  if (isGuestRead(q)) return { data: guestRows(q), error: null };
   return { data: [{ id: "x" }], error: null };
 };
 
@@ -62,7 +76,8 @@ describe("a search by the name a row shows (r105 mail-4)", () => {
     expect(page.people.map((p) => p.key)).toEqual(["guest:j@x.example"]);
     const asked = queries.filter((q) => q.kind === "rpc").map((q) => q.payload.p_query);
     expect(asked).toEqual(["Jane Roe", "j@x.example"]);
-    const names = queries.find((q) => q.calls.some((c) => c[0] === "ilike"))!;
+    const names = queries.find(isGuestRead)!;
+    expect(names.calls.some((c) => c[0] === "ilike")).toBe(false);
     expect(names.calls).toContainEqual(["eq", "restaurant_id", HOUSE]);
     expect(names.calls).toContainEqual(["eq", "kind", "guest"]);
   });
@@ -74,11 +89,19 @@ describe("a search by the name a row shows (r105 mail-4)", () => {
   });
 
   it("is blind to accents and the Turkish dotless i", async () => {
-    resolve = (q) =>
-      q.name === "procurement_conversations" && q.calls.some((c) => c[0] === "ilike")
-        ? { data: [{ from_address: "j@x.example", from_header: "Şükrü Ünal <j@x.example>" }], error: null }
-        : read(q);
+    resolve = read;
+    guestHeaders = ["Şükrü Ünal <j@x.example>"];
     const page = await svc().listPeople(HOUSE, "owner", { query: "sukru unal" });
+    expect(page.people.map((p) => p.key)).toEqual(["guest:j@x.example"]);
+    guestHeaders = ["ISPARTA Işık <j@x.example>"];
+    const dotless = await svc().listPeople(HOUSE, "owner", { query: "isik" });
+    expect(dotless.people.map((p) => p.key)).toEqual(["guest:j@x.example"]);
+  });
+
+  it("finds an accented spelling from unaccented input and the other way round", async () => {
+    resolve = read;
+    guestHeaders = ["Sukru Unal <j@x.example>"];
+    const page = await svc().listPeople(HOUSE, "owner", { query: "Şükrü Ünal" });
     expect(page.people.map((p) => p.key)).toEqual(["guest:j@x.example"]);
   });
 
@@ -99,7 +122,7 @@ describe("a search by the name a row shows (r105 mail-4)", () => {
       expect(page.people).toEqual([]);
       expect(queries.filter((q) => q.kind === "rpc")).toHaveLength(1);
       expect(queries.some((q) => q.name === "users" || q.name === "user_restaurant_access")).toBe(false);
-      expect(queries.some((q) => q.calls.some((c) => c[0] === "ilike"))).toBe(false);
+      expect(queries.some(isGuestRead)).toBe(false);
     }
   });
 
@@ -114,7 +137,7 @@ describe("a search by the name a row shows (r105 mail-4)", () => {
 
   it("a failed name read is a 503, never a list that quietly lacks the person", async () => {
     resolve = (q) =>
-      q.name === "procurement_conversations" && q.calls.some((c) => c[0] === "ilike")
+      isGuestRead(q)
         ? { data: null, error: { message: "boom" } }
         : read(q);
     await expect(svc().listPeople(HOUSE, "owner", { query: "Jane Roe" })).rejects.toThrow(ServiceUnavailableException);

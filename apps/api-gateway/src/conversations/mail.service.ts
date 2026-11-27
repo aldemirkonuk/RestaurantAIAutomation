@@ -377,15 +377,16 @@ export class MailService {
       }
     }
     if (kind === null || kind === "guest") {
-      const like = query.replace(/[\\%_]/g, (c) => `\\${c}`);
+      // No ILIKE prefilter: Postgres ILIKE ignores case, not accents, so
+      // "sukru" would never reach a header written "Şükrü". The newest guest
+      // letters of this house are read (bounded) and folded here.
       const res = await this.db
         .from("procurement_conversations")
         .select("from_address, from_header:email_headers->>from")
         .eq("restaurant_id", houseId)
         .eq("kind", "guest")
-        .ilike("email_headers->>from", `%${like}%`)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(1000);
       if (res.error) this.failed("names", res.error);
       for (const r of (res.data ?? []) as any[]) {
         const address =
