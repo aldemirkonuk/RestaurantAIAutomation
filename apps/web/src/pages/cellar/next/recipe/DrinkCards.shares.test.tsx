@@ -36,6 +36,46 @@ describe('line share of cost on the cost card', () => {
     expect(screen.getByTestId('line-shares-block').textContent).toContain('Shares are of the priced part of the serve.');
   });
 
+  it('a made line (a house-made component) has its share: Sour Test is Gin 95%, Sour mix 5%, not Gin 100%', () => {
+    render(
+      <DrinkCards
+        data={drink([
+          line({ label: 'Gin', itemName: 'Gin', costPerServe: 2 }),
+          line({ label: 'Sour mix', role: 'made', inventoryId: null, componentId: 'dish-sour', costPerServe: 0.105 }),
+        ])}
+        sayMoney={say}
+        unsaved={false}
+      />,
+    );
+    expect(Array.from(shares()!.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['Gin 95%', 'Sour mix 5%']);
+    expect(screen.getByTestId('line-shares-block').textContent).not.toContain('priced part');
+  });
+
+  it('an unpriced made line is not priced, keeps the priced-part sentence, and the cost says N of M priced, never a sum or 0', () => {
+    render(
+      <DrinkCards
+        data={drink(
+          [
+            line({ label: 'Gin', itemName: 'Gin', costPerServe: 2 }),
+            line({ label: 'Sour mix', role: 'made', inventoryId: null, componentId: 'dish-sour', costPerServe: null }),
+          ],
+          { complete: false, perServe: null, perServeExact: null, priced: 1, of: 2 },
+        )}
+        sayMoney={say}
+        unsaved={false}
+      />,
+    );
+    const t = shares()!.textContent!;
+    expect(t).toContain('Gin 100%');
+    expect(t).toContain('Sour mix not priced');
+    expect(screen.getByTestId('line-shares-block').textContent).toContain('Shares are of the priced part of the serve.');
+    const body = document.body.textContent!;
+    expect(body).toContain('1 of 2 ingredients priced; no price yet for Sour mix.');
+    expect(body).toContain('Not known');
+    expect(body).not.toContain('$2.00');
+    expect(body).not.toContain('$0.00');
+  });
+
   it('staff, who see no cost card, see no shares', () => {
     render(<DrinkCards data={drink([line({})])} sayMoney={null} unsaved={false} />);
     expect(screen.queryByTestId('line-shares')).toBeNull();

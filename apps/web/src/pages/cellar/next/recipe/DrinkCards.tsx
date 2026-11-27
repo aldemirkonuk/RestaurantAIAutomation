@@ -64,7 +64,7 @@ function shareLines(items: ShareInput[], say: SayPercent): { shares: string[]; s
 }
 
 const unpricedNames = (lines: RecipeLine[]) =>
-  names(lines.filter((l) => l.role === 'stocked' && l.costPerServe == null).map((l) => l.itemName ?? l.label));
+  names(lines.filter((l) => (l.role === 'stocked' || l.role === 'made') && l.costPerServe == null).map((l) => l.itemName ?? l.label));
 
 /** The unsaved lines' cost, with the label of each line sent, in the order sent. */
 export interface DraftCost {
@@ -405,7 +405,10 @@ export default function DrinkCards({
     : (data.current?.lines ?? []).map((l) => ({
         label: l.itemName ?? l.label,
         cost: l.costPerServeExact ?? l.costPerServe,
-        counted: l.role === 'stocked',
+        // A made line (a house-made component, ADR 0397) is in the serve's
+        // cost as a stocked line is; left out, the other lines read as the
+        // whole cost (Gin 100% where the split is 95/5, r107 drinks walk F3).
+        counted: l.role === 'stocked' || l.role === 'made',
       }));
   const shared = cost && sayMoney ? shareLines(shareItems, sayPct) : null;
   const cards = [
