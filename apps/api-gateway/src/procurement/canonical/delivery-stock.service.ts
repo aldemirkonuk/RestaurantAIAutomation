@@ -808,9 +808,14 @@ export class DeliveryStockService {
       const read = await this.db
         .getClient()
         .from("document_corrections")
-        .select("document_id, revision, kind, field_path, after")
+        .select("id, document_id, revision, kind, field_path, after")
         .in("document_id", documentIds)
+        // A TOTAL order: pages cut on revision alone repeat or skip rows that
+        // share a revision at a page boundary, and a paper would be costed
+        // without one of its corrections.
+        .order("document_id", { ascending: true })
         .order("revision", { ascending: true })
+        .order("id", { ascending: true })
         .range(from, from + 999);
       if (read.error)
         return { ok: false, status: 500, error: `the corrections to the invoices could not be read (${read.error.message}), so no cost is posted on a paper that may have been corrected. Retry is safe.` };
