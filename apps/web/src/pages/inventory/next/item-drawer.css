@@ -232,9 +232,13 @@ button.ivd-card:active {
 
 /* The one-line "Used in 3 dishes, 2 drinks" under the head: a 44 px tap that scrolls to where it is used. */
 .ivd-usedchip {
-  display: inline-flex;
+  /* Block-level, not inline: an inline-flex box sits on the text baseline, and an
+     empty held one (no text) put its baseline at its bottom edge, so the held
+     chip and the real one made line boxes about 7 px apart (r108-7a). */
+  display: flex;
+  width: fit-content;
   align-items: center;
-  min-height: 44px;
+  height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
