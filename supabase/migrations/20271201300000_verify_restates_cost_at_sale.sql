@@ -67,14 +67,21 @@ AS $$
 DECLARE
   v_row record;
   v_new numeric(12,4);
+  -- The column keeps six places; compare and write the same figure, or an
+  -- unrounded caller value (125/12) never equals what was stored and every
+  -- retry restates the same rows again (r103).
+  v_unit numeric(14,6);
   v_rows int := 0;
   v_before numeric := 0;
   v_after numeric := 0;
 BEGIN
-  IF p_unit_cost IS NULL OR p_unit_cost <= 0 THEN
-    RAISE EXCEPTION 'restate_sale_cost: p_unit_cost must be above zero (an unknown cost restates nothing)'
+  -- Zero is a real price (a free bottle costs 0, as revalue_lot already
+  -- treats it); only an unknown or negative cost restates nothing (r103).
+  IF p_unit_cost IS NULL OR p_unit_cost < 0 THEN
+    RAISE EXCEPTION 'restate_sale_cost: p_unit_cost must not be negative or unknown (an unknown cost restates nothing)'
       USING ERRCODE = '22023';
   END IF;
+  v_unit := round(p_unit_cost, 6);
   IF p_source_order_id IS NULL THEN
     RAISE EXCEPTION 'restate_sale_cost: p_source_order_id is required; a restatement names the delivery it follows'
       USING ERRCODE = '22023';
@@ -94,11 +101,11 @@ BEGIN
        AND cost_basis IN ('last_purchase_price', 'invoice_restated')
        AND cost_at_sale > 0
        AND cost_unit_at_sale > 0
-       AND cost_unit_at_sale IS DISTINCT FROM p_unit_cost
+       AND cost_unit_at_sale IS DISTINCT FROM v_unit
      ORDER BY recorded_at, id
        FOR UPDATE
   LOOP
-    v_new := round(v_row.cost_at_sale * p_unit_cost / v_row.cost_unit_at_sale, 4);
+    v_new := round(v_row.cost_at_sale * v_unit / v_row.cost_unit_at_sale, 4);
     INSERT INTO public.wine_consumption_cost_restatements
       (restaurant_id, inventory_id, consumption_id, source_order_id,
        prior_cost_at_sale, prior_cost_basis, prior_unit_cost,
@@ -106,10 +113,10 @@ BEGIN
     VALUES
       (p_restaurant_id, p_inventory_id, v_row.id, p_source_order_id,
        v_row.cost_at_sale, v_row.cost_basis, v_row.cost_unit_at_sale,
-       v_new, p_unit_cost, p_performed_by);
+       v_new, v_unit, p_performed_by);
     UPDATE public.wine_consumption_log
        SET cost_at_sale = v_new,
-           cost_unit_at_sale = p_unit_cost,
+           cost_unit_at_sale = v_unit,
            cost_basis = 'invoice_restated'
      WHERE id = v_row.id;
     v_rows := v_rows + 1;
