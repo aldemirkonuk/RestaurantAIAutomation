@@ -58,12 +58,13 @@ function mount() {
   return render(<RecipeSheet cocktailId={CID} />, { wrapper: wrap });
 }
 
-const house = vi.hoisted(() => ({ code: 'GBP', createdAt: '2026-11-07T12:00:00Z' }));
+const house = vi.hoisted(() => ({ code: 'GBP', createdAt: '2026-11-07T12:00:00Z', zone: null as string | null }));
 const card = () => screen.getByTestId('recipe-card');
 
 beforeEach(() => {
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: house.code, country: null, readable: true, reason: null, statedAt: null } };
+    if (url === '/settings/time-zone') return { data: { restaurantId: RID, zone: house.zone, readable: true } };
     if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: { ...negroni, current: { ...negroni.current!, createdAt: house.createdAt } } };
     if (url === `/recipes/${RID}/shelf`) return { data: [] };
     throw new Error(`unexpected GET ${url}`);
@@ -73,9 +74,13 @@ beforeEach(() => {
   forgetDrafts();
   window.print = vi.fn();
 });
+const processZone = process.env.TZ;
 afterEach(() => {
   document.documentElement.removeAttribute('data-print-card');
   house.code = 'GBP';
+  house.zone = null;
+  if (processZone === undefined) delete process.env.TZ;
+  else process.env.TZ = processZone;
 });
 
 describe('the printable recipe card', () => {
@@ -133,6 +138,33 @@ describe('the printable recipe card', () => {
     house.code = 'GBP';
     mount();
     await waitFor(() => expect(card()).toHaveTextContent('version 4, 7 Nov 2026'));
+  });
+
+  it('writes the version DAY in the house\'s zone, not the browser\'s: 22:30 UTC on the 24th is the 25th in an Istanbul house, read from New York or Istanbul', async () => {
+    house.code = 'TRY';
+    house.zone = 'Europe/Istanbul';
+    house.createdAt = '2026-11-24T22:30:00Z';
+    for (const reader of ['America/New_York', 'Europe/Istanbul']) {
+      process.env.TZ = reader;
+      const m = mount();
+      await screen.findByTestId('recipe-print');
+      await waitFor(() => expect(card()).toHaveTextContent('version 4, 25 Kas 2026'));
+      m.unmount();
+    }
+    house.createdAt = '2026-11-07T12:00:00Z';
+  });
+
+  it('keeps the reader\'s own day when the house states no zone or one this device cannot resolve', async () => {
+    process.env.TZ = 'America/New_York';
+    house.createdAt = '2026-11-24T22:30:00Z';
+    for (const zone of [null, 'Not/AZone']) {
+      house.zone = zone;
+      const m = mount();
+      await screen.findByTestId('recipe-print');
+      await waitFor(() => expect(card()).toHaveTextContent('version 4, 24 Nov 2026'));
+      m.unmount();
+    }
+    house.createdAt = '2026-11-07T12:00:00Z';
   });
 
   it('says no date for a version whose date cannot be read', async () => {
