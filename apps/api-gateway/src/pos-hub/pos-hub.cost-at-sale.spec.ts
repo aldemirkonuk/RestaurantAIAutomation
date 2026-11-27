@@ -16,7 +16,7 @@ import { DatabaseService } from "../database/database.service";
 
 type Row = Record<string, any>;
 
-function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boolean; logReadError?: boolean }) {
+function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boolean; logReadError?: boolean; saleUnit?: string }) {
   const consumption = new Map<string, Row>();
   const state = { lots: opts.lots ?? [] };
   const client: any = {
@@ -35,6 +35,8 @@ function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boo
           return q;
         },
         in: () => q,
+        // the sale's ledger row: none written here, so a whole line falls back to WAC
+        maybeSingle: async () => ({ data: null, error: null }),
         upsert: async () => ({ error: null }),
         update: (p: Row) => {
           patch = p;
@@ -73,7 +75,7 @@ function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boo
       };
       if (table === "pos_item_mappings")
         q.in = async () => ({
-          data: [{ external_item_id: "item-1", item_name: "House Red", is_wine: true, inventory_id: "inv-1", sale_unit: "glass" }],
+          data: [{ external_item_id: "item-1", item_name: "House Red", is_wine: true, inventory_id: "inv-1", sale_unit: opts.saleUnit ?? "glass" }],
           error: null,
         });
       if (table === "restaurant_inventory")
@@ -128,6 +130,17 @@ describe("cost at sale (C1-C5)", () => {
       cost_source_order_id: "ord-1",
     });
     expect(JSON.stringify(out)).toContain('"costNotKept":0');
+  });
+
+  it("C1b the fractional share of a bottle line is worded as a pour, the whole bottle is not (r105)", async () => {
+    const { db, consumption } = makeDb({ lots: [lot()], saleUnit: "bottle" });
+    await new PosHubService(db).ingest("r1", "generic_webhook", [
+      check({ items: [{ name: "House Red", externalItemId: "item-1", qty: 1.5, price: 90 }] }),
+    ]);
+    const whole = consumption.get("pos:generic_webhook:chk-1:item-1||90.0000:#0");
+    const frac = consumption.get("pos:generic_webhook:chk-1:item-1||90.0000:#0:frac");
+    expect(whole).toMatchObject({ cost_at_sale: 30, cost_basis: "invoice_lot_wac" });
+    expect(frac).toMatchObject({ cost_at_sale: 15, cost_basis: "pour_lot_wac" });
   });
 
   it("C2 a re-priced lot moves neither the row nor the check's margin", async () => {

@@ -22,9 +22,10 @@ begin
   values
     ('a0105000-0000-4000-8000-000000000401', h, inv, 'w', 'glass', 1, 150, 'pos', 12.8, 'pour_lot_wac', 64, ord),
     ('a0105000-0000-4000-8000-000000000402', h, inv, 'w', 'glass', 1, 150, 'pos', 12.8, 'pour_lot_wac_partial', 64, ord),
-    -- the other PRs' words survive this CHECK too (the list is the whole set of seven)
+    -- the other PRs' words survive this CHECK too (the list is the whole set of eight)
     ('a0105000-0000-4000-8000-000000000403', h, inv, 'w', 'bottle', 1, 750, 'pos', 64, 'agreed_lot_wac', 64, ord),
-    ('a0105000-0000-4000-8000-000000000404', h, inv, 'w', 'bottle', 1, 750, 'pos', 64, 'invoice_restated', 64, ord);
+    ('a0105000-0000-4000-8000-000000000404', h, inv, 'w', 'bottle', 1, 750, 'pos', 64, 'invoice_restated', 64, ord),
+    ('a0105000-0000-4000-8000-000000000405', h, inv, 'w', 'bottle', 1, 750, 'pos', 64, 'ledger_lot_draw', 64, ord);
 
   begin
     insert into public.wine_consumption_log
