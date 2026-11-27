@@ -4,6 +4,19 @@ import { DishesService, ID_CHUNK, PAGE, inWaves } from "./dishes.service";
 import { foldName } from "./name-fold";
 
 export const LOOSE_LINES_UNREAD = "Your drinks' lines could not be read just now, so none is offered to link.";
+export const LOOSE_DISH_LINES_UNREAD = "Your dishes' lines could not be read just now, so none is offered to add.";
+
+/** Whose lines: a house drink's (the default, every current caller) or a dish's (r109 inventory g4). */
+export type LooseKind = "drink" | "dish";
+
+/** Where each kind keeps its current pointer and its owner row (ADR 0360 drinks, ADR 0366 dishes). */
+const OWNER = {
+  drink: { current: "recipe_current", key: "cocktail_id", owners: "cocktails", cols: "id, name, display_name", unread: LOOSE_LINES_UNREAD },
+  dish: { current: "recipe_current_dish", key: "dish_id", owners: "dishes", cols: "id, name", unread: LOOSE_DISH_LINES_UNREAD },
+} as const;
+
+/** A line's base unit, as the good's own unit family: mg is weighed (g), ml10 poured (ml), each_milli counted. */
+const FAMILY: Record<string, "g" | "ml" | "each"> = { mg: "g", ml10: "ml", each_milli: "each" };
 
 type Read = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
 
@@ -30,6 +43,27 @@ export interface LooseDrink {
   lines: SaveLine[];
 }
 
+/** A dish's whole current version, in the PUT's own shape plus the version it was read at. */
+export interface LooseDish extends Omit<LooseDrink, "cocktailId"> {
+  dishId: string;
+}
+
+/**
+ * Every loose line of one folded name across the dishes. `proposed` is the
+ * unit a new good would be kept in, only when every line shares one base
+ * family (g, ml or each), else null. `shelf` is the one live good of that name
+ * when there is exactly one (the line may only need linking), with `sameName`.
+ */
+export interface LooseDishGroup {
+  key: string;
+  label: string;
+  lines: Array<{ dishId: string; index: number }>;
+  dishCount: number;
+  proposed: "g" | "ml" | "each" | null;
+  shelf: LooseGroup["proposed"];
+  sameName: number;
+}
+
 /** Every loose line of one folded name, with the one shelf good of that name when there is exactly one. */
 export interface LooseGroup {
   key: string;
@@ -41,6 +75,18 @@ export interface LooseGroup {
   /** How many live shelf goods have this name: 2 or more proposes none. */
   sameName: number;
 }
+
+/** One owner (drink or dish) as read, before its id is named for its kind. */
+type Owned = Omit<LooseDrink, "cocktailId"> & { ownerId: string };
+type Grouped = {
+  key: string;
+  label: string;
+  lines: Array<{ ownerId: string; index: number }>;
+  ownerCount: number;
+  shelf: LooseGroup["proposed"];
+  sameName: number;
+  families: Set<"g" | "ml" | "each" | null>;
+};
 
 const chunk = <T>(xs: T[], n = ID_CHUNK): T[][] => {
   const out: T[][] = [];
@@ -79,13 +125,13 @@ export class LooseLinesService {
     private readonly dishes: DishesService,
   ) {}
 
-  private async all<T>(what: string, read: (from: number, to: number) => Read): Promise<T[]> {
+  private async all<T>(what: string, read: (from: number, to: number) => Read, unread = LOOSE_LINES_UNREAD): Promise<T[]> {
     const out: T[] = [];
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await read(from, from + PAGE - 1);
       if (error) {
         this.logger.error(`loose lines: ${what} failed: ${error.message}`);
-        throw new ServiceUnavailableException(LOOSE_LINES_UNREAD);
+        throw new ServiceUnavailableException(unread);
       }
       const rows = (data ?? []) as T[];
       out.push(...rows);
@@ -94,9 +140,53 @@ export class LooseLinesService {
   }
 
   async looseLines(restaurantId: string): Promise<{ lineCount: number; drinkCount: number; groups: LooseGroup[]; drinks: LooseDrink[] }> {
+    const r = await this.read(restaurantId, "drink");
+    const drinks = r.owners.map(({ ownerId, ...d }) => ({ cocktailId: ownerId, ...d }));
+    return {
+      lineCount: r.lineCount,
+      drinkCount: r.ownerCount,
+      groups: r.groups.map((g) => ({
+        key: g.key,
+        label: g.label,
+        lines: g.lines.map((l) => ({ cocktailId: l.ownerId, index: l.index })),
+        drinkCount: g.ownerCount,
+        proposed: g.shelf,
+        sameName: g.sameName,
+      })),
+      drinks,
+    };
+  }
+
+  /**
+   * The same queue across the house's dishes (r109 inventory g4): each dish
+   * recipe line that names a food with no good behind it. Read through
+   * recipe_current_dish, the dishes' own pointer; the shape matches the drinks'
+   * so the one dish PUT re-saves each dish with only `inventoryId` changed.
+   */
+  async looseDishLines(restaurantId: string): Promise<{ lineCount: number; dishCount: number; groups: LooseDishGroup[]; dishes: LooseDish[] }> {
+    const r = await this.read(restaurantId, "dish");
+    return {
+      lineCount: r.lineCount,
+      dishCount: r.ownerCount,
+      groups: r.groups.map((g) => ({
+        key: g.key,
+        label: g.label,
+        lines: g.lines.map((l) => ({ dishId: l.ownerId, index: l.index })),
+        dishCount: g.ownerCount,
+        proposed: g.families.size === 1 && !g.families.has(null) ? ([...g.families][0] as "g" | "ml" | "each") : null,
+        shelf: g.shelf,
+        sameName: g.sameName,
+      })),
+      dishes: r.owners.map(({ ownerId, ...d }) => ({ dishId: ownerId, ...d })),
+    };
+  }
+
+  private async read(restaurantId: string, kind: LooseKind) {
+    const o = OWNER[kind];
+    const all = <T>(what: string, read: (from: number, to: number) => Read) => this.all<T>(what, read, o.unread);
     const client = this.db.getClient();
     // 1. Every counted line with no good, in any version of this house.
-    const loose = await this.all<any>("loose line read", (from, to) =>
+    const loose = await all<any>("loose line read", (from, to) =>
       client
         .from("recipe_lines")
         .select("id, version_id")
@@ -107,32 +197,34 @@ export class LooseLinesService {
         .range(from, to),
     );
     const versionIds = [...new Set(loose.map((l) => l.version_id as string))];
-    if (!versionIds.length) return { lineCount: 0, drinkCount: 0, groups: [], drinks: [] };
+    const none = { lineCount: 0, ownerCount: 0, groups: [] as Grouped[], owners: [] as Owned[] };
+    if (!versionIds.length) return none;
 
     // 2. Which of those versions is a drink's current one.
     const pointers = (
       await inWaves(chunk(versionIds), (ids) =>
-        this.all<any>("drink pointer read", (from, to) =>
+        all<any>(`${kind} pointer read`, (from, to) =>
           client
-            .from("recipe_current")
-            .select("cocktail_id, version_id")
+            .from(o.current)
+            .select(`${o.key}, version_id`)
             .eq("restaurant_id", restaurantId)
             .in("version_id", ids)
-            .order("cocktail_id", { ascending: true })
+            .order(o.key, { ascending: true })
             .range(from, to),
         ),
       )
-    ).flat();
-    const cocktailIds = [...new Set(pointers.map((p) => p.cocktail_id as string))];
-    if (!cocktailIds.length) return { lineCount: 0, drinkCount: 0, groups: [], drinks: [] };
+    ).flat()
+      .map((p) => ({ ownerId: p[o.key] as string, version_id: p.version_id as string }));
+    const cocktailIds = [...new Set(pointers.map((p) => p.ownerId))];
+    if (!cocktailIds.length) return none;
 
     // 3. The live drinks, their versions and every line of each (the PUT needs the whole version).
     const [cocktails, versionRows] = await Promise.all([
       inWaves(chunk(cocktailIds), (ids) =>
-        this.all<any>("drink read", (from, to) =>
+        all<any>(`${kind} read`, (from, to) =>
           client
-            .from("cocktails")
-            .select("id, name, display_name")
+            .from(o.owners)
+            .select(o.cols)
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
             .in("id", ids)
@@ -142,19 +234,19 @@ export class LooseLinesService {
       ),
       inWaves(chunk(pointers.map((p) => p.version_id as string)), (ids) =>
         Promise.all([
-          this.all<any>("drink version read", (from, to) =>
+          all<any>(`${kind} version read`, (from, to) =>
             client
               .from("recipe_versions")
-              .select("id, cocktail_id, yield_serves, method, glass, garnish")
+              .select(`id, ${o.key}, yield_serves, method, glass, garnish`)
               .eq("restaurant_id", restaurantId)
               .in("id", ids)
               .order("id", { ascending: true })
               .range(from, to),
           ),
-          this.all<any>("drink line read", (from, to) =>
+          all<any>(`${kind} line read`, (from, to) =>
             client
               .from("recipe_lines")
-              .select("id, version_id, position, role, inventory_id, component_dish_id, label, qty_entered, unit_code, usable_pct")
+              .select("id, version_id, position, role, inventory_id, component_dish_id, label, qty_entered, unit_code, base_unit, usable_pct")
               .eq("restaurant_id", restaurantId)
               .in("version_id", ids)
               .order("id", { ascending: true })
@@ -171,18 +263,20 @@ export class LooseLinesService {
       for (const l of ls) linesOf.set(l.version_id, [...(linesOf.get(l.version_id) ?? []), l]);
     }
 
-    const drinks: LooseDrink[] = [];
-    const places: Array<{ cocktailId: string; index: number; label: string }> = [];
+    const drinks: Owned[] = [];
+    const places: Array<{ ownerId: string; index: number; label: string; family: "g" | "ml" | "each" | null }> = [];
     for (const p of pointers) {
-      const c = live.get(p.cocktail_id);
+      const c = live.get(p.ownerId);
       const v = versions.get(p.version_id);
-      if (!c || !v || v.cocktail_id !== p.cocktail_id) continue;
+      if (!c || !v || v[o.key] !== p.ownerId) continue;
       const rows = [...(linesOf.get(p.version_id) ?? [])].sort((a, b) => a.position - b.position);
       rows.forEach((l, index) => {
-        if (l.role === "stocked" && !l.inventory_id) places.push({ cocktailId: p.cocktail_id, index, label: l.label });
+        if (l.role === "stocked" && !l.inventory_id) {
+          places.push({ ownerId: p.ownerId, index, label: l.label, family: FAMILY[l.base_unit] ?? null });
+        }
       });
       drinks.push({
-        cocktailId: p.cocktail_id,
+        ownerId: p.ownerId,
         name: c.display_name || c.name,
         versionId: p.version_id,
         yieldServes: Number(v.yield_serves),
@@ -192,32 +286,33 @@ export class LooseLinesService {
         lines: rows.map(saveLine),
       });
     }
-    drinks.sort((a, b) => a.name.localeCompare(b.name) || a.cocktailId.localeCompare(b.cocktailId));
-    const order = new Map(drinks.map((d, i) => [d.cocktailId, i]));
-    places.sort((a, b) => (order.get(a.cocktailId) ?? 0) - (order.get(b.cocktailId) ?? 0) || a.index - b.index);
+    drinks.sort((a, b) => a.name.localeCompare(b.name) || a.ownerId.localeCompare(b.ownerId));
+    const order = new Map(drinks.map((d, i) => [d.ownerId, i]));
+    places.sort((a, b) => (order.get(a.ownerId) ?? 0) - (order.get(b.ownerId) ?? 0) || a.index - b.index);
 
     // 4. Group by folded name, in drink order, and propose the one good of that name.
-    const groups = new Map<string, LooseGroup>();
-    for (const { cocktailId, index, label } of places) {
+    const groups = new Map<string, Grouped>();
+    for (const { ownerId, index, label, family } of places) {
       const key = foldName(label);
-      const g = groups.get(key) ?? { key, label, lines: [], drinkCount: 0, proposed: null, sameName: 0 };
-      g.lines.push({ cocktailId, index });
+      const g = groups.get(key) ?? { key, label, lines: [], ownerCount: 0, shelf: null, sameName: 0, families: new Set() };
+      g.lines.push({ ownerId, index });
+      g.families.add(family);
       groups.set(key, g);
     }
     const list = [...groups.values()];
     const matches = list.length ? await this.dishes.matchShelf(restaurantId, list.map((g) => g.label)) : [];
     list.forEach((g, i) => {
-      g.drinkCount = new Set(g.lines.map((l) => l.cocktailId)).size;
-      g.proposed = matches[i]?.item ?? null;
+      g.ownerCount = new Set(g.lines.map((l) => l.ownerId)).size;
+      g.shelf = matches[i]?.item ?? null;
       g.sameName = matches[i]?.sameName ?? 0;
     });
     list.sort((a, b) => b.lines.length - a.lines.length || a.key.localeCompare(b.key));
-    const affected = new Set(places.map((p) => p.cocktailId));
+    const affected = new Set(places.map((p) => p.ownerId));
     return {
       lineCount: places.length,
-      drinkCount: affected.size,
+      ownerCount: affected.size,
       groups: list,
-      drinks: drinks.filter((d) => affected.has(d.cocktailId)),
+      owners: drinks.filter((d) => affected.has(d.ownerId)),
     };
   }
 }

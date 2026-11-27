@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -18,8 +18,14 @@ export class LooseLinesController {
 
   @Get(":restaurantId/drinks/loose-lines")
   @Roles("owner", "manager")
-  @ApiOperation({ summary: "Every counted line of a drink's current recipe with no shelf good, grouped by name (owner/manager); writes nothing" })
-  looseLines(@Param("restaurantId", ParseUUIDPipe) restaurantId: string) {
-    return this.loose.looseLines(restaurantId);
+  @ApiOperation({
+    summary:
+      "Every counted line of a drink's (default) or, with ?kind=dish, a dish's current recipe with no shelf good, grouped by name (owner/manager); writes nothing",
+  })
+  looseLines(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Query("kind") kind?: string) {
+    // Absent is a drink, so every caller before r109 g4 reads what it always did.
+    if (kind === undefined || kind === "" || kind === "drink") return this.loose.looseLines(restaurantId);
+    if (kind === "dish") return this.loose.looseDishLines(restaurantId);
+    throw new BadRequestException("kind is drink or dish.");
   }
 }
