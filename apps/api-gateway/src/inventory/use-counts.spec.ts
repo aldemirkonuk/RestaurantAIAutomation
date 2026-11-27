@@ -78,6 +78,26 @@ describe("ItemUseCountsService (r105 g5)", () => {
     expect(counts.campari).toBeGreaterThanOrEqual(1);
   });
 
+  it("reads only the house's own cocktails' ingredient rows, never the catalogue's or another house's", async () => {
+    const { db, svc } = seed();
+    db.tables.cocktails.push(...Array.from({ length: 1200 }, (_, k) => ({ id: `cat-${k}`, restaurant_id: null, deleted_at: null })));
+    db.tables.cocktail_ingredients.push(
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `z${String(k).padStart(4, "0")}`, cocktail_id: `cat-${k}`, beverage_id: "bev-campari", wine_id: null })),
+    );
+    let read = 0;
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      const q: any = real(t);
+      if (t !== "cocktail_ingredients") return q;
+      const then = q.then.bind(q);
+      q.then = (res: any, rej: any) => then((r: any) => { read += Array.isArray(r.data) ? r.data.length : 0; return res(r); }, rej);
+      return q;
+    };
+    expect(await svc.counts(A)).toEqual({ counts: { gin: 2, campari: 1 } });
+    // house A's live cocktail c-sour has two rows (i1, i2); nothing of the 1,200 catalogue rows is read.
+    expect(read).toBe(2);
+  });
+
   it("a failed legacy read is unread, not 0", async () => {
     const { db, svc } = seed();
     const real = db.from.bind(db);

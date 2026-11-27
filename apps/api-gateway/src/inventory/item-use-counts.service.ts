@@ -56,7 +56,19 @@ export class ItemUseCountsService {
       // The drawer counts them (item-used-in inCocktails), so the list must too:
       // a good is found by its beverage_id or master_wine_id. A cocktail that has
       // both a current recipe line and an old row counts once (same owner key).
-      const legacy = await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", undefined);
+      // Read through the house's own live cocktails, 200 at a time and keyset-paged: reading the whole
+      // table walked every house's and the catalogue's rows on each list load (item-used-in inCocktails
+      // reads the same way, so the list and the drawer agree).
+      const houseCocktails = [...live].filter((o) => o.startsWith("cocktail_id:")).map((o) => o.slice("cocktail_id:".length));
+      const legacy: Row[] = [];
+      for (let i = 0; i < houseCocktails.length; i += 200) {
+        const chunk = houseCocktails.slice(i, i + 200);
+        legacy.push(
+          ...(await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", undefined, (q) =>
+            q.in("cocktail_id", chunk),
+          )),
+        );
+      }
       if (legacy.length > 0) {
         const goods = await this.paged(client, "restaurant_inventory", "id, beverage_id, master_wine_id", restaurantId);
         const byBeverage = new Map<string, string[]>();

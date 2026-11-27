@@ -62,6 +62,30 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
     expect(out.namedNotLinked.lines!.map((l) => l.menuItemId)).toEqual(["l-same-name"]);
   });
 
+  it("(a2) a house cocktail whose ingredient row is past the first 1,000 of the drink is still listed (PostgREST max_rows)", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Campari", beverage_id: "bev-c", master_wine_id: null });
+    // 1,200 catalogue cocktails use Campari; the house's own is added last, after the catalogue load.
+    db.tables.cocktails = [
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `cat-${String(k).padStart(4, "0")}`, restaurant_id: null, name: `Cat ${k}`, deleted_at: null })),
+      { id: "zz-house", restaurant_id: H, name: "House Negroni", deleted_at: null },
+    ];
+    db.tables.cocktail_ingredients = [
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `ing-${String(k).padStart(4, "0")}`, cocktail_id: `cat-${String(k).padStart(4, "0")}`, beverage_id: "bev-c", quantity: 30, unit: "ml" })),
+      { id: "ing-zz", cocktail_id: "zz-house", beverage_id: "bev-c", quantity: 30, unit: "ml" },
+    ];
+    // Like PostgREST: no read returns more than 1,000 rows.
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      const q: any = real(t);
+      const then = q.then.bind(q);
+      q.then = (res: any, rej: any) => then((r: any) => res({ ...r, data: Array.isArray(r.data) ? r.data.slice(0, 1000) : r.data }), rej);
+      return q;
+    };
+    const out = await svc.usedIn(H, I);
+    expect(out.inCocktails).toMatchObject({ readable: true });
+    expect(out.inCocktails.lines).toEqual([{ cocktailId: "zz-house", name: "House Negroni", quantity: 30, unit: "ml" }]);
+  });
+
   it("(a) a wine is sold by its library link, and that line is not repeated as named-not-linked", async () => {
     const { db, svc } = seed({ kind: "wine", display_name: "Kavaklıdere", master_wine_id: "w-1", beverage_id: null });
     db.tables.menu_items = [
@@ -197,7 +221,7 @@ describe("ItemUsedInService reads its groups at once (the drawer waits for the s
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
     // The menu read is held; the cocktail card and recipe reads have already gone out.
     expect(started).toContain("restaurant_menus");
-    expect(started).toContain("cocktail_ingredients");
+    expect(started).toContain("cocktails");
     expect(started).toContain("recipe_lines");
     expect(started).not.toContain("menu_items");
     open();
