@@ -298,13 +298,18 @@ export class MenuVersionsController {
   @ApiOperation({
     summary: "What choosing this menu would do, per line and per kind, before anyone chooses it",
     description:
-      "ADR 0193 round 3 (L13; the founder, 2026-09-21: \"add a section to that where you can lock price\"). Per line and per kind: the house price, the menu price and the result (change, unchanged, held_by_lock, blank_kept, blank_never_priced, not_linked, new_wine); for a price that would be replaced, who set it and when; the lock that holds a kind; every open lock whose wine is NOT on this menu (kept, dormant); and a fingerprint that make-current requires. Nothing is written. A failed read is a 500, never a plan with a hole in it.",
+      "ADR 0193 round 3 (L13; the founder, 2026-09-21: \"add a section to that where you can lock price\"). r109 menu-g4: for an owner or manager, each kind also carries margin (at the house price now and at this menu's, against the house's target); for anyone else every margin is null. Per line and per kind: the house price, the menu price and the result (change, unchanged, held_by_lock, blank_kept, blank_never_priced, not_linked, new_wine); for a price that would be replaced, who set it and when; the lock that holds a kind; every open lock whose wine is NOT on this menu (kept, dormant); and a fingerprint that make-current requires. Nothing is written. A failed read is a 500, never a plan with a hole in it.",
   })
   async plan(
     @CurrentUser("restaurantId") restaurantId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @CurrentUser("userId") userId?: string,
   ) {
-    return this.menusService.planFor(this.house(restaurantId), menuId);
+    const house = this.house(restaurantId);
+    // r109 menu-g4: margin is cost, and cost is an owner's or a manager's
+    // (the advice route's rule). Anyone else reads the plan with every margin null.
+    const margin = userId ? await this.organizations.canManageRestaurant(userId, house) : false;
+    return this.menusService.planFor(house, menuId, { margin });
   }
 
   @Post(":menuId/remove")

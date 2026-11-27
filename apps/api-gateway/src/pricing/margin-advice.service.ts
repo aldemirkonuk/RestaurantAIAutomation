@@ -132,7 +132,7 @@ export interface InventoryPriceRow {
 }
 
 /** What the advice needs from the house row besides the targets. */
-interface HouseTerms {
+export interface HouseTerms {
   bottlePct: number | null;
   glassPct: number | null;
   bandPct: number | null;
@@ -161,6 +161,110 @@ function emptyCounts(): Record<AdviceState, number> {
     raise: 0,
     lower: 0,
   };
+}
+
+/**
+ * One wine's advice: the rule (margin-to-target.ts) on the wine's own cost,
+ * pour and bottle size and the house's terms. A pure function, so the menu
+ * plan (menus/plan-margin.ts) advises with exactly what /inventory advises
+ * with, at the prices it asks about.
+ */
+export function adviseWineRow(
+  row: InventoryPriceRow,
+  lot: Record<string, unknown> | null,
+  t: HouseTerms,
+  locks: Map<string, OpenLock> = new Map(),
+): WineAdvice {
+  const { unitCost, costBasis } = resolveUnitCost(
+    { last_purchase_price: row.last_purchase_price },
+    lot,
+  );
+  const bottlePrice = n(row.menu_price_current);
+  const glassPrice = n(row.menu_price_glass);
+  const saleType = row.sale_type ?? "bottle";
+  const sellsBottle = saleType === "bottle" || saleType === "both" || bottlePrice !== null;
+  const sellsGlass = saleType === "glass" || saleType === "both" || glassPrice !== null;
+
+  const bottleMl = n(row.bottle_size_ml) ?? n(row.master_wine_library?.bottle_size_ml);
+  // The wine's own pour once an owner or manager confirmed it, else the
+  // house's confirmed pour (round 6c answer 3). An unconfirmed per-wine
+  // pour is never read as one.
+  const winePour = confirmedWinePourFrom(row);
+  const pourMl = winePour ?? t.pourMl;
+  const mark = (kind: PriceKind): LockMark | null => {
+    const l = locks.get(`${row.id}:${kind}`);
+    return l ? { lockId: l.lockId, lockedPrice: l.lockedPrice, lockedBy: l.lockedBy, lockedAt: l.lockedAt } : null;
+  };
+
+  return {
+    inventoryId: row.id,
+    wineName: row.wine_name || row.master_wine_library?.name || null,
+    costBasis,
+    costBasisLabel: COST_BASIS_LABEL[costBasis],
+    bottleCost: unitCost,
+    bottle: sellsBottle
+      ? {
+          ...adviseToTarget({
+            kind: "bottle",
+            price: bottlePrice,
+            unitCost,
+            targetPct: t.bottlePct,
+            bandPct: t.bandPct,
+          }),
+          locked: mark("bottle"),
+        }
+      : null,
+    glass: sellsGlass
+      ? {
+          ...adviseToTarget({
+            kind: "glass",
+            price: glassPrice,
+            unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
+            targetPct: t.glassPct,
+            bandPct: t.bandPct,
+            pourConfirmed: pourMl !== null,
+          }),
+          locked: mark("glass"),
+        }
+      : null,
+    pour: { ml: pourMl, source: winePour !== null ? "wine" : t.pourMl !== null ? "house" : null },
+  };
+}
+
+/** The rows a plan's margin reads per batch of wines (an id list in a URL stays short). */
+const MARGIN_READ_CHUNK = 200;
+
+/**
+ * What the advice reads for the named wines only: the house's terms, each
+ * wine's row and its lot rollup. Read by id in chunks, so no 1000-row cap
+ * can drop a wine. A failed read is returned in words, never an empty map.
+ */
+export async function readMarginInputs(
+  client: DatabaseService["client"],
+  restaurantId: string,
+  inventoryIds: string[],
+): Promise<
+  | { terms: HouseTerms; rows: Map<string, InventoryPriceRow>; lots: Map<string, Record<string, unknown>>; error: null }
+  | { error: string }
+> {
+  const targets = await readHouseTargetMargin(client, restaurantId);
+  if (targets.error !== null) return { error: `the house's target margin could not be read (${targets.error})` };
+  const terms: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
+  const rows = new Map<string, InventoryPriceRow>();
+  const lots = new Map<string, Record<string, unknown>>();
+  const ids = [...new Set(inventoryIds)];
+  for (let i = 0; i < ids.length; i += MARGIN_READ_CHUNK) {
+    const chunk = ids.slice(i, i + MARGIN_READ_CHUNK);
+    const [inv, rollup] = await Promise.all([
+      client.from("restaurant_inventory").select(INVENTORY_SELECT).eq("restaurant_id", restaurantId).in("id", chunk),
+      client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId).in("inventory_id", chunk),
+    ]);
+    if (inv.error) return { error: `the wines' costs could not be read (${inv.error.message})` };
+    if (rollup.error) return { error: `the recorded costs could not be read (${rollup.error.message})` };
+    for (const r of (inv.data ?? []) as unknown as InventoryPriceRow[]) rows.set(String(r.id), r);
+    for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) lots.set(String(r.inventory_id), r);
+  }
+  return { terms, rows, lots, error: null };
 }
 
 @Injectable()
@@ -250,60 +354,7 @@ export class MarginAdviceService {
     t: HouseTerms,
     locks: Map<string, OpenLock> = new Map(),
   ): WineAdvice {
-    const { unitCost, costBasis } = resolveUnitCost(
-      { last_purchase_price: row.last_purchase_price },
-      lot,
-    );
-    const bottlePrice = n(row.menu_price_current);
-    const glassPrice = n(row.menu_price_glass);
-    const saleType = row.sale_type ?? "bottle";
-    const sellsBottle = saleType === "bottle" || saleType === "both" || bottlePrice !== null;
-    const sellsGlass = saleType === "glass" || saleType === "both" || glassPrice !== null;
-
-    const bottleMl = n(row.bottle_size_ml) ?? n(row.master_wine_library?.bottle_size_ml);
-    // The wine's own pour once an owner or manager confirmed it, else the
-    // house's confirmed pour (round 6c answer 3). An unconfirmed per-wine
-    // pour is never read as one.
-    const winePour = confirmedWinePourFrom(row);
-    const pourMl = winePour ?? t.pourMl;
-    const mark = (kind: PriceKind): LockMark | null => {
-      const l = locks.get(`${row.id}:${kind}`);
-      return l ? { lockId: l.lockId, lockedPrice: l.lockedPrice, lockedBy: l.lockedBy, lockedAt: l.lockedAt } : null;
-    };
-
-    return {
-      inventoryId: row.id,
-      wineName: row.wine_name || row.master_wine_library?.name || null,
-      costBasis,
-      costBasisLabel: COST_BASIS_LABEL[costBasis],
-      bottleCost: unitCost,
-      bottle: sellsBottle
-        ? {
-            ...adviseToTarget({
-              kind: "bottle",
-              price: bottlePrice,
-              unitCost,
-              targetPct: t.bottlePct,
-              bandPct: t.bandPct,
-            }),
-            locked: mark("bottle"),
-          }
-        : null,
-      glass: sellsGlass
-        ? {
-            ...adviseToTarget({
-              kind: "glass",
-              price: glassPrice,
-              unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
-              targetPct: t.glassPct,
-              bandPct: t.bandPct,
-              pourConfirmed: pourMl !== null,
-            }),
-            locked: mark("glass"),
-          }
-        : null,
-      pour: { ml: pourMl, source: winePour !== null ? "wine" : t.pourMl !== null ? "house" : null },
-    };
+    return adviseWineRow(row, lot, t, locks);
   }
 
   /**

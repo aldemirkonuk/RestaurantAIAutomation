@@ -3304,3 +3304,68 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe("the plan's margin, for an owner or manager only (r109 menu-g4)", () => {
+  const house = (): Record<string, Row[]> => ({
+    restaurants: [{ id: "rest-1", target_margin_bottle_pct: 65, target_margin_glass_pct: null, target_margin_band_pct: 2 }],
+    restaurant_menus: [
+      { id: "menu-cur", restaurant_id: "rest-1", status: "active", read_state: "done" },
+      { id: "menu-new", restaurant_id: "rest-1", status: "draft", read_state: "done", extracted_at: "2026-11-01T00:00:00Z" },
+    ],
+    restaurant_inventory: [
+      { id: "inv-2", restaurant_id: "rest-1", master_wine_id: "mw-2", wine_name: "Chianti", sale_type: "bottle", menu_price_current: 50, menu_price_glass: null, last_purchase_price: 19.37, bottle_size_ml: 750, is_active: true },
+    ],
+    inventory_lot_rollup: [],
+    house_price_locks: [],
+    menu_price_versions: [],
+    users: [],
+    menu_items: [
+      { id: "c-2", menu_id: "menu-cur", restaurant_id: "rest-1", name: "Chianti", wine_library_id: "mw-2", inventory_item_id: "inv-2", bottle_price: 50, status: "approved" },
+      { id: "n-2", menu_id: "menu-new", restaurant_id: "rest-1", name: "Chianti", wine_library_id: "mw-2", inventory_item_id: "inv-2", bottle_price: 55, status: "approved" },
+      { id: "n-3", menu_id: "menu-new", restaurant_id: "rest-1", name: "Meze", category: "food", kitchen_line: true, bottle_price: 9, status: "approved" },
+    ],
+    user_onboarding_progress: [],
+  });
+
+  it("a manager's plan says the margin at the house price now and at this menu's, against the target", async () => {
+    const plan = await makeService(house()).planFor("rest-1", "menu-new", { margin: true });
+    const chianti = plan.lines.find((l) => l.menuItemId === "n-2")!;
+    // 19.37 / 0.35 = 55.34: 50 is 9.6% under it (raise), 55 is 0.6% under it, inside the 2% band.
+    expect(chianti.bottle.margin).toMatchObject({ targetPct: 65, atHouseNow: { state: "raise" }, atThisMenu: { state: "on_target" } });
+    expect(chianti.bottle.margin!.atHouseNow.marginPct).toBeCloseTo(((50 - 19.37) / 50) * 100, 5);
+    expect(chianti.bottle.margin!.atThisMenu.marginPct).toBeCloseTo(((55 - 19.37) / 55) * 100, 5);
+    expect(chianti.glass.margin).toBeNull();
+    expect(plan.marginReason).toBeNull();
+  });
+
+  it("a staff plan carries no cost and no margin", async () => {
+    const plan = await makeService(house()).planFor("rest-1", "menu-new", { margin: false });
+    for (const l of plan.lines) {
+      expect(l.bottle.margin).toBeNull();
+      expect(l.glass.margin).toBeNull();
+    }
+    const said = JSON.stringify(plan);
+    expect(said).not.toContain("19.37");
+    expect(said).not.toContain("marginPct");
+  });
+
+  it("the fingerprint is the same with and without margin, and a cost that moves does not change it", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    const without = await service.planFor("rest-1", "menu-new", { margin: false });
+    const withMargin = await service.planFor("rest-1", "menu-new", { margin: true });
+    tables.restaurant_inventory[0].last_purchase_price = 31;
+    const costMoved = await service.planFor("rest-1", "menu-new", { margin: true });
+    expect(withMargin.fingerprint).toBe(without.fingerprint);
+    expect(costMoved.fingerprint).toBe(without.fingerprint);
+    expect(costMoved.lines[0].bottle.margin!.atHouseNow.marginPct).toBeCloseTo(38, 5);
+  });
+
+  it("costs that cannot be read are said, and the plan still serves with no margin", async () => {
+    const tables = house();
+    (tables as any).__readFails = [{ inventory_lot_rollup: "rollup down" }];
+    const plan = await makeService(tables).planFor("rest-1", "menu-new", { margin: true });
+    expect(plan.marginReason).toMatch(/recorded costs could not be read \(rollup down\)/);
+    expect(plan.lines.every((l) => l.bottle.margin === null)).toBe(true);
+  });
+});

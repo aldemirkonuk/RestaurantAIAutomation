@@ -95,9 +95,18 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
 
   it("anyone of the house may READ the plan (ADR 0193 round 3); only choosing is gated", async () => {
     const { c, plan } = controller("staff");
-    await c.plan("rest-1", MENU);
-    expect(plan).toHaveBeenCalledWith("rest-1", MENU);
+    await c.plan("rest-1", MENU, "u-1");
+    expect(plan).toHaveBeenCalledWith("rest-1", MENU, { margin: false });
   });
+
+  it.each([["owner", true], ["manager", true], ["staff", false], [null, false]])(
+    "r109 menu-g4: a %s reads the plan with margin %p (cost is an owner's or a manager's)",
+    async (role, margin) => {
+      const { c, plan } = controller(role as string | null);
+      await c.plan("rest-1", MENU, "u-1");
+      expect(plan).toHaveBeenCalledWith("rest-1", MENU, { margin });
+    },
+  );
 
   it("any member of the house may read the menus; the house comes from the token", async () => {
     const { c, list } = controller("staff");
