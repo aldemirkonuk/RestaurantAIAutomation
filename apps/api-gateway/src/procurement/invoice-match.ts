@@ -747,9 +747,19 @@ export function computeMatch(input: MatchInput): MatchResult {
       ? Math.round(unitsOwed * invoiceUnitPrice * 100) / 100
       : null;
 
+  // A BOTTLE CLAIMED BACK IS NOT ALSO A COST (r102 F1; same netting as #1395).
+  // The credit above claims the billed price of every unit not usably
+  // received, so the good bottles carry the bill and the charges LESS that
+  // credit. Without it 12 billed at 10.00 with 2 broken priced each good
+  // bottle at 12.00 while the house also claimed 20.00 back, and verifyReceipt
+  // wrote that figure into the lot and into closed checks.
+  const claimedBack =
+    hasInvoice && invoiceUnitPrice != null ? unitsOwed * invoiceUnitPrice : 0;
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
-      ? ((invoiceQty as number) * invoiceUnitPrice + allocatedCharges) /
+      ? ((invoiceQty as number) * invoiceUnitPrice +
+          allocatedCharges -
+          claimedBack) /
         acceptedQty
       : null;
 
