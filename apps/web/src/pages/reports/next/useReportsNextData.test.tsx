@@ -205,9 +205,8 @@ describe('useReportsNextData — a till window is read before the click (perf-p6
   });
 });
 
-describe('useReportsNextData — the other till windows are read when idle (perf-p7-2)', () => {
+describe('useReportsNextData — no till window is read ahead without intent (perf-p9-2)', () => {
   const TILL = (d: number) => `/analytics/pos-revenue/r1?days=${d}`;
-  const rows = (d: number) => ({ data: { posConnected: true, days: d } });
   let idle: Array<() => void>;
   function arrange() {
     auth.role = 'owner';
@@ -217,58 +216,31 @@ describe('useReportsNextData — the other till windows are read when idle (perf
     api.get.mockReset();
     api.get.mockImplementation(async (path: string) => {
       if (path === READING) return { data: { insights: [] } };
-      const m = /pos-revenue\/r1\?days=(\d+)/.exec(path);
-      if (m) return rows(Number(m[1]));
+      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: { posConnected: true } };
       throw new Error(`unexpected GET ${path}`);
     });
   }
-  const runIdle = async () => {
-    const fn = idle.shift();
-    await act(async () => fn?.());
-  };
   afterEach(() => {
-    cleanup(); // unmount while the idle stubs still exist
+    cleanup();
     delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
     delete (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback;
-    Object.defineProperty(navigator, 'connection', { value: undefined, configurable: true });
   });
 
-  it('reads 7d then 90d, one at a time, under the key the click uses, and the click reads nothing', async () => {
+  it('once settled and idle, reads only the window showing; the other two wait for a pointer or focus', async () => {
     arrange();
-    const { result, rerender } = renderHook(
-      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['till']),
-      { wrapper: wrapper(), initialProps: { days: 30 } },
-    );
-    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
-    await waitFor(() => expect(idle).toHaveLength(1));
-    expect(paths()).not.toContain(TILL(7)); // nothing before the browser is idle
-    expect(paths()).not.toContain(TILL(90));
-
-    await runIdle();
-    await waitFor(() => expect(paths()).toContain(TILL(7)));
-    expect(paths()).not.toContain(TILL(90)); // one window at a time
-    await waitFor(() => expect(idle).toHaveLength(1));
-    await runIdle();
-    await waitFor(() => expect(paths()).toContain(TILL(90)));
-
-    api.get.mockClear();
-    rerender({ days: 90 }); // the click
-    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
-    expect(paths()).toEqual([]); // render-only
-    // The figures drawn from the warmed window equal those of a direct read.
-    const prefetched = result.current.registers.till?.data;
-    const direct = renderHook(() => useReportsNextData(90, () => {}, ['till']), { wrapper: wrapper() });
-    await waitFor(() => expect(direct.result.current.registers.till?.loading).toBe(false));
-    expect(prefetched).toEqual(direct.result.current.registers.till?.data);
-  });
-
-  it('reads nothing ahead on a data-saver connection', async () => {
-    arrange();
-    Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
     const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrapper() });
     await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
-    await new Promise((r) => setTimeout(r, 20));
-    expect(idle).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 300)); // past the old 200 ms fallback timer
+    expect(idle).toHaveLength(0); // nothing queued for idle time
     expect(paths().filter((p) => p !== READING)).toEqual([TILL(30)]);
+  });
+
+  it('a hover still reads exactly the window it points at', async () => {
+    arrange();
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    act(() => result.current.warmTillWindow(7));
+    await waitFor(() => expect(paths()).toContain(TILL(7)));
+    expect(paths()).not.toContain(TILL(90));
   });
 });

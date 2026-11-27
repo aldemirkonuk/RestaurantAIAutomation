@@ -28,7 +28,7 @@
  * those nulls, and the cuttings render them as em dashes.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -69,7 +69,7 @@ export interface Register<T> {
 /** Exported so a write elsewhere (`useGoalsDesk`) can invalidate this read. */
 export const ROOT = 'reports-next';
 
-/** The till windows the chips offer; the idle warm-up reads each of them. */
+/** The till windows the chips offer; a hover warms one of them. */
 export const TILL_WINDOWS = [7, 30, 90] as const;
 
 /* ────────────────────────────────────────────────── the sheet itself ───── */
@@ -319,37 +319,10 @@ export function useReportsNextData(
 
   const warmTillWindow = useCallback((days: number) => void warmWindow(days), [warmWindow]);
 
-  // Once the cold read has settled, and the browser is idle, read the other
-  // till windows the chips offer, one window at a time, under the very keys the
-  // click uses — so the click is a redraw, not a round trip. Never on a
-  // data-saver connection, and never before the reads the page is waiting on.
-  const settled = results.length > 0 && results.every((q) => !q.isFetching);
-  useEffect(() => {
-    if (!rid || !settled) return;
-    if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData) return;
-    let cancelled = false;
-    const idle = (fn: () => void): (() => void) => {
-      if (typeof requestIdleCallback === 'function') {
-        const h = requestIdleCallback(fn);
-        return () => cancelIdleCallback(h);
-      }
-      const h = setTimeout(fn, 200);
-      return () => clearTimeout(h);
-    };
-    let cancel = () => {};
-    const rest = TILL_WINDOWS.filter((d) => d !== tillDays);
-    const next = (i: number) => {
-      if (cancelled || i >= rest.length) return;
-      cancel = idle(() => {
-        void warmWindow(rest[i]).then(() => next(i + 1));
-      });
-    };
-    next(0);
-    return () => {
-      cancelled = true;
-      cancel();
-    };
-  }, [rid, settled, tillDays, warmWindow]);
+  // Nothing is read ahead on its own. The other till windows are read only on
+  // a pointer, focus or touch (`warmTillWindow`), so the first load never pays
+  // for reads nobody asked for (p9-2: the idle warm-up pushed settle from
+  // 2790 to 4923 ms at 375).
 
   const kept = useRef<
     Partial<Record<AnalysisId, { reg: Register<unknown>; data: unknown; loading: boolean; error: unknown }>>
