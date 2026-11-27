@@ -418,6 +418,22 @@ export function useReportsNextData(
               ),
             );
           }
+          const shownUrl = spec.shownPath?.(rid as string, ctx) ?? null;
+          if (shownUrl && spec.withShown) {
+            // The window the card shows, beside the doubled read it is split from:
+            // only the doubled read failing fails the register; a failed shown read
+            // is null, which the register says as a dash, never a guess.
+            const [whole, shown] = await Promise.allSettled([
+              readRaw(spec.path!(rid as string, ctx)),
+              readRaw(shownUrl),
+            ]);
+            if (whole.status === 'rejected') throw whole.reason;
+            // The gateway answered that this role may not read the register
+            // (r108): that is a held-back register, not an empty one.
+            if (isWithheldAnswer(whole.value)) throw new RegisterWithheld();
+            const shownOk = shown.status === 'fulfilled' && !isWithheldAnswer(shown.value);
+            return spec.withShown(spec.select(whole.value), shownOk ? spec.select(shown.value) : null);
+          }
           const raw = await readRaw(spec.path!(rid as string, ctx));
           // The gateway answered that this role may not read the register
           // (r108): that is a held-back register, not an empty one.

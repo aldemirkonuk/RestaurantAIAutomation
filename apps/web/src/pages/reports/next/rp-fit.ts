@@ -53,3 +53,18 @@ export function controlRows(px: number | undefined): number {
   if (px === undefined || !Number.isFinite(px) || px <= 0) return 0;
   return Math.ceil(px / (SHEET_ROW_HEIGHT + SHEET_MARGIN[1]));
 }
+
+/**
+ * The height the till's compare answer row ("Against the prior window") takes on a phone,
+ * as measured at 375 (r106 walk M-a): the one-column card holds this much more while compare
+ * is on, so "Show the working" stays inside the card instead of 66 px below it.
+ */
+export const COMPARE_ANSWER_PX = 66;
+
+/**
+ * The same hold on the twelve-column sheet, in the grid's own unit (a row). At 1440 the till's card with compare
+ * drawn ran its "Show the working" last line 5 px past the 8-row slot (card 370, r107 walk M-a). The grid cannot
+ * give a card 5 px, so the card holds the whole rows that cover it, while compare answers and the sheet is read.
+ */
+export const COMPARE_GRID_OVERHANG_PX = 5;
+export const COMPARE_GRID_ROWS = Math.ceil(COMPARE_GRID_OVERHANG_PX / (SHEET_ROW_HEIGHT + SHEET_MARGIN[1]));

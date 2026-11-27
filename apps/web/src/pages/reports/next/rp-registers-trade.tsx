@@ -121,6 +121,8 @@ const reading = analysis<ReadingFeed>({
 
 export interface TillWindow {
   posConnected: boolean;
+  /** True when the gateway kept the takings from this reader (staff): a withheld read is not an empty one (ADR 0020). */
+  salesWithheld?: boolean;
   /** null — never 0 — when no POS has ever landed a check. */
   revenue: number | null;
   checkCount: number | null;
@@ -137,6 +139,11 @@ export interface TillWindow {
    * and then the till offers no bars and a line.
    */
   dailySeries: Array<{ date: string; revenue: number | null; checks: number | null }>;
+  /**
+   * Only when comparing: the check count of the N-day read the card shows (the split series
+   * carries no per-day checks). Undefined: not read (compare off); null: that read failed.
+   */
+  shownChecks?: number | null;
   /** Only when comparing: the same-length window just before, cut from the same read (see `splitTill`). Null otherwise. */
   prior: {
     from: string;
@@ -253,7 +260,10 @@ export function splitTill(w: TillWindow, days: number): TillWindow {
     days,
     dailySeries: win,
     revenue: sumKnown(win.map((d) => d.revenue)),
-    checkCount: win.length > 0 && win.every((d) => d.checks != null) ? win.reduce((a, d) => a + (d.checks ?? 0), 0) : win.length === 0 ? 0 : null,
+    checkCount:
+      w.shownChecks !== undefined
+        ? w.shownChecks
+        : win.length > 0 && win.every((d) => d.checks != null) ? win.reduce((a, d) => a + (d.checks ?? 0), 0) : win.length === 0 ? 0 : null,
     prior:
       before.length === days
         ? {
@@ -280,6 +290,12 @@ export function priorSlots(w: TillWindow, shown: string[]): Array<number | null>
   return span.map((date) => byDate.get(date) ?? null);
 }
 
+/** True when the till's card is drawing the compare answer ("Against the prior window") for this read. */
+export function tillAnswersCompare(data: unknown, ctx: { days: number; compare?: boolean }): boolean {
+  if (!ctx.compare || data === undefined || data === null) return false;
+  return till.view(data as TillWindow, ctx).figures.some((f) => f.label === 'Against the prior window');
+}
+
 const till = analysis<TillWindow>({
   title: 'Through the till',
   register: 'till register',
@@ -292,11 +308,17 @@ const till = analysis<TillWindow>({
   graphs: ['area', 'line', 'bars', 'combo', 'heatmap', 'table', 'figure'],
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
+  // With compare on, the card's Checks and Average come from the N-day read it shows
+  // when compare is off (same key, so cached), never from the doubled read's days.
+  shownPath: (rid, ctx) =>
+    ctx.compare && compareOffered(ctx.days) ? `/analytics/pos-revenue/${rid}?days=${ctx.days}` : null,
+  withShown: (w, shown) => ({ ...w, shownChecks: shown ? shown.checkCount : null }),
   takesWindow: true,
   select: (raw) => {
     const d = obj(raw);
     return {
       posConnected: d.posConnected === true,
+      salesWithheld: d.salesWithheld === true,
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
       from: str(d.from),
@@ -316,6 +338,17 @@ const till = analysis<TillWindow>({
   view: (read, ctx) => {
     const w = ctx.compare ? splitTill(read, ctx.days) : read;
     const money = moneyIn(ctx.currency);
+    // Takings kept to the owner and managers: say so, and draw, count and
+    // cite nothing, so a staff reader is never told the till rang nothing.
+    // `?compare=prior` is ignored here, and the card offers no compare.
+    if (w.salesWithheld)
+      return {
+        say: 'Takings are kept to the owner and managers.',
+        withheld: true,
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     if (!w.posConnected)
       return {
         say: (
