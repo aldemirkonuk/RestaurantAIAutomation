@@ -57,6 +57,11 @@ to those would put a moving cutting somewhere the announcement says it is not.
   quadrants to the room simply becomes the room, and shows skeletons while its
   register is read. A slide or a flip would dramatise a choice the reader has
   already made.
+- **Nothing animates when full screen steps to the next cutting.** Previous, Next
+  and the Left and Right keys lay the neighbouring cutting flat in sheet order;
+  the dialog it lands on appears as any full-screen opening does, and the one
+  it leaves is gone. No slide, no cross-fade, no count on the marker. It is a
+  subject change, and the reader pressed the button that named the subject.
 - **Figures of record do not count up.** No `tally` on this page. A figure of
   record is read, not watched — and half the figures in "Figures of record" are
   em dashes, so a ticker would be animating an absence.

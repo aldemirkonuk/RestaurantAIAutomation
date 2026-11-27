@@ -64,7 +64,7 @@ import { cannotDraw } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
 import RuledOff from './RuledOff';
-import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
+import CuttingFlat, { FLAT_PARAM, type FlatStep } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
 import type { ComboPick } from './rp-combo';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
@@ -331,6 +331,8 @@ export interface CuttingProps {
   onControls?: (id: AnalysisId, px: number | null) => void;
   /** Folded to a 72 px strip: the register's honest answer is a sentence (`rp-strip.ts`). */
   strip?: boolean;
+  /** The cuttings that can lay flat, in the sheet's read order (the one-column order); steps move along it. */
+  flatOrder?: AnalysisId[];
 }
 
 export default function Cutting({
@@ -349,6 +351,7 @@ export default function Cutting({
   onDays,
   onCompare,
   strip = false,
+  flatOrder,
   onFit,
   onControls,
 }: CuttingProps) {
@@ -462,6 +465,27 @@ export default function Cutting({
     next.set(FLAT_PARAM, id);
     setParams(next, { state: { rpFlat: id } });
   };
+  // Previous and Next in the sheet's read order. A step replaces this entry, never adds one, so Back still
+  // leaves full screen in one press; the marker rides along only when the opener's entry was ours.
+  const stepAt = flatOrder ? flatOrder.indexOf(id) : -1;
+  const stepState = location.state as { rpFlat?: unknown; rpStep?: 'prev' | 'next' } | null;
+  const flatStep: FlatStep | undefined =
+    flatOrder && stepAt !== -1 && flatOrder.length > 1
+      ? {
+          position: stepAt + 1,
+          total: flatOrder.length,
+          prevTitle: stepAt > 0 ? CATALOGUE[flatOrder[stepAt - 1]].title : null,
+          nextTitle: stepAt < flatOrder.length - 1 ? CATALOGUE[flatOrder[stepAt + 1]].title : null,
+          go: (dir) => {
+            const to = flatOrder[stepAt + (dir === 'next' ? 1 : -1)];
+            if (!to) return;
+            const next = new URLSearchParams(params);
+            next.set(FLAT_PARAM, to);
+            const ours = stepState?.rpFlat === id;
+            setParams(next, { replace: true, state: ours ? { rpFlat: to, rpStep: dir } : { rpStep: dir } });
+          },
+        }
+      : undefined;
   const closeFlat = () => {
     const ours = (location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
     if (ours) {
@@ -514,7 +538,8 @@ export default function Cutting({
   // Focus goes back to the control that opened the view, however it closed.
   const wasFlat = useRef(flat);
   useEffect(() => {
-    if (wasFlat.current && !flat) openerRef.current?.focus();
+    // A step lays the neighbour flat: its dialog takes focus, this opener must not.
+    if (wasFlat.current && !flat && !params.get(FLAT_PARAM)) openerRef.current?.focus();
     wasFlat.current = flat;
   }, [flat]);
 
@@ -630,6 +655,8 @@ export default function Cutting({
           }
           anchorRef={openerRef}
           onClose={closeFlat}
+          step={flatStep}
+          initialFocus={stepState?.rpStep}
         />
       )}
     </section>

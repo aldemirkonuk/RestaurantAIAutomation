@@ -25,7 +25,12 @@
  *     motion is no animation, the fade included; input and focus are never
  *     held back by it. Rejected: a View Transition card-to-flat morph (a
  *     large-area zoom is a vestibular trigger and it cross-fades two charts).
- *  5. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
+ *  5. **It steps through the sheet** (r108 g1). Previous and Next, and the Left
+ *     and Right keys, lay the neighbouring cutting flat in sheet order; "3 of
+ *     9" says where. Each cutting owns its `?flat=`, so a step is a replace of
+ *     that one param (`Cutting.tsx`), and the dialog it lands on is a new one.
+ *     Nothing animates (MOTIONS.md: a subject change is not animated).
+ *  6. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
  *     palette never opens unseen underneath (audit 2026-11-07).
@@ -42,7 +47,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { lockBodyScroll, openStack } from '@/components/mudavym/overlayState';
 import { readGroundFromDom, type MudavymGround } from '@/lib/mudavym/shellGround';
 import type { ComboPick } from './rp-combo';
@@ -61,6 +66,21 @@ function tabbables(root: HTMLElement): HTMLElement[] {
     (el) => !el.hasAttribute('hidden') && !el.closest('[aria-hidden="true"]'),
   );
 }
+
+/** Where this cutting sits in the sheet's read order, and the way to its neighbours. */
+export interface FlatStep {
+  /** 1-based. */
+  position: number;
+  total: number;
+  /** Titles, or null at an end: the sheet does not wrap. */
+  prevTitle: string | null;
+  nextTitle: string | null;
+  go: (dir: 'prev' | 'next') => void;
+}
+
+/** Where Left and Right are the control's own, not a step. */
+const OWN_ARROWS =
+  'select,input,textarea,[contenteditable="true"],[role="radiogroup"],[role="tablist"],[role="slider"],[role="listbox"],.rp-plot';
 
 export interface CuttingFlatProps {
   title: string;
@@ -83,6 +103,10 @@ export interface CuttingFlatProps {
   windowControl?: ReactNode;
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
+  /** Absent when the sheet has one cutting to lay flat. */
+  step?: FlatStep;
+  /** A step lands with focus on the button it came by; any other opening on Back. */
+  initialFocus?: 'prev' | 'next';
 }
 
 export default function CuttingFlat({
@@ -95,6 +119,8 @@ export default function CuttingFlat({
   windowControl,
   anchorRef,
   onClose,
+  step,
+  initialFocus,
 }: CuttingFlatProps) {
   const [picked, setGraph] = useState<GraphType>(initialGraph);
   // A drawing the data turned out not to carry (the list shrinks when the read lands) is not held on to.
@@ -103,10 +129,14 @@ export default function CuttingFlat({
   const [ground, setGround] = useState<MudavymGround | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const backRef = useRef<HTMLButtonElement | null>(null);
+  const prevRef = useRef<HTMLButtonElement | null>(null);
+  const nextRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
   const closeRef = useRef(onClose);
+  const stepRef = useRef(step);
   useEffect(() => {
     closeRef.current = onClose;
+    stepRef.current = step;
   });
 
   /* Portalled outside the page's `.mudavym` root, so the ground (ADR 0169)
@@ -118,7 +148,9 @@ export default function CuttingFlat({
   // Focus in, the house's counted scroll lock, a place on the overlay stack,
   // Escape out when on top, and the page's ⌘K held back.
   useEffect(() => {
-    backRef.current?.focus();
+    // The button the reader came by, if it is still there (an end has one fewer); else Back.
+    const wanted = initialFocus === 'prev' ? prevRef.current : initialFocus === 'next' ? nextRef.current : null;
+    (wanted ?? backRef.current)?.focus();
     const release = lockBodyScroll();
     openStack.push(titleId);
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -127,6 +159,24 @@ export default function CuttingFlat({
         // window-level palette listener never hears this press.
         e.preventDefault();
         e.stopPropagation();
+        return;
+      }
+      if (
+        (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+        !e.defaultPrevented &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        const target = e.target instanceof Element ? e.target : null;
+        const s = stepRef.current;
+        if (!s || target?.closest(OWN_ARROWS)) return;
+        if (openStack[openStack.length - 1] !== titleId) return;
+        const dir = e.key === 'ArrowLeft' ? 'prev' : 'next';
+        if ((dir === 'prev' ? s.prevTitle : s.nextTitle) === null) return;
+        e.preventDefault();
+        s.go(dir);
         return;
       }
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -184,15 +234,52 @@ export default function CuttingFlat({
       onKeyDown={holdTab}
     >
       <div className="rp-flat__head">
-        <button
-          ref={backRef}
-          type="button"
-          className="rp-btn rp-ink rp-focus rp-flat__back"
-          onClick={onClose}
-        >
-          <ArrowLeft size={14} strokeWidth={1.8} aria-hidden />
-          <span className="rp-flat__back-label">Back to the sheet</span>
-        </button>
+        <div className="rp-flat__bar">
+          <button
+            ref={backRef}
+            type="button"
+            className="rp-btn rp-ink rp-focus rp-flat__back"
+            onClick={onClose}
+          >
+            <ArrowLeft size={14} strokeWidth={1.8} aria-hidden />
+            <span className="rp-flat__back-label">Back to the sheet</span>
+          </button>
+          {step && (
+            <div className="rp-flat__steps" role="group" aria-label="Move through the sheet">
+              <span className="rp-flat__step-slot">
+                {step.prevTitle !== null && (
+                  <button
+                    ref={prevRef}
+                    type="button"
+                    className="rp-btn rp-ink rp-focus rp-flat__step"
+                    aria-label={`Previous: ${step.prevTitle}`}
+                    title={`Previous: ${step.prevTitle}`}
+                    onClick={() => step.go('prev')}
+                  >
+                    <ChevronLeft size={16} strokeWidth={1.8} aria-hidden />
+                  </button>
+                )}
+              </span>
+              <span className="rp-cap rp-flat__step-count">
+                {step.position} of {step.total}
+              </span>
+              <span className="rp-flat__step-slot">
+                {step.nextTitle !== null && (
+                  <button
+                    ref={nextRef}
+                    type="button"
+                    className="rp-btn rp-ink rp-focus rp-flat__step"
+                    aria-label={`Next: ${step.nextTitle}`}
+                    title={`Next: ${step.nextTitle}`}
+                    onClick={() => step.go('next')}
+                  >
+                    <ChevronRight size={16} strokeWidth={1.8} aria-hidden />
+                  </button>
+                )}
+              </span>
+            </div>
+          )}
+        </div>
         <div className="rp-flat__row">
           <div style={{ minWidth: 0 }}>
             <h2 id={titleId} className="rp-cut__title rp-flat__title">
