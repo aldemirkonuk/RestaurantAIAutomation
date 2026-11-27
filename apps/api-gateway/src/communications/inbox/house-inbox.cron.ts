@@ -26,6 +26,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import {
+  CATEGORY_CLEAN_CRON,
   HOUSE_INBOX_CRON,
   HouseInboxService,
   type InboxReadRun,
@@ -68,6 +69,22 @@ export class HouseInboxCron {
         error,
       };
       this.logger.error(`house inbox read failed: ${error}`);
+    }
+  }
+
+  /** Daily: delete the stored guest rows Gmail files under the newsletter tabs (r104 mail-2). */
+  @Cron(CATEGORY_CLEAN_CRON, { name: "house-inbox-category-clean" })
+  async cleanCategories(): Promise<void> {
+    try {
+      const run = await this.inbox.cleanCategoryGuestRows();
+      if (run.error) this.logger.error(`house inbox category clean: ${run.error}`);
+      for (const o of run.outcomes) {
+        if (o.error) this.logger.error(`house inbox category clean ${o.connectionId}: ${o.says}`);
+        else if (o.deleted > 0) this.logger.log(`house inbox category clean: ${o.says}`);
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.logger.error(`house inbox category clean failed: ${error}`);
     }
   }
 }

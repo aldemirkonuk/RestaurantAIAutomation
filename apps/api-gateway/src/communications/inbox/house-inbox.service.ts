@@ -193,6 +193,28 @@ export const MAX_PAGES_ALL = 50;
 export const WIDE_CATEGORY_BOUND =
   "-category:promotions -category:social -category:forums -category:updates";
 
+/** Once a day: the stored guest rows the newsletter tabs left behind (r104 mail-2). */
+export const CATEGORY_CLEAN_CRON = "40 3 * * *";
+
+/** The four tabs `WIDE_CATEGORY_BOUND` leaves out, one per `category:` query. */
+export const NEWSLETTER_CATEGORIES = [
+  "promotions",
+  "social",
+  "updates",
+  "forums",
+] as const;
+
+/** What one wide grant's cleanup did, in words. A failed step says so; it is never a zero. */
+export interface CategoryCleanOutcome {
+  connectionId: string;
+  restaurantId: string | null;
+  /** Stored guest rows of this grant that were checked. */
+  considered: number;
+  deleted: number;
+  error: string | null;
+  says: string;
+}
+
 /** Who a message in a wider read is from, relative to THIS house. */
 export type MailKind = "vendor" | "team" | "guest";
 
@@ -355,6 +377,173 @@ export class HouseInboxService {
       discarded: outcomes.reduce((n, o) => n + o.discarded, 0),
       outcomes,
       error: null,
+    };
+  }
+
+  /**
+   * DELETE THE GUEST ROWS THE NEWSLETTER TABS LEFT BEHIND (r104 mail-2,
+   * DD-r102-2 stored-row cleanup). The bound on the wide query (r103 mail-2)
+   * only stops NEW newsletters. Rows filed before it carry no category, so each
+   * wide grant's stored guest rows are matched, by `gmail_message_id`, against
+   * what Gmail lists under the four `category:` queries.
+   *
+   * Only a row stored as `guest` goes, and the delete itself filters on kind
+   * again: a vendor row (a price list in Promotions) and a team row are never
+   * selected, and are never deleted even if their id is listed. A listing that
+   * cannot be read or cannot be proven whole deletes nothing for that grant.
+   */
+  async cleanCategoryGuestRows(): Promise<{
+    outcomes: CategoryCleanOutcome[];
+    error: string | null;
+  }> {
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id, user_id, restaurant_id")
+      .eq("integration_id", GMAIL_READ_ALL_INTEGRATION_ID)
+      .is("revoked_at", null);
+    if (error) {
+      return {
+        outcomes: [],
+        error: `The list of wider reading grants could not be read (${error.message}), so no stored mail was checked. This is a failed read, not an absence of grants.`,
+      };
+    }
+    const outcomes: CategoryCleanOutcome[] = [];
+    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+      outcomes.push(await this.cleanOneGrant(row));
+    }
+    return { outcomes, error: null };
+  }
+
+  private async cleanOneGrant(
+    row: Record<string, unknown>,
+  ): Promise<CategoryCleanOutcome> {
+    const connectionId = String(row.id);
+    const restaurantId = row.restaurant_id ? String(row.restaurant_id) : null;
+    const fail = (considered: number, why: string): CategoryCleanOutcome => ({
+      connectionId,
+      restaurantId,
+      considered,
+      deleted: 0,
+      error: why,
+      says: `${why} Nothing was deleted.`,
+    });
+    if (!restaurantId) {
+      return fail(0, "This grant carries no restaurant, so its stored mail was not checked.");
+    }
+    if (!(await this.isEnabled(restaurantId))) {
+      return {
+        connectionId,
+        restaurantId,
+        considered: 0,
+        deleted: 0,
+        error: null,
+        says: `${HOUSE_INBOX_FLAG} is not on for this restaurant, so Gmail was not asked and nothing was deleted.`,
+      };
+    }
+    const { data: stored, error: storedError } = await this.db.client
+      .from("procurement_conversations")
+      .select("id, gmail_message_id, received_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("mirrored_by_grant_id", connectionId)
+      .eq("kind", "guest")
+      .not("gmail_message_id", "is", null);
+    if (storedError) {
+      return fail(
+        0,
+        `The guest messages stored for this grant could not be read (${storedError.message}).`,
+      );
+    }
+    const guests = (stored ?? []) as unknown as Array<{
+      id: string;
+      gmail_message_id: string;
+      received_at: string | null;
+    }>;
+    if (!guests.length) {
+      return {
+        connectionId,
+        restaurantId,
+        considered: 0,
+        deleted: 0,
+        error: null,
+        says: "No guest message is stored for this grant, so there was nothing to check.",
+      };
+    }
+    const stamps = guests
+      .map((g) => Date.parse(String(g.received_at ?? "")))
+      .filter((n) => Number.isFinite(n));
+    // A row whose date cannot be read could be older than any query we ask, so
+    // it is a failed read rather than a guess at where to start.
+    if (stamps.length !== guests.length) {
+      return fail(
+        guests.length,
+        "A stored guest message has no readable date, so the Gmail listing could not be bounded.",
+      );
+    }
+    // One day of margin: Gmail's `after:` is second-granular and a stored date is
+    // the message's own.
+    const afterSeconds = Math.floor(Math.min(...stamps) / 1000) - 86_400;
+
+    let token: string;
+    try {
+      token = await this.oauth.getAccessToken(
+        String(row.user_id),
+        restaurantId,
+        GMAIL_READ_ALL_INTEGRATION_ID,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return fail(guests.length, `The grant's token could not be obtained (${message}).`);
+    }
+
+    const listed = new Set<string>();
+    try {
+      for (const category of NEWSLETTER_CATEGORIES) {
+        const ids = await this.listEveryPage(
+          token,
+          `category:${category} after:${afterSeconds} -in:sent -in:drafts`,
+        );
+        for (const m of ids) listed.add(m.id);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return fail(guests.length, `A category listing could not be read whole (${message}).`);
+    }
+
+    const doomed = guests
+      .filter((g) => listed.has(g.gmail_message_id))
+      .map((g) => g.id);
+    if (!doomed.length) {
+      return {
+        connectionId,
+        restaurantId,
+        considered: guests.length,
+        deleted: 0,
+        error: null,
+        says: `Checked ${guests.length} stored guest message${guests.length === 1 ? "" : "s"} against Promotions, Social, Updates and Forums; none was there.`,
+      };
+    }
+    // Attachment rows go with the row (ON DELETE CASCADE); a guest's attachment
+    // bytes were never fetched. The kind filter is repeated on the delete.
+    const { data: gone, error: goneError } = await this.db.client
+      .from("procurement_conversations")
+      .delete()
+      .in("id", doomed)
+      .eq("kind", "guest")
+      .select("id");
+    if (goneError) {
+      return fail(
+        guests.length,
+        `The guest messages from the newsletter tabs could not be deleted (${goneError.message}).`,
+      );
+    }
+    const deleted = (gone ?? []).length;
+    return {
+      connectionId,
+      restaurantId,
+      considered: guests.length,
+      deleted,
+      error: null,
+      says: `Checked ${guests.length} stored guest message${guests.length === 1 ? "" : "s"}; ${deleted} came from Promotions, Social, Updates or Forums and ${deleted === 1 ? "was" : "were"} deleted. Vendor and team mail was not touched.`,
     };
   }
 
