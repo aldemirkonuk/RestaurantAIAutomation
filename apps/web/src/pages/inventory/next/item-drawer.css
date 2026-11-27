@@ -264,6 +264,10 @@ button.ivd-card:active {
 .ivd-dish-h {
   margin: 0 0 6px;
 }
+/* Drawn by (r110 g1): who draws a house-made component this good is in, under the component's row. */
+.ivd-drawn {
+  margin: 6px 0 0;
+}
 
 /* The line under the head holds its 44 px from first paint, so the chip landing after three reads moves nothing. */
 .ivd-usedslot {

@@ -3,7 +3,7 @@
  * group said as failed, and the unlinked group never counted in usage.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ItemUsedIn, {
   goodShareWords,
@@ -371,6 +371,54 @@ describe('In dish recipes', () => {
   it('an unknown yield is Not known, not a guess', () => {
     mount(ready(dish({ yieldServes: null })));
     expect(t('per-plate')).toContain('Not known');
+  });
+});
+
+describe('Drawn by, through a house-made component (r110 g1)', () => {
+  const syrup = dish({ dishId: 's1', name: 'Simple syrup', uses: [{ label: 'Sugar', qtyEntered: 500, unitCode: 'g' }], yieldServes: 1 });
+  const owner = (kind: 'dish' | 'cocktail', id: string, name: string, q: number | null, why: 'no_yield' | 'unit_mismatch' | null = null) => ({
+    kind, id, name, perServeQtyBase: q, baseUnit: q === null ? null : ('mg' as const), why,
+  });
+  // A plain dish that takes the good too, listed first: nothing draws it, so no line goes under it.
+  const cake = dish({ dishId: 'c0', name: 'Almond cake' });
+  const withThrough = (through: unknown): DishesLoad => ({ status: 'ready', data: { dishes: [cake, syrup], through: through as never } });
+
+  it("lists every drink and dish that draws the component under its row, with the good a serve, each a link", () => {
+    mount(withThrough([
+      { componentId: 's1', componentName: 'Simple syrup', level: 1, owners: [owner('cocktail', 'k1', 'Daiquiri', 28_571.43), owner('cocktail', 'k2', 'Mojito', 14_285.71), owner('dish', 'b1', 'Punch batch', 142_857.14)] },
+      { componentId: 'b1', componentName: 'Punch batch', level: 2, owners: [owner('cocktail', 'k3', 'Punch', 14_285.71)] },
+    ]));
+    const line = screen.getByTestId('ivd-drawn-s1');
+    expect(line.textContent).toBe('Drawn by: Daiquiri 28.6 g a serve · Mojito 14.3 g a serve · Punch batch 142.9 g a serve');
+    expect(within(line).getByRole('link', { name: 'Daiquiri' }).getAttribute('href')).toBe('/cocktails?open=k1');
+    expect(within(line).getByRole('link', { name: 'Punch batch' }).getAttribute('href')).toBe('/dishes?open=b1');
+    expect(screen.getByTestId('ivd-drawn-b1').textContent).toBe('Punch batch is drawn by: Punch 14.3 g a serve');
+    // Under the syrup's own row, after its cards, and under no other dish's.
+    expect(screen.getByTestId('ivd-dish-s1').nextElementSibling).toBe(line);
+    expect(screen.getByTestId('ivd-dish-c0').nextElementSibling).toBe(screen.getByTestId('ivd-dish-s1'));
+  });
+
+  it('a missing amount says why, naming the component', () => {
+    mount(withThrough([{ componentId: 's1', componentName: 'Simple syrup', level: 1, owners: [owner('cocktail', 'k1', 'Daiquiri', null, 'no_yield'), owner('cocktail', 'k4', 'Sour', null, 'unit_mismatch')] }]));
+    expect(screen.getByTestId('ivd-drawn-s1').textContent).toBe(
+      'Drawn by: Daiquiri how much is not known: Simple syrup has no yield set · Sour how much is not known: it is measured in another unit than Simple syrup is made in',
+    );
+  });
+
+  it('a failed read says so, and never None; an older gateway says nothing', () => {
+    mount(withThrough(null));
+    expect(screen.getByTestId('ivd-drawn-unread').textContent).toBe('Which recipes draw this good through something the house makes could not be read.');
+    expect(recipes().textContent).not.toContain('None');
+    expect(screen.queryByTestId('ivd-drawn-s1')).toBeNull();
+    cleanup();
+    mount(ready(syrup));
+    expect(screen.queryByTestId('ivd-drawn-unread')).toBeNull();
+    expect(screen.queryByTestId('ivd-drawn-s1')).toBeNull();
+  });
+
+  it('staff read the same quantities, with no money', () => {
+    mount(withThrough([{ componentId: 's1', componentName: 'Simple syrup', level: 1, owners: [owner('cocktail', 'k1', 'Daiquiri', 28_571.43)] }]), false);
+    expect(screen.getByTestId('ivd-drawn-s1').textContent).toBe('Drawn by: Daiquiri 28.6 g a serve');
   });
 });
 
