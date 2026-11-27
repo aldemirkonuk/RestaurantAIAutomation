@@ -5,8 +5,8 @@
  * The verdict, enforced: today's page won on at-a-glance completeness ("shows
  * basically everything"); the redesign lost on "too much text". So the page
  * leads with a three-figure glance strip (all derived from live queries, each
- * an em dash until its query answers), the conversation book is a ledger of
- * short rows — prose lives inside the expansion, never on the row — and the
+ * an em dash until its query answers), every letter in and out reads under the
+ * Mail tab (2026-11-07; it replaced the conversation book's ledger) — and the
  * founder's two named additions are built in: the channels rail makes the
  * page's integrations visible, and the template builders open inside a sheet
  * whose header says exactly what is going on (TemplateSheet).
@@ -15,8 +15,8 @@
  * "AI draft · not sent"; unknown figures are em dashes; a gateway failure is
  * said in words.
  *
- * Motions (06-pages/communications.md §1b): row expand = settle; glance and
- * hover = ink. Nothing else moves.
+ * Motions (06-pages/communications.md §1b): hover = ink. The ledger row's
+ * settle left with the book (2026-11-07). Nothing else moves.
  *
  * ── 2026-09-04, ADR 0118: the house writes its own mail ────────────────────
  * The two legacy template workshops are gone from this page. Where they were,
@@ -29,25 +29,19 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Stub, Wordmark } from '@/components/mudavym';
-import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
-import { ink, settle } from '../../../lib/mudavym/motion';
+import { ink } from '../../../lib/mudavym/motion';
 import {
   EM,
   GE,
   MONO,
   SANS,
   SERIF,
-  draftChipText,
   failedReadsSentence,
   fmtAsOf,
-  fmtWhen,
-  heldBecause,
   readAgainFailed,
-  sendState,
-  typeLabel,
   type FailedRead,
 } from './cm-format';
 import { TemplateSheet, type HeldTemplate } from './TemplateSheet';
@@ -55,7 +49,6 @@ import { changedLine, heldLine, useHeldWords } from './held-words';
 import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
-import { QueuedPullBack } from './QueuedPullBack';
 import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
@@ -63,21 +56,6 @@ import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
 import { mailTabLabel } from './mail-format';
 import { useMailSummary } from './useMailData';
-
-const TYPE_LABELS: Record<string, string> = {
-  PRICE_INQUIRY: 'Price inquiry',
-  DEMAND_OFFER: 'Demand offer',
-  PROMO_INQUIRY: 'Promo inquiry',
-  WINE_INQUIRY: 'Wine inquiry',
-  COUNTER_OFFER: 'Counter offer',
-  CLARIFICATION: 'Clarification',
-  ACCEPTANCE_CONFIRM_REQUEST: 'Acceptance',
-  ESCALATION: 'Escalation',
-  ORDER_CONFIRMATION: 'Order confirmation',
-  MANUAL_REPLY: 'Manual reply',
-  // ADR 0118 — a letter the house wrote from nothing, not a reply to anything.
-  HOUSE_LETTER: 'House letter',
-};
 
 function GlanceFigure({
   label,
@@ -148,223 +126,6 @@ function GlanceFigure({
       >
         {unknown ? EM : floor ? `${GE}${value}` : value}
       </span>
-    </div>
-  );
-}
-
-/**
- * The lifecycle chip, and the one row it must never be shown on.
- *
- * `status` is the OUTBOUND lifecycle. An INBOUND row — a vendor's own reply —
- * carries the column DEFAULT `'DRAFT'` because the inbound writer never sets
- * `status` at all, so reading it as a lifecycle prints "AI draft · not sent"
- * over a message the vendor actually sent us. ADR 0084 put ten such rows on
- * this page (its own spec asserts they arrive), and this page had no notion of
- * direction to tell them apart with.
- *
- * So direction is checked FIRST and short-circuits: an inbound row is said as
- * received, and `status` is not consulted for it at all.
- */
-function StateChip({
-  status,
-  direction,
-  reason,
-}: {
-  status: string | null | undefined;
-  direction?: 'INBOUND' | 'OUTBOUND' | null;
-  /**
-   * The gateway's own sentence for why this closed (ADR 0099, founder
-   * 2026-09-21) — `relay_refusal_reason`, set only when `status` is
-   * `RELAY_REFUSED`. A native tooltip on the chip, so the collapsed row stays
-   * simple (the chip already says "Not sent"); the same sentence is printed
-   * in the opened row too, because a tooltip never shows on a touch screen or
-   * to a keyboard — the row is where "why" is actually readable.
-   */
-  reason?: string | null;
-}) {
-  if (direction === 'INBOUND') {
-    return (
-      <span
-        style={{
-          fontFamily: MONO,
-          fontSize: 8.5,
-          fontWeight: 600,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          padding: '2px 7px',
-          borderRadius: 4,
-          background: 'var(--seal-tint, rgba(26,94,107,.10))',
-          color: 'var(--seal-deep, #14515C)',
-          border: '1px solid transparent',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        Received
-      </span>
-    );
-  }
-  const state = sendState(status);
-  const looks =
-    state === 'draft'
-      ? { text: draftChipText(status), bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: true }
-      // ADR 0118. A house letter inside its undo window: a person has pressed
-      // Send and it has NOT left. Neither word already on this page would do —
-      // "AI draft" is wrong twice over, and "Sent" would be the exact overclaim
-      // the undo window exists to prevent.
-      : state === 'queued'
-        ? { text: 'Queued · not yet sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: true }
-        : state === 'cancelled'
-          ? { text: 'Pulled back', bg: 'transparent', fg: 'var(--ink-4, #665D50)', dashed: false }
-          : state === 'failed'
-            ? { text: 'Not sent', bg: 'var(--alarm-tint, rgba(155,58,42,.10))', fg: 'var(--alarm-deep, #8C3322)', dashed: false }
-      : state === 'sending'
-        ? { text: 'Sending…', bg: 'var(--paper-2, #EAE4D8)', fg: 'var(--ink-2, #4F473C)', dashed: false }
-        : state === 'sent'
-          ? { text: 'Sent', bg: 'var(--seal-tint, rgba(26,94,107,.10))', fg: 'var(--seal-deep, #14515C)', dashed: false }
-          : state === 'unconfirmed'
-            ? {
-                // Delivered, recording failed. Never the calm "Sent" seal — a
-                // human has to reconcile this against the vendor thread.
-                text: 'Sent · unconfirmed',
-                bg: 'var(--alarm-tint, rgba(155,58,42,.10))',
-                fg: 'var(--alarm-deep, #8C3322)',
-                dashed: false,
-              }
-            : state === 'closed'
-              ? { text: 'Closed', bg: 'transparent', fg: 'var(--ink-4, #665D50)', dashed: false }
-              : {
-                  // A null status is not a state to print — the row is on this
-                  // page precisely because ADR 0084 refuses to hide what it
-                  // cannot classify, so the chip says "unrecorded" rather than
-                  // borrowing a lifecycle word it has no basis for.
-                  text: status ? String(status).toLowerCase() : 'no status recorded',
-                  bg: 'transparent',
-                  fg: 'var(--ink-4, #665D50)',
-                  dashed: false,
-                };
-  return (
-    <span
-      title={reason ?? undefined}
-      style={{
-        fontFamily: MONO,
-        fontSize: 8.5,
-        fontWeight: 600,
-        letterSpacing: '0.1em',
-        textTransform: 'uppercase',
-        padding: '2px 7px',
-        borderRadius: 4,
-        background: looks.bg,
-        color: looks.fg,
-        border: looks.dashed ? '1px dashed var(--ink-3, #7C7365)' : '1px solid transparent',
-        whiteSpace: 'nowrap',
-        cursor: reason ? 'help' : undefined,
-      }}
-    >
-      {looks.text}
-    </span>
-  );
-}
-
-function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="cm-row flex w-full items-baseline gap-3 py-2.5 text-left"
-        style={{
-          border: 'none',
-          cursor: 'pointer',
-          fontFamily: SANS,
-          transition: `background ${ink.ms}ms ${ink.easing}`,
-        }}
-      >
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', minWidth: 44 }}>
-          {fmtWhen(item.sentAt ?? item.createdAt)}
-        </span>
-        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)' }}>
-          {item.providerName ?? EM}
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-          {typeLabel(item.emailType, TYPE_LABELS, item.direction)}
-          {item.wineName ? ` · ${item.wineName}` : ''}
-          {item.quantity !== null ? ` · ${item.quantity}` : ''}
-        </span>
-        <span className="ml-auto" />
-        <StateChip status={item.status} direction={item.direction} reason={item.relayRefusalReason} />
-      </button>
-      {/* COMMS-W23: a queued letter can be pulled back from the book, not only from the open sheet. */}
-      {item.direction !== 'INBOUND' && sendState(item.status) === 'queued' && <QueuedPullBack id={item.id} />}
-      {open && (
-        <div
-          className="pb-3 pl-14 pr-2"
-          style={{
-            fontFamily: SANS,
-            animation: `cm-settle ${settle.ms}ms ${settle.easing} both`,
-          }}
-        >
-          {item.rollingSummary && (
-            <p style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', margin: '0 0 8px' }}>
-              {item.rollingSummary}
-            </p>
-          )}
-          <p
-            style={{
-              fontSize: 12,
-              color: 'var(--ink-2, #4F473C)',
-              whiteSpace: 'pre-wrap',
-              // COMMS-W30: a pasted link or any unbroken run wraps inside the row
-              // instead of pushing the whole page sideways.
-              overflowWrap: 'anywhere',
-              maxWidth: '68ch',
-              maxHeight: 220,
-              overflowY: 'auto',
-              margin: 0,
-              padding: '10px 12px',
-              borderRadius: 8,
-              background: 'var(--paper-1, #F3EFE6)',
-              border:
-                // Outbound only, for the same reason StateChip is: an inbound
-                // body is a message we received, never an unsent draft.
-                item.direction !== 'INBOUND' && sendState(item.status) === 'draft'
-                  ? '1px dashed var(--ink-3, #7C7365)'
-                  : '1px solid var(--paper-2, #EAE4D8)',
-            }}
-          >
-            {item.draftContent || 'No message body was recorded for this exchange.'}
-          </p>
-          {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
-            // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
-            // the manager sees why — the gateway's own sentence, verbatim.
-            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0', overflowWrap: 'anywhere' }}>
-              Not sent — it was refused on the way out: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
-            </p>
-          )}
-          {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
-            <p style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-              {heldBecause(item.constraintFlags.hard)}
-            </p>
-          )}
-          <p style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', margin: '6px 0 0' }}>
-            {/* COMMS-W22: a letter about an order opens that order. */}
-            {item.orderNumber && item.orderId ? (
-              <>
-                <Link to={`/orders/${item.orderId}`} style={{ color: 'var(--seal-deep, #14515C)' }}>
-                  order {item.orderNumber}
-                </Link>
-                {' · '}
-              </>
-            ) : item.orderNumber ? (
-              `order ${item.orderNumber} · `
-            ) : (
-              ''
-            )}
-            round {item.roundCount}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -481,7 +242,7 @@ export default function CommunicationsNext() {
   // COMMS-W33: every read on the page that could not be read, for the banner.
   // Each part of the page says its own reason and when its rows are from.
   const failedReads: FailedRead[] = [
-    ...(data.failed.history ? [{ name: 'the conversation book', stale: data.hasData, at: data.historyAt ?? 0 }] : []),
+    ...(data.failed.history ? [{ name: 'the letter counts', stale: data.hasData, at: data.historyAt ?? 0 }] : []),
     ...(data.failed.drafts
       ? [{ name: 'the replies the house has written', stale: data.draftsKnown, at: data.draftsAt ?? 0 }]
       : []),
@@ -493,7 +254,7 @@ export default function CommunicationsNext() {
       : []),
   ];
   const waitingAt = Math.min(
-    ...failedReads.filter((r) => r.name !== 'the conversation book' && r.stale).map((r) => r.at),
+    ...failedReads.filter((r) => r.name !== 'the letter counts' && r.stale).map((r) => r.at),
   );
   // "Try again" re-reads everything on the page; it used to re-read two of six.
   const queryClient = useQueryClient();
@@ -539,7 +300,6 @@ export default function CommunicationsNext() {
       style={{ background: 'var(--paper-0, #FAF7F1)', color: 'var(--ink-1, #211C16)' }}
     >
       <style>{`
-        @keyframes cm-settle { from { transform: translateY(-4px); opacity: 0 } to { transform: none; opacity: 1 } }
         .cm-row { transition: background ${ink.ms}ms ${ink.easing} }
         .cm-row:hover { background: var(--paper-1, #F3EFE6) }
         .cm-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
@@ -548,7 +308,7 @@ export default function CommunicationsNext() {
            above still governs them instead of being dead-cascaded under a
            style attribute (2026-08-31 follow-up to the wave-polish pass). */
         .cm-card { background: var(--paper-0, #FAF7F1) }
-        @media (prefers-reduced-motion: reduce) { .cm-row, [style*="cm-settle"] { animation: none !important; transition: none !important } }
+        @media (prefers-reduced-motion: reduce) { .cm-row { transition: none !important } }
       `}</style>
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
         <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -632,7 +392,7 @@ export default function CommunicationsNext() {
         <>
 
         {/* The banner covers EVERY source this page owns, not just the
-            conversation book. Before ADR 0083 it read `historyQ.isError`
+            letter counts. Before ADR 0083 it read `historyQ.isError`
             alone, so a failed thread index or drafts fetch rendered as a bare
             em dash — the mark ADR 0051 reserves for "has not answered".
             Extending the one banner rather than giving each figure its own
@@ -877,59 +637,25 @@ export default function CommunicationsNext() {
               {/* COMMS-W31: for staff the letter may well still be a draft — it is just not theirs to open. */}
               {houseDrafts.withheld
                 ? 'The letter this link points to is opened by an owner or manager of this house.'
-                : 'The letter this link points to is no longer a draft — it was sent or discarded. The conversation book says which.'}
+                : 'The letter this link points to is no longer a draft — it was sent or discarded. Its thread under Mail says which.'}
             </p>
           )}
         </section>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-          {/* ── the conversation book ─────────────────────────────────── */}
-          <section
-            aria-label="Conversation book"
-          >
-            {/* COMMS-W36 (founder: "Visible label"): the book was the one region a
-                heading list skipped. The house's small mono label, as the rail's. */}
-            <h2
-              style={{
-                fontFamily: MONO,
-                fontSize: 9.5,
-                fontWeight: 600,
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'var(--ink-4, #665D50)',
-                margin: '0 0 8px',
-              }}
-            >
-              The conversation book
-            </h2>
-            {/* COMMS-W33: the book says its own failure where its rows are; it used to leave an
-                empty ruled box, with the reason only in the banner, as "status code 500". */}
-            {data.isError && (
-              <p
-                role="status"
-                data-testid="book-unread"
-                style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
+          {/* The book moved to Mail (founder /goal 2026-11-07); one line points there. */}
+          <section aria-label="Every letter">
+            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+              Every letter in and out, by vendor and by thread, is under{' '}
+              <button
+                type="button"
+                onClick={() => showTab('mail')}
+                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
               >
-                {data.hasData
-                  ? readAgainFailed(data.errorMessage, data.historyAt ?? 0, data.rows.length === 0, 'the conversation book')
-                  : `The conversation book could not be read (${data.errorMessage}). That does not mean nothing was written.`}
-              </p>
-            )}
-            {!data.hasData && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reading the conversation book…
-              </p>
-            ) : data.rows.length === 0 && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                The book is open and empty — no vendor exchanges yet.
-              </p>
-            ) : (
-              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
-                {data.rows.map((item) => (
-                  <LedgerRow key={item.id} item={item} />
-                ))}
-              </div>
-            )}
+                Mail
+              </button>
+              .
+            </p>
           </section>
 
           {/* ── the channels rail: what this page is wired to ─────────── */}
