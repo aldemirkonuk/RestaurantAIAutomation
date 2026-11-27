@@ -319,6 +319,16 @@ const titleOf = (id: AnalysisId) => CATALOGUE[id].title;
 const dialogNamed = (id: AnalysisId) => screen.getByRole('dialog', { name: titleOf(id) });
 
 describe('full screen steps through the sheet (r108 g1)', () => {
+  it('[REVERT-FAILS] a step lands on a dialog marked stepped, so it does not replay the arrival fade; an opening is not', () => {
+    paint(<Sheet3 />);
+    fireEvent.click(opener(titleOf('till')));
+    expect(dialogNamed('till')).not.toHaveAttribute('data-stepped');
+    fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    expect(dialogNamed('week')).toHaveAttribute('data-stepped');
+    fireEvent.click(within(dialogNamed('week')).getByRole('button', { name: `Previous: ${titleOf('till')}` }));
+    expect(dialogNamed('till')).toHaveAttribute('data-stepped');
+  });
+
   it('steps in sheet order, says where, hides the button at an end, and focuses the direction it came by', () => {
     paint(<Sheet3 />);
     fireEvent.click(opener(titleOf('till')));
