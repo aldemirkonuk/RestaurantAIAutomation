@@ -673,7 +673,7 @@ export default function CocktailRegister({
                     {seesCost ? sortHead('cost', 'Cost per serve') : null}
                     {seesCost ? sortHead('share', 'Pour cost') : null}
                     {seesCost ? sortHead('margin', 'Margin') : null}
-                    <th scope="col">Allergens</th>
+                    <th scope="col" className="cl-col-allergens">Allergens</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
