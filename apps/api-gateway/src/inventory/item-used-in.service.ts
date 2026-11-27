@@ -38,7 +38,16 @@ export interface CocktailLine {
   name: string;
   quantity: number | null;
   unit: string | null;
+  /** The drink's current recipe names this good on a stocked line that is not linked to it. */
+  namedNotLinked?: true;
 }
+
+/**
+ * `withoutCurrentRecipe` is said only when the current-recipe read succeeded:
+ * then a line without `namedNotLinked` is from a drink that has no current
+ * recipe, so the old box is its only recipe. Absent means "could not tell".
+ */
+export type CocktailGroup = Group<CocktailLine> & { withoutCurrentRecipe?: true };
 
 export interface DrinkRecipeLine {
   cocktailId: string;
@@ -133,14 +142,13 @@ export class ItemUsedInService {
       this.inDrinkRecipes(client, restaurantId, item),
     ]);
 
-    // A cocktail with a versioned recipe is shown once, from that recipe (the
-    // real source for cost and taste); its old lines stay only for a cocktail
-    // that has none. If the versioned read failed we cannot tell, so keep both.
-    const versioned = new Set((inDrinkRecipes.lines ?? []).map((l) => l.cocktailId));
-    const legacy: Group<CocktailLine> =
-      inCocktails.readable && inCocktails.lines && inDrinkRecipes.readable
-        ? { ...inCocktails, lines: inCocktails.lines.filter((l) => !versioned.has(l.cocktailId)) }
-        : inCocktails;
+    // A cocktail that has a versioned recipe is shown only from that recipe
+    // (the real source for cost and taste), whether or not the recipe still
+    // uses this good: its old lines are history, and listing them would say the
+    // drink uses a good its current recipe dropped. A cocktail with no versioned
+    // recipe keeps its old lines; so does one whose current recipe names this
+    // good on an unlinked line. If a read failed we cannot tell, so keep both.
+    const legacy = await this.dropVersioned(client, restaurantId, inCocktails, item);
 
     return {
       item: { id: item.id, kind: item.kind, displayName: item.displayName },
@@ -149,6 +157,59 @@ export class ItemUsedInService {
       inDrinkRecipes,
       namedNotLinked: menu.namedNotLinked,
     };
+  }
+
+  /**
+   * The old-recipe group without the cocktails that now have a current versioned
+   * recipe. A cocktail whose current recipe still NAMES this good on a stocked
+   * line with no link keeps its old line, marked `namedNotLinked`: the "Use these
+   * lines" conversion links only on an exact name match, so dropping it would say
+   * the drink does not use a good its recipe names. Any read that fails here
+   * leaves the group as it came, unflagged, since we cannot tell.
+   */
+  private async dropVersioned(
+    client: SupabaseClient,
+    restaurantId: string,
+    group: Group<CocktailLine>,
+    item: HouseItem,
+  ): Promise<CocktailGroup> {
+    if (!group.readable || !group.lines || group.lines.length === 0) return group;
+    const ids = [...new Set(group.lines.map((l) => l.cocktailId))];
+    const versionOf = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_current")
+        .select("cocktail_id, version_id")
+        .eq("restaurant_id", restaurantId)
+        .in("cocktail_id", ids.slice(i, i + CHUNK));
+      if (error) return group;
+      for (const r of (data ?? []) as Array<Record<string, any>>) {
+        versionOf.set(String(r.cocktail_id), String(r.version_id));
+      }
+    }
+    const want = item.displayName ? foldName(item.displayName) : "";
+    const named = new Set<string>(); // versions whose stocked, unlinked line is named like this good
+    const versionIds = want ? [...new Set(versionOf.values())] : [];
+    for (let i = 0; i < versionIds.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_lines")
+        .select("version_id, label")
+        .eq("restaurant_id", restaurantId)
+        .eq("role", "stocked")
+        .is("inventory_id", null)
+        .in("version_id", versionIds.slice(i, i + CHUNK))
+        .limit(PAGE);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      if (error || rows.length >= PAGE) return group;
+      for (const r of rows) if (foldName(String(r.label ?? "")) === want) named.add(String(r.version_id));
+    }
+    const lines: CocktailLine[] = [];
+    for (const l of group.lines) {
+      const v = versionOf.get(l.cocktailId);
+      if (v === undefined) lines.push(l);
+      else if (named.has(v)) lines.push({ ...l, namedNotLinked: true });
+    }
+    return { ...group, lines, withoutCurrentRecipe: true };
   }
 
   /** The current menu's lines linked to the item, then the lines that only carry its name. */
