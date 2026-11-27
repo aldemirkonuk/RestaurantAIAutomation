@@ -3475,6 +3475,13 @@ export class MenusService {
 
     const client = this.dbService.supabase;
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
+    const db = this.dbService.supabase;
+    const wineIds = [...new Set(validItems.map((i) => i.wine_library_id as string))];
+    const chunks = <T,>(xs: T[], size: number): T[][] => {
+      const out: T[][] = [];
+      for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
+      return out;
+    };
 
     // BATCHED (menu proposal 2e, M15). This was one read, maybe one insert,
     // one flag write and one link write PER LINE -- about a third of a second
