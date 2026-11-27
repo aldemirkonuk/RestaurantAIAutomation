@@ -29,7 +29,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { REASONS } from '../../authorize-integration/IntegrationReturnNotice';
 import { integrationsApi } from '../../../services/api/integrations';
 import { SANS } from './cm-format';
-import { senderLine, setupFailWords, type MailStatus, type SenderLineInput } from './mail-format';
+import { READ_TERMS, senderLine, setupFailWords, type MailStatus, type SenderLineInput } from './mail-format';
 import { MailArrival } from './MailArrival';
 import { MailMotionStyles } from './mail-motion';
 import { ACT, ALERT, LINK, NOT_YOURS, Part, QUIET, TEXT, TONE } from './MailSetupParts';
@@ -340,6 +340,9 @@ export function MailSetup({
               <p style={TEXT}>
                 No mailbox of this house is read, so a vendor who writes to your own Gmail is not seen here. Let
                 Mudavym read vendor replies in your Gmail; you sign in to Google and come straight back to this page.
+              </p>
+              <p data-testid="setup-read-terms" style={QUIET}>
+                {READ_TERMS}
               </p>
               <button type="button" data-testid="setup-connect-read" style={ACT} onClick={() => navigate(consentPath('gmail_read'))}>
                 Let vendor replies in your Gmail land here

@@ -237,7 +237,65 @@ export interface MailMessage {
   mailbox?: string | null;
   senderCheck?: 'passed' | 'failed' | null;
   signedBy?: string | null;
+  /**
+   * r109 mail-gap g1: what a checked delivery notice said of a letter the
+   * house sent. Null or absent on every other letter, and from an older gateway.
+   */
+  delivery?: MailDelivery | null;
 }
+
+/** A delivery notice's mark on a house letter (GET /mail/thread). */
+export interface MailDelivery {
+  state: 'did_not_arrive' | 'delayed';
+  at: string;
+  recipient: string;
+  /** RFC 3463, e.g. 5.1.1. */
+  status: string;
+  said: string | null;
+}
+
+/** The list's word for a person whose newest letter, the house's, did not arrive (list_mail_vendors). */
+export const DID_NOT_ARRIVE = 'did_not_arrive';
+
+/**
+ * Why a letter came back, in the house's words, by its RFC 3463 status. The
+ * receiving server's own sentence stays in the record; this is what is said.
+ */
+export function bounceReason(status: string): string {
+  const [, subject, detail] = /^5\.(\d+)\.(\d+)$/.exec(status) ?? [];
+  if (subject === '1') {
+    if (detail === '1') return 'the address does not exist';
+    if (detail === '2') return 'their mail server could not be found';
+    return 'the address was not accepted';
+  }
+  if (subject === '2') {
+    if (detail === '2') return 'the mailbox is full';
+    if (detail === '1') return 'the mailbox is turned off';
+    return 'the mailbox did not take it';
+  }
+  if (subject === '3' && detail === '4') return 'the letter is too large for them';
+  if (subject === '4') return 'their mail server could not be reached';
+  if (subject === '7') return 'their server refused it';
+  return 'it was sent back';
+}
+
+/**
+ * The line under a house letter a notice came back about, in the house's time.
+ * A failure says who it did not reach, when, and why; a delay never sounds
+ * refused: Gmail is still trying.
+ */
+export function deliveryLine(d: MailDelivery, zone: string | null | undefined): string {
+  const when = formatVenueTime(d.at, zone ?? null, { withDate: true });
+  const at = when.inVenueZone ? when.text : `${when.text} on this device's clock`;
+  if (d.state === 'delayed') return `Delayed, Gmail is still trying to reach ${d.recipient} (since ${at})`;
+  return `Did not reach ${d.recipient} on ${at} (${bounceReason(d.status)}, ${d.status})`;
+}
+
+/** What the setup page says the reader asks Gmail for (r109 mail-gap g1: the second query). */
+export const READ_TERMS =
+  'It asks Gmail for two things only: letters from the addresses in your vendor book, and the notices Gmail ' +
+  'sends from mailer-daemon or postmaster when a letter did not arrive. A notice is kept only when it is about a ' +
+  'letter this house sent, and then only to say so on that letter.';
 
 /** One file a letter carried, as GET /mail/thread lists it. */
 export interface MailAttachment {
@@ -1195,6 +1253,8 @@ export const NEW_TO_YOU = 'New';
  */
 export function unsentChipText(status: string | null | undefined): string | null {
   if (status == null || String(status).trim() === '') return null;
+  // It left, and a checked notice said it did not arrive (r109 mail-gap g1).
+  if (status === DID_NOT_ARRIVE) return 'Did not arrive';
   const state = sendState(status);
   if (state === 'sent' || state === 'closed') return null;
   if (state === 'queued') return 'Queued · not sent yet';
@@ -1202,6 +1262,11 @@ export function unsentChipText(status: string | null | undefined): string | null
   if (state === 'unconfirmed') return 'Sent? Not confirmed';
   if (state === 'sending') return 'Sending · not confirmed yet';
   return 'Not sent';
+}
+
+/** Whether a row's chip is said in the refused tone: a letter that did not leave, or did not arrive. */
+export function unsentChipRefused(status: string | null | undefined): boolean {
+  return status === DID_NOT_ARRIVE || (unsentChipText(status) !== null && sendState(status) === 'failed');
 }
 
 /** What POST /mail/thread/seen is told when a thread is on screen. */
