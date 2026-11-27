@@ -956,6 +956,11 @@ export class AnalyticsController {
   }
 
   @Post("goals/:restaurantId")
+  // Every write answers with the whole goal row (target, baseline = the till's
+  // reading, current), so it is the same door as the withheld GETs: an owner's
+  // or a manager's (RolesGuard is exact).
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Create a metric-linked goal",
     description:
@@ -1005,6 +1010,11 @@ export class AnalyticsController {
   }
 
   @Patch("goals/:restaurantId/:goalId")
+  // Every write answers with the whole goal row (target, baseline = the till's
+  // reading, current), so it is the same door as the withheld GETs: an owner's
+  // or a manager's (RolesGuard is exact).
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Edit a goal (name, targetValue, deadline, direction, period)",
     description:
@@ -1030,6 +1040,11 @@ export class AnalyticsController {
   }
 
   @Post("goals/:restaurantId/:goalId/cutting-spec")
+  // Every write answers with the whole goal row (target, baseline = the till's
+  // reading, current), so it is the same door as the withheld GETs: an owner's
+  // or a manager's (RolesGuard is exact).
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Ask the assistant which catalogued analysis shows this goal",
     description:
@@ -1081,6 +1096,11 @@ export class AnalyticsController {
   }
 
   @Put("goals/:restaurantId/:goalId/status")
+  // Every write answers with the whole goal row (target, baseline = the till's
+  // reading, current), so it is the same door as the withheld GETs: an owner's
+  // or a manager's (RolesGuard is exact).
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Update goal status (active|achieved|missed|archived)",
   })
