@@ -48,7 +48,8 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, restoreMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuSheetButton } from './MenuSheetButton';
-import { MenuVersions, useKeptMenuName } from './MenuVersions';
+import { MenuVersions, useKeptMenuName, useKeptMenuSource } from './MenuVersions';
+import { MenuSourcePane } from './MenuSourcePane';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
@@ -546,6 +547,8 @@ export default function MenuNext() {
   const currency = useHouseCurrency(activeRestaurantId);
   // The menu is named the way the kept list names it, not by the name the gateway stored (r104 menu-7, F4).
   const kept = useKeptMenuName(q.data?.menuId ?? null);
+  const keptSource = useKeptMenuSource(q.data?.menuId ?? null);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   // The line just taken off, until the next discard or a restore: its way back (r107 menu-4).
   const [offList, setOffList] = useState<{ id: string; name: string } | null>(null);
@@ -752,6 +755,16 @@ export default function MenuNext() {
                 ) : null;
               })()}
             </div>
+
+            {keptSource?.kept && q.data?.menuId ? (
+              <MenuSourcePane
+                menuId={q.data.menuId}
+                mime={keptSource.mime}
+                open={sourceOpen}
+                onToggle={() => setSourceOpen((o) => !o)}
+                canManage={canManage}
+              />
+            ) : null}
 
             {offList || backSaid ? (
               <p
