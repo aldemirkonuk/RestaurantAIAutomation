@@ -1049,11 +1049,10 @@ export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL
   const purchasesQ = useQuery({
     queryKey: ['inventory-next', 'purchases', activeRestaurantId, inventoryId],
     queryFn: async () => {
-      // No `limit` param: the gateway's query DTO has no number transform, so
-      // any limit arrives as a string and is refused with a 400. The route
-      // answers newest first (50 by default); the page keeps the first three.
+      // The page shows three, so it asks for three (newest first); the total
+      // still counts every purchase.
       const r = await apiClient.get('/inventory-ledger/transactions', {
-        params: { inventoryId, transactionType: 'purchase' },
+        params: { inventoryId, transactionType: 'purchase', limit: PAPERWORK_LINES },
       });
       const body = r.data as { transactions?: Raw[]; total?: unknown };
       if (!Array.isArray(body?.transactions)) throw new Error('the ledger answered in a shape this page cannot read');
