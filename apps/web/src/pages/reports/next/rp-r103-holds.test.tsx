@@ -1,5 +1,7 @@
 /**
- * r103 (r102 walk check 2): Draw as at 375 keeps the figures list's slot. jsdom has no layout, so the
+ * r103 (r102 walk check 2): Draw as at 375 keeps the figures list's slot between Area and One figure.
+ * NOT covered: the till has no table layout of its own, so Table holds nothing and still moves the list
+ * (r103 walk finding: scroll height 330 to 867, CLS 0.0427). That needs the table to scroll inside the plot slot. jsdom has no layout, so the
  * seams are pinned: every drawing renders the same rows (the ones it does not show are held, aria-hidden),
  * the stylesheet gives a held row its space only on a phone, and the full-screen view holds nothing.
  */
@@ -56,7 +58,7 @@ const held = (c: HTMLElement) => c.querySelectorAll('.rp-dl > .rp-fig[data-held]
 afterEach(cleanup);
 
 describe('Draw as keeps the figures list its slot (phone)', () => {
-  it('[REVERT-FAILS] Area, Table and One figure render the same number of rows; One figure holds the headline row', () => {
+  it('[REVERT-FAILS] Area and One figure render the same number of rows; One figure holds the headline row', () => {
     const area = draw('area');
     const n = rows(area.container).length;
     expect(n).toBeGreaterThan(1);
