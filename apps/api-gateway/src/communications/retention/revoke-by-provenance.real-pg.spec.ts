@@ -197,6 +197,42 @@ run("revoke by provenance on a real Postgres (#2159, DD-r108-5)", () => {
     expect(s.guestReply).toBeUndefined();
   });
 
+  // r110 mail-r110-8. FILED, NOT DECIDED (found in #2337): while the vendor-only reading is live,
+  // the wide revoke hands EVERY kept vendor row to the vendor-only grant, the house's own sent copy
+  // included, which no grant read. These two specs PIN what the code does today so the choice is
+  // visible and a change to it is a decision, not an accident. Whether a vendor-only revoke should
+  // delete the house's own sent copy is a consent rule nobody has ruled on (returned to the founder).
+  it("PINS: with the vendor-only reading live, the wide revoke re-stamps the kept vendor letter AND the house's sent copy with the vendor-only grant", async () => {
+    await seed(true);
+    await revoke();
+    const { data, error } = await supabase
+      .from("procurement_conversations")
+      .select("id, direction, mirrored_by_grant_id")
+      .in("id", [C.vendorIn, C.vendorSentCopy, C.vendorOld, C.guestIn]);
+    if (error) throw new Error(error.message);
+    const stamp = Object.fromEntries((data ?? []).map((r: any) => [NAME[r.id], r.mirrored_by_grant_id]));
+    expect(stamp.vendorIn).toBe(GV);
+    expect(stamp.vendorSentCopy).toBe(GV);
+    // a vendor letter no grant read stays unstamped, and the wide grant's deleted rows are gone.
+    expect(stamp.vendorOld).toBeNull();
+    expect(stamp.guestIn).toBeUndefined();
+  });
+
+  it("PINS: revoking the vendor-only reading afterwards then deletes the raw mail of both stamped rows", async () => {
+    await seed(true);
+    await revoke();
+    await new RawMailRetentionService(db).sweepForRevokedGrant({
+      connectionId: GV,
+      restaurantId: HA,
+      ownerUserId: null,
+      integrationId: "gmail_read",
+    });
+    const s = await state();
+    expect(s.vendorIn).toEqual({ raw: false });
+    expect(s.vendorSentCopy).toEqual({ raw: false });
+    expect(s.vendorOld).toEqual({ raw: true });
+  });
+
   it("keeps a mislabelled vendor thread and an unlinked reply, and says the unlinked one was kept", async () => {
     await seed(false);
     const r = await revoke();
