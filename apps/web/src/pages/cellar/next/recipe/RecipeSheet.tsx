@@ -72,12 +72,13 @@ import {
   type CocktailRecipe,
   type PreviewCostBody,
   type RecipeLine,
+  type RecipeOwner,
   type RecipeVersion,
   type SaveRecipeBody,
   type ShelfItem,
 } from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
-import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
+import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
@@ -255,7 +256,7 @@ function PastVersion({
   onStartFrom,
   say,
 }: {
-  cocktailId: string;
+  cocktailId: string | RecipeOwner;
   versionId: string;
   onStartFrom: ((v: RecipeVersion) => void) | null;
   say: ((n: number) => string) | null;
@@ -301,7 +302,7 @@ function Versions({
   onStartFrom,
   say,
 }: {
-  cocktailId: string;
+  cocktailId: string | RecipeOwner;
   currentId: string | null;
   onStartFrom: ((v: RecipeVersion) => void) | null;
   say: ((n: number) => string) | null;
@@ -419,17 +420,21 @@ export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null 
  * One sheet per drink. The key is what keeps a draft typed for one drink out
  * of another: React drops the inner sheet's state when the drink changes.
  */
-export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
-  return <Sheet key={cocktailId} cocktailId={cocktailId} />;
+export default function RecipeSheet(props: { cocktailId: string } | { dishId: string }) {
+  const owner: RecipeOwner = 'dishId' in props ? { kind: 'dish', id: props.dishId } : { kind: 'cocktail', id: props.cocktailId };
+  return <Sheet key={owner.id} owner={owner} />;
 }
 
-function Sheet({ cocktailId }: { cocktailId: string }) {
-  const recipe = useRecipe(cocktailId);
+function Sheet({ owner }: { owner: RecipeOwner }) {
+  const cocktailId = owner.id;
+  const dId = draftId(owner);
+  const isDish = owner.kind === 'dish';
+  const recipe = useRecipe(owner);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
-  const save = useSaveRecipe(cocktailId);
+  const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
-  const storeKey = draftKey(user?.userId, activeRestaurantId, cocktailId);
+  const storeKey = draftKey(user?.userId, activeRestaurantId, dId);
   // An unsaved draft this person left on this drink earlier in the session.
   const [kept] = useState(() => (canEdit ? takeDraft(storeKey) : null));
 
@@ -466,8 +471,8 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   // The drink is gone from this house: no draft of it, for anyone, can ever be
   // saved, so none may keep the leave-page warning alive.
   useEffect(() => {
-    if (recipe.status === 404) dropDraftsForDrink(cocktailId);
-  }, [recipe.status, cocktailId]);
+    if (recipe.status === 404) dropDraftsForDrink(dId);
+  }, [recipe.status, dId]);
 
   // Read a paste into proposed lines, then ask the shelf once which of them
   // have an exact-name item. Nothing is linked or saved until it is used and saved.
@@ -538,7 +543,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     () => (draftMoney && dirty && data && rows ? costPreviewBody(rows, shownMeta.yieldServes) : null),
     [draftMoney, dirty, data, rows, shownMeta.yieldServes],
   );
-  const preview = useCostPreview(cocktailId, draftBody?.body ?? null);
+  const preview = useCostPreview(owner, draftBody?.body ?? null);
   const draftCost: DraftCost | null = preview && draftBody ? { cost: preview, labels: draftBody.labels } : null;
 
   if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
@@ -620,7 +625,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       })),
     };
     if (m.method.trim()) body.method = m.method.trim();
-    if (m.glass.trim()) body.glass = m.glass.trim();
+    if (!isDish && m.glass.trim()) body.glass = m.glass.trim();
     if (m.garnish.trim()) body.garnish = m.garnish.trim();
     setSaid(null);
     try {
@@ -686,7 +691,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       <header className="cl-rcp-head">
         <h4 className="cl-sec" style={{ margin: 0 }}>Recipe</h4>
         <dl className="cl-rcp-facts">
-          {glass ? <div><dt>Glass</dt><dd>{glass}</dd></div> : null}
+          {!isDish && glass ? <div><dt>Glass</dt><dd>{glass}</dd></div> : null}
           {garnish ? <div><dt>Garnish</dt><dd>{garnish}</dd></div> : null}
         </dl>
       </header>
@@ -718,7 +723,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       {canEdit && (lines.length > 0 || data.current) ? (
         <div className="cl-rcp-meta" data-testid="recipe-meta">
           <label>
-            Makes (serves)
+            {isDish ? 'Makes (plates)' : 'Makes (serves)'}
             <input
               className="cl-field cl-focus cl-num"
               type="number"
@@ -731,10 +736,12 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
               onChange={(e) => setField({ yieldServes: e.target.value.trim() === '' ? NaN : Number(e.target.value) })}
             />
           </label>
-          <label>
-            Glass
-            <input className="cl-field cl-focus" value={shownMeta.glass} maxLength={200} placeholder={c.glass ?? 'Rocks'} onChange={(e) => setField({ glass: e.target.value })} />
-          </label>
+          {isDish ? null : (
+            <label>
+              Glass
+              <input className="cl-field cl-focus" value={shownMeta.glass} maxLength={200} placeholder={c.glass ?? 'Rocks'} onChange={(e) => setField({ glass: e.target.value })} />
+            </label>
+          )}
           <label>
             Garnish
             <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? 'Orange peel'} onChange={(e) => setField({ garnish: e.target.value })} />
@@ -960,7 +967,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
             Earlier versions ({earlier})
           </button>
           {showVersions ? (
-            <Versions cocktailId={cocktailId} currentId={versionId} onStartFrom={canEdit ? startFrom : null} say={say} />
+            <Versions cocktailId={owner} currentId={versionId} onStartFrom={canEdit ? startFrom : null} say={say} />
           ) : null}
         </div>
       ) : null}

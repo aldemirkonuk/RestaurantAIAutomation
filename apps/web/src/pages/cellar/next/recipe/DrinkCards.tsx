@@ -117,13 +117,14 @@ function ingredientsCard(data: CocktailRecipe): Card | null {
   if (unlinked > 0) parts.push(`${unlinked} not linked to it yet`);
   if (notCounted > 0) parts.push(`${notCounted} not counted`);
   const serves = data.current?.yieldServes ?? 1;
+  const unit = data.kind === 'dish' ? 'plate' : 'serve';
   return {
     id: 'ingredients',
     label: 'Ingredients',
     figure: String(lines.length),
     known: true,
     warn: unlinked > 0,
-    said: `${parts.join(', ')}.${serves > 1 ? ` Makes ${serves} serves; every card is per serve.` : ''}`,
+    said: `${parts.join(', ')}.${serves > 1 ? ` Makes ${serves} ${unit}s; every card is per ${unit}.` : ''}`,
   };
 }
 
@@ -168,6 +169,9 @@ function nutritionCards(data: CocktailRecipe): Card[] {
   return out;
 }
 
+/** A dish says plate and food cost, and has no alcohol card (ADR 0366). */
+const DISH_LABELS: Record<string, string> = { cost: 'Cost a plate', 'pour-cost': 'Food cost', energy: 'Energy a plate' };
+
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function DrinkCards({
@@ -187,6 +191,7 @@ export default function DrinkCards({
    */
   draftCost?: DraftCost | null;
 }) {
+  const isDish = data.kind === 'dish';
   const draft = unsaved && draftCost ? draftCost : null;
   // A drink never saved has no saved figures; its only card is the draft's
   // cost (and the list's price), once its lines are whole enough to price.
@@ -211,9 +216,12 @@ export default function DrinkCards({
     sayMoney ? pourCostCard(shownCost, data.cocktail.price) : null,
     ingredientsCard(data),
     ...nutritionCards(data),
-  ].filter((c): c is Card => c !== null);
+  ]
+    .filter((c): c is Card => c !== null)
+    .filter((c) => !isDish || c.id !== 'alcohol')
+    .map((c) => (isDish && DISH_LABELS[c.id] ? { ...c, label: DISH_LABELS[c.id] } : c));
   return (
-    <section className="cl-rcp-kpis" data-testid="drink-cards" aria-label="This drink in figures">
+    <section className="cl-rcp-kpis" data-testid="drink-cards" aria-label={isDish ? 'This dish in figures' : 'This drink in figures'}>
       {unsaved ? (
         <p className="cl-note">
           {draft && !data.current

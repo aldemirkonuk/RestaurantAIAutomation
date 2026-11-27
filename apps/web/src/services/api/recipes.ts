@@ -104,7 +104,14 @@ export type WhatIsIn =
     }
   | { readable: false; sentence: string };
 
+/** What a recipe belongs to (ADR 0366). A bare string means a cocktail. */
+export type RecipeOwner = { kind: 'cocktail' | 'dish'; id: string };
+
+export const ownerOf = (o: string | RecipeOwner): RecipeOwner => (typeof o === 'string' ? { kind: 'cocktail', id: o } : o);
+
 export interface CocktailRecipe {
+  /** Absent means a cocktail. A dish also fills `cocktail` (follow-up: rename it `owner`). */
+  kind?: 'cocktail' | 'dish';
   cocktail: {
     id: string;
     name: string;
@@ -200,40 +207,50 @@ export interface ShelfMatch {
 
 const base = (restaurantId: string) => `/recipes/${encodeURIComponent(restaurantId)}`;
 
+/** `cocktails/<id>` or `dishes/<id>`: the one place a recipe's path is built. */
+const ownerPath = (restaurantId: string, owner: string | RecipeOwner) => {
+  const o = ownerOf(owner);
+  return `${base(restaurantId)}/${o.kind === 'dish' ? 'dishes' : 'cocktails'}/${encodeURIComponent(o.id)}`;
+};
+
+/** GET /dishes/:dishId as the gateway sends it. */
+interface DishRecipeAnswer extends Omit<CocktailRecipe, 'cocktail' | 'kind'> {
+  dish: { id: string; name: string; section: string | null; price: number | null; description: string | null };
+}
+
 export const recipesApi = {
-  async get(restaurantId: string, cocktailId: string): Promise<CocktailRecipe> {
-    const r = await apiClient.get<CocktailRecipe>(`${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}`);
+  async get(restaurantId: string, owner: string | RecipeOwner): Promise<CocktailRecipe> {
+    if (ownerOf(owner).kind === 'dish') {
+      const r = await apiClient.get<DishRecipeAnswer>(ownerPath(restaurantId, owner));
+      const { dish, ...rest } = r.data;
+      return {
+        ...rest,
+        kind: 'dish',
+        cocktail: { id: dish.id, name: dish.name, price: dish.price, glass: null, garnish: null, method: null, description: dish.description },
+      };
+    }
+    const r = await apiClient.get<CocktailRecipe>(ownerPath(restaurantId, owner));
     return r.data;
   },
 
-  async versions(restaurantId: string, cocktailId: string): Promise<RecipeVersionSummary[]> {
-    const r = await apiClient.get<RecipeVersionSummary[]>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/versions`,
-    );
+  async versions(restaurantId: string, owner: string | RecipeOwner): Promise<RecipeVersionSummary[]> {
+    const r = await apiClient.get<RecipeVersionSummary[]>(`${ownerPath(restaurantId, owner)}/versions`);
     return r.data;
   },
 
-  async version(restaurantId: string, cocktailId: string, versionId: string): Promise<PastRecipeVersion> {
-    const r = await apiClient.get<PastRecipeVersion>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/versions/${encodeURIComponent(versionId)}`,
-    );
+  async version(restaurantId: string, owner: string | RecipeOwner, versionId: string): Promise<PastRecipeVersion> {
+    const r = await apiClient.get<PastRecipeVersion>(`${ownerPath(restaurantId, owner)}/versions/${encodeURIComponent(versionId)}`);
     return r.data;
   },
 
-  async save(restaurantId: string, cocktailId: string, body: SaveRecipeBody): Promise<SaveRecipeResult> {
-    const r = await apiClient.put<SaveRecipeResult>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}`,
-      body,
-    );
+  async save(restaurantId: string, owner: string | RecipeOwner, body: SaveRecipeBody): Promise<SaveRecipeResult> {
+    const r = await apiClient.put<SaveRecipeResult>(ownerPath(restaurantId, owner), body);
     return r.data;
   },
 
   /** Prices an unsaved draft at today's prices. The server prices it; nothing is written. */
-  async previewCost(restaurantId: string, cocktailId: string, body: PreviewCostBody): Promise<CostPreview> {
-    const r = await apiClient.post<CostPreview>(
-      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/cost-preview`,
-      body,
-    );
+  async previewCost(restaurantId: string, owner: string | RecipeOwner, body: PreviewCostBody): Promise<CostPreview> {
+    const r = await apiClient.post<CostPreview>(`${ownerPath(restaurantId, owner)}/cost-preview`, body);
     return r.data;
   },
 
