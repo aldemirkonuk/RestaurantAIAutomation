@@ -140,6 +140,13 @@ beforeEach(() => {
 const calls = (url: string) =>
   api.get.mock.calls.filter(([u]) => u === url).map(([, cfg]) => (cfg as { params?: Record<string, string> })?.params ?? {});
 
+/** r108 g9: a thread of four or more letters folds its earlier ones; these tests read them all. */
+function unfoldAll() {
+  for (const b of [...screen.queryAllByTestId('mail-letter-stack'), ...screen.queryAllByTestId('mail-letter-folded')]) {
+    fireEvent.click(within(b).getByRole('button'));
+  }
+}
+
 describe('a thread', () => {
   // Spec (a): the thread key in the address is the key the gateway is asked for.
   it('?thread=gm%3Aabc asks /mail/thread for key gm:abc', async () => {
@@ -150,7 +157,9 @@ describe('a thread', () => {
 
   it('letters run oldest to newest, each with its provenance in words', async () => {
     mount('/communications?thread=gm%3Aabc');
-    const letters = await screen.findAllByTestId('mail-letter');
+    await screen.findAllByTestId('mail-letter');
+    unfoldAll();
+    const letters = screen.getAllByTestId('mail-letter');
     expect(letters.map((l) => l.getAttribute('data-testid'))).toHaveLength(5);
     expect(letters[0]).toHaveTextContent('First, from the vendor.');
     expect(screen.queryByTestId('thread-arrived-only')).toBeNull();
@@ -205,7 +214,9 @@ describe('a thread', () => {
     mount('/communications?thread=gm%3Aabc');
     await screen.findAllByTestId('mail-letter');
     fireEvent.click(screen.getByRole('button', { name: 'Show earlier letters' }));
-    await waitFor(() => expect(screen.getAllByTestId('mail-letter')).toHaveLength(6));
+    await waitFor(() => expect(screen.queryAllByTestId('mail-letter-stack').length + screen.queryAllByTestId('mail-letter-folded').length).toBeGreaterThan(0));
+    unfoldAll();
+    expect(screen.getAllByTestId('mail-letter')).toHaveLength(6);
     expect(calls('/mail/thread').some((p) => p.before === 'B1' && p.key === 'gm:abc')).toBe(true);
     expect(screen.getAllByTestId('mail-letter')[0]).toHaveTextContent('The very first letter.');
     expect(screen.getByText('This is the first letter of the thread.')).toBeInTheDocument();
