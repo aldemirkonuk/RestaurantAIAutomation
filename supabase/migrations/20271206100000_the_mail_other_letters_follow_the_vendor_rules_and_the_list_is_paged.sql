@@ -50,8 +50,8 @@ CREATE FUNCTION public.mail_other_rows(
     LANGUAGE sql STABLE SECURITY INVOKER
     SET search_path = ''
     AS $$
-WITH rows AS (
-    SELECT c.id, c.kind, c.from_address, c.thread_key, lower(c.direction::text) AS dir,
+WITH base AS (
+    SELECT c.id, c.kind, c.from_address, c.thread_key, c.message_id, lower(c.direction::text) AS dir,
            c.channel::text AS channel, c.message_text, c.ai_generated, c.status::text AS status,
            c.sent_at, c.received_at, c.created_at, c.raw_deleted_at, c.mirrored_by_grant_id,
            COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
@@ -63,13 +63,10 @@ WITH rows AS (
            COALESCE(lower(c.direction::text) = 'inbound'
             AND ((c.email_headers->'transport'->>'autoSubmitted') = 'true'
                  OR (c.email_headers->>'from') ~* '(^|[<\s"''])(mailer-daemon|postmaster)@'), false) AS automatic,
-           -- One letter delivered to two mailboxes has one Message-ID: the first row stored is the letter.
-           COALESCE(lower(c.direction::text) = 'inbound'
-            AND NULLIF(btrim(c.message_id::text), '') IS NOT NULL
-            AND row_number() OVER (PARTITION BY c.from_address, lower(btrim(c.message_id::text)),
-                                                (lower(c.direction::text) = 'inbound'
-                                                 AND NULLIF(btrim(c.message_id::text), '') IS NOT NULL)
-                                   ORDER BY c.created_at ASC, c.id ASC) > 1, false) AS duplicate
+           -- The mailbox of the person's first stored row: where two copies of a letter sit on different
+           -- thread keys (a Gmail thread id belongs to one mailbox), this mailbox's copy is the letter.
+           first_value(c.mirrored_by_grant_id) OVER (PARTITION BY c.from_address
+                                                     ORDER BY c.created_at ASC, c.id ASC) AS pref
     FROM public.procurement_conversations c
     WHERE c.restaurant_id = p_restaurant_id
       AND p_withhold_house_letters IS NOT TRUE
@@ -77,6 +74,18 @@ WITH rows AS (
       AND c.from_address IS NOT NULL
       AND (p_kind IS NULL OR c.kind = p_kind)
       AND (p_address IS NULL OR c.from_address = p_address)
+),
+rows AS (
+    SELECT b.*,
+           -- One letter delivered to two mailboxes has one Message-ID: one copy is the letter, the one in
+           -- the preferred mailbox first, then the first stored.
+           COALESCE(lower(b.dir) = 'inbound'
+            AND NULLIF(btrim(b.message_id::text), '') IS NOT NULL
+            AND row_number() OVER (PARTITION BY b.from_address, lower(btrim(b.message_id::text)),
+                                                (b.dir = 'inbound')
+                                   ORDER BY (b.mirrored_by_grant_id IS NOT DISTINCT FROM b.pref) DESC,
+                                            b.created_at ASC, b.id ASC) > 1, false) AS duplicate
+    FROM base b
 )
 SELECT r.id, r.kind, r.from_address, r.thread_key, r.dir, r.channel, r.message_text,
        r.ai_generated, r.status, r.sent_at, r.received_at, r.created_at, r.raw_deleted_at,
@@ -235,21 +244,17 @@ page AS (
     LIMIT greatest(1, least(COALESCE(p_limit, 50), 500))
 ),
 others AS (
-    -- The page's people only. A copy shares its original's thread, channel, words and direction, so none of
-    -- these aggregates needs the copy rule.
+    -- The page's people only, read through mail_other_rows (one narrow call per person, off the index): a
+    -- letter held in two mailboxes counts once, on the one thread it is kept on, and automatic mail
+    -- is no one's thread or last line.
     SELECT pg.kind, pg.address, pg.key, pg.last_at,
-           (array_agg(c.id ORDER BY at_of.at DESC, c.id DESC))[1] AS last_id,
-           (array_agg(lower(c.direction::text) ORDER BY at_of.at DESC, c.id DESC))[1] AS last_direction,
-           count(DISTINCT c.thread_key)::integer AS threads,
-           array_agg(DISTINCT lower(c.channel::text)) AS channels
+           (array_agg(o.id ORDER BY o.at DESC, o.id DESC))[1] AS last_id,
+           (array_agg(o.dir ORDER BY o.at DESC, o.id DESC))[1] AS last_direction,
+           count(DISTINCT o.thread_key)::integer AS threads,
+           array_agg(DISTINCT lower(o.channel)) AS channels
     FROM page pg
-    JOIN public.procurement_conversations c
-      ON c.restaurant_id = p_restaurant_id AND c.kind = pg.kind AND c.from_address = pg.address
-    CROSS JOIN LATERAL (SELECT COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
-                                             THEN c.received_at ELSE c.sent_at END, c.created_at) AS at) at_of
-    WHERE NOT COALESCE(lower(c.direction::text) = 'inbound'
-            AND ((c.email_headers->'transport'->>'autoSubmitted') = 'true'
-                 OR (c.email_headers->>'from') ~* '(^|[<\s"''])(mailer-daemon|postmaster)@'), false)
+    CROSS JOIN LATERAL public.mail_other_rows(p_restaurant_id, p_withhold_house_letters, pg.kind, pg.address) o
+    WHERE NOT o.automatic
     GROUP BY pg.kind, pg.address, pg.key, pg.last_at
 ),
 merged AS (

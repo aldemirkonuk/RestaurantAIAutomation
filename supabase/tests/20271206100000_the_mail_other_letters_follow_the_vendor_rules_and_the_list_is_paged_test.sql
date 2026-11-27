@@ -5,7 +5,8 @@ begin;
 ALTER TABLE public.procurement_conversations DROP CONSTRAINT IF EXISTS procurement_conversations_order_id_fkey,
   DROP CONSTRAINT IF EXISTS procurement_conversations_provider_id_fkey,
   DROP CONSTRAINT IF EXISTS procurement_conversations_restaurant_id_fkey,
-  DROP CONSTRAINT IF EXISTS procurement_conversations_send_requested_by_fkey;
+  DROP CONSTRAINT IF EXISTS procurement_conversations_send_requested_by_fkey,
+  DROP CONSTRAINT IF EXISTS procurement_conversations_mirrored_by_grant_id_fkey;
 CREATE OR REPLACE FUNCTION pg_temp.ok(cond boolean, label text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN IF cond IS NOT TRUE THEN RAISE EXCEPTION 'FAIL %', label; END IF; RAISE NOTICE 'PASS %', label; END $$;
 
@@ -51,4 +52,23 @@ SELECT pg_temp.ok((SELECT bool_and(last_line IS NOT NULL AND channels = ARRAY['e
 SELECT pg_temp.ok((SELECT array_agg(key) FROM public.list_mail_people('77777777-7777-4777-8777-777777777777', false, false, NULL, NULL, 50, 'Hello 4')) = ARRAY['guest:p4@x.example'], 'search-reads-the-words');
 -- The index is there.
 SELECT pg_temp.ok(EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_procurement_conversations_house_kind_address'), 'index-exists');
+
+-- Two mailboxes, two thread keys: a Gmail thread id belongs to one mailbox, so the owner's copy and the
+-- manager's copy of the same letter sit on different threads. The first letter is stored first from the
+-- owner's mailbox (G1), the reply-all first from the manager's (G2). One mailbox's copy must be chosen
+-- throughout, or the owner's thread loses the reply and the person shows two open threads.
+INSERT INTO public.restaurants (id, name, slug, timezone) VALUES
+  ('88888888-8888-4888-8888-888888888888', 'Rules I', 'rules-i-test', 'UTC');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, kind, from_address, direction, channel, message_text, status, thread_key, message_id, mirrored_by_grant_id, received_at, created_at, email_headers) VALUES
+  ('c7000000-0000-4000-8000-0000000000a1', '88888888-8888-4888-8888-888888888888', NULL, 'guest', 'pat@x.example', 'inbound', 'email', 'Party', 'DELIVERED', 'gm:ta', '<m1@x.example>', 'a0000000-0000-4000-8000-0000000000a1', now() - interval '10 minutes', now() - interval '10 minutes', '{}'),
+  ('c7000000-0000-4000-8000-0000000000a2', '88888888-8888-4888-8888-888888888888', NULL, 'guest', 'pat@x.example', 'inbound', 'email', 'Party', 'DELIVERED', 'gm:tb', '<m1@x.example>', 'a0000000-0000-4000-8000-0000000000a2', now() - interval '9 minutes', now() - interval '9 minutes', '{}'),
+  ('c7000000-0000-4000-8000-0000000000a3', '88888888-8888-4888-8888-888888888888', NULL, 'guest', 'pat@x.example', 'inbound', 'email', 'Make it 14', 'DELIVERED', 'gm:tb', '<r1@x.example>', 'a0000000-0000-4000-8000-0000000000a2', now() - interval '5 minutes', now() - interval '5 minutes', '{}'),
+  ('c7000000-0000-4000-8000-0000000000a4', '88888888-8888-4888-8888-888888888888', NULL, 'guest', 'pat@x.example', 'inbound', 'email', 'Make it 14', 'DELIVERED', 'gm:ta', '<r1@x.example>', 'a0000000-0000-4000-8000-0000000000a1', now() - interval '4 minutes', now() - interval '4 minutes', '{}');
+SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_threads_other('88888888-8888-4888-8888-888888888888', 'guest', 'pat@x.example', false)) = 1
+  AND (SELECT letter_count FROM public.list_mail_threads_other('88888888-8888-4888-8888-888888888888', 'guest', 'pat@x.example', false)) = 2, 'copies-by-one-mailbox-keep-the-thread-whole');
+SELECT pg_temp.ok((SELECT count(*) FROM public.mail_thread_letters_other('88888888-8888-4888-8888-888888888888', 'gm:ta', 'guest', 'pat@x.example', false)) = 2, 'owner-thread-reads-both-letters');
+SELECT pg_temp.ok((SELECT open_threads FROM public.list_mail_people('88888888-8888-4888-8888-888888888888', false) WHERE key = 'guest:pat@x.example') = 1, 'person-has-one-open-thread');
+SELECT pg_temp.ok((SELECT in_today FROM public.mail_inbox_summary('88888888-8888-4888-8888-888888888888', false, 'UTC')) = 2, 'header-counts-two-letters-not-four');
+
 rollback;
