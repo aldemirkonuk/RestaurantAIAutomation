@@ -489,6 +489,18 @@ describe('chips', () => {
     expect(screen.queryByTestId('inv-row-has')).toBeNull();
   });
 
+  it("Fill what's in it opens from the Nutrition not recorded chip for a manager, never for staff (r108 g14)", async () => {
+    for (const canManage of [true, false]) {
+      nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 2 });
+      mock.data = data({ canManage, rows: [row({ id: 'has' }), row({ id: 'none1' })] });
+      renderPage();
+      fireEvent.click(await within(screen.getByTestId('inventory-chips')).findByRole('button', { name: /^Nutrition not recorded 1$/ }));
+      if (canManage) expect(screen.getByRole('button', { name: 'Fill what’s in it (1)' })).toBeTruthy();
+      else expect(screen.queryByTestId('ivn-lane-open')).toBeNull();
+      cleanup();
+    }
+  });
+
   it('Nutrition not recorded never counts or lists a supply: it holds nothing to state', async () => {
     nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 3 });
     mock.data = data({

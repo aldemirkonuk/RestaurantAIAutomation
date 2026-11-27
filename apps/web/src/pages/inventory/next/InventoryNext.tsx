@@ -46,6 +46,7 @@ import {
   ManualReceiptWorkspace,
   MapSuspense,
   MenuScannerFlow,
+  NutritionLane,
   PANEL_LOAD_FAILED,
   PanelSuspense,
   PosMappingPanel,
@@ -222,6 +223,8 @@ export default function InventoryNext() {
     if (openParam === null) openedHere.current = false;
   }, [openParam]);
   const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
+  // r108 g14: the goods the nutrition lane walks, fixed when it opens so a save does not reshuffle it.
+  const [lane, setLane] = useState<Array<{ id: string; name: string }> | null>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   // A panel's file that could not load: say so, close it (ADR 0020).
   const failPanel = useCallback(() => {
@@ -737,6 +740,19 @@ export default function InventoryNext() {
       )}
     </div>
   );
+  // r108 g14: "Fill what's in it" starts from the Nutrition not recorded chip; owners and managers only.
+  const laneEl =
+    activeChip === 'nutrition' && data.canManage && visible.length > 0 ? (
+      <p className="ivn-acts" data-testid="ivn-lane-open">
+        <button
+          type="button"
+          className="iv-btn iv-focus"
+          onClick={() => setLane(visible.map((r) => ({ id: r.id, name: r.name ?? `Unnamed ${words.one}` })))}
+        >
+          Fill what’s in it ({fmtCount(visible.length)})
+        </button>
+      </p>
+    ) : null;
   const kindsEl = carriesGoods ? (
     <div className="iv-chips" role="group" aria-label="Kind" data-testid="inventory-kinds">
         {[{ id: '' as const, label: 'Every kind' }, ...KIND_CHIPS].map((k) => (
@@ -948,6 +964,8 @@ export default function InventoryNext() {
             {phone ? null : chipsEl}
 
             {phone ? null : kindsEl}
+
+            {laneEl}
 
             {countMode ? (
               <div className="iv-toolbar iv-toolbar--phone" data-solo="true" data-testid="inventory-toolbar">
@@ -1242,6 +1260,25 @@ export default function InventoryNext() {
           </>
         ) : null}
       </div>
+
+      {lane ? (
+        <PanelSuspense
+          onFail={() => {
+            setLane(null);
+            failPanel();
+          }}
+        >
+          <NutritionLane
+            goods={lane}
+            restaurantId={data.rid}
+            canManage={data.canManage}
+            onClose={() => {
+              setLane(null);
+              void nutCov.refetch();
+            }}
+          />
+        </PanelSuspense>
+      ) : null}
 
       {/* ── panels reused from the legacy page ──────────────────────────── */}
       {panel === 'scanner' ? (
