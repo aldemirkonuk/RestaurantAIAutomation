@@ -291,12 +291,6 @@ button.ivd-card:active {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
-@media (prefers-reduced-motion: reduce) {
-  .ivd-hold .iv-skel-bar {
-    animation: none;
-  }
-}
-
 /* Step to the next or the previous good (r108 g12). The new body enters in 160 ms, +12 px up for the next good
    and -12 px down for the previous; the old body has no exit (ADR 0112); the steps are not on a phone's screen
    twice. Reduced motion: an instant swap, no opacity. */
@@ -340,6 +334,9 @@ button.ivd-card:active {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .ivd-hold .iv-skel-bar {
+    animation: none;
+  }
   .ivd-stepbody[data-step] {
     animation: none;
   }
