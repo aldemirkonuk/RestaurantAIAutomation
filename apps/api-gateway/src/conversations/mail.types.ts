@@ -60,6 +60,12 @@ export interface MailPersonRow {
    * only such a letter, so it can still be pulled back (QA round 16, HARM 1).
    */
   unsentStatus: string | null;
+  /**
+   * With a search: about 140 characters of the newest letter that holds the words, centred on the
+   * first match (r109 mail-gap g5). Null with no search, or when the person was found by name,
+   * subject or order number only; the row then keeps its lastLine.
+   */
+  hitLine: string | null;
 }
 
 export interface MailPeoplePage {
