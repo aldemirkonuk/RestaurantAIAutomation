@@ -1,5 +1,6 @@
 import { BadRequestException, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { parsePreview, TasteService } from './taste.service';
+import { rollup } from './taste-rollup';
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const COCKTAIL = '33333333-3333-4333-8333-333333333333';
@@ -83,11 +84,23 @@ describe('TasteService.rollupSubject', () => {
   it('weighs a counted line by the grams the house stated for that good, and leaves an unstated one unweighed', async () => {
     const EGG = '77777777-7777-4777-8777-777777777777';
     const LIME = '88888888-8888-4888-8888-888888888888';
-    const t: any = recipe([['Bourbon', 600, 'ml10'], ['Egg white', 1000, 'each_milli'], ['Lime wedge', 1000, 'each_milli']]);
-    t.recipe_lines[1].inventory_id = EGG; t.recipe_lines[2].inventory_id = LIME;
-    t.restaurant_inventory = [{ id: EGG, restaurant_id: RID, piece_grams: 33 }, { id: LIME, restaurant_id: RID, piece_grams: null }, { id: EGG, restaurant_id: 'other', piece_grams: 99 }];
-    const out = await new TasteService(fakeDb(t).db).rollupSubject(RID, 'cocktail', COCKTAIL);
-    expect(out.rollup).toMatchObject({ lines: 3, unquantified: 1 });
+    const THEIRS = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const t: any = recipe([['Bourbon', 600, 'ml10'], ['Egg white', 1000, 'each_milli'], ['Lime wedge', 1000, 'each_milli'], ['Garnish', 1000, 'each_milli']]);
+    t.recipe_lines[1].inventory_id = EGG; t.recipe_lines[2].inventory_id = LIME; t.recipe_lines[3].inventory_id = THEIRS;
+    // THEIRS is a good of another house: its 99 g is not this house's to use. EGG is also stated at 99 g by another house.
+    t.restaurant_inventory = [
+      { id: EGG, restaurant_id: RID, piece_grams: 33 }, { id: LIME, restaurant_id: RID, piece_grams: null },
+      { id: EGG, restaurant_id: 'other', piece_grams: 99 }, { id: THEIRS, restaurant_id: 'other', piece_grams: 99 },
+    ];
+    const f = fakeDb(t);
+    const out = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(out.rollup).toMatchObject({ lines: 4, unquantified: 2 });
+    // The roll-up read exactly 60 ml, 33 g (this house's egg, not 1 g and not the other house's 99 g), and two unweighed lines.
+    const want = rollup({ kind: 'cocktail', method: 'Shake', components: [{ name: 'drink', lines: [
+      { name: 'Bourbon', qty: 60, unit: 'ml' }, { name: 'Egg white', qty: 33, unit: 'g' },
+      { name: 'Lime wedge', qty: null, unit: 'g' }, { name: 'Garnish', qty: null, unit: 'g' },
+    ] }] });
+    expect(f.inserts[0].ext.rollup.inputHash).toBe(want.basis.inputHash);
   });
   it('counts every each line with no stated weight as unquantified, linked to a good with no weight, to a good with no row, or to none (r103 need 5)', async () => {
     const NONE = '99999999-9999-4999-8999-999999999999';
