@@ -72,7 +72,7 @@ describe('Ask the book reads every letter', () => {
       <AskTheBook
         open
         onClose={() => {}}
-        reading={{ data: ROWS, loading: false, failure: null, refetch: () => {} } as never}
+        reading={{ data: { rows: ROWS, withheld: 0 }, loading: false, failure: null, refetch: () => {} } as never}
       />,
     );
     expect(screen.getByText('Team')).toBeInTheDocument();
