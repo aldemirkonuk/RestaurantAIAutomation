@@ -55,7 +55,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
-import { compareOffered } from './rp-registers-trade';
+import { compareOffered, tillAnswersCompare } from './rp-registers-trade';
 import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
@@ -84,13 +84,13 @@ import { flatAsked, flatVisit, refusedFlatSentence } from './rp-flat-visit';
 import { FLAT_PARAM } from './CuttingFlat';
 import { NextStep } from './rp-next-step';
 import { readingAge } from './rp-registers-trade';
-import { FIT_IDS, fittedRows, controlRows } from './rp-fit';
-import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
+import { FIT_IDS, fittedRows, controlRows, COMPARE_ANSWER_PX, COMPARE_GRID_ROWS } from './rp-fit';
+import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries, drawnRegister, type LastRead } from './rp-strip';
 import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
-import { defaultSheet, useReportsNextData } from './useReportsNextData';
+import { defaultSheet, useReportsNextData, type Register } from './useReportsNextData';
 import './reports-next.css';
 
 export interface ReportsNextProps {
@@ -239,6 +239,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     };
   }, []);
   const headRef = useRef<HTMLElement | null>(null);
+  const tillLast = useRef<LastRead>(null);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {
@@ -567,6 +568,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     (id) => data.registers[id]?.loading && !lastSparks.current.byId[id],
   );
 
+  // The hold follows what the till card draws, stand-in included (Cutting's own rule).
+  const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast);
+  const tillHeld = tillAnswersCompare(tillRead.data, tillRead.ctx);
   const cuttings: SheetCutting[] = view.cuttings.map((c) => {
     const fit = !editing && FIT_IDS.includes(c.id);
     // A cutting whose honest answer is a sentence folds to a strip while the
@@ -581,6 +585,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ? { ...c.slot, h: fittedRows(c.slot.h, needPx[c.id]) }
         : c.slot,
     extraRows: editing ? controlRows(controlPx[c.id]) : undefined,
+    // Phone: the till holds the compare answer's row while compare is drawn (r107 g5).
+    holdPx: c.id === 'till' ? (!strip && tillHeld ? COMPARE_ANSWER_PX : 0) : undefined,
+    holdRows: c.id === 'till' ? (!strip && tillHeld ? COMPARE_GRID_ROWS : 0) : undefined,
     body: (
       <Cutting
         id={c.id}

@@ -102,6 +102,16 @@ export interface SheetCutting {
   strip?: boolean;
   /** Rows the arrange controls add to the card while arranging (r101): drawn on top of the stored slot, never written back. */
   extraRows?: number;
+  /**
+   * Phone only: px the card holds beyond its slot while its content is taller than the slot by that much
+   * (the till's compare answer). 0 keeps the card's settle ready; undefined opts the card out.
+   */
+  holdPx?: number;
+  /**
+   * Twelve-column sheet only, while it is read: rows the card holds beyond its slot for the same answer (the phone
+   * holds px, the grid holds whole rows). Arranging draws and stores the slot alone.
+   */
+  holdRows?: number;
   /** The whole cutting, already rendered — the sheet only lays paper out. */
   body: ReactNode;
 }
@@ -136,8 +146,10 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
     () =>
       arranging
         ? cuttings.map((c) => (c.extraRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.extraRows } } : c))
-        : cuttings,
-    [cuttings, arranging],
+        : stacked
+          ? cuttings
+          : cuttings.map((c) => (c.holdRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.holdRows } } : c)),
+    [cuttings, arranging, stacked],
   );
   const layouts = useMemo(
     (): ResponsiveLayouts => sheetLayouts(shown, arranging),
@@ -214,10 +226,11 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
               key={c.id}
               className="rp-grid-item rp-stack__item"
               data-grows={TEXT_IDS.has(c.id) || undefined}
+              data-holds={c.holdPx !== undefined || undefined}
               style={
                 TEXT_IDS.has(c.id)
                   ? { minHeight: slotHeightPx(c.slot.h) }
-                  : { height: slotHeightPx(c.slot.h) }
+                  : { height: slotHeightPx(c.slot.h) + (c.holdPx ?? 0) }
               }
             >
               {c.body}

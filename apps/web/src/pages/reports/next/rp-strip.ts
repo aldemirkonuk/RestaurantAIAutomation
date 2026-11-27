@@ -12,6 +12,7 @@ import { readsRegister, type ViewCtx } from "./rp-spec";
 import type { AnalysisId, GraphType } from "./rp-sheet";
 import type { AnalysisView } from "./rp-view";
 import type { Register } from "./useReportsNextData";
+import type { MutableRefObject } from "react";
 
 /** Rows a collapsed (empty) cutting keeps: 2 x 34 + 14 = 82 px of ruling, drawn 72 px tall. */
 export const STRIP_ROWS = 2;
@@ -126,4 +127,55 @@ export function sparkOf(
   } catch {
     return null;
   }
+}
+
+/** The last whole read of a windowed register, the days it answered, and whether it was the compare read. */
+export type LastRead = { data: unknown; days: number; compare: boolean } | null;
+
+/**
+ * What a windowed card DRAWS right now (ADR 0020): the register's own answer, or,
+ * while a newly picked window is read, the last whole read with its own days (the
+ * stand-in, never for a first read). Cutting draws from this and the page sizes
+ * the phone till's held row from the same answer, so a hold cannot fall to 0
+ * while the card still shows the prior row (r107 reports fix on #2178).
+ *
+ * The hook keeps a stand-in per house (#1670, `register.standIn`): then the
+ * register's data IS the kept read, and this only carries its days and compare.
+ * A register handed in bare falls back to `last` (#1976). Either way the kept
+ * read is drawn with the compare it was read with: a 2N read shown as N days
+ * would double the money (#2072). Laying the till beside the window before it
+ * is a re-read too (#2157). Updates `last` as a render-time ref.
+ */
+export function drawnRegister(
+  takesWindow: boolean,
+  register: Register<unknown> | undefined,
+  ctx: ViewCtx,
+  last: MutableRefObject<LastRead>,
+): { standIn: NonNullable<LastRead> | null; data: unknown; ctx: ViewCtx } {
+  const kept = register?.standIn;
+  if (takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
+    last.current = {
+      data: register.data,
+      days: kept?.shownDays ?? ctx.days,
+      compare: kept ? !!kept.compare : !!ctx.compare,
+    };
+  const standIn =
+    !kept &&
+    takesWindow &&
+    register?.loading &&
+    !register.failure &&
+    last.current &&
+    (last.current.days !== ctx.days || last.current.compare !== !!ctx.compare)
+      ? last.current
+      : null;
+  const shown = kept
+    ? { days: kept.shownDays, compare: !!kept.compare }
+    : standIn
+      ? { days: standIn.days, compare: standIn.compare }
+      : null;
+  return {
+    standIn,
+    data: standIn ? standIn.data : register?.data,
+    ctx: shown ? { ...ctx, days: shown.days, compare: shown.compare } : ctx,
+  };
 }

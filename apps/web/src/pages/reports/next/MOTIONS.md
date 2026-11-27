@@ -43,6 +43,8 @@ to those would put a moving cutting somewhere the announcement says it is not.
 | `rp-spark-dot` | — (ease-out, not a token) | `ease-out` · 240ms, delay 320ms | the spark's end dot (`.rp-spark__dot`) appearing as the line arrives (320ms = when the line is in); opacity only |
 | `rp-ruled-in` | `settle` | `cubic-bezier(.16,1,.3,1)` · 320ms | a folded strip's "Ruled off." mark (`.rp-ruled`) arriving at the left of the 72px strip; opacity and transform |
 | `rp-seg-thumb` | `settle` | `cubic-bezier(.16,1,.3,1)` · 260ms | the window pill's thumb (`.rp-seg__thumb`) sliding to the picked window; transform only |
+| `rp-prior-draw` | `settle` | `cubic-bezier(.16,1,.3,1)` · 360ms | the compare's prior line (`.rp-prior`, dashed) drawing left to right once when compare is switched on, `clip-path: inset(0 100% 0 0)` to `inset(0)`. A refetch or a window re-read keeps the line in place and does not replay it; shown at once under reduced motion |
+| `rp-stack__item` | `ink` | `cubic-bezier(.16,1,.3,1)` · 160ms | the phone till card's height settling to hold the compare answer's 66px row when compare is switched on or off (`.rp-stack__item[data-holds]`, `height` only); none under reduced motion |
 
 ## Deliberate non-motions
 

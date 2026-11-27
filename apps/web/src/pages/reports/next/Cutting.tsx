@@ -58,7 +58,7 @@ import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';
 import { compareOffered } from './rp-registers-trade';
-import { cannotDraw } from './rp-strip';
+import { cannotDraw, drawnRegister, type LastRead } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
 import RuledOff from './RuledOff';
@@ -373,37 +373,28 @@ export default function Cutting({
   const spec = CATALOGUE[id];
   // While a window just picked is still being read, the figures on screen are
   // the window before it (r41 gap 4): they are drawn, and their window line
-  // written, over the days they were read for, never the days just picked.
-  // The hook keeps them per house (#1670); a register handed in bare (no
-  // hook between) falls back to this card's own last drawing (#1976, ADR 0020).
-  const lastRead = useRef<{ data: unknown; days: number; compare: boolean } | null>(null);
-  if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
-    lastRead.current = { data: register.data, days: register.standIn?.shownDays ?? ctx.days, compare: register.standIn ? !!register.standIn.compare : !!ctx.compare };
-  const ownStandIn =
-    !register?.standIn &&
-    spec.takesWindow &&
-    register?.loading &&
-    !register.failure &&
-    lastRead.current &&
-    (lastRead.current.days !== ctx.days || lastRead.current.compare !== !!ctx.compare)
-      ? lastRead.current
-      : null;
+  // written, over the days and the compare they were read for, never the ones
+  // just picked. One rule for the card and the page's phone hold (rp-strip.ts
+  // `drawnRegister`): the hook's per-house stand-in (#1670) first, this card's
+  // own last drawing for a bare register (#1976).
+  const lastRead = useRef<LastRead>(null);
+  const drawn0 = drawnRegister(!!spec.takesWindow, register as Register<unknown> | undefined, ctx, lastRead);
+  const ownStandIn = drawn0.standIn;
   const standIn =
     register?.standIn ?? (ownStandIn ? { shownDays: ownStandIn.days, readingDays: ctx.days } : null);
-  /* The stand-in keeps the compare it was read with: a 2N read shown as N days would double the money. */
-  const shownCompare = register?.standIn ? register.standIn.compare : ownStandIn ? ownStandIn.compare : !!ctx.compare;
-  const shownCtx: ViewCtx = standIn ? { ...ctx, days: standIn.shownDays, compare: shownCompare } : ctx;
+  const shownCtx: ViewCtx = drawn0.ctx;
+  const shownCompare = !!shownCtx.compare;
   const windowLine = spec.window(shownCtx);
   // Laying the till beside the window before it is read again too (#2157):
   // the same days with the other compare say which half is coming.
   const standInLine = !standIn
     ? null
-    : standIn.shownDays === standIn.readingDays && !!shownCompare !== !!ctx.compare
+    : standIn.shownDays === standIn.readingDays && shownCompare !== !!ctx.compare
       ? ctx.compare
         ? `Reading the ${ctx.days} days before. Until they arrive, the last ${ctx.days} days are shown alone.`
         : `Reading the last ${ctx.days} days again. Until they arrive, the drawing shown still has the days before beside it.`
       : standInSentence(standIn);
-  const answer = ownStandIn ? ownStandIn.data : register?.data;
+  const answer = drawn0.data;
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
   const offered = ((): GraphType[] => {

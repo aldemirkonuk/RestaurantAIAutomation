@@ -517,6 +517,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
             <Area
               type="monotone"
               dataKey="prior"
+              className="rp-prior"
               stroke="var(--ink-3)"
               strokeWidth={1.2}
               strokeDasharray="2 3"
@@ -559,6 +560,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
           <Line
             type="monotone"
             dataKey="prior"
+            className="rp-prior"
             stroke="var(--ink-3)"
             strokeWidth={1.2}
             strokeDasharray="2 3"
