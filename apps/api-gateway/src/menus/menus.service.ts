@@ -35,6 +35,8 @@ import {
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
 import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
+import { readMarginInputs } from "../pricing/margin-advice.service";
+import { planLineMargin, type KindMargin } from "./plan-margin";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 
@@ -172,6 +174,13 @@ export interface PlanKind {
   setAfterRead: boolean;
   /** The lock that holds this kind, when one does. */
   lock: { lockId: string; lockedPrice: number; lockedBy: PlanPerson; lockedAt: string } | null;
+  /**
+   * r109 menu-g4: the margin at the house's price now and at this menu's,
+   * against the house's target (plan-margin.ts). Null for anyone but an owner
+   * or a manager, for a wine the house has no row for, and when the costs
+   * could not be read (the plan's marginReason says so). Never in the fingerprint.
+   */
+  margin?: KindMargin | null;
 }
 
 export interface PlanLine {
@@ -265,6 +274,12 @@ export interface MenuPlan {
   /** Whether the people named in the plan could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
+  /**
+   * r109 menu-g4: why the margins are not shown to an owner or manager (the
+   * costs or targets could not be read); null when they are, or when the
+   * reader may not see margin at all.
+   */
+  marginReason?: string | null;
   /** The house's IANA zone, for saying its dates on its clock (never part of the fingerprint). */
   timezone?: string | null;
   /** Why there is no zone to say them in: not set, not a zone, or not readable. */
@@ -2026,11 +2041,37 @@ export class MenusService {
    * A failed read is a 5xx, so make-current cannot go ahead on a plan nobody
    * saw (L25).
    */
-  async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
+  async planFor(restaurantId: string, menuId: string, opts: { margin?: boolean } = {}): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
     assertReadFinished(row);
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
+    // r109 menu-g4: the margins, after the fingerprint was made (computePlan),
+    // and only for a reader who may see cost (the controller's check).
+    let marginReason: string | null = null;
+    for (const l of plan.lines) {
+      l.bottle.margin = null;
+      l.glass.margin = null;
+    }
+    if (opts.margin) {
+      const ids = plan.lines.map((l) => l.inventoryId).filter((id): id is string => !!id);
+      const inputs = ids.length > 0 ? await readMarginInputs(this.dbService.supabase, restaurantId, ids) : null;
+      if (inputs && inputs.error !== null) {
+        marginReason = `The margins are not shown: ${inputs.error}.`;
+        this.logger.warn(`menu ${menuId}: ${marginReason}`);
+      } else if (inputs) {
+        for (const l of plan.lines) {
+          const m = planLineMargin(inputs, l.inventoryId, {
+            houseBottle: l.bottle.housePrice,
+            houseGlass: l.glass.housePrice,
+            menuBottle: l.bottle.menuPrice,
+            menuGlass: l.glass.menuPrice,
+          });
+          l.bottle.margin = m.bottle;
+          l.glass.margin = m.glass;
+        }
+      }
+    }
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
     const ids = new Set<string>();
@@ -2054,6 +2095,7 @@ export class MenusService {
       ...plan,
       namesReadable: error === null,
       namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
+      marginReason,
       ...(await this.houseZone(restaurantId)),
     };
   }

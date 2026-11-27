@@ -263,14 +263,22 @@ export class OrganizationsService {
    * owners can edit restaurant details" would have been a false explanation for
    * a refused GET.
    */
+  /**
+   * Whether this person is an owner or a manager here, without refusing
+   * (r109 menu-g4: the menu plan is open to every member, its margins are
+   * not). The same test assertManagerOrOwner refuses on.
+   */
+  async canManageRestaurant(userId: string, restaurantId: string): Promise<boolean> {
+    const role = await this.resolveRestaurantRole(userId, restaurantId);
+    return role === "owner" || role === "manager";
+  }
+
   private async assertManagerOrOwner(
     userId: string,
     restaurantId: string,
     action = "edit restaurant details",
   ): Promise<void> {
-    const role = await this.resolveRestaurantRole(userId, restaurantId);
-
-    if (role !== "owner" && role !== "manager") {
+    if (!(await this.canManageRestaurant(userId, restaurantId))) {
       throw new ForbiddenException(
         `Only managers and owners can ${action}`,
       );
