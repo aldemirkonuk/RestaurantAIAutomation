@@ -207,6 +207,28 @@ export class MenusController {
     );
     return this.menusService.discardMenuItem(restaurantId, id);
   }
+
+  @Patch(":restaurantId/items/:id/restore")
+  @ApiOperation({
+    summary:
+      "Put a discarded line back on the current menu - owner or manager only (r107 menu-4, DD-r106-18). Writes only the line's status; the house's sale state is never touched",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 404, description: "No such line in this restaurant." })
+  @ApiResponse({ status: 409, description: "The line is not discarded, or its menu is no longer the current one. Nothing was changed." })
+  async restoreMenuItem(
+    @Param("restaurantId") restaurantId: string,
+    @Param("id") id: string,
+    @CurrentUser() user: { userId?: string },
+  ) {
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Putting a menu line back names the person, and this session names nobody. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "put a line back on the menu");
+    return this.menusService.restoreMenuItem(restaurantId, id);
+  }
 }
 
 /**
@@ -324,6 +346,25 @@ export class MenuVersionsController {
     const house = this.house(restaurantId);
     await this.organizations.assertCanManageRestaurant(userId, house, "take a failed read off the list");
     return this.menusService.removeFailedRead(house, menuId, userId);
+  }
+
+  @Post(":menuId/restore")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Put a failed read that was taken off the kept list back - owner or manager only",
+    description:
+      "r107 menu-4 (DD-r106-16). The undo of /remove: the read returns as the failed draft it was. 409 for any menu that was not taken off (nothing changed), 404 for another house's menu, 403 for staff.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The read was not taken off the list. Nothing was changed." })
+  async restoreFailedRead(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "put a failed read back on the list");
+    return this.menusService.restoreFailedRead(house, menuId);
   }
 
   @Post(":menuId/make-current")
