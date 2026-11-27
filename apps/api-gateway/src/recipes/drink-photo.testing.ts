@@ -29,7 +29,7 @@ export const jpegWithGps = () =>
   ]);
 
 const crc0 = Buffer.alloc(4);
-const pngChunk = (type: string, data: Buffer) => {
+export const pngChunk = (type: string, data: Buffer) => {
   const len = Buffer.alloc(4);
   len.writeUInt32BE(data.length, 0);
   return Buffer.concat([len, Buffer.from(type, "latin1"), data, crc0]);
