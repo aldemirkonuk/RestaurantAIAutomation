@@ -43,6 +43,28 @@ export function lockBodyScroll(): () => void {
    spindle is above it — so a Sheet waiting for a level is never on top of it. */
 export const openStack: string[] = [];
 
+/* ── who is listening to the stack ────────────────────────────────────────
+   r109 inventory-5: a first-run sheet (the data terms, the first ground
+   choice) waits its turn while another overlay is open, so a deep-linked
+   drawer and a focus-trapping sheet are never on screen together. The stack
+   says when it changes; `useOwnTurn` reads it. */
+const stackListeners = new Set<() => void>();
+
+export function subscribeOpenStack(listener: () => void): () => void {
+  stackListeners.add(listener);
+  return () => {
+    stackListeners.delete(listener);
+  };
+}
+
+export function openStackSize(): number {
+  return openStack.length;
+}
+
+export function openStackChanged(): void {
+  stackListeners.forEach((listener) => listener());
+}
+
 /* ── the page gives up width, not light ───────────────────────────────────
    Sketch 103 · 1a, "The Pass": while a Sheet is open, `data-sheet-open` and
    `--sheet-width` land on every `.mudavym` page root (never on the overlay's own
