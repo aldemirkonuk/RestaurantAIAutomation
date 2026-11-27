@@ -196,6 +196,8 @@ export default function LineRow({
     const t = setTimeout(() => setUndo(null), 3000);
     return () => clearTimeout(t);
   }, [undo]);
+  // The kept `saved` figure is for the amount the line had when it was switched off: once the amount, unit or link changes it is stale, and Undo would put back a cost for a different line.
+  useEffect(() => setUndo(null), [row.qtyText, row.unit, row.inventoryId]);
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
 
@@ -250,7 +252,7 @@ export default function LineRow({
               />
               {row.inventoryId ? (
                 <span className="cl-dim cl-rcp-kept" data-testid="kept-link">
-                  Linked to {row.itemName ?? 'a shelf item'}; kept while it is not counted.
+                  Linked to {row.itemName ?? 'a shelf item'} until you save; saving a line that is not counted drops its link.
                 </span>
               ) : null}
             </>
