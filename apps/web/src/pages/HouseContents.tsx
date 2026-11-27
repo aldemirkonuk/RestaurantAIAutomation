@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { KeepOnPhone } from '../components/onboarding/KeepOnPhone'
+import { HouseCountRow } from '../components/onboarding/HouseCountRow'
 import {
   addCustomProvider,
   addProviderFromCatalogue,
@@ -542,6 +543,9 @@ export default function HouseContents() {
               </span>
             )}
           </div>
+
+          {/* onboarding-r110-g2: the first stock count, shelf by shelf. */}
+          <HouseCountRow />
 
           <KeepOnPhone />
 
