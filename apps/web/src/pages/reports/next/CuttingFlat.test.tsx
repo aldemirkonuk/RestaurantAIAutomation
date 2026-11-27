@@ -6,9 +6,10 @@
 
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { openStack } from '@/components/mudavym/overlayState';
+import { AuthContext } from '@/contexts/AuthContext';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
 import { CATALOGUE } from './rp-catalogue';
@@ -464,5 +465,222 @@ describe('full screen steps through the sheet (r108 g1)', () => {
     expect(within(dialog).queryByRole('group', { name: 'Move through the sheet' })).toBeNull();
     fireEvent.keyDown(document.body, { key: 'ArrowRight' });
     expect(where()).toBe('/reports?flat=till');
+describe('Fill the screen (r109 g1)', () => {
+  const proto = HTMLElement.prototype as unknown as { requestFullscreen?: unknown };
+  let fsEl: Element | null = null;
+  const exit = vi.fn();
+  const request = vi.fn();
+
+  function enable() {
+    fsEl = null;
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fsEl });
+    request.mockImplementation(function (this: Element) {
+      fsEl = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    exit.mockImplementation(() => {
+      fsEl = null;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    proto.requestFullscreen = request;
+    Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exit });
+  }
+
+  afterEach(() => {
+    request.mockReset();
+    exit.mockReset();
+    delete proto.requestFullscreen;
+    for (const k of ['fullscreenEnabled', 'fullscreenElement', 'exitFullscreen']) {
+      delete (document as unknown as Record<string, unknown>)[k];
+    }
+  });
+
+  it('Fill the screen asks the browser for the dialog; Back gives it back and the lock count returns to 0', async () => {
+    enable();
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    const fill = within(dialog).getByRole('button', { name: 'Fill the screen' });
+    expect(fill).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(fill);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.instances[0]).toBe(dialog);
+    expect(request).toHaveBeenCalledWith({ navigationUI: 'hide' });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Leave full screen' })).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Back to the sheet' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(exit).toHaveBeenCalledTimes(1);
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  it("the browser's own Escape leaves its full screen and puts the label back; the flat stays open", async () => {
+    enable();
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fill the screen' }));
+    await waitFor(() => within(dialog).getByRole('button', { name: 'Leave full screen' }));
+    fsEl = null;
+    document.dispatchEvent(new Event('fullscreenchange'));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Fill the screen' })).toHaveAttribute('aria-pressed', 'false'),
+    );
+    expect(screen.getByRole('dialog', { name: 'Through the till' })).toBeInTheDocument();
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('no button when fullscreenEnabled is false (iPhone Safari)', () => {
+    enable();
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false });
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(within(dialog).queryByRole('button', { name: /full screen|Fill the screen/i })).toBeNull();
+  });
+
+  it('no button when the root cannot ask for full screen', () => {
+    enable();
+    delete proto.requestFullscreen;
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(within(dialog).queryByRole('button', { name: 'Fill the screen' })).toBeNull();
+  });
+
+  it('a phone-sized touch screen asks for landscape once in, and gives the lock back on close', async () => {
+    enable();
+    const lock = vi.fn(() => Promise.resolve());
+    const unlock = vi.fn();
+    Object.defineProperty(window.screen, 'orientation', { configurable: true, value: { lock, unlock } });
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      paint(<Harness id="till" register={answered(TILL)} />);
+      fireEvent.click(opener('Through the till'));
+      const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fill the screen' }));
+      await waitFor(() => expect(lock).toHaveBeenCalledWith('landscape'));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Back to the sheet' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(unlock).toHaveBeenCalledTimes(1);
+    } finally {
+      window.matchMedia = mm;
+      delete (window.screen as unknown as Record<string, unknown>).orientation;
+    }
+  });
+
+  it('a refused lock fails silently', async () => {
+    enable();
+    const lock = vi.fn(() => Promise.reject(new Error('NotSupportedError')));
+    Object.defineProperty(window.screen, 'orientation', { configurable: true, value: { lock, unlock: vi.fn() } });
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      paint(<Harness id="till" register={answered(TILL)} />);
+      fireEvent.click(opener('Through the till'));
+      const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fill the screen' }));
+      await waitFor(() => expect(lock).toHaveBeenCalled());
+      expect(within(dialog).getByRole('button', { name: 'Leave full screen' })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = mm;
+      delete (window.screen as unknown as Record<string, unknown>).orientation;
+    }
+  });
+});
+
+describe('Copy link (r109 g5)', () => {
+  const THE_LINK = 'flat=till&days=90&compare=prior&grain=week';
+  const messy = `/reports?${THE_LINK}&restaurant=h-9&token=secret&utm=1&sheet=abc`;
+  const houses = {
+    activeRestaurantId: 'h1',
+    availableRestaurants: [
+      { id: 'h0', name: 'Elsewhere', city: null, chain_id: null, chain_name: null },
+      { id: 'h1', name: 'Antalya Meyhouse', city: null, chain_id: null, chain_name: null },
+    ],
+  } as never;
+  const setClipboard = (value: unknown) =>
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value });
+  afterEach(() => {
+    delete (navigator as unknown as Record<string, unknown>).clipboard;
+    vi.useRealTimers();
+  });
+
+  it('copies origin + /reports with only flat, days, compare and grain; says so once, politely', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    setClipboard({ writeText });
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/reports?${THE_LINK}`);
+    const status = await within(dialog).findByText('Link copied.');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    // The button does not morph.
+    expect(within(dialog).getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+  });
+
+  it('the line goes after four seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setClipboard({ writeText: () => Promise.resolve() });
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    await within(dialog).findByText('Link copied.');
+    await act(async () => {
+      vi.advanceTimersByTime(4100);
+    });
+    expect(within(dialog).queryByText('Link copied.')).toBeNull();
+  });
+
+  it('a refused clipboard shows the link in a read-only, selected field: no dead end', async () => {
+    setClipboard({ writeText: () => Promise.reject(new Error('NotAllowedError')) });
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    const box = (await within(dialog).findByDisplayValue(`${window.location.origin}/reports?${THE_LINK}`)) as HTMLInputElement;
+    expect(box).toHaveAttribute('readonly');
+    expect(within(dialog).getByText('Copy it from here')).toBeInTheDocument();
+    expect(box.selectionStart).toBe(0);
+    expect(box.selectionEnd).toBe(box.value.length);
+    expect(within(dialog).queryByText('Link copied.')).toBeNull();
+  });
+
+  it('no clipboard at all shows the same field', async () => {
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    expect(await within(dialog).findByText('Copy it from here')).toBeInTheDocument();
+  });
+
+  it('the head names the active house, and the link never carries it', () => {
+    setClipboard({ writeText: vi.fn(() => Promise.resolve()) });
+    paint(
+      <AuthContext.Provider value={houses}>
+        <Harness id="till" register={answered(TILL)} />
+      </AuthContext.Provider>,
+      ['/reports?flat=till'],
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(dialog.querySelector('.rp-cut__window')?.textContent).toMatch(/^Antalya Meyhouse · /);
+    expect(dialog.querySelector('.rp-cut__window')?.textContent).not.toMatch(/Elsewhere/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    expect((navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toMatch(/Antalya|h1/);
+  });
+
+  it('with no house to name, the window line is the page\'s own', () => {
+    paint(<Harness id="till" register={answered(TILL)} />, ['/reports?flat=till']);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(dialog.querySelector('.rp-cut__window')?.textContent).not.toContain(' · Antalya');
+    expect(dialog.querySelector('.rp-cut__window')?.textContent?.startsWith('Antalya')).toBe(false);
   });
 });
