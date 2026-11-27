@@ -31,6 +31,7 @@ import {
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { Cat, Cell, Measure } from './rp-view';
+import { halfWords, readStretch, stretchWords } from './rp-stretch';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
@@ -432,6 +433,12 @@ const till = analysis<TillWindow>({
         format: (v) => money(v, 'compact'),
         measureLabel: 'Taken',
         measures: tillMeasures(w, shown, money),
+        // Read a stretch (r108 g3): the shown window's own days, as the gateway keyed them.
+        stretch: (a, b) => {
+          const r = readStretch(w, shown, a, b, prior && w.prior ? daysBetween(w.prior.from, w.prior.to) : null);
+          return r ? stretchWords(r, money) : undefined;
+        },
+        stretchFrom: (a) => halfWords(shown[a] ?? ''),
       },
       matrix: {
         rows: [...WEEKDAY_SHORT],
