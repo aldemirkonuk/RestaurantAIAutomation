@@ -1,6 +1,6 @@
 import { HttpException } from "@nestjs/common";
 import { DocumentsController } from "./documents.controller";
-import { formatCents, toCents, verifiedCsv, type ExportRow } from "./documents-export";
+import { formatCents, toCents, verifiedCsv, verifiedLinesCsv, type ExportRow } from "./documents-export";
 
 const row = (o: Partial<ExportRow> = {}): ExportRow => ({
   doc_number: "A-1", doc_date: "2026-11-01", doc_type: "invoice", vendor: "Acme",
@@ -69,5 +69,43 @@ describe("DocumentsController.exportVerified (r106 g5)", () => {
   it("a failed read throws a 500 in words, never an empty file", async () => {
     result = { data: null, error: { message: "boom" } };
     await expect(ctrl().exportVerified({ userId: "u", restaurantId: "r1", role: "manager" } as any)).rejects.toThrow(/no file was made/);
+  });
+});
+
+describe("the verified papers, one row per line (r110 g4, ?lines=1)", () => {
+  const paper = (o: Partial<Parameters<typeof verifiedLinesCsv>[0][number]> = {}) => ({
+    doc_number: "A-1", doc_date: "2026-11-02", doc_type: "invoice", vendor: "Acme",
+    currency: "USD", subtotal: null, freight: null, tax: "3.00", total: null,
+    lines: [
+      { line_no: 1, description: "Rioja", line_total: "20.00", deposit: "0.10", vat_rate_percent: 20, cls: "Wine" },
+      { line_no: 2, description: "Water", line_total: "10.00", vat_rate_percent: null, cls: null },
+    ],
+    ...o,
+  });
+  const rowsOf = (csv: string) => csv.trim().split("\r\n").map((l) => l.split(","));
+
+  it("gives each line its category, printed rate, net, tax share and deposit", () => {
+    const [head, a, b, total] = rowsOf(verifiedLinesCsv([paper()]));
+    expect(head.slice(7)).toEqual(["Category", "VAT rate", "Net", "Tax share", "Deposit"]);
+    expect(a.slice(5)).toEqual(["1", "Rioja", "Wine", "20%", "20.00", "2.00", "0.10"]);
+    expect(b.slice(7)).toEqual(["Not classed", "rate not printed", "10.00", "1.00", ""]);
+    // the tax shares sum to the paper's tax to the cent
+    expect(total).toEqual(["Total", "", "", "", "USD", "", "", "", "", "30.00", "3.00", "0.10"]);
+  });
+
+  it("a credit memo is negative, and two currencies are two Total rows", () => {
+    const csv = verifiedLinesCsv([
+      paper({ doc_type: "credit_memo", tax: null, lines: [{ line_no: 1, line_total: "5.00", cls: "Beer" }] }),
+      paper({ currency: "TRY", tax: null, lines: [{ line_no: 1, line_total: "100.00", cls: "Food" }] }),
+      paper({ currency: null, tax: null }),
+    ]);
+    const rows = rowsOf(csv);
+    expect(rows[1][9]).toBe("-5.00");
+    expect(rows.filter((r) => r[0] === "Total").map((r) => [r[4], r[9]])).toEqual([
+      ["USD", "-5.00"],
+      ["TRY", "100.00"],
+      ["", ""],
+    ]);
+    expect(csv).toContain("1 paper states no currency; not added up");
   });
 });

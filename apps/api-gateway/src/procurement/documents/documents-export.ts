@@ -144,3 +144,103 @@ export function allocateSigned(weights: number[], target: number): number[] {
   for (let k = 0; left > 0n; k++, left--) q[order[k].i] += 1n;
   return q.map((x) => (neg ? 0 - Number(x) : Number(x)));
 }
+
+export const LINE_EXPORT_COLUMNS = [
+  "Paper number",
+  "Date",
+  "Type",
+  "Vendor",
+  "Currency",
+  "Line",
+  "Description",
+  "Category",
+  "VAT rate",
+  "Net",
+  "Tax share",
+  "Deposit",
+] as const;
+
+/** One paper of the lines view: its row and its lines, each already classed. */
+export interface LineExportPaper extends ExportRow {
+  lines: Array<{
+    line_no?: number | null;
+    description?: string | null;
+    line_total: number | string | null;
+    deposit?: number | string | null;
+    vat_rate_percent?: number | string | null;
+    cls: string | null;
+  }>;
+}
+
+/**
+ * The verified papers one row per line (r110 g4, ?lines=1). A line's
+ * category is the class of the good it is linked to ('Not classed' when it is
+ * linked to none). Its VAT rate is the printed one, else 'rate not printed'.
+ * Its tax share is the paper's printed tax spread over its lines by net, by
+ * largest remainder, so a paper's shares sum to its tax to the cent; a line
+ * printed no tax of its own. A credit memo's figures are negative. One Total
+ * row per currency; a paper with no currency is added to nothing.
+ */
+export function verifiedLinesCsv(papers: LineExportPaper[]): string {
+  const out: string[] = [LINE_EXPORT_COLUMNS.join(",")];
+  type Sum = { net: number; tax: number; dep: number };
+  const sums = new Map<string, Sum>();
+  let unstated = 0;
+  for (const p of papers) {
+    const cur = (p.currency ?? "").trim().toUpperCase();
+    const sign = p.doc_type === "credit_memo" ? -1 : 1;
+    const nets = p.lines.map((l) => toCents(l.line_total));
+    const taxCents = toCents(p.tax);
+    const shares =
+      taxCents === null
+        ? nets.map(() => null)
+        : allocateSigned(nets.map((n) => Math.max(0, n ?? 0)), taxCents);
+    if (!cur) unstated += 1;
+    const s = sums.get(cur) ?? { net: 0, tax: 0, dep: 0 };
+    p.lines.forEach((l, i) => {
+      const net = nets[i] === null ? null : sign * (nets[i] as number) || 0;
+      const tax = shares[i] === null ? null : sign * (shares[i] as number) || 0;
+      const dc = toCents(l.deposit);
+      const dep = dc === null ? null : sign * dc || 0;
+      const r = l.vat_rate_percent;
+      const rate =
+        r === null || r === undefined || r === "" || !Number.isFinite(Number(r))
+          ? "rate not printed"
+          : `${Number(r)}%`;
+      if (cur) {
+        s.net += net ?? 0;
+        s.tax += tax ?? 0;
+        s.dep += dep ?? 0;
+      }
+      out.push(
+        [
+          cell(p.doc_number),
+          cell(p.doc_date),
+          cell(p.doc_type),
+          cell(p.vendor),
+          cell(cur || null),
+          l.line_no == null ? "" : String(l.line_no),
+          cell(l.description ?? null),
+          cell(l.cls ?? "Not classed"),
+          cell(rate),
+          formatCents(net),
+          formatCents(tax),
+          formatCents(dep),
+        ].join(","),
+      );
+    });
+    if (cur) sums.set(cur, s);
+  }
+  for (const [cur, s] of sums)
+    out.push(
+      ["Total", "", "", "", cell(cur), "", "", "", "", formatCents(s.net), formatCents(s.tax), formatCents(s.dep)].join(","),
+    );
+  if (unstated > 0)
+    out.push(
+      [
+        "Total", "", "", "", "", "", "", "", "", "", "",
+        `${unstated} ${unstated === 1 ? "paper states" : "papers state"} no currency; not added up`,
+      ].join(","),
+    );
+  return out.join("\r\n") + "\r\n";
+}
