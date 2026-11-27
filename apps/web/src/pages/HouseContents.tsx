@@ -17,6 +17,7 @@ import { documentsApi } from '../services/api/documents'
 import { skipFolio } from '../services/api/arrival'
 import { useAuth } from '../contexts/AuthContext'
 import { readHoursUnsaved } from '../lib/houseHoursNote'
+import { countryByName } from '../lib/countries'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
 const PAPER_MAX_BYTES = 10 * 1024 * 1024
@@ -101,14 +102,17 @@ export default function HouseContents() {
   const [savedAs, setSavedAs] = useState<{ name: string; email: string } | null>(null)
   // g13: the supplier ask meets the curated catalogue as the name is typed.
   // Curated rows only (the gateway's match never returns registry rows or
-  // another house's custom providers); a failed match resolves to [] and shows no list.
+  // another house's custom providers). A match that could not be asked (null) says so (ADR 0020);
+  // it is never shown as "no match".
   const [matches, setMatches] = useState<VendorMatchCandidate[]>([])
+  const [matchFailed, setMatchFailed] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const countryRead = useRef<Promise<string | undefined> | null>(null)
   useEffect(() => {
     const typed = supplier.trim()
     if (typed.length < 2) {
       setMatches([])
+      setMatchFailed(false)
       return
     }
     let live = true
@@ -116,7 +120,8 @@ export default function HouseContents() {
       countryRead.current ??= (async () => {
         try {
           const money = await settingsApi.houseCurrency()
-          return money?.country ?? undefined
+          // The house stores its country as written ("Turkey"); the catalogue keys on the ISO code ("TR").
+          return countryByName(money?.country)?.code ?? undefined
         } catch {
           return undefined
         }
@@ -125,11 +130,16 @@ export default function HouseContents() {
         .then((country) => matchVendorCatalogue(typed, undefined, country))
         .then((rows) => {
           if (!live) return
+          setMatchFailed(!Array.isArray(rows))
           setMatches(Array.isArray(rows) ? rows.slice(0, 5) : [])
           setListOpen(true)
         })
         .catch(() => {
-          if (live) setMatches([])
+          if (live) {
+            setMatches([])
+            setMatchFailed(true)
+            setListOpen(true)
+          }
         })
     }, 250)
     return () => {
@@ -410,7 +420,16 @@ export default function HouseContents() {
                 </label>
                 {/* An overlay, not an in-flow list: a list landing after the keystroke would shift the form (CLS).
                     It fades in under motion, appears at once under reduced motion, and has no exit (ADR 0112). */}
-                {listOpen && matches.length > 0 && (
+                {listOpen && matchFailed && (
+                  <p
+                    role="status"
+                    data-testid="house-vendor-match-failed"
+                    className="absolute left-0 right-0 top-full z-10 flex min-h-11 items-center border border-[#211f1b]/15 bg-white px-3 py-2 text-base text-[#6d685f] shadow-sm"
+                  >
+                    We could not check the catalogue. Type it as your own.
+                  </p>
+                )}
+                {listOpen && !matchFailed && matches.length > 0 && (
                   <ul
                     id="house-vendor-matches"
                     role="listbox"

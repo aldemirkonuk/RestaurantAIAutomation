@@ -104,14 +104,16 @@ export async function searchVendorCataloguePage(
  * catalogue vendors whose name or address plausibly matches what the user
  * has typed so far. See match_vendor_catalogue in
  * supabase/migrations/20260811010000_vendor_catalogue_match.sql for the
- * trigram-similarity scoring — this is a nicety on top of a working form, so
- * a failure here resolves to an empty array rather than throwing.
+ * trigram-similarity scoring. A failed read resolves to `null`, never to `[]`
+ * (ADR 0020): `[]` means "the catalogue was asked and knows no match", `null`
+ * means "it could not be asked". The form still works either way, so it does
+ * not throw; the caller that shows the answer says which one it got.
  */
 export async function matchVendorCatalogue(
   name: string,
   address?: string,
   country?: string,
-): Promise<VendorMatchCandidate[]> {
+): Promise<VendorMatchCandidate[] | null> {
   const params = new URLSearchParams()
   if (name) params.append('name', name)
   if (address) params.append('address', address)
@@ -123,7 +125,7 @@ export async function matchVendorCatalogue(
     )
     return response.data
   } catch {
-    return []
+    return null
   }
 }
 

@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   getOnboardingProgress.mockResolvedValue({ vendor_added: false })
-  houseCurrency.mockResolvedValue({ country: 'TR' })
+  houseCurrency.mockResolvedValue({ country: 'Turkey' })
   addCustomProvider.mockResolvedValue({ id: 'p1', name: 'Mine', email: '' })
   addProviderFromCatalogue.mockResolvedValue({ id: 'p2', name: 'Suvla', email: 'orders@suvla.com' })
   matchVendorCatalogue.mockResolvedValue([row('c1', 'Suvla Wines', 'Antalya', 'orders@suvla.com'), row('c2', 'Suvla Foods', null, null)])
@@ -95,11 +95,29 @@ describe('HouseContents vendor catalogue', () => {
     expect(addProviderFromCatalogue).not.toHaveBeenCalled()
   })
 
-  it('a failed match (resolved to []) shows no list', async () => {
+  it('an empty match shows no list', async () => {
     matchVendorCatalogue.mockResolvedValue([])
     await typeName('Suvla')
     expect(screen.queryByRole('listbox')).toBeNull()
     expect(screen.getByRole('button', { name: 'Add this vendor' })).toBeTruthy()
+  })
+
+  it('a catalogue that could not be asked says so, in a 44 px row, and still lets the vendor be typed', async () => {
+    matchVendorCatalogue.mockResolvedValue(null)
+    await typeName('Suvla')
+    expect(screen.queryByRole('listbox')).toBeNull()
+    const note = screen.getByTestId('house-vendor-match-failed')
+    expect(note.textContent).toBe('We could not check the catalogue. Type it as your own.')
+    expect(note.className).toContain('min-h-11')
+    expect(note.className).toContain('absolute')
+    expect(note.className).not.toMatch(/transition|animate/)
+    expect(screen.getByRole('button', { name: 'Add this vendor' })).toBeTruthy()
+  })
+
+  it('a match that answered with no rows says nothing about a failure', async () => {
+    matchVendorCatalogue.mockResolvedValue([])
+    await typeName('Suvla')
+    expect(screen.queryByTestId('house-vendor-match-failed')).toBeNull()
   })
 
   it('shows at most five rows, each at least 44 px tall', async () => {
