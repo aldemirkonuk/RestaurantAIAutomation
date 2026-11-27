@@ -283,7 +283,7 @@ export default function HouseContents() {
             ) : (
               <p className="mt-2 font-serif text-2xl text-[#6d685f]">
                 No menu read yet.{' '}
-                <Link to="/get-started" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                <Link to="/get-started" className="inline-flex min-h-11 items-center font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
                   Read your menu
                 </Link>
               </p>
@@ -347,7 +347,7 @@ export default function HouseContents() {
                       }
                     }}
                     placeholder="Their name"
-                    className="mt-3 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
+                    className="mt-3 block min-h-11 w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                   />
                 </label>
                 {/* An overlay, not an in-flow list: a list landing after the keystroke would shift the form (CLS).
@@ -400,7 +400,7 @@ export default function HouseContents() {
                   value={supplierEmail}
                   onChange={(event) => setSupplierEmail(event.target.value)}
                   placeholder="orders@vendor.com"
-                  className="mt-2 block w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
+                  className="mt-2 block min-h-11 w-full border-b border-[#211f1b]/25 bg-transparent pb-2 text-lg outline-none"
                 />
               </label>
               {email === null && (
@@ -431,7 +431,7 @@ export default function HouseContents() {
             <span className="block text-xs uppercase tracking-[0.12em] text-[#1a5e6b]">Next · for your costs</span>
             <span className="mt-2 block">
               Costs come from the invoices you check. Read your last one on{' '}
-              <Link to="/receipts" className="underline underline-offset-4">
+              <Link to="/receipts" className="inline-flex min-h-11 items-center underline underline-offset-4">
                 Receipts
               </Link>
               .
@@ -453,7 +453,7 @@ export default function HouseContents() {
             <button
               type="button"
               onClick={() => navigate('/settings?tab=cellar')}
-              className="mt-2 font-sans text-sm underline underline-offset-4"
+              className="mt-2 inline-flex min-h-11 items-center font-sans text-sm underline underline-offset-4"
             >
               Set it in Settings
             </button>
