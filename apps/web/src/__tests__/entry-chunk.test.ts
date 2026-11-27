@@ -90,6 +90,11 @@ describe('the entry chunk every page loads', () => {
     // goes through the gateway; the last browser caller, the sommelier
     // conversation hook, had no page and was deleted (r22, 2026-11-13).
     '@supabase/supabase-js',
+    // The socket client loads only when a signed-in house opens a socket
+    // (lib/websocket.tsx imports it dynamically); a static import would put
+    // engine.io and socket.io into the entry every cold route downloads.
+    'socket.io-client',
+    'engine.io-client',
   ])('does not carry %s', (pkg) => {
     expect(packages.has(pkg)).toBe(false)
   })
