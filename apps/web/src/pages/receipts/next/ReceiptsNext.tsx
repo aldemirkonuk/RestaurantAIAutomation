@@ -1097,6 +1097,7 @@ function VendorPricesNote({ docId }: { docId: string }) {
   const q = useQuery({
     queryKey: ['receipts-next', 'vendor-prices', docId],
     queryFn: () => documentsApi.vendorPrices(docId),
+    enabled: allowed,
     staleTime: 60_000,
     retry: false,
   });
