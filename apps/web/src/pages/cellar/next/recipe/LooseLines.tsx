@@ -22,6 +22,7 @@ import ShelfPicker from './ShelfPicker';
 import { count, linkBody, looseLinesKey, saveEach, useLooseLines, type LinkOutcome } from './linkLines';
 
 export const LOOSE_UNREAD = 'Which lines are not linked to your shelf could not be read just now.';
+export const LOOSE_REREAD_FAILED = 'The queue could not be read again; close and reopen before the next link.';
 
 export function looseSentence(a: Pick<Answer, 'lineCount' | 'drinkCount'>): string {
   return `${count(a.lineCount, 'line', 'lines')} in ${count(a.drinkCount, 'drink', 'drinks')} ${a.lineCount === 1 ? 'is' : 'are'} not linked to your shelf.`;
@@ -72,12 +73,17 @@ function GroupRow({ g, busy, onLink }: { g: LooseLineGroup; busy: boolean; onLin
   );
 }
 
-function LooseSheet({ data, onClose }: { data: Answer; onClose: () => void }) {
+function LooseSheet({ data, readAt, readFailed, onClose }: { data: Answer; readAt: number; readFailed: boolean; onClose: () => void }) {
   const { activeRestaurantId } = useAuth();
   const qc = useQueryClient();
   const [shown, setShown] = useState(data);
   const [outcomes, setOutcomes] = useState<LinkOutcome[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  // Busy holds while a save is in flight, then until a read NEWER than the save has landed and been drawn.
+  // invalidateQueries resolves even when the re-read fails (the old data stays), so its promise is not that proof.
+  const waiting = savedAt !== null && readAt < savedAt;
+  const busy = saving || waiting || data !== shown;
   const body = useRef<HTMLTableSectionElement | null>(null);
   const order = useMemo(() => shown.groups.map((g) => g.key).join('|'), [shown]);
   const flip = useSortFlip(body, order);
@@ -91,22 +97,28 @@ function LooseSheet({ data, onClose }: { data: Answer; onClose: () => void }) {
 
   const link = async (g: LooseLineGroup, item: ShelfItem) => {
     if (!activeRestaurantId) return;
-    setBusy(true);
+    setSaving(true);
     const byDrink = new Map<string, number[]>();
     for (const l of g.lines) byDrink.set(l.cocktailId, [...(byDrink.get(l.cocktailId) ?? []), l.index]);
     const jobs = [...byDrink.entries()].flatMap(([cocktailId, indices]) => {
       const drink = shown.drinks.find((d) => d.cocktailId === cocktailId);
       return drink ? [{ drink, body: linkBody(drink, indices, item.id) }] : [];
     });
-    const out = await saveEach(activeRestaurantId, jobs, `${g.label} linked to ${item.name}`);
-    setOutcomes(out);
-    setBusy(false);
-    // The queue, the list's figures and each saved drink's sheet are read again.
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
-      qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
-      ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
-    ]);
+    // Busy holds until the queue is read again: `shown` carries the versionIds read before the save,
+    // so a click in between would send a stale expectedVersionId and say a good link failed (409).
+    try {
+      const out = await saveEach(activeRestaurantId, jobs, `${g.label} linked to ${item.name}`);
+      setOutcomes(out);
+      setSavedAt(Date.now());
+      // The queue, the list's figures and each saved drink's sheet are read again.
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
+        qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
+        ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
+      ]);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -122,6 +134,11 @@ function LooseSheet({ data, onClose }: { data: Answer; onClose: () => void }) {
         {shown.lineCount ? looseSentence(shown) : 'Every counted line of your drinks is linked to your shelf.'}
       </p>
       <p className="cl-note">Each drink keeps its earlier version.</p>
+      {waiting && readFailed ? (
+        <p className="cl-said" role="status" data-testid="loose-reread-failed" style={{ color: 'var(--warn)' }}>
+          {LOOSE_REREAD_FAILED}
+        </p>
+      ) : null}
       {outcomes.length ? (
         <ul role="status" data-testid="loose-outcomes" style={{ listStyle: 'none', padding: 0, margin: '8px 0' }}>
           {outcomes.map((o) => (
@@ -162,7 +179,7 @@ export default function LooseLines({ manages }: { manages: boolean }) {
           </>
         ) : null}
       </p>
-      {open && a ? <LooseSheet data={a} onClose={() => setOpen(false)} /> : null}
+      {open && a ? <LooseSheet data={a} readAt={q.dataUpdatedAt} readFailed={q.isError} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
