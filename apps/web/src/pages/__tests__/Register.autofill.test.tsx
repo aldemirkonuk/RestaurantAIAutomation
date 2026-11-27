@@ -141,12 +141,25 @@ describe('sign-up autofill', () => {
   // The restaurant step of the sign-up form is not reachable today (the house
   // comes after verification), so its fields are pinned in source, not by mount.
   it('the restaurant fields are a section apart from the person\'s (r107)', () => {
-    const source = readFileSync(path.resolve(__dirname, '../Register.tsx'), 'utf8')
-    for (const id of ['restaurant-name', 'restaurant-city', 'restaurant-state', 'restaurant-postal-code']) {
-      const at = source.indexOf(`id="${id}"`)
-      expect(at, id).toBeGreaterThan(-1)
-      const tag = source.slice(at, at + 200)
-      expect(tag, id).toMatch(/autoComplete="section-house [a-z0-9-]+"/)
+    // The restaurant fields sit in Register.tsx or, once the house is opened on
+    // /get-started (#1930 moved the form there), in GetStarted.tsx, which names
+    // its inputs by aria-label instead of id.
+    const register = readFileSync(path.resolve(__dirname, '../Register.tsx'), 'utf8')
+    const house = readFileSync(path.resolve(__dirname, '../GetStarted.tsx'), 'utf8')
+    const ids = ['restaurant-name', 'restaurant-city', 'restaurant-state', 'restaurant-postal-code']
+    const SECTION = /autoComplete="section-house [a-z0-9-]+"/
+    if (register.includes('id="restaurant-name"')) {
+      for (const id of ids) {
+        const at = register.indexOf(`id="${id}"`)
+        expect(at, id).toBeGreaterThan(-1)
+        expect(register.slice(at, at + 200), id).toMatch(SECTION)
+      }
+    } else {
+      for (const label of ['Restaurant name', 'Address', 'City']) {
+        expect(house, label).toMatch(
+          new RegExp(`aria-label="${label}"[^>]*?autoComplete="section-house [a-z0-9-]+"`),
+        )
+      }
     }
   })
 
