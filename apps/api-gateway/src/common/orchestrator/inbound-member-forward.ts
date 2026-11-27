@@ -2,11 +2,6 @@
  * A house's own owner or manager forwards an invoice to the house's inbound
  * address, and it lands on Receipts (onboarding-r110-g1).
  *
- * Before this, only mail from a known vendor contact reached the document
- * path (`persistAttachments` -> the intake sweep). Mail from anyone else was
- * captured as a prospect or dropped as "not leaded", so an owner forwarding a
- * paper invoice from their own phone had it filed as a vendor cold email.
- *
  * The bridge hands a forward to the sink only when ALL hold:
  *  - the event came from the dedicated-domain webhook (`source` is
  *    `inbound-domain`) and its house was resolved from the address;
@@ -24,10 +19,8 @@
  * author's domain, which is what Postmark reports; it sends no
  * Authentication-Results), or SPF pass with an aligned envelope sender.
  *
- * The bridge never imports procurement (ProcurementModule imports this
- * module, so a direct call is a circular dependency that Nest resolves to
- * `undefined` at runtime). Procurement registers the sink instead
- * (`MemberForwardIntakeService`).
+ * Procurement registers the sink (`MemberForwardIntakeService`): the bridge
+ * injecting intake would be a module cycle.
  */
 
 export interface MemberForwardAttachment {

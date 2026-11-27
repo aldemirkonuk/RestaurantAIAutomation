@@ -26,6 +26,14 @@ const spfPass = (envelope: string) => ({
 });
 
 type Row = Record<string, any>;
+const acc = (role: string, house = HOUSE, valid_until: string | null = null) => ({
+  user_id: OWNER,
+  restaurant_id: house,
+  role,
+  is_active: true,
+  valid_from: "2026-01-01T00:00:00Z",
+  valid_until,
+});
 interface World {
   users: Row[];
   access: Row[];
@@ -72,23 +80,8 @@ function client(world: World) {
 
 function setup(world: Partial<World> = {}) {
   const full: World = {
-    users: [
-      {
-        user_id: OWNER,
-        email: "Owner@Gmail.com",
-        email_verified: true,
-      },
-    ],
-    access: [
-      {
-        user_id: OWNER,
-        restaurant_id: HOUSE,
-        role: "owner",
-        is_active: true,
-        valid_from: "2026-01-01T00:00:00Z",
-        valid_until: null,
-      },
-    ],
+    users: [{ user_id: OWNER, email: "Owner@Gmail.com", email_verified: true }],
+    access: [acc("owner")],
     ...world,
   };
   const db = client(full);
@@ -159,18 +152,7 @@ describe("a house lead's forwarded invoice lands on Receipts", () => {
   });
 
   it("a manager counts too; DKIM_VALID_AU (Postmark's DKIM verdict) is enough", async () => {
-    const w = setup({
-      access: [
-        {
-          user_id: OWNER,
-          restaurant_id: HOUSE,
-          role: "manager",
-          is_active: true,
-          valid_from: "2026-01-01T00:00:00Z",
-          valid_until: null,
-        },
-      ],
-    });
+    const w = setup({ access: [acc("manager")] });
     await w.deliver({
       headers: { "x-spam-tests": "DKIM_SIGNED,DKIM_VALID,DKIM_VALID_AU" },
     });
@@ -212,49 +194,18 @@ describe("everyone else keeps today's path", () => {
   const cases: Array<[string, Partial<World>, Record<string, any>]> = [
     [
       "staff of the house",
-      {
-        access: [
-          {
-            user_id: OWNER,
-            restaurant_id: HOUSE,
-            role: "staff",
-            is_active: true,
-            valid_from: "2026-01-01T00:00:00Z",
-          },
-        ],
-      },
+      { access: [acc("staff")] },
       {},
     ],
     ["a stranger", { users: [] }, {}],
     [
       "the owner of another house",
-      {
-        access: [
-          {
-            user_id: OWNER,
-            restaurant_id: OTHER_HOUSE,
-            role: "owner",
-            is_active: true,
-            valid_from: "2026-01-01T00:00:00Z",
-          },
-        ],
-      },
+      { access: [acc("owner", OTHER_HOUSE)] },
       {},
     ],
     [
       "an owner whose access has ended",
-      {
-        access: [
-          {
-            user_id: OWNER,
-            restaurant_id: HOUSE,
-            role: "owner",
-            is_active: true,
-            valid_from: "2026-01-01T00:00:00Z",
-            valid_until: "2026-02-01T00:00:00Z",
-          },
-        ],
-      },
+      { access: [acc("owner", HOUSE, "2026-02-01T00:00:00Z")] },
       {},
     ],
     [
