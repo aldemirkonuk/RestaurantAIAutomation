@@ -31,3 +31,13 @@
 ## Review trail
 
 - r103 builder, 2026-11-20: SQL test `supabase/tests/20271210100000_a_sale_row_carries_the_weighted_cost_of_its_lots_test.sql`, run on a PGlite build of all migrations; four mutations of the trigger each fail it.
+
+## Deviation from the approval (r104)
+
+DD-r102-21 / DD-r103-9 said "no new unit_cost column on the ledger row". This ADR adds no column, but it is not as small as that sentence reads: it adds a `BEFORE INSERT` trigger on `inventory_transactions` and widens the existing `unit_cost` from `numeric(10,2)` to `numeric(14,6)`. The widening is needed (a 10.0049 bottle must not print as 10.00) and the trigger was chosen over re-creating `apply_stock_movement`, which several open PRs of the stack re-create. Recorded here as a deviation the selector can reverse; the alternative (a view over the draws, option 3) was rejected above.
+
+## cost_at_sale does not yet read this row (r104, FORK, not built)
+
+`wine_consumption_log.cost_at_sale` (#1815/#1820, `sale-cost.ts`) is recorded WAC x qty; the ledger row's `unit_cost` is FIFO over the drawn lots. They differ whenever lots cost differently (3 at 12 + 2 at 14: row 12.80 a bottle). The planned fix, reading the row's `cost_total` by idempotency key, was stopped at its own precondition: a glass pour does not reach `apply_stock_movement`. `record_glass_pour` (`20261222100000_a_pos_sale_is_dated_by_its_check.sql`, the latest definition on the combined #1820 + #1035 + #2004 + #1984 tip) inserts its own `inventory_transactions` row with no `cost_total`, no `unpriced_qty`, no `idempotency_key` and no `inventory_lot_draws`; the key goes to `pour_events`. So the trigger of this ADR never fires for a pour, and a pour has no ledger row to read. Whole-bottle lines do reach `apply_stock_movement`.
+
+Open fork for the selector: (a) make `record_glass_pour` price its bottles and write draws (a migration on a hot path), then read the row for every line; or (b) read the row for whole-bottle lines only and keep WAC for pours under its own basis word. Neither was built.
