@@ -123,6 +123,11 @@ export interface TillWindow {
    * and then the till offers no bars and a line.
    */
   dailySeries: Array<{ date: string; revenue: number | null; checks: number | null }>;
+  /**
+   * Only when comparing: the check count of the N-day read the card shows (the split series
+   * carries no per-day checks). Undefined: not read (compare off); null: that read failed.
+   */
+  shownChecks?: number | null;
   /** Only when comparing: the same-length window just before, cut from the same read (see `splitTill`). Null otherwise. */
   prior: {
     from: string;
@@ -239,7 +244,10 @@ export function splitTill(w: TillWindow, days: number): TillWindow {
     days,
     dailySeries: win,
     revenue: sumKnown(win.map((d) => d.revenue)),
-    checkCount: win.length > 0 && win.every((d) => d.checks != null) ? win.reduce((a, d) => a + (d.checks ?? 0), 0) : win.length === 0 ? 0 : null,
+    checkCount:
+      w.shownChecks !== undefined
+        ? w.shownChecks
+        : win.length > 0 && win.every((d) => d.checks != null) ? win.reduce((a, d) => a + (d.checks ?? 0), 0) : win.length === 0 ? 0 : null,
     prior:
       before.length === days
         ? {
@@ -278,6 +286,25 @@ const till = analysis<TillWindow>({
   graphs: ['area', 'line', 'bars', 'combo', 'heatmap', 'table', 'figure'],
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
+  // With compare on, the card's Checks and Average come from the N-day read it shows
+  // when compare is off (same key, so cached), never from the doubled read's days.
+  shownPath: (rid, ctx) =>
+    ctx.compare && compareOffered(ctx.days) ? `/analytics/pos-revenue/${rid}?days=${ctx.days}` : null,
+  // Checks come from the N read only when it is the same read as the split's window: same
+  // dates and same takings (the two reads are cached apart, up to a minute old). Otherwise a
+  // dash, never a count for other days than the line's.
+  withShown: (w, shown) => {
+    const mine = shown ? splitTill(w, shown.days) : null;
+    const same =
+      shown != null &&
+      mine != null &&
+      mine.from === shown.from &&
+      mine.to === shown.to &&
+      mine.revenue != null &&
+      shown.revenue != null &&
+      Math.abs(mine.revenue - shown.revenue) < 0.005;
+    return { ...w, shownChecks: same ? shown.checkCount : null };
+  },
   takesWindow: true,
   select: (raw) => {
     const d = obj(raw);

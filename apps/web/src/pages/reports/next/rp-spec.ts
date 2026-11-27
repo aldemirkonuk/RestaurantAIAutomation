@@ -70,6 +70,14 @@ export interface AnalysisSpec {
    * a refusal the page walked into.
    */
   readers?: readonly HouseRole[];
+  /**
+   * A second, smaller read taken alongside `path` (the till's compare reads 2N days and
+   * also the N the card shows): its url, or null when there is none. Read under the same
+   * key as the plain view's read, so it is cached when the reader came from there.
+   */
+  shownPath?: (rid: string, ctx: ViewCtx) => string | null;
+  /** Folds the `shownPath` read (null when it failed) into the main one. */
+  withShown?: (data: unknown, shown: unknown | null) => unknown;
   select: (raw: unknown) => unknown;
   view: (data: unknown, ctx: ViewCtx) => AnalysisView;
 }
@@ -86,11 +94,14 @@ export function analysis<T>(spec: {
   graphNote: string;
   takesWindow?: boolean;
   readers?: readonly HouseRole[];
+  shownPath?: (rid: string, ctx: ViewCtx) => string | null;
+  withShown?: (data: T, shown: T | null) => T;
   select: (raw: unknown) => T;
   view: (data: T, ctx: ViewCtx) => AnalysisView;
 }): AnalysisSpec {
   return {
     ...spec,
+    withShown: spec.withShown as ((data: unknown, shown: unknown | null) => unknown) | undefined,
     select: spec.select as (raw: unknown) => unknown,
     view: spec.view as (data: unknown, ctx: ViewCtx) => AnalysisView,
   };
