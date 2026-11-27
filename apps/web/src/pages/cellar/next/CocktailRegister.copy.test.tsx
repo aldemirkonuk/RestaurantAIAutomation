@@ -41,6 +41,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
 }));
 
 import CocktailRegister from './CocktailRegister';
+import { COPY_CANNOT_CARRY } from './recipe/copyDrink';
 
 const L = (over: Partial<RecipeLine>): RecipeLine => ({
   id: 'l', position: 0, role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', itemName: 'Bourbon', itemKind: 'spirit',
@@ -110,7 +111,7 @@ describe('Copy a drink', () => {
     h.get.mockResolvedValue({ data: source([L({ role: 'made' as never })]) });
     mount();
     fireEvent.click(await screen.findByTestId('cocktail-copy'));
-    expect(await screen.findByText('This drink has a line a copy cannot carry yet, so nothing was copied.')).toBeTruthy();
+    expect(await screen.findByText(COPY_CANNOT_CARRY)).toBeTruthy();
     expect(h.post).not.toHaveBeenCalled();
     expect(h.put).not.toHaveBeenCalled();
   });
@@ -124,6 +125,16 @@ describe('Copy a drink', () => {
       { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 50, unit: 'ml', usablePct: 45 },
       { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml' },
     ]);
+  });
+
+  it('writes nothing when a line points at an item that was archived since (r107f)', async () => {
+    h.get.mockResolvedValue({ data: source([L({}), L({ id: 'l2', label: 'Lemon', itemGone: 'archived' })]) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    expect(await screen.findByText(COPY_CANNOT_CARRY)).toBeTruthy();
+    expect(COPY_CANNOT_CARRY).toMatch(/archived or deleted/);
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.put).not.toHaveBeenCalled();
   });
 
   it('shows staff no Copy button', async () => {

@@ -28,7 +28,7 @@ export const COPY_NAME_SUFFIX = ' copy';
 export const COPY_RECIPE_FAILED = 'The drink was made but its recipe was not copied. Open it and add the lines.';
 
 /** Said when a line cannot be carried; nothing is written. */
-export const COPY_CANNOT_CARRY = 'This drink has a line a copy cannot carry yet, so nothing was copied.';
+export const COPY_CANNOT_CARRY = 'This drink has a line a copy cannot carry yet (a kind of line it does not know, or an item that was archived or deleted), so nothing was copied.';
 
 /** The new drink's own row: the source's section, glass, method and garnish, never its price. */
 export function copyFields(src: CopySource): CocktailInput {
@@ -46,6 +46,8 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
   const cur = src.current;
   if (!cur) return null;
   if (cur.lines.some((l) => l.role !== 'stocked' && l.role !== 'untracked')) return 'cannot';
+  // The gateway refuses to save a line whose item was archived or deleted until it is relinked, and the drink is POSTed first: refuse here so no recipe-less duplicate is left on the list.
+  if (cur.lines.some((l) => l.role === 'stocked' && l.itemGone)) return 'cannot';
   const body: SaveRecipeBody = {
     expectedVersionId: null,
     yieldServes: cur.yieldServes,
