@@ -342,7 +342,7 @@ export class RecipesService {
    * components are read one level at a time, so a loop the database already
    * refuses could not be walked past the depth cap.
    */
-  private async componentRates(
+  async componentRates(
     restaurantId: string,
     componentIds: string[],
     money: boolean,

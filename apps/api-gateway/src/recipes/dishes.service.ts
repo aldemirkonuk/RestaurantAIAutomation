@@ -308,7 +308,7 @@ export class DishesService {
         this.all<any>("recipe line read", sentence, (from, to) =>
           client
             .from("recipe_lines")
-            .select("id, version_id, position, label, role, inventory_id, qty_base, base_unit, usable_pct")
+            .select("id, version_id, position, label, role, inventory_id, component_dish_id, qty_base, base_unit, usable_pct")
             .eq("restaurant_id", restaurantId)
             .in("version_id", ids)
             .order("id", { ascending: true })
@@ -329,10 +329,15 @@ export class DishesService {
     // The allergens are read beside the pricing, never after it.
     const allergenRead = opts.allergens ? this.allergensOf(restaurantId, itemIds, sentence) : Promise.resolve(null);
     let priced = money;
+    // What a house-made component costs a base unit, for the lines that draw one: the
+    // same figure the drawer reads, so a list row and its sheet never say two costs.
+    let components = new Map<string, { name: string; perBase: number | null; partial?: boolean }>();
     if (money) {
       let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }> = [];
       try {
         reads = await inWaves(chunks(itemIds, 100), (ids) => this.recipes.readPricing(restaurantId, ids, true));
+        const madeIds = [...new Set([...lines.values()].flat().map((l) => l.component_dish_id).filter(Boolean))] as string[];
+        components = await this.recipes.componentRates(restaurantId, madeIds, true, 1);
       } catch (e) {
         if (!opts.pricingUnread) {
           await allergenRead;
@@ -360,6 +365,7 @@ export class DishesService {
         const figured = recipeCost(
           rows.map((l) => ({
             role: l.role,
+            made: l.component_dish_id ? (components.get(l.component_dish_id) ?? null) : null,
             inventoryId: l.inventory_id,
             qtyBase: Number(l.qty_base),
             baseUnit: l.base_unit as BaseUnit,
