@@ -154,6 +154,36 @@ function UnsentChip({ status }: { status: string | null | undefined }) {
   );
 }
 
+/**
+ * What the list shows while its first read is in flight (r41 mail gap 7): the
+ * words, and four quiet bars the height of a person's row, so the page does not
+ * collapse to one line and jump when the people arrive. The bars are for the
+ * eye only; the words are what is read aloud.
+ */
+/** A person's row measured at 60 px at 375, 768 and 1280 wide (r54 walk); a long snippet wraps to 83 at 375. */
+const PERSON_ROW_MIN = 60;
+
+function PeoplePlaceholder() {
+  return (
+    <div>
+      <p style={{ margin: '0 0 4px', ...QUIET }}>Reading the mail…</p>
+      <ul aria-hidden="true" style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        {[0, 1, 2, 3].map((i) => (
+          <li
+            key={i}
+            data-testid="people-placeholder-row"
+            aria-hidden="true"
+            style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', padding: '10px 4px', display: 'grid', gap: 6, minHeight: PERSON_ROW_MIN }}
+          >
+            <span style={{ height: 13, width: `${42 + ((i * 17) % 30)}%`, borderRadius: 4, background: 'var(--paper-2, #EAE4D8)' }} />
+            <span style={{ height: 11, width: '70%', borderRadius: 4, background: 'var(--paper-2, #EAE4D8)', opacity: 0.6 }} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
   const unsent = unsentWords(p.unsentStatus ?? null);
   return (
@@ -344,8 +374,8 @@ function People({
           are none.
         </p>
       ) : !q.data ? (
-        <p style={{ margin: 0, ...QUIET }}>Reading the mail…</p>
-) : people.length === 0 && search ? (
+        <PeoplePlaceholder />
+      ) : people.length === 0 && search ? (
         <p data-testid="search-empty" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', overflowWrap: 'anywhere' }}>
           {searchEmptyWords(search, { waitingOnly, on })}{' '}
           <button type="button" data-testid="search-clear-empty" onClick={onClearSearch} style={LINK_BUTTON}>
