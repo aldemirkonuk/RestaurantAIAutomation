@@ -10,7 +10,8 @@ import {
   type MenuImportReviewItem,
   type PlanLine,
 } from '../../services/api/menus'
-import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
+import { makeCurrentSentence, MenuReadChecks } from '../../pages/menu/next/MenuVersions'
+import { checkLinesFromReview, showLineById } from '../../pages/menu/next/menu-read-checks'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
 import { useHouseCurrencyCode } from '../../hooks/queries/useHouseCurrencyCode'
 
@@ -170,6 +171,8 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   const row = (item: MenuImportReviewItem) => (
     <div
       key={item.menuItemId}
+      id={`review-line-${item.menuItemId}`}
+      tabIndex={-1}
       className="grid grid-cols-[1fr_1fr_90px_1fr] gap-2 items-center px-3 py-2 rounded-xl border border-gray-100 bg-white"
     >
       <EditableCell
@@ -213,6 +216,16 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
             </p>
           )}
         </div>
+
+        <MenuReadChecks
+          lines={checkLinesFromReview(items)}
+          testId="review-read-checks"
+          onShow={(id) => {
+            // A line in the folded "look good" group is opened first, then shown.
+            if (clean.some((c) => c.menuItemId === id)) setShowClean(true)
+            window.setTimeout(() => showLineById(`review-line-${id}`), 0)
+          }}
+        />
 
         {flagged.length > 0 && (
           <div className="mb-4">

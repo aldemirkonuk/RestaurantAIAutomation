@@ -544,7 +544,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
               </thead>
               <tbody>
                 {plan.lines.map((l) => (
-                  <tr key={`all-${l.menuItemId}`} data-testid="menu-plan-line">
+                  <tr key={`all-${l.menuItemId}`} id={`plan-line-${l.menuItemId}`} tabIndex={-1} data-testid="menu-plan-line">
                     <td>
                       {l.name}
                       {l.vintage ? ` ${l.vintage}` : ''}
