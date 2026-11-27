@@ -443,7 +443,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     const step = past[past.length - 1];
     const now = draftRef.current;
     if (!step || !now) return;
-    setUndone(undoneWords(step, now, titleOf, arrange.cols));
+    setUndone(undoneWords(step, now, titleOf));
     setPast((p) => p.slice(0, -1));
     writeDraft(step.sheet);
   }, [saving, arrange, past, titleOf, writeDraft]);
@@ -464,7 +464,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     arrange.picked != null
       ? 'Undo: cancel the move'
       : past.length > 0 && draft
-        ? undoLabel(past[past.length - 1], draft, titleOf, arrange.cols)
+        ? undoLabel(past[past.length - 1], draft, titleOf)
         : 'Undo: nothing to undo yet';
   const holdSheetEl = useCallback((node: HTMLDivElement | null) => {
     sheetEl.current = node;

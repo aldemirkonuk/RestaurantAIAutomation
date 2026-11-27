@@ -44,42 +44,44 @@ describe('the step history', () => {
 });
 
 describe('the words', () => {
-  it('[REVERT-FAILS] a move names the cutting and where it goes back to', () => {
+  it('[REVERT-FAILS] a move names the cutting and says it goes back where it was, in no grid units', () => {
     const now = sheet(['till', 0, 4, 6, 4], ['ledger', 0, 0, 6, 4]);
     const step = { sheet: A, id: 'ledger' as const };
-    expect(undoLabel(step, now, titleOf, 12)).toBe(
-      'Undo: Figures of record back to column 1 of 12, row 5, 6 columns wide, 4 rows tall',
+    expect(undoLabel(step, now, titleOf)).toBe(
+      'Undo: Figures of record back where it was',
     );
-    expect(undoneWords(step, now, titleOf, 12)).toBe(
-      'Undone. Figures of record is back at column 1 of 12, row 5, 6 columns wide, 4 rows tall.',
-    );
+    expect(undoneWords(step, now, titleOf)).toBe('Undone. Figures of record is back where it was.');
+    // grid units are the arrange machinery's, never the reader's words (r110 walk P2)
+    for (const w of [undoLabel(step, now, titleOf), undoneWords(step, now, titleOf)]) {
+      expect(w).not.toMatch(/column|\brow\b|rows tall|\bof 12\b/i);
+    }
   });
 
   it('[REVERT-FAILS] a swap names the cutting that comes back', () => {
     const before = sheet(['quadrants', 0, 0, 6, 4]);
     const now = sheet(['seats', 0, 0, 6, 4]);
-    expect(undoLabel({ sheet: before, id: 'quadrants' }, now, titleOf, 12)).toContain('Undo: Margin against movement back to column 1');
+    expect(undoLabel({ sheet: before, id: 'quadrants' }, now, titleOf)).toContain('Undo: Margin against movement back where it was');
     // With no id from the write, the diff still finds it: one left, one came.
-    expect(undoneWords({ sheet: before, id: null }, now, titleOf, 12)).toContain('Undone. Margin against movement is back at column 1');
+    expect(undoneWords({ sheet: before, id: null }, now, titleOf)).toContain('Undone. Margin against movement is back where it was');
   });
 
   it('[REVERT-FAILS] a cutting put on is taken off again; a drawing is drawn as it was', () => {
     const added = sheet(['till', 0, 0, 6, 4], ['ledger', 0, 4, 6, 4], ['seats', 0, 8, 6, 4]);
-    expect(undoLabel({ sheet: A, id: 'seats' }, added, titleOf, 12)).toBe('Undo: take The room off again');
-    expect(undoneWords({ sheet: A, id: 'seats' }, added, titleOf, 12)).toBe('Undone. The room is off the sheet.');
+    expect(undoLabel({ sheet: A, id: 'seats' }, added, titleOf)).toBe('Undo: take The room off again');
+    expect(undoneWords({ sheet: A, id: 'seats' }, added, titleOf)).toBe('Undone. The room is off the sheet.');
     const drawn = sheet(['till', 0, 0, 6, 4, 'bars'], ['ledger', 0, 4, 6, 4]);
-    expect(undoLabel({ sheet: A, id: 'till' }, drawn, titleOf, 12)).toBe('Undo: draw Through the till as it was');
+    expect(undoLabel({ sheet: A, id: 'till' }, drawn, titleOf)).toBe('Undo: draw Through the till as it was');
   });
 
   it('[REVERT-FAILS] a whole-sheet write ("Put it all back") says the sheet', () => {
     const fresh = sheet(['seats', 0, 0, 12, 4], ['quadrants', 0, 4, 12, 4]);
-    expect(undoLabel({ sheet: A, id: null }, fresh, titleOf, 12)).toBe('Undo: the sheet as it was');
-    expect(undoneWords({ sheet: A, id: null }, fresh, titleOf, 12)).toBe('Undone. The sheet is back as it was.');
+    expect(undoLabel({ sheet: A, id: null }, fresh, titleOf)).toBe('Undo: the sheet as it was');
+    expect(undoneWords({ sheet: A, id: null }, fresh, titleOf)).toBe('Undone. The sheet is back as it was.');
   });
 
-  it('[REVERT-FAILS] on the phone stack it names the place in the list, not a column', () => {
+  it('[REVERT-FAILS] on the phone stack it says the same words, not a grid or a list position', () => {
     const now = sheet(['till', 0, 4, 6, 4], ['ledger', 0, 0, 6, 4]);
-    expect(undoLabel({ sheet: A, id: 'ledger' }, now, titleOf, 1)).toBe('Undo: Figures of record back to position 2 of 2, 4 rows tall');
+    expect(undoLabel({ sheet: A, id: 'ledger' }, now, titleOf)).toBe('Undo: Figures of record back where it was');
   });
 });
 

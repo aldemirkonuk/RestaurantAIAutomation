@@ -2815,11 +2815,11 @@ describe('ReportsNext — arranging keeps an undo history (r108 g4)', () => {
     fireEvent.change(within(quad).getByLabelText('Show instead of Margin against movement'), {
       target: { value: 'seats' },
     });
-    expect(undoButton()).toHaveAccessibleName(/^Undo: Margin against movement back to /);
+    expect(undoButton()).toHaveAccessibleName(/^Undo: Margin against movement back where it was$/);
     fireEvent.click(undoButton());
     expect(screen.getByRole('region', { name: 'Margin against movement' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'The room' })).toBeNull();
-    expect(document.querySelector('[data-undone]')?.textContent).toMatch(/^Undone\. Margin against movement is back at /);
+    expect(document.querySelector('[data-undone]')?.textContent).toMatch(/^Undone\. Margin against movement is back where it was\./);
     await ruleItOff();
     expect(savedCuttings()).toEqual(defaultSheet().cuttings);
   });
@@ -2833,7 +2833,7 @@ describe('ReportsNext — arranging keeps an undo history (r108 g4)', () => {
     fireEvent.keyDown(grip, { key: 'ArrowUp' });
     fireEvent.keyDown(grip, { key: 'Enter' });
     // The ledger went above the till, and the till was pushed down under it.
-    expect(undoButton()).toHaveAccessibleName(/^Undo: Figures of record back to column 1 of 12, row 5,/);
+    expect(undoButton()).toHaveAccessibleName('Undo: Figures of record back where it was');
     fireEvent.click(undoButton());
     // One undo was the whole hold, so there is nothing left to undo.
     expect(undoButton()).toBeDisabled();

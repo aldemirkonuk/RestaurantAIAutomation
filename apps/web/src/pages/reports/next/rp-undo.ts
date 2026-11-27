@@ -12,7 +12,6 @@
  *
  * Pure, so the words and the cap are pinned without a page.
  */
-import { positionWords, projectCuttings, slotOf, stackAt } from './rp-arrange';
 import type { AnalysisId, Cutting, SheetState, Slot } from './rp-sheet';
 
 /** The most steps kept; the oldest goes first. */
@@ -50,13 +49,6 @@ export function sameSheet(a: SheetState, b: SheetState): boolean {
 
 type TitleOf = (id: AnalysisId) => string;
 
-/** Where `id` lies on `sheet` in the reader's words, on the ruling in play. */
-function whereIn(sheet: SheetState, id: AnalysisId, cols: number): string | null {
-  const slot = slotOf(projectCuttings(sheet.cuttings, cols), id);
-  if (!slot) return null;
-  return positionWords(slot, cols, cols === 1 ? stackAt(sheet.cuttings, id) : undefined);
-}
-
 /**
  * What undoing `step` from `now` does, and to which cutting. The step's own
  * `id` when the write named one; else the one cutting the diff points at
@@ -83,26 +75,27 @@ function subject(step: UndoStep, now: SheetState): { id: AnalysisId; kind: 'back
   return { id, kind: 'back' };
 }
 
-/** "Undo: Through the till back to column 1 of 12, row 1, …" — the Undo button's name. */
-export function undoLabel(step: UndoStep, now: SheetState, titleOf: TitleOf, cols: number): string {
+/**
+ * "Undo: Goals back where it was" — the Undo button's name. A cutting's place is said the way the
+ * page says it everywhere else, never as grid units ("column 1 of 12, row 18", r110 walk P2).
+ */
+export function undoLabel(step: UndoStep, now: SheetState, titleOf: TitleOf): string {
   const s = subject(step, now);
   if (!s) return 'Undo: the sheet as it was';
   const title = titleOf(s.id);
   if (s.kind === 'off') return `Undo: take ${title} off again`;
   if (s.kind === 'drawn') return `Undo: draw ${title} as it was`;
-  const where = whereIn(step.sheet, s.id, cols);
-  return where ? `Undo: ${title} back to ${where}` : `Undo: ${title} back`;
+  return `Undo: ${title} back where it was`;
 }
 
 /** The live region's sentence once the undo is done. */
-export function undoneWords(step: UndoStep, now: SheetState, titleOf: TitleOf, cols: number): string {
+export function undoneWords(step: UndoStep, now: SheetState, titleOf: TitleOf): string {
   const s = subject(step, now);
   if (!s) return 'Undone. The sheet is back as it was.';
   const title = titleOf(s.id);
   if (s.kind === 'off') return `Undone. ${title} is off the sheet.`;
-  const where = whereIn(step.sheet, s.id, cols);
-  if (s.kind === 'drawn' || !where) return `Undone. ${title} is back as it was.`;
-  return `Undone. ${title} is back at ${where}.`;
+  if (s.kind === 'drawn') return `Undone. ${title} is back as it was.`;
+  return `Undone. ${title} is back where it was.`;
 }
 
 /** True when a key press is Cmd-Z / Ctrl-Z meant for the page: not Shift (redo), not typed into a field. */
