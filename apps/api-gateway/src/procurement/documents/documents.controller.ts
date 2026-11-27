@@ -149,7 +149,6 @@ const LAST_PAPER_WINDOW = 200;
 interface Earlier {
   price: PerBottle;
   formatMl: number | null;
-  paperId: string;
 }
 
 /**
@@ -1542,10 +1541,8 @@ export class DocumentsController {
     };
     const rows = (lines ?? []) as Line[];
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
-    // r108 g15: the comparison is the newest OTHER verified paper's printed
-    // price per bottle for the same good, in the same money. Not a lot cost:
-    // a lot carries landed charges, tax basis, FX and revaluations the line
-    // never does, and the house's newest lot may be this very paper's own.
+    // r108 g15: against the newest OTHER verified paper's printed price, not a
+    // lot cost (landed, tax basis, FX and revaluations; maybe this paper's own).
     const last = currencyReason ? new Map<string, Earlier>() : await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId);
     return {
       thresholdPct: threshold,
@@ -1568,11 +1565,9 @@ export class DocumentsController {
   }
 
   /**
-   * Each good's printed price per bottle on the newest other verified paper
-   * of this house in this money (r108 g15). One bounded read of the newest
-   * papers that carry any of the goods, then a limit(1) read for each good it
-   * did not reach, so a good bought quarterly beside daily goods is never lost
-   * off a row cap and read as "no earlier cost".
+   * Each good's printed price per bottle on the newest other verified paper of
+   * this house in this money (r108 g15): one bounded read, then limit(1) per
+   * good it missed, so a quarterly good is never lost off a row cap.
    */
   private async lastPrintedPrices(
     paperId: string,
@@ -1604,8 +1599,7 @@ export class DocumentsController {
           `The goods' earlier papers could not be read, so no price was compared: ${error.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
-      // Newest paper first: the first paper seen with a good is its last price.
-      // Two lines of one good on that paper are one price, summed.
+      // Newest first; two lines of one good on a paper are one price, summed.
       for (const p of (data ?? []) as { id: string; procurement_document_lines: (PrintedLine & { inventory_id: string; format_ml?: number | null })[] }[]) {
         const here = new Map<string, Earlier>();
         for (const l of p.procurement_document_lines ?? []) {
@@ -1616,7 +1610,6 @@ export class DocumentsController {
           here.set(l.inventory_id, {
             price: seen ? addPerBottle(seen.price, pb) : pb,
             formatMl: seen?.formatMl ?? l.format_ml ?? null,
-            paperId: p.id,
           });
         }
         for (const [g, e] of here) last.set(g, e);

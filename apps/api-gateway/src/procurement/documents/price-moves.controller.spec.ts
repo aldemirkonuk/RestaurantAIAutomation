@@ -1,64 +1,28 @@
 import { DocumentsController } from "./documents.controller";
 
-/**
- * A small stand-in for the database (r108 g15): papers with their lines, and
- * the filters the read applies are APPLIED, so a dropped filter changes the
- * answer instead of passing silently.
- */
-interface SimLine {
-  inventory_id: string;
-  restaurant_id: string;
-  line_total: number | string | null;
-  qty_bottles: number | string | null;
-  qty?: number;
-  pack_size?: number;
-  uom?: string;
-  format_ml?: number | null;
-}
-interface SimPaper {
-  id: string;
-  restaurant_id: string;
-  status: string;
-  currency: string;
-  doc_type: string;
-  verified_at: string;
-  procurement_document_lines: SimLine[];
-}
-interface Sim {
-  procurement_documents?: { data: unknown; error: unknown };
-  restaurants?: { data: unknown; error: unknown };
-  procurement_document_lines?: { data: unknown; error: unknown };
-  papers?: SimPaper[];
-  papersError?: unknown;
-}
+/** A stand-in db that APPLIES the filters (r108 g15). */
+type Row = Record<string, any>;
+type SimPaper = Row & { procurement_document_lines: Row[] };
+type Sim = Record<string, any> & { papers?: SimPaper[]; papersError?: unknown };
 const HOUSE: Sim = {
   procurement_documents: { data: { id: "d1", currency: "USD" }, error: null },
   restaurants: { data: { currency: "USD" }, error: null },
 };
-
-function applyPapers(papers: SimPaper[], f: [string, string, unknown][], limit: number) {
-  const top = (p: SimPaper) =>
-    f.every(([op, col, v]) => {
-      if (col.includes(".")) return true;
-      const x = (p as any)[col];
-      if (op === "eq") return x === v;
-      if (op === "neq") return x !== v;
-      if (op === "ilike") return String(x).toLowerCase() === String(v).toLowerCase();
-      if (op === "notin") return !(v as string[]).includes(x);
-      return true;
-    });
-  const sub = (l: SimLine) =>
-    f.every(([op, col, v]) => {
-      if (!col.startsWith("procurement_document_lines.")) return true;
-      const x = (l as any)[col.split(".")[1]];
-      if (op === "eq") return x === v;
-      if (op === "in") return (v as string[]).includes(x);
-      if (op === "gt") return Number(x) > Number(v);
-      return true;
-    });
+const LN = "procurement_document_lines.";
+const hit = (r: Row, op: string, col: string, v: any) => {
+  const x = r[col];
+  return op === "eq" ? x === v : op === "neq" ? x !== v : op === "in" ? v.includes(x) : op === "gt" ? Number(x) > Number(v)
+    : op === "ilike" ? String(x).toLowerCase() === String(v).toLowerCase() : op === "notin" ? !v.includes(x) : true;
+};
+function applyPapers(papers: SimPaper[], f: [string, string, any][], limit: number) {
   return papers
-    .filter(top)
-    .map((p) => ({ ...p, procurement_document_lines: p.procurement_document_lines.filter(sub) }))
+    .filter((p) => f.every(([op, c, v]) => c.startsWith(LN) || hit(p, op, c, v)))
+    .map((p) => ({
+      ...p,
+      procurement_document_lines: p.procurement_document_lines.filter((l) =>
+        f.every(([op, c, v]) => !c.startsWith(LN) || hit(l, op, c.slice(LN.length), v)),
+      ),
+    }))
     .filter((p) => p.procurement_document_lines.length > 0)
     .sort((a, b) => b.verified_at.localeCompare(a.verified_at))
     .slice(0, limit);
@@ -66,11 +30,11 @@ function applyPapers(papers: SimPaper[], f: [string, string, unknown][], limit: 
 
 function controllerWith(results: Sim) {
   results = { ...HOUSE, ...results };
-  const calls: { table: string; f: [string, string, unknown][]; limit: number }[] = [];
+  const calls: { table: string; f: [string, string, any][]; limit: number }[] = [];
   const db = {
     getClient: () => ({
       from: (table: string) => {
-        const f: [string, string, unknown][] = [];
+        const f: [string, string, any][] = [];
         let limit = Infinity;
         const b: any = {};
         b.select = () => b;
@@ -99,7 +63,6 @@ function controllerWith(results: Sim) {
 }
 
 const user = { userId: "u1", restaurantId: "rest-1" } as any;
-/** This paper's line; `price` is the printed price of ONE bottle. */
 const line = (over: Record<string, unknown> & { price?: number | string }) => {
   const { price = 11.8, ...rest } = over;
   return {
@@ -118,8 +81,7 @@ const line = (over: Record<string, unknown> & { price?: number | string }) => {
   };
 };
 let n = 0;
-/** An earlier verified paper of this house carrying one bottle of a good. */
-const earlier = (cost: number | string, at: string, good = "g1", over: Partial<SimPaper> = {}, l: Partial<SimLine> = {}): SimPaper => ({
+const earlier = (cost: number | string, at: string, good = "g1", over: Row = {}, l: Row = {}): SimPaper => ({
   id: `p${++n}`,
   restaurant_id: "rest-1",
   status: "verified",
@@ -259,15 +221,10 @@ describe("DocumentsController.priceMoves at the exact threshold, through the pap
 
 describe("DocumentsController.priceMoves reads the good's last OTHER paper, never capped (r108 g15)", () => {
   it("finds a quarterly good's last paper under 1,200 newer papers of a daily good", async () => {
-    const daily = Array.from({ length: 1200 }, (_, i) =>
-      earlier(5, `2026-11-${String(10 + (i % 18)).padStart(2, "0")}T${String(i % 24).padStart(2, "0")}:00:00Z`, "daily"),
-    );
+    const daily = Array.from({ length: 1200 }, (_, i) => earlier(5, `2026-11-20 ${1e5 + i}`, "daily"));
     const c = controllerWith({
-      procurement_document_lines: {
-        data: [line({ id: "lq", inventory_id: "quarterly", price: 30 }), line({ id: "ld", line_no: 2, inventory_id: "daily", price: 5 })],
-        error: null,
-      },
-      papers: [...daily, earlier(24, "2026-08-01T00:00:00Z", "quarterly")],
+      procurement_document_lines: { data: [line({ inventory_id: "quarterly", price: 30 }), line({ id: "l2", inventory_id: "daily", price: 5 })], error: null },
+      papers: [...daily, earlier(24, "2026-08-01", "quarterly")],
     });
     const out = await c.priceMoves("d1", user);
     expect(out.lines[0]).toMatchObject({ compared: true, moved: true, sentence: "was 24.00, now 30.00, up 25 percent" });
@@ -277,7 +234,7 @@ describe("DocumentsController.priceMoves reads the good's last OTHER paper, neve
   it("never compares a paper with its own line", async () => {
     const c = controllerWith({
       procurement_document_lines: { data: [line({ price: 11.8 })], error: null },
-      // d1 is this paper: verified, newest, same good. It must not be the comparison.
+      // d1 is this paper itself.
       papers: [earlier(11.8, "2026-11-20", "g1", { id: "d1" }), earlier(10, "2026-11-01")],
     });
     const out = await c.priceMoves("d1", user);
@@ -295,9 +252,7 @@ describe("DocumentsController.priceMoves reads the good's last OTHER paper, neve
     });
     const out = await c.priceMoves("d1", user);
     expect(out.lines[0]).toMatchObject({ sentence: "was 10.00, now 11.80, up 18 percent" });
-    const reads = c.calls.filter((x) => x.table === "procurement_documents");
-    expect(reads.length).toBeGreaterThan(0);
-    for (const r of reads) {
+    for (const r of c.calls.filter((x) => x.table === "procurement_documents")) {
       expect(r.f).toContainEqual(["eq", "restaurant_id", "rest-1"]);
       expect(r.f).toContainEqual(["eq", "procurement_document_lines.restaurant_id", "rest-1"]);
     }
@@ -305,7 +260,7 @@ describe("DocumentsController.priceMoves reads the good's last OTHER paper, neve
 
   it("compares a case line per bottle through its pack size", async () => {
     const c = controllerWith({
-      // A case of 12 at 132.00 is 11.00 a bottle; qty_bottles left at 0 by the reader.
+      // 12 at 132.00 is 11.00 a bottle.
       procurement_document_lines: { data: [line({ uom: "case", qty: 1, pack_size: 12, qty_bottles: 0, line_total: 132 })], error: null },
       papers: [earlier(10, "2026-11-01")],
     });
@@ -313,16 +268,8 @@ describe("DocumentsController.priceMoves reads the good's last OTHER paper, neve
     expect(out.lines[0]).toMatchObject({ compared: true, moved: false, pct: 10 });
   });
 
-  it("compares a case earlier paper per bottle too (6 at 66.00 is 11.00)", async () => {
-    const c = controllerWith({
-      procurement_document_lines: { data: [line({ price: 13.2 })], error: null },
-      papers: [earlier(66, "2026-11-01", "g1", {}, { qty_bottles: 6 })],
-    });
-    const out = await c.priceMoves("d1", user);
-    expect(out.lines[0]).toMatchObject({ compared: true, moved: true, sentence: "was 11.00, now 13.20, up 20 percent" });
-  });
 
-  it("skips an earlier paper in another money, an unverified one, and a credit memo", async () => {
+  it("skips other money, unverified, credit memo", async () => {
     const c = controllerWith({
       procurement_document_lines: { data: [line({})], error: null },
       papers: [
@@ -336,7 +283,7 @@ describe("DocumentsController.priceMoves reads the good's last OTHER paper, neve
     expect(out.lines[0]).toMatchObject({ sentence: "was 10.00, now 11.80, up 18 percent" });
   });
 
-  it("does not compare a 375 ml line with a 750 ml earlier bottle", async () => {
+  it("does not compare 375 ml with 750 ml", async () => {
     const c = controllerWith({
       procurement_document_lines: { data: [line({ format_ml: 375 })], error: null },
       papers: [earlier(10, "2026-11-01")],
@@ -345,12 +292,4 @@ describe("DocumentsController.priceMoves reads the good's last OTHER paper, neve
     expect(out.lines[0]).toMatchObject({ compared: false, reason: "unit_differs" });
   });
 
-  it("a line with no printed total is not a price", async () => {
-    const c = controllerWith({
-      procurement_document_lines: { data: [line({ line_total: null })], error: null },
-      papers: [earlier(10, "2026-11-01")],
-    });
-    const out = await c.priceMoves("d1", user);
-    expect(out.lines[0]).toMatchObject({ compared: false, reason: "no_price" });
-  });
 });

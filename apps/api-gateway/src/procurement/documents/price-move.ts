@@ -77,15 +77,10 @@ export function priceMove(
 }
 
 /**
- * A line's printed price per bottle (r108 g15): what the paper says one bottle
- * cost, `line_total / bottles`, before any landed charge, tax basis, FX
- * restatement or revaluation touches it. Two papers are compared on this and
- * only this, so the comparison is like for like (a lot's `unit_cost` carries
- * all four, a line's price none, so comparing them was not).
- *
- * Kept as integer cents over integer milli-bottles so a move is tested by
- * cross-multiplication with no division (as r107's exact threshold does): a
- * case of 12 at 100.00 is 10000 / 12000, never 8.333333333333334.
+ * A line's printed price per bottle (r108 g15), `line_total / bottles`, before
+ * any landed charge, tax basis, FX or revaluation: papers compare like for
+ * like. Kept as integer cents over milli-bottles so a move is cross-multiplied,
+ * never divided (12 at 100.00 is 10000/12000, not 8.333333333333334).
  */
 export interface PerBottle {
   cents: bigint;
@@ -102,15 +97,14 @@ export interface PrintedLine {
   uom?: string | null;
 }
 
-/** Units a bottle count can come from. A keg, a liter or an "each" cannot. */
+/** A keg, a liter or an "each" has no bottle count. */
 const BOTTLE_UNITS = /^(bottle|btl|bt|case|pack|split_case)$/i;
 
 export function perBottlePrinted(line: PrintedLine): PerBottle | "no_price" | "unit_differs" {
   const total = line.line_total == null || line.line_total === "" ? NaN : Number(line.line_total);
   if (!Number.isFinite(total) || total <= 0) return "no_price";
   let bottles = line.qty_bottles == null || line.qty_bottles === "" ? NaN : Number(line.qty_bottles);
-  // The reader leaves qty_bottles at its 0 default on some papers; a bottle,
-  // case or pack line still counts its bottles as qty x pack size.
+  // qty_bottles is left at its 0 default on some papers: count qty x pack.
   if (!(bottles > 0) && BOTTLE_UNITS.test((line.uom ?? "").trim())) {
     const qty = Number(line.qty);
     const pack = line.pack_size == null ? 1 : Number(line.pack_size);
@@ -131,11 +125,7 @@ export function addPerBottle(a: PerBottle, b: PerBottle): PerBottle {
   return { cents, milliBottles, value: Math.round((Number(cents) * 10 * 1e4) / Number(milliBottles)) / 1e4 };
 }
 
-/**
- * The same verdict as `priceMove`, on two printed per-bottle figures, exact:
- * moved iff |n1*d0 - n0*d1| * 100 > threshold * n0 * d1, all in BigInt (the
- * products of cents and milli-bottles pass 2^53 on a large paper).
- */
+/** `priceMove`'s verdict, exact: |n1*d0 - n0*d1| * 100 > t * n0 * d1 in BigInt (past 2^53). */
 export function printedPriceMove(
   prev: PerBottle | null | undefined,
   next: PerBottle,
