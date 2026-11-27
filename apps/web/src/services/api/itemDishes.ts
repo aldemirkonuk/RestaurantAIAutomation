@@ -61,8 +61,32 @@ export interface ItemDish extends ItemServes {
   uses: Array<{ label: string; qtyEntered: number; unitCode: string }>;
 }
 
+/** Why the good in one serve, through a component, is not known (r110 g1). */
+export type ThroughWhy = 'unit_mismatch' | 'no_yield' | 'no_serves' | 'cycle';
+
+/** A current drink or dish that draws a house-made component this good is in, with the good in one serve. */
+export interface ItemThroughOwner {
+  kind: 'dish' | 'cocktail';
+  id: string;
+  name: string;
+  /** In `baseUnit`: mg, ml10 (tenths of a ml) or each_milli. Null with `why`. */
+  perServeQtyBase: number | null;
+  baseUnit: 'mg' | 'ml10' | 'each_milli' | null;
+  why: ThroughWhy | null;
+}
+
+/** A house-made component that takes this good (level 1), or one made from such a component (2, 3). */
+export interface ItemThroughComponent {
+  componentId: string;
+  componentName: string;
+  level: number;
+  owners: ItemThroughOwner[];
+}
+
 export interface ItemDishes {
   dishes: ItemDish[];
+  /** The recipes that draw it through a component. Null when that read failed; absent from an older gateway. Never money. */
+  through?: ItemThroughComponent[] | null;
 }
 
 /** Where a dish opens: its own card on /dishes. */

@@ -34,7 +34,7 @@
  * read answers, or when it fails, the drink is the used-in read's one line,
  * and a failed read says its cards could not be read, with Read again.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import HeldReading from './HeldReading';
 import type { ItemMenuLine, ItemTillButton, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
@@ -47,6 +47,8 @@ import {
   type ItemDrinks,
   type ItemGoodShare,
   type ItemServes,
+  type ItemThroughComponent,
+  type ItemThroughOwner,
   type ServesWhy,
 } from '../../../services/api/itemDishes';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
@@ -234,6 +236,63 @@ function RecipeBlock({
         ) : null}
       </div>
     </div>
+  );
+}
+
+export const THROUGH_UNREAD = 'Which recipes draw this good through something the house makes could not be read.';
+
+/** The good in one serve, in the unit a person reads: 28571 mg is 28.6 g, 400 ml10 is 40 ml. */
+export function throughQty(q: number, unit: ItemThroughOwner['baseUnit'], code: string | null): string {
+  const n = (x: number) => formatHouseNumber(x, code, { max: 1 });
+  if (unit === 'mg') return q >= 1000 ? `${n(q / 1000)} g` : `${n(q)} mg`;
+  if (unit === 'ml10') return q >= 10_000 ? `${n(q / 10_000)} l` : `${n(q / 10)} ml`;
+  return `${n(q / 1000)} each`;
+}
+
+/** Why a serve's amount is not said, naming the component (or, deeper, what it is made from). */
+export function throughWhyWords(o: ItemThroughOwner, c: ItemThroughComponent): string {
+  const of = c.level > 1 ? `${c.componentName} or what it is made from` : c.componentName;
+  switch (o.why) {
+    case 'no_yield':
+      return `how much is not known: ${of} has no yield set`;
+    case 'unit_mismatch':
+      return `how much is not known: it is measured in another unit than ${of} is made in`;
+    case 'no_serves':
+      return `how much is not known: ${o.name} does not say how many serves it makes`;
+    case 'cycle':
+      return `how much is not known: ${c.componentName} and what it is made from draw each other`;
+    default:
+      return 'how much is not known';
+  }
+}
+
+/**
+ * "Drawn by: Daiquiri 28.6 g a serve · Mojito 14.3 g a serve" under a
+ * component's dish row (r110 g1), then the same for any component made from
+ * it, one level down each, never twice. Quantities only: every role.
+ */
+function DrawnBy({ c, through, code, seen }: { c: ItemThroughComponent; through: ItemThroughComponent[]; code: string | null; seen: Set<string> }) {
+  const deeper = c.owners
+    .filter((o) => o.kind === 'dish')
+    .map((o) => through.find((x) => x.componentId === o.id && x.level > c.level))
+    .filter((x): x is ItemThroughComponent => !!x && !seen.has(x.componentId));
+  for (const x of deeper) seen.add(x.componentId);
+  return (
+    <>
+      <p className="iv-note ivd-drawn" data-testid={`ivd-drawn-${c.componentId}`}>
+        {c.level > 1 ? `${c.componentName} is drawn by: ` : 'Drawn by: '}
+        {c.owners.map((o, i) => (
+          <span key={`${o.kind}-${o.id}`}>
+            {i > 0 ? ' · ' : null}
+            <LineLink to={o.kind === 'dish' ? dishHref(o.id) : drinkHref(o.id)}>{o.name}</LineLink>{' '}
+            {o.perServeQtyBase !== null ? `${throughQty(o.perServeQtyBase, o.baseUnit, code)} a serve` : throughWhyWords(o, c)}
+          </span>
+        ))}
+      </p>
+      {deeper.map((x) => (
+        <DrawnBy key={x.componentId} c={x} through={through} code={code} seen={seen} />
+      ))}
+    </>
   );
 }
 
@@ -672,9 +731,21 @@ export default function ItemUsedIn({
           </>
         ) : (
           <div className="ivd-arrive">
-            {dishes.data.dishes.map((d) => (
-              <DishBlock key={d.dishId} dish={d} canManage={canManage} currency={currency} tax={tax} />
-            ))}
+            {dishes.data.dishes.map((d) => {
+              const through = dishes.data.through;
+              const c = through?.find((x) => x.componentId === d.dishId && x.level === 1);
+              return (
+                <Fragment key={d.dishId}>
+                  <DishBlock dish={d} canManage={canManage} currency={currency} tax={tax} />
+                  {c && through ? <DrawnBy c={c} through={through} code={currency.code} seen={new Set([c.componentId])} /> : null}
+                </Fragment>
+              );
+            })}
+            {dishes.data.through === null ? (
+              <p className="iv-note" role="status" data-testid="ivd-drawn-unread">
+                {THROUGH_UNREAD}
+              </p>
+            ) : null}
           </div>
         )}
       </section>
