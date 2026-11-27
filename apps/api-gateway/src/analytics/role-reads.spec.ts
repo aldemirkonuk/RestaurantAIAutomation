@@ -1,10 +1,18 @@
 /**
- * Which money lenses each house role reads, and the overview that composes
- * two of them (ADR 0348 decision 3). Pure: ROLE_POLICY is the input.
+ * Which money lenses and insight types each house role reads, and the
+ * overview that composes them (ADR 0348 decision 3). Pure: ROLE_POLICY and
+ * the insight catalogue are the inputs.
  */
 import { policyFor } from "../ask-readings/reading-data-classes";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
-import { lensHidden, seesFor } from "./role-reads";
+import { IMPLEMENTED_INSIGHT_TYPES } from "./insights/insight-implementations";
+import {
+  insightClasses,
+  insightReadable,
+  insightsForRole,
+  lensHidden,
+  seesFor,
+} from "./role-reads";
 
 const STAFF = policyFor("staff").sees;
 const OWNER = policyFor("owner").sees;
@@ -34,7 +42,12 @@ describe("the overview as a role reads it", () => {
         getRiskProfile: async () => ({ ok: true }),
         getInventoryScience: async () => ({ reorderCount: 0, reorderList: [], skuCount: 1 }),
       } as never,
-      { getStored: async () => [{ candidate_key: "wine.stockout_risk.peer_rank" }] } as never,
+      {
+        getStored: async () => [
+          { candidate_key: "waiter.avg_check.peer_rank", sentence: "ranked" },
+          { candidate_key: "wine.stockout_risk.peer_rank", sentence: "runs out" },
+        ],
+      } as never,
       { listGoals: async () => [] } as never,
     );
     const spies = {
@@ -55,6 +68,7 @@ describe("the overview as a role reads it", () => {
     expect(o.menuEngineering).toEqual({ withheldForRole: ["money", "sales"] });
     expect(o.cashflow).toEqual({ withheldForRole: ["money", "suppliers"] });
     expect(o.seasonality).toEqual({ weekday: [] });
+    expect(o.insights.map((r: { sentence: string }) => r.sentence)).toEqual(["runs out"]);
   });
 
   it("reads every lens for an owner, and for an internal caller that names no role", async () => {
@@ -63,6 +77,59 @@ describe("the overview as a role reads it", () => {
       const o = await svc.getOverview("h", { withSales: true }, sees);
       expect(o.menuEngineering).toEqual({ counts: { star: 1 }, top: [{ name: "Rakı" }] });
       expect(o.cashflow).toEqual({ spendLast30d: 9330 });
+      expect(o.insights).toHaveLength(2);
     }
+  });
+});
+
+describe("insightClasses", () => {
+  it("names the till, money and a person for the server ranking", () => {
+    expect(insightClasses("waiter.avg_check.peer_rank")?.sort()).toEqual(["money", "people", "sales"]);
+  });
+  it("names suppliers and money for the house's spend", () => {
+    expect(insightClasses("overall.purchase_spend.trend_direction")?.sort()).toEqual(["money", "suppliers"]);
+  });
+  it("names stock only for a stockout risk, and no class for a volume", () => {
+    expect(insightClasses("wine.stockout_risk.peer_rank")).toEqual(["stock"]);
+    expect(insightClasses("overall.bottles.vs_prev_period_7d")).toEqual([]);
+  });
+  it("is null for a key outside the catalogue", () => {
+    expect(insightClasses("nope.nope.nope")).toBeNull();
+  });
+});
+
+describe("what staff read of the implemented feed", () => {
+  it("is the stock and volume types: none names money, the till, a vendor or a person", () => {
+    expect(IMPLEMENTED_INSIGHT_TYPES.filter((k) => insightReadable(k, STAFF))).toEqual([
+      "overall.bottles.anomaly_day",
+      "overall.bottles.forecast_gap",
+      "overall.bottles.trend_direction",
+      "overall.bottles.vs_prev_period_7d",
+      "overall.bottles.vs_same_weekday",
+      "wine.bottles.vs_prev_period_7d",
+      "wine.consumption_qty.concentration",
+      "wine.stockout_risk.peer_rank",
+    ]);
+  });
+  it("an owner reads every implemented type and a key outside the catalogue; staff do not read that key", () => {
+    for (const k of IMPLEMENTED_INSIGHT_TYPES) expect(insightReadable(k, OWNER)).toBe(true);
+    expect(insightReadable("nope.nope.nope", OWNER)).toBe(true);
+    expect(insightReadable("nope.nope.nope", STAFF)).toBe(false);
+  });
+});
+
+describe("insightsForRole", () => {
+  it("reads a stored row's candidate_key and a live row's candidateKey, and counts what it withholds", () => {
+    const rows = [
+      { candidate_key: "waiter.avg_check.peer_rank" },
+      { candidateKey: "wine.stockout_risk.peer_rank" },
+      { candidateKey: "overall.revenue.anomaly_day" },
+      {},
+    ];
+    expect(insightsForRole(rows, STAFF)).toEqual({
+      kept: [{ candidateKey: "wine.stockout_risk.peer_rank" }],
+      withheldForRole: 3,
+    });
+    expect(insightsForRole(rows, OWNER).withheldForRole).toBe(0);
   });
 });

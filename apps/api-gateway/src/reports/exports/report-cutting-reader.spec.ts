@@ -129,7 +129,7 @@ const BENCH_SOURCES = {
 };
 
 const PAGE: Record<ExportableCutting, PageRead> = {
-  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
+  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d), HOLDER) },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: {
