@@ -5,9 +5,11 @@ import { hashUnsubscribeToken } from "../analytics/digest/digest-schedule";
 type Rec = Record<string, any>;
 
 class FakeDb {
+  /** Runs before each plain read of a table: a write that lands between reads. */
+  beforeRead?: (table: string) => void;
   constructor(public tables: Record<string, Rec[]>) {}
   getClient() {
-    return { from: (t: string) => new Query(this.tables, t) };
+    return { from: (t: string) => new Query(this.tables, t, this.beforeRead) };
   }
 }
 
@@ -15,7 +17,11 @@ class Query implements PromiseLike<{ data: Rec[] | null; error: null }> {
   private filters: Array<(r: Rec) => boolean> = [];
   private patch: Rec | null = null;
   private max = Infinity;
-  constructor(private tables: Record<string, Rec[]>, private table: string) {}
+  constructor(
+    private tables: Record<string, Rec[]>,
+    private table: string,
+    private beforeRead?: (table: string) => void,
+  ) {}
   select() { return this; }
   update(patch: Rec) { this.patch = patch; return this; }
   eq(k: string, v: unknown) { this.filters.push((r) => r[k] === v); return this; }
@@ -26,6 +32,7 @@ class Query implements PromiseLike<{ data: Rec[] | null; error: null }> {
   order() { return this; }
   limit(n: number) { this.max = n; return this; }
   then<A, B>(ok?: (v: { data: Rec[] | null; error: null }) => A, bad?: (e: unknown) => B) {
+    if (!this.patch) this.beforeRead?.(this.table);
     const hit = (this.tables[this.table] ?? []).filter((r) => this.filters.every((f) => f(r))).slice(0, this.max);
     if (this.patch) for (const r of hit) Object.assign(r, this.patch);
     return Promise.resolve({ data: hit.map((r) => ({ ...r })), error: null }).then(ok, bad);
@@ -142,11 +149,53 @@ describe("SetupReminderService.runOnce", () => {
   });
 });
 
+// r109 onboarding-r109-5: the claim re-checks what the sweep read, so a write
+// between the two (the menu read, the owner's opt-out) sends nothing.
+describe("SetupReminderService.runOnce, a write between the read and the claim", () => {
+  it.each([
+    ["the menu is read", { menu_uploaded: true }],
+    ["the owner opts out", { setup_reminder_opt_out: true }],
+    ["another instance stamps it", { setup_reminder_sent_at: NOW.toISOString() }],
+  ])("%s: no letter, the claim is lost", async (_why, patch) => {
+    const { service, gmail, db } = build(world());
+    db.beforeRead = (table) => {
+      if (table === "users") Object.assign(db.tables.user_onboarding_progress[0], patch);
+    };
+    const tally = await service.runOnce(NOW);
+    expect(tally).toMatchObject({ candidates: 1, sent: 0, lostClaim: 1 });
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(db.tables.user_onboarding_progress[0].setup_reminder_token_hash).toBeUndefined();
+  });
+});
+
 describe("SetupReminderService.sweep", () => {
   it("is off until SETUP_REMINDER_SEND_ENABLED is set", async () => {
     const { service, gmail } = build(world());
     await service.sweep();
     expect(gmail.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "false", "0", "yes", "on", "ture"])(
+    "SETUP_REMINDER_SEND_ENABLED=%j stays off: nothing read, nothing sent",
+    async (raw) => {
+      const tables = world();
+      const gmail = { sendEmail: jest.fn() };
+      const env: Rec = { API_PUBLIC_URL: "https://api.example", FRONTEND_URL: "https://app.example", SETUP_REMINDER_SEND_ENABLED: raw };
+      const service = new SetupReminderService(new FakeDb(tables) as any, gmail as any, { get: (k: string) => env[k] } as any);
+      const run = jest.spyOn(service, "runOnce");
+      await service.sweep();
+      expect(run).not.toHaveBeenCalled();
+      expect(gmail.sendEmail).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["true", "1", " TRUE "])("SETUP_REMINDER_SEND_ENABLED=%j arms it", async (raw) => {
+    const tables = world();
+    const gmail = { sendEmail: jest.fn().mockResolvedValue({ success: true }) };
+    const env: Rec = { API_PUBLIC_URL: "https://api.example", FRONTEND_URL: "https://app.example", SETUP_REMINDER_SEND_ENABLED: raw };
+    const service = new SetupReminderService(new FakeDb(tables) as any, gmail as any, { get: (k: string) => env[k] } as any);
+    await service.sweep();
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
   });
 });
 
