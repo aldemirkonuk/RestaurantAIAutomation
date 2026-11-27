@@ -1175,11 +1175,13 @@ textarea.cl-field {
   .cl-spine-nav { min-height: 64px; align-content: flex-start; }
 }
 
-/* The two rule notes under the headline ("The Cellar" / which view opens) wrap to a long unread
-   sentence and settle two lines shorter once the registers read lands (walk p11: 69px to 52px at
-   375, 0.17 CLS with the nav). The settled room is held from first paint; the nav stays visibility:
-   hidden while the read is in flight so the provisional one-register set never shows. No transition,
-   and none under reduced motion (ADR 0112). */
-@media (max-width: 640px) {
-  .cl-notes-hold { min-height: 52px; }
-}
+/* The two rule notes under the headline ("The Cellar" / which view opens) are drawn once the
+   registers read settles, never while it is in flight (the provisional wording was 148px at 375
+   and the settled 114px, so the block shrank under the reader: walk p12, CLS 0.161). The hold is
+   the SETTLED height, measured at 375-480 px: 114, at 481-640 px: 79, at 641-1000 px (the sidebar
+   narrows the column; measured at 768): 114, at 1001 px and up: 79. A house whose text wraps
+   longer than that grows by the difference, one shorter leaves a gap, never a shift. No
+   transition, and none under reduced motion (ADR 0112). */
+.cl-notes-hold { min-height: 79px; }
+@media (max-width: 480px) { .cl-notes-hold { min-height: 114px; } }
+@media (min-width: 641px) and (max-width: 1000px) { .cl-notes-hold { min-height: 114px; } }

@@ -366,7 +366,7 @@ export default function Registers({ data }: { data: CellarData }) {
             gateway used to drop before it reached the browser. It is a
             catalogue figure and is labelled as one: none of it is stock, and
             none of it moves which registers this house carries. */}
-        {data.libraryByKind && data.libraryByKind.size > 0 ? (
+        {!data.registersLoading && data.libraryByKind && data.libraryByKind.size > 0 ? (
           <p className="cl-note" data-testid="library-by-kind">
             This read of the wine library classifies its titles as{' '}
             {[...data.libraryByKind.entries()]
