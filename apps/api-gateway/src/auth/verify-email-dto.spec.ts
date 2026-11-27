@@ -79,6 +79,59 @@ describe("POST /auth/verify-email — body validation", () => {
     expect(out.token).toBe(VALID);
   });
 
+  // Onboarding OB-3 (founder /goal 2026-11-07): the mail's six-digit code is
+  // the other accepted body -- exactly one of token and code.
+  it.each<[string, unknown]>([
+    ["a five-digit code", { code: "12345" }],
+    ["a seven-digit code", { code: "1234567" }],
+    ["a code with letters", { code: "12a456" }],
+    ["a numeric (non-string) code", { code: 123456 }],
+    ["a code and a token together", { code: "123456", token: VALID }],
+    ["a code and a malformed token", { code: "123456", token: "nope" }],
+  ])("refuses %s with 400", async (_, body) => {
+    await expect(validateBody(body)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it("passes a six-digit code through, spaces a person typed included", async () => {
+    expect(((await validateBody({ code: "123456" })) as any).code).toBe(
+      "123456",
+    );
+    expect(((await validateBody({ code: "123 456" })) as any).code).toBe(
+      "123 456",
+    );
+  });
+
+  it("hands a code to verifyEmailWithCode with the session's user and house", async () => {
+    const authService = {
+      verifyEmail: jest.fn(),
+      verifyEmailWithCode: jest
+        .fn()
+        .mockResolvedValue({ accessToken: "a", refreshToken: "r" }),
+    };
+    const controller = new AuthController(authService as any);
+    const body: any = await validateBody({ code: "042917" });
+
+    await expect(
+      controller.verifyEmail(
+        { user: { userId: "u1", restaurantId: "h1" } } as any,
+        body,
+      ),
+    ).resolves.toEqual({
+      success: true,
+      accessToken: "a",
+      refreshToken: "r",
+      message: "Email verified",
+    });
+    expect(authService.verifyEmailWithCode).toHaveBeenCalledWith(
+      "042917",
+      "u1",
+      "h1",
+    );
+    expect(authService.verifyEmail).not.toHaveBeenCalled();
+  });
+
   it("hands the token to the service and keeps the response shape", async () => {
     const authService = {
       verifyEmail: jest

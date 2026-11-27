@@ -34,10 +34,15 @@ export const AUTH_ENDPOINTS = {
   },
   checkEmail: { method: "GET", path: "check-email", usedBy: "app/register.tsx" },
   join: { method: "POST", path: "join", usedBy: "app/register.tsx (Path A)" },
-  registerRestaurant: {
+  registerAccount: {
     method: "POST",
-    path: "register/restaurant",
-    usedBy: "app/register.tsx (Path B)",
+    path: "register/account",
+    usedBy: "app/register.tsx (Path B, step 1)",
+  },
+  createFirstHouse: {
+    method: "POST",
+    path: "register/house",
+    usedBy: "app/open-house.tsx (Path B, step 2)",
   },
   requestPasswordReset: {
     method: "POST",

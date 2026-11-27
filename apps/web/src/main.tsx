@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { MotionConfig } from 'framer-motion'
 import App from './App.tsx'
 import './styles/globals.css'
 import { initGlobalErrorHandler } from './lib/global-error-handler'
@@ -8,6 +9,7 @@ import { startReminderScheduler } from './lib/reminder-scheduler'
 import { registerServiceWorker } from './lib/register-sw'
 import { applyDevAuthBypass } from './lib/devAuthBypass'
 import { offlineStorage } from './lib/offline-storage'
+import { captureInstallPrompt } from './lib/installPrompt'
 
 // Initialize global error handler
 initGlobalErrorHandler()
@@ -22,6 +24,9 @@ initErrorTracking()
 // Start reminder scheduler
 startReminderScheduler()
 
+// Keep the browser's install prompt for the row on /house (it fires once, early).
+captureInstallPrompt()
+
 // PWA service worker (production builds)
 registerServiceWorker()
 
@@ -34,7 +39,11 @@ void offlineStorage.pruneExpiredCache().catch(() => {})
 applyDevAuthBypass().finally(() => {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <App />
+      {/* ADR 0112: under prefers-reduced-motion every framer-motion transform
+          (slides, rises, springs) is dropped; only opacity still changes. */}
+      <MotionConfig reducedMotion="user">
+        <App />
+      </MotionConfig>
     </React.StrictMode>,
   )
 })

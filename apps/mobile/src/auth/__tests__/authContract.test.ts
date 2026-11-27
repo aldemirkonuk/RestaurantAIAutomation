@@ -23,10 +23,8 @@ const AUTH_CONTROLLER = path.join(GATEWAY_SRC, "auth/auth.controller.ts");
 const AUTH_SERVICE = path.join(GATEWAY_SRC, "auth/auth.service.ts");
 const JOIN_DTO = path.join(GATEWAY_SRC, "auth/dto/join-via-invite.dto.ts");
 const RESET_DTO = path.join(GATEWAY_SRC, "auth/dto/password-reset.dto.ts");
-const RESTAURANT_DTO = path.join(
-  GATEWAY_SRC,
-  "auth/dto/register-restaurant.dto.ts",
-);
+const ACCOUNT_DTO = path.join(GATEWAY_SRC, "auth/dto/register-account.dto.ts");
+const HOUSE_DTO = path.join(GATEWAY_SRC, "auth/dto/create-first-house.dto.ts");
 
 function read(file: string): string {
   return fs.readFileSync(file, "utf8");
@@ -49,7 +47,8 @@ describe("gateway sources are where this test thinks they are", () => {
     ["auth service", AUTH_SERVICE],
     ["join DTO", JOIN_DTO],
     ["reset DTO", RESET_DTO],
-    ["register-restaurant DTO", RESTAURANT_DTO],
+    ["register-account DTO", ACCOUNT_DTO],
+    ["create-first-house DTO", HOUSE_DTO],
   ])("%s exists (a guard that cannot read is not a guard)", (_label, file) => {
     expect(fs.existsSync(file)).toBe(true);
   });
@@ -129,7 +128,7 @@ describe("the endpoints are reachable without a session", () => {
 
   it.each([
     ["Post", "join"],
-    ["Post", "register/restaurant"],
+    ["Post", "register/account"],
     ["Post", "request-password-reset"],
     ["Post", "reset-password"],
     ["Post", "sign-in-methods"],
@@ -172,13 +171,19 @@ describe("validation constants match the server's", () => {
   it("keeps the password minimum in step with every auth DTO", () => {
     // If the server tightens to 12 and the client keeps saying 8, the client
     // is promising a submit it knows will be rejected.
-    for (const file of [JOIN_DTO, RESET_DTO, RESTAURANT_DTO]) {
+    for (const file of [JOIN_DTO, RESET_DTO]) {
       const mins = [...read(file).matchAll(/@MinLength\((\d+)/g)].map((x) =>
         Number(x[1]),
       );
       expect(mins.length).toBeGreaterThan(0);
       for (const min of mins) expect(min).toBe(MIN_PASSWORD_LENGTH);
     }
+  });
+
+  it("register/account's password minimum is the phone's", () => {
+    const m = /@MinLength\((\d+)\)\s*password/.exec(read(ACCOUNT_DTO));
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBe(MIN_PASSWORD_LENGTH);
   });
 
   it("reset tokens are still UUIDs", () => {
@@ -190,28 +195,41 @@ describe("validation constants match the server's", () => {
     expect(isValidResetToken("3f2504e0-4f89-41d3-9a0c-0305e82c3301")).toBe(true);
   });
 
-  it("register/restaurant still requires the fields the form collects", () => {
-    const dto = read(RESTAURANT_DTO);
-    for (const field of [
-      "name",
-      "email",
-      "password",
-      "restaurantName",
-      "address",
-      "city",
-      "country",
-    ]) {
-      expect(dto).toMatch(new RegExp(`${field}[?]?:\\s*string`));
+  it("register/account and register/house still require the fields the forms collect", () => {
+    const account = read(ACCOUNT_DTO);
+    for (const field of ["name", "email", "password"]) {
+      expect(account).toMatch(new RegExp(`${field}[?]?:\\s*string`));
     }
-    // These are the ones the mobile form leaves out; if any becomes required
-    // the form starts failing on submit and this says so first.
-    for (const optional of ["stateProvince", "postalCode", "phone"]) {
-      const line = dto
-        .split("\n")
-        .find((l) => l.includes(`${optional}?:`) || l.includes(`${optional}:`));
-      expect(line).toBeDefined();
-      expect(line).toContain("@IsOptional()");
+    const house = read(HOUSE_DTO);
+    for (const field of ["restaurantName", "address", "city", "country"]) {
+      expect(house).toMatch(new RegExp(`${field}[?]?:\\s*string`));
     }
+  });
+});
+
+describe("verify, then create (r104)", () => {
+  const registerScreen = read(path.resolve(__dirname, "../../../app/register.tsx"));
+  const wrappers = read(path.resolve(__dirname, "../../api/auth.ts"));
+
+  it("Path B no longer opens a house on an unproved address", () => {
+    expect(registerScreen).not.toContain("registerRestaurant");
+    expect(registerScreen).toContain("registerAccount");
+    expect(wrappers).not.toContain("/auth/register/restaurant");
+  });
+
+  it("the house is opened only through the verified-session door", () => {
+    expect(wrappers).toContain('"/auth/register/house"');
+    // createFirstHouse refuses an unverified address at the gateway.
+    expect(read(AUTH_SERVICE)).toMatch(/createFirstHouse[\s\S]{0,1200}email_verified/);
+  });
+});
+
+describe("a houseless session has a way back to /open-house (r106)", () => {
+  const noAccess = read(path.resolve(__dirname, "../../../app/no-access.tsx"));
+
+  it("the no-access screen offers the open-house route, and that route exists", () => {
+    expect(noAccess).toContain('router.push("/open-house"');
+    expect(fs.existsSync(path.resolve(__dirname, "../../../app/open-house.tsx"))).toBe(true);
   });
 });
 

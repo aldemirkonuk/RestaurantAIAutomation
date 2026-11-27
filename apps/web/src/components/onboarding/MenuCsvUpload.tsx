@@ -1,7 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
-import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import { importMenu, readRefusalWords, type MenuImportSuccess } from '../../services/api/menus'
+import { fitPhotoForReading } from '../../lib/fitPhoto'
+import { isPhoto } from '../../lib/menuPhotos'
 import {
   DOCUMENT_ACCEPT,
   MAX_UPLOAD_BYTES,
@@ -15,6 +17,12 @@ import {
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
+  /**
+   * Files dropped on the page's own drop zone (r28 onboarding gap 11): a PDF
+   * or a spreadsheet dropped on "Drop the menu here" opened this box and the
+   * file was thrown away. They are staged here as if picked, once per drop.
+   */
+  droppedFiles?: File[] | null
 }
 
 interface PreviewRow {
@@ -34,7 +42,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
+export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
   const [csvContent, setCsvContent] = useState<string | null>(null)
   const [fileBase64, setFileBase64] = useState<string | null>(null)
   const [isExcelFile, setIsExcelFile] = useState(false)
@@ -96,14 +104,37 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target
+    const files = input.files ? Array.from(input.files) : []
+    resetFileInput(input)
+    stageFiles(files)
+  }
+
+  // A drop is staged once per drop (a new array), never on a re-render.
+  useEffect(() => {
+    if (!droppedFiles || droppedFiles.length === 0) return
+    stageFiles(droppedFiles)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- staged per drop, not per render
+  }, [droppedFiles])
+
+  const stageFiles = (files: File[]) => {
     // Validate size/type/count up front. Without this an oversized file is
     // only rejected at the server as a bare 413 — which arrives before the
     // auth guard and reads as a generic network error in the UI.
-    const { accepted, errors } = validateSelection(input.files, {
-      accept: (f) => isScannable(f) || isTabular(f),
+    // A photo is redrawn smaller before it is sent (importOne), so its raw
+    // weight is no reason to turn it away (r106: a 14 MB phone photo dropped
+    // with others was refused); a PDF or a sheet is sent as it is and keeps
+    // the limit.
+    const options = {
+      accept: (f: File) => isScannable(f) || isTabular(f),
       kindLabel: 'a spreadsheet, CSV, PDF, or image',
-    })
-    resetFileInput(input)
+    }
+    const photos = validateSelection(files.filter(isPhoto), { ...options, maxBytes: Number.POSITIVE_INFINITY })
+    const others = validateSelection(files.filter((f) => !isPhoto(f)), options)
+    const kept = new Set([...photos.accepted, ...others.accepted])
+    const accepted = files.filter((f) => kept.has(f)).slice(0, MAX_UPLOAD_FILES)
+    const errors = [...photos.errors, ...others.errors]
+    if (kept.size > accepted.length)
+      errors.push(`Only ${MAX_UPLOAD_FILES} files at a time — the rest were skipped.`)
 
     if (errors.length) setError(errors.join(' '))
     else setError(null)
@@ -145,16 +176,24 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
     reader.readAsText(file)
   }
 
-  /** Import one already-read file. */
+  /**
+   * Import one already-read file. A photo is fitted for the reader first
+   * (r28 gap 12): a phone photo went up whole, past the model's 5 MB. A PDF
+   * goes as it is. `image` is what the first proof can draw (null for a PDF).
+   */
   const importOne = async (opts: {
     scan: boolean
     base64: string | null
     csv: string | null
   }) => {
-    if (opts.scan) return importMenu('scan', { imageBase64: opts.base64! })
-    return opts.base64
-      ? importMenu('csv', { fileBase64: opts.base64 })
-      : importMenu('csv', { csvContent: opts.csv! })
+    if (opts.scan) {
+      const photo = await fitPhotoForReading(opts.base64!)
+      return { result: await importMenu('scan', { imageBase64: photo.base64 }), image: photo.dataUrl }
+    }
+    const result = opts.base64
+      ? await importMenu('csv', { fileBase64: opts.base64 })
+      : await importMenu('csv', { csvContent: opts.csv! })
+    return { result, image: null }
   }
 
   const readFile = (file: File) =>
@@ -191,21 +230,22 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       // The file already read into state, then the rest of the queue — each as
       // its own request. One failure is reported but does not abandon the
       // files after it.
-      let result = await importOne({
+      const first = await importOne({
         scan: isScanFile,
         base64: fileBase64,
         csv: csvContent,
       })
+      let result = first.result
       const failures: string[] = []
 
       for (let i = 0; i < queue.length; i++) {
         const f = queue[i]
         setProgress({ done: i + 1, total, current: f.name })
         try {
-          result = await importOne(await readFile(f))
+          result = (await importOne(await readFile(f))).result
         } catch (err: any) {
           failures.push(
-            `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
+            `${f.name}: ${readRefusalWords(err, 'import failed')}`,
           )
         }
       }
@@ -215,13 +255,9 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           `${failures.length} of ${total} file(s) failed — ${failures.join('; ')}`,
         )
       }
-      const image =
-        isScanFile && fileBase64 && !/\.pdf$/i.test(fileName || '')
-          ? `data:image/jpeg;base64,${fileBase64}`
-          : null
-      onSuccess(result, { image })
+      onSuccess(result, { image: first.image })
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
+      setError(readRefusalWords(e, 'Import failed. Please try again.'))
     } finally {
       setLoading(false)
       setProgress(null)
@@ -300,7 +336,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             </div>
           ) : isScanFile ? (
             <div className="mb-4 p-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
-              Document ready. We'll extract your wines using AI when you import.
+              Document ready. Mudavym reads every line, drinks and dishes, when you import.
             </div>
           ) : (
             preview.length > 0 && (
@@ -354,9 +390,11 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             ) : queue.length > 0 ? (
               `Import ${queue.length + 1} files`
             ) : isExcelFile || isScanFile ? (
-              'Import wines'
+              'Import the menu'
             ) : (
-              `Import ${estimatedTotal > 0 ? estimatedTotal : ''} wines`
+              estimatedTotal > 0
+                ? `Import ${estimatedTotal} ${estimatedTotal === 1 ? 'line' : 'lines'}`
+                : 'Import lines'
             )}
           </Button>
         </div>

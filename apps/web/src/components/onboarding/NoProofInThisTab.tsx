@@ -1,0 +1,116 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { BrandMark } from '../brand/BrandMark'
+import { getOnboardingProgress } from '../../services/api/menus'
+import { menuKept, type MenuStandingRead } from '../../lib/menuKept'
+
+/**
+ * What /house/menu says when this tab holds no first proof (r21, 2026-11-13).
+ *
+ * The proof lives only in the tab that read the menu (`firstProof.ts`,
+ * sessionStorage). A new tab, another device, or a closed one used to say
+ * "No menu has been read yet." with "Read a menu" → /get-started, which read
+ * the menu again into a second draft. The house's own record answers the
+ * question instead: a house whose menu is read (`menu_uploaded`, the
+ * gateway's, per house since #1089) is sent to /menu, where the kept menu is
+ * seen and chosen as current. Nothing is said until that answer is in. A
+ * failed read says the page could not see, with "Look again" and the way to
+ * Menu (r41 onboarding gap 2): the old ask, "Read your menu" → /get-started,
+ * sent a house whose menu is current there and straight back. A menu kept as
+ * a draft is said as not current yet, and a current one as current (r36
+ * gap 3): "read and kept" read as done over a draft.
+ */
+export function NoProofInThisTab() {
+  const [kept, setKept] = useState<MenuStandingRead | null>(null)
+  const [readCount, setReadCount] = useState(0)
+  useEffect(() => {
+    let live = true
+    getOnboardingProgress()
+      .then((progress) => {
+        if (live) setKept(menuKept(progress))
+      })
+      .catch(() => {
+        if (live) setKept('unread')
+      })
+    return () => {
+      live = false
+    }
+  }, [readCount])
+
+  return (
+    <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
+      <div className="mx-auto max-w-2xl" aria-busy={kept === null}>
+        <Link to="/" aria-label="Mudavym, the desk">
+          <BrandMark size={24} alt="" />
+        </Link>
+        {kept === null ? null : kept === 'current' ? (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">Your menu is the current one.</h1>
+            <p className="mt-4 text-[#6d685f]">
+              The first proof shows only in the tab that read it. Stock and prices now come from the
+              current menu: see it on Menu.
+            </p>
+            <Link to="/menu" className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white">
+              Open the menu
+            </Link>
+          </>
+        ) : kept === 'draft' ? (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">Your menu is read, but it is not the current menu yet.</h1>
+            <p className="mt-4 text-[#6d685f]">
+              The first proof shows only in the tab that read it. Stock and prices come only from the
+              current menu: choose it as current on Menu.
+            </p>
+            <Link to="/menu" className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white">
+              Choose it on Menu
+            </Link>
+          </>
+        ) : kept === 'unread' ? (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">We could not see where your menu stands just now.</h1>
+            <p className="mt-4 text-[#6d685f]">
+              The first proof shows only in the tab that read it. Look again, or open Menu, which shows the
+              house&apos;s menus.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setKept(null)
+                setReadCount((count) => count + 1)
+              }}
+              className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white"
+            >
+              Look again
+            </button>
+            <Link to="/menu" className="ml-6 mt-6 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
+              Open the menu
+            </Link>
+          </>
+        ) : kept === 'read' ? (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">Your menu is read and kept.</h1>
+            <p className="mt-4 text-[#6d685f]">
+              The first proof shows only in the tab that read it. The menu itself is kept: see it, and
+              choose it as the current menu, on Menu.
+            </p>
+            <Link to="/menu" className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white">
+              Open the menu
+            </Link>
+          </>
+        ) : (
+          <>
+            <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
+            <Link to="/get-started" className="mt-6 inline-block bg-[#1a5e6b] px-5 py-2.5 text-white">
+              Read your menu
+            </Link>
+          </>
+        )}
+        {kept !== null && (
+          <Link to="/" className="ml-6 mt-6 inline-block text-sm text-[#1a5e6b] underline underline-offset-4">
+            Go to the desk
+          </Link>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   InternalServerErrorException,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
@@ -715,159 +717,58 @@ describe("createFirstHouse", () => {
   });
 });
 
-describe("registerRestaurant", () => {
+describe("registerRestaurant (DD-r104-6 PR 2: one door, one rule)", () => {
   beforeEach(() => jest.spyOn(Date, "now").mockReturnValue(NOW));
   afterEach(() => jest.restoreAllMocks());
 
-  const userRow = (run: ReturnType<typeof makeService>) =>
-    run.inserts.find((i) => i.table === "users")!.row;
+  const proved = (run: ReturnType<typeof makeService>, verified = true) => {
+    (run.svc as any).validateUser = jest
+      .fn()
+      .mockResolvedValue({ user_id: "user-1", email_verified: verified });
+    return run;
+  };
 
-  it("refuses a held place before writing anything, and says the house exists (F1, OPEN-1)", async () => {
-    const run = makeService({}, HELD);
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, ConflictException, HOUSE_ALREADY_AT_PLACE);
-    expect(exception.getStatus()).toBe(409);
-    expect(run.inserts).toEqual([]);
-    expect(run.deletes).toEqual([]);
-    expect(run.calls[0]).toBe("restaurants:select(id):maybeSingle");
-    expect(JSON.stringify(exception.getResponse())).not.toContain("ChIJ");
-    expect((run.svc as any).queueEmailVerification).not.toHaveBeenCalled();
-  });
-
-  it("opens a free place with its id, looked up first (F1b)", async () => {
-    const run = makeService();
-    await run.svc.registerRestaurant(REGISTRATION);
-    expect(run.calls.filter((c) => c.startsWith("restaurants:"))).toEqual([
-      "restaurants:select(id):maybeSingle",
-      "restaurants:insert(id):single",
-    ]);
-    expect(run.restaurantRows()).toHaveLength(1);
-    expect(run.restaurantRows()[0].google_place_id).toBe("ChIJ-held");
-    expect(userRow(run).restaurant_id).toBe("rest-1");
-  });
-
-  it("refuses a place taken after the look-up the same way, and rolls back (F1c)", async () => {
-    const run = makeService({
-      single: { restaurants: [{ error: PLACE_HELD }] },
-    });
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, ConflictException, HOUSE_ALREADY_AT_PLACE);
-    expect(run.restaurantRows()).toHaveLength(1);
-    expect(run.inserts.map((i) => i.table)).not.toContain("users");
-    expect(run.deletes).toEqual([
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
-  });
-
-  it("writes nothing when the place cannot be looked up, and says so plainly (F1d)", async () => {
-    const run = makeService({
-      maybeSingle: { restaurants: [{ data: null, error: NO_ANSWER }] },
-    });
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect(run.inserts).toEqual([]);
-  });
-
-  it("does not refuse a slug duplicate as a held place (F1e)", async () => {
-    const run = makeService({
-      single: { restaurants: [{ error: SLUG_TAKEN }] },
-    });
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-  });
-
-  it("rolls the account back and sends no mail when the token mint fails (F5, OPEN-4)", async () => {
-    const run = makeService();
-    const mail = jest.fn().mockResolvedValue(undefined);
-    (run.svc as any).gmailService = { sendOnboardingEmail: mail };
-    (run.svc as any).generateTokens.mockRejectedValue(
-      new ServiceUnavailableException("token store is down"),
+  it("opens the house of a verified account through createFirstHouse and creates no account", async () => {
+    const run = proved(makeService());
+    const result = await run.svc.registerRestaurant(REGISTRATION);
+    expect(result.restaurantId).toBe("rest-1");
+    const tables = run.inserts.map((i) => i.table);
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        "organizations",
+        "restaurants",
+        "user_onboarding_progress",
+      ]),
     );
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect((run.svc as any).queueEmailVerification).not.toHaveBeenCalled();
-    expect(mail).not.toHaveBeenCalled();
-    expect(run.deletes).toEqual([
-      { table: "users", col: "user_id", v: "user-1" },
-      { table: "restaurants", col: "id", v: "rest-1" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(tables).not.toContain("users");
   });
 
-  it("says the loser of a same-email race plainly and leaves no rows (F2, F6)", async () => {
-    const run = makeService({ single: { users: [{ error: EMAIL_TAKEN }] } });
+  it("refuses an unverified address in the same words as an unknown one, and writes nothing", async () => {
+    const unverified = proved(makeService(), false);
+    const unknown = makeService();
+    (unknown.svc as any).validateUser = jest
+      .fn()
+      .mockRejectedValue(new UnauthorizedException("Invalid credentials"));
+    const a = await refusal(unverified.svc.registerRestaurant(REGISTRATION));
+    const b = await refusal(unknown.svc.registerRestaurant(REGISTRATION));
+    expect(a).toBeInstanceOf(ForbiddenException);
+    expect(b).toBeInstanceOf(ForbiddenException);
+    expect(a.message).toBe(b.message);
+    expect(unverified.inserts).toEqual([]);
+    expect(unknown.inserts).toEqual([]);
+  });
+
+  it("takes the org and the restaurant back when the onboarding row is lost (one unit)", async () => {
+    const run = proved(
+      makeService({
+        then: { user_onboarding_progress: [{ error: ONBOARDING_TAKEN }] },
+      }),
+    );
     const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
     expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
     expect(run.deletes).toEqual([
       { table: "restaurants", col: "id", v: "rest-1" },
       { table: "organizations", col: "id", v: "org-1" },
     ]);
-  });
-
-  it("says a too-long detail as a plain 400 (F3, F6)", async () => {
-    const run = makeService({
-      single: { restaurants: [{ error: VALUE_TOO_LONG }] },
-    });
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, BadRequestException, HOUSE_DETAIL_TOO_LONG);
-  });
-
-  it("keeps the code of the organization and the user rows (F3b, F6)", async () => {
-    const org = makeService({
-      single: { organizations: [{ error: VALUE_TOO_LONG }] },
-    });
-    expectPlain(
-      await refusal(org.svc.registerRestaurant(REGISTRATION)),
-      BadRequestException,
-      HOUSE_DETAIL_TOO_LONG,
-    );
-    expect(org.deletes).toEqual([]);
-
-    const user = makeService({
-      single: { users: [{ error: VALUE_TOO_LONG }] },
-    });
-    expectPlain(
-      await refusal(user.svc.registerRestaurant(REGISTRATION)),
-      BadRequestException,
-      HOUSE_DETAIL_TOO_LONG,
-    );
-    expect(user.logError).toHaveBeenCalledWith(
-      `registerRestaurant rolled back at user: 22001 ${VALUE_TOO_LONG.message}`,
-    );
-    expect(user.deletes).toEqual([
-      { table: "restaurants", col: "id", v: "rest-1" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
-  });
-
-  it("says a network failure plainly (F4, F6)", async () => {
-    const run = makeService({
-      single: { organizations: [{ error: NO_ANSWER }] },
-    });
-    const exception = await refusal(run.svc.registerRestaurant(REGISTRATION));
-    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect(run.deletes).toEqual([]);
-  });
-
-  it("gives a code the scope does not list the plain 500, with rollback (F7, F6)", async () => {
-    const run = makeService({ single: { users: [{ error: NUL_IN_TEXT }] } });
-    const exception = await refusal(
-      run.svc.registerRestaurant({ ...REGISTRATION, name: "Selin\u0000" }),
-    );
-    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect(run.deletes).toEqual([
-      { table: "restaurants", col: "id", v: "rest-1" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
-  });
-
-  it("keeps the slug inside varchar(100) for the longest name (F8)", async () => {
-    const run = makeService();
-    await run.svc.registerRestaurant({
-      ...REGISTRATION,
-      restaurantName: "a".repeat(249),
-    });
-    const slug = run.restaurantRows()[0].slug as string;
-    expect(slug.length).toBeLessThanOrEqual(100);
   });
 });
