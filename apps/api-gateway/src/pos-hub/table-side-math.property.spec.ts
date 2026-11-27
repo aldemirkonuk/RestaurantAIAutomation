@@ -350,7 +350,7 @@ describe("cost at sale (P9, D4)", () => {
     );
     const k = snapshotLineCost(src(30), "volume", 150, 750, 1);
     expect(k).toMatchObject({
-      cost_basis: "invoice_lot_wac",
+      cost_basis: "pour_lot_wac",
       cost_source_lot_id: "lot-1",
       cost_source_order_id: "ord-1",
     });
