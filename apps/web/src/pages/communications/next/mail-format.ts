@@ -282,12 +282,13 @@ export function bounceReason(status: string): string {
 /**
  * The line under a house letter a notice came back about, in the house's time.
  * A failure says who it did not reach, when, and why; a delay never sounds
- * refused: Gmail is still trying.
+ * refused, and it is said in the past tense because Gmail sends no notice when
+ * the retry lands (the gateway drops it once the thread has a later reply).
  */
 export function deliveryLine(d: MailDelivery, zone: string | null | undefined): string {
   const when = formatVenueTime(d.at, zone ?? null, { withDate: true });
   const at = when.inVenueZone ? when.text : `${when.text} on this device's clock`;
-  if (d.state === 'delayed') return `Delayed, Gmail is still trying to reach ${d.recipient} (since ${at})`;
+  if (d.state === 'delayed') return `Delayed on ${at}: their server asked Gmail to try again`;
   return `Did not reach ${d.recipient} on ${at} (${bounceReason(d.status)}, ${d.status})`;
 }
 

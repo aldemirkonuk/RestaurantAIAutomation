@@ -103,7 +103,8 @@ describe('a house letter that did not arrive', () => {
     mount();
     const line = await screen.findByTestId('letter-delivery');
     expect(line).toHaveAttribute('data-state', 'delayed');
-    expect(line.textContent).toMatch(/^Delayed, Gmail is still trying to reach v@x\.com \(since Fri, Nov 27, 2:02.PM GMT\+3\)$/);
+    expect(line.textContent).toMatch(/^Delayed on Fri, Nov 27, 2:02.PM GMT\+3: their server asked Gmail to try again$/);
+    expect(line.textContent).not.toMatch(/still trying/);
     expect(line.textContent).not.toMatch(/Did not|refused/);
     expect(line).toHaveStyle({ color: 'var(--ink-2, #4F473C)' });
     expect(screen.queryByTestId('letter-write-again')).toBeNull();
