@@ -16,4 +16,10 @@ describe('the register nav holds its two-row room from first paint', () => {
     expect(block).toMatch(/min-height: 64px;/);
     expect(block).not.toMatch(/transition|animation|opacity/);
   });
+
+  it('the nav takes its own row at a phone, so the registers landing cannot wrap it under the wordmark', () => {
+    const block = css.match(/@media \(max-width: 640px\) \{\s*\.cl-spine-nav \{ flex-basis: 100%;[^}]*\}\s*\}/)?.[0] ?? '';
+    expect(block).toMatch(/flex-basis: 100%;/);
+    expect(block).not.toMatch(/transition|animation|opacity/);
+  });
 });
