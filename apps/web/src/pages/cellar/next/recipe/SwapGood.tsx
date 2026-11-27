@@ -66,6 +66,8 @@ interface Plan {
   drink: LooseDrink;
   body: SaveRecipeBody;
   refused: string | null;
+  /** The usable shares the swapped lines carry over: a share is the yield of the good bought, so it is said, not silent. */
+  keeps: number[];
 }
 
 function SwapSheet({ onClose }: { onClose: () => void }) {
@@ -95,7 +97,8 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
       const lines = at.get(drink.cocktailId);
       if (!lines) return [];
       const off = lines.some((l) => l.baseUnit !== want);
-      return [{ drink, body: linkBody(drink, lines.map((l) => l.index), to.id), refused: off ? `not swapped: counted ${COUNTED[want]}` : null }];
+      const keeps = [...new Set(lines.map((l) => drink.lines[l.index]?.usablePct).filter((u): u is number => u != null))];
+      return [{ drink, body: linkBody(drink, lines.map((l) => l.index), to.id), refused: off ? `not swapped: counted ${COUNTED[want]}` : null, keeps }];
     });
   }, [uses.data, to]);
 
@@ -209,6 +212,7 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
             {plans.map((p) => (
               <li key={p.drink.cocktailId} data-refused={p.refused ? 'true' : 'false'}>
                 {p.drink.name}: {p.refused ?? previews[p.drink.cocktailId] ?? 'reading its cost…'}
+                {!p.refused && p.keeps.length ? <span data-testid="swap-keeps">, keeps usable {p.keeps.map((u) => `${u}%`).join(' and ')}</span> : null}
               </li>
             ))}
           </ul>

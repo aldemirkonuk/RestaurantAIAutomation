@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LooseDrink, LooseLines as Answer } from '../../../../services/api/recipes';
@@ -183,6 +183,15 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
       }),
     );
     expect(body.lines[1]).toMatchObject({ qty: 50, unit: 'ml', usablePct: 95 });
+  });
+
+  it('says the usable share a swapped line carries over, so keeping it is a seen choice (r108 fix)', async () => {
+    await choose('Better gin');
+    const plan = screen.getByTestId('swap-plan');
+    await waitFor(() => expect(plan).toHaveTextContent('Negroni: cost a serve ₺2,55 -> ₺2,91, keeps usable 95%'));
+    // A drink that is not swapped carries nothing.
+    expect(within(plan).queryAllByTestId('swap-keeps')).toHaveLength(2);
+    expect(plan).not.toHaveTextContent('Gimlet: not swapped: counted by volume, keeps');
   });
 
   it('says each drink’s outcome: one saved, one someone saved first', async () => {
