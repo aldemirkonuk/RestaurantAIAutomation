@@ -1404,14 +1404,37 @@ export class DocumentsController {
       "Only documents linked to this order. Resolved through procurement_document_links, which is many-to-many because one distributor invoice routinely covers several POs.",
   })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({
+    name: "q",
+    required: false,
+    description:
+      "Find papers by vendor name or document number (part of either, any case).",
+  })
+  @ApiQuery({
+    name: "before",
+    required: false,
+    description:
+      "ISO time: only papers created before it. Pass the last row's `nextBefore` to read the next older page.",
+  })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
     @Query("docType") docType?: string,
     @Query("orderId") orderId?: string,
     @Query("limit") limit?: string,
+    @Query("q") q?: string,
+    @Query("before") before?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
+    const beforeAt = before ? new Date(before) : null;
+    if (before && (!beforeAt || Number.isNaN(beforeAt.getTime())))
+      throw new HttpException(
+        "`before` has to be a date and time, such as 2026-11-01T00:00:00Z.",
+        HttpStatus.BAD_REQUEST,
+      );
+    // Letters, digits, space and . - # / only: the rest would break the filter
+    // grammar below, and no paper is found by a comma.
+    const term = (q ?? "").replace(/[^\p{L}\p{N} .\-#/]/gu, "").trim().slice(0, 60);
 
     let documentIds: string[] | null = null;
     if (orderId) {
@@ -1433,20 +1456,52 @@ export class DocumentsController {
       if (!documentIds.length) return { items: [] };
     }
 
-    let q = this.db
+    // One more than asked for, so "there are older papers" is KNOWN, not
+    // guessed from a full page.
+    let query = this.db
       .getClient()
       .from("procurement_documents")
       .select("*")
       .eq("restaurant_id", user.restaurantId)
       .order("created_at", { ascending: false })
-      .limit(n);
-    if (status) q = q.eq("status", status);
-    if (docType) q = q.eq("doc_type", docType);
-    if (documentIds) q = q.in("id", documentIds);
+      .limit(n + 1);
+    if (status) query = query.eq("status", status);
+    if (docType) query = query.eq("doc_type", docType);
+    if (documentIds) query = query.in("id", documentIds);
+    if (beforeAt) query = query.lt("created_at", beforeAt.toISOString());
+    if (term) {
+      // A vendor is named by the provider row or by what the paper itself
+      // carried (`vendorNamesFor` reads both), so the search reads both.
+      const { data: found, error: findErr } = await this.db
+        .getClient()
+        .from("providers")
+        .select("id")
+        .eq("restaurant_id", user.restaurantId)
+        .or(`name.ilike.%${term}%,company_name.ilike.%${term}%`)
+        .limit(200);
+      if (findErr)
+        throw new HttpException(
+          `The vendors could not be searched, so no papers were filtered: ${findErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const ids = ((found ?? []) as { id: string }[]).map((p) => p.id);
+      query = query.or(
+        [
+          `doc_number.ilike.%${term}%`,
+          `extracted->>vendorName.ilike.%${term}%`,
+          ...(ids.length ? [`provider_id.in.(${ids.join(",")})`] : []),
+        ].join(","),
+      );
+    }
 
-    const { data, error } = await q;
+    const { data: fetched, error } = await query;
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    const hasMore = (fetched ?? []).length > n;
+    const data = (fetched ?? []).slice(0, n);
+    const nextBefore = hasMore
+      ? ((data[data.length - 1] as { created_at?: string } | undefined)?.created_at ?? null)
+      : null;
 
     /*
      * B4 — THE INVOICE AND ITS ORDER, SIDE BY SIDE (founder, 2026-09-06 batch
@@ -1485,7 +1540,7 @@ export class DocumentsController {
       ),
     }));
 
-    if (!orderId) return { items };
+    if (!orderId) return { items, hasMore, nextBefore };
 
     const { data: order, error: orderError } = await this.db
       .getClient()

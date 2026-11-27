@@ -2028,8 +2028,8 @@ export default function ReceiptsNext() {
             {/* the verified lane — the record, one click away, read-only
                 (opus-fidelity R-1: "everything from all of the orders" must
                 not shrink the verified book to a header integer) */}
-            {data.verifiedKnown && data.verified.length > 0 && (
-              <div style={{ marginTop: 16 }}>
+            {data.verifiedKnown && (data.verified.length > 0 || data.verifiedTerm !== '') && (
+              <div style={{ marginTop: 16 }} data-testid="verified-lane">
                 <button
                   type="button"
                   onClick={() => setShowVerified((v) => !v)}
@@ -2051,6 +2051,31 @@ export default function ReceiptsNext() {
                 </button>
                 {showVerified && (
                   <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                    <form
+                      role="search"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        data.setVerifiedTerm(String(new FormData(e.currentTarget).get('q') ?? '').trim());
+                      }}
+                      style={{ display: 'flex', gap: 6, padding: '8px 0' }}
+                    >
+                      <input
+                        name="q"
+                        type="search"
+                        defaultValue={data.verifiedTerm}
+                        aria-label="Search verified papers by vendor or number"
+                        placeholder="Vendor or number"
+                        style={{ flex: 1, minWidth: 0, minHeight: 44, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
+                      />
+                      <button type="submit" className="rc-ink" style={{ minHeight: 44, minWidth: 44, fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
+                        Find
+                      </button>
+                    </form>
+                    {data.verified.length === 0 && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 8px' }}>
+                        No verified paper matches &ldquo;{data.verifiedTerm}&rdquo;.
+                      </p>
+                    )}
                     {data.verified.map((d) => (
                       <button
                         key={d.id}
@@ -2073,6 +2098,25 @@ export default function ReceiptsNext() {
                         </span>
                       </button>
                     ))}
+                    {data.verifiedHasOlder && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '8px 0 4px' }}>
+                        Showing the newest {data.verified.length} verified papers; older ones are not listed yet. Search by vendor or number, or
+                        <button
+                          type="button"
+                          onClick={data.loadOlderVerified}
+                          disabled={data.olderBusy}
+                          className="rc-ink"
+                          style={{ marginLeft: 6, minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
+                        >
+                          {data.olderBusy ? 'Reading older papers' : 'Older papers'}
+                        </button>
+                      </p>
+                    )}
+                    {data.olderError && (
+                      <p role="alert" style={{ fontSize: 12, color: 'var(--ink-1, #211C16)', margin: '4px 0' }}>
+                        Older papers could not be read: {data.olderError}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
