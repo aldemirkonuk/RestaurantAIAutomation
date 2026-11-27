@@ -230,7 +230,12 @@ export default function InventoryNext() {
   // The "Used in" count opens the drawer scrolled to where the good is used.
   const [usedFirst, setUsedFirst] = useState(false);
   useEffect(() => {
-    if (openParam === null) openedHere.current = false;
+    if (openParam !== null) return;
+    openedHere.current = false;
+    // Browser Back closes the drawer without closeItem: the next good must not inherit
+    // the Used in scroll or the count sheet the last one was opened for.
+    setCountFirst(false);
+    setUsedFirst(false);
   }, [openParam]);
   const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry' | 'loosefoods'>(null);
   // r108 g14: the goods the nutrition lane walks, fixed when it opens so a save does not reshuffle it.

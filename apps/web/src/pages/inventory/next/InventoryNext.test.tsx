@@ -1374,6 +1374,29 @@ describe('INV-W38 — the view is the URL', () => {
     expect(seen.path).toBe('/home');
   });
 
+  it('(g1) after Back closes a drawer opened by its Used in count, the next good does not open scrolled to Used in', async () => {
+    mock.data = data({ rows: [row({ id: 'a', wineId: 'wa', name: 'Ankara Red', producer: 'A', usedIn: 3 }), row({ id: 'b', wineId: 'wb', name: 'Istanbul White', producer: 'B', usedIn: 2 })] });
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      const seen = renderAt('/inventory', ['/home']);
+      const toUsed = () => spy.mock.contexts.filter((el) => (el as Element).id === 'ivd-used').length;
+      fireEvent.click(screen.getByLabelText(/Used in 3 recipes/));
+      await waitFor(() => expect(toUsed()).toBe(1));
+      // Browser Back is a history step: it drops ?open= without Close ever running.
+      act(() => seen.back());
+      expect(screen.queryByTestId('ivd-cards')).toBeNull();
+      spy.mockClear();
+      fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+      expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+      await new Promise((r) => setTimeout(r, 400));
+      expect(toUsed()).toBe(0);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
   it('(g) Close on a drawer a link opened closes in place and never leaves the page', () => {
     mock.data = data({ rows: two() });
     const seen = renderAt('/inventory?open=b', ['/home']);
