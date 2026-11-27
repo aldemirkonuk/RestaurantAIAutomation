@@ -6,8 +6,8 @@
 import { HISTORY_MAX_ROWS, readAmount, readHistoryCsv } from "./history-import";
 
 const TODAY = "2026-11-27";
-const read = (csv: string, moneySet = true) =>
-  readHistoryCsv(csv, { todayDay: TODAY, moneySet });
+const read = (csv: string, moneySet = true, currency?: string | null) =>
+  readHistoryCsv(csv, { todayDay: TODAY, moneySet, currency });
 
 describe("readHistoryCsv", () => {
   it("reads Square's item sales export and sums variation rows into one sale per day and item", () => {
@@ -114,5 +114,51 @@ describe("readHistoryCsv", () => {
     expect(readAmount("1.234,50")).toBe(1234.5);
     expect(readAmount("₺300")).toBe(300);
     expect(readAmount("12.3.4")).toBeNull();
+  });
+
+  it("a lone separator before three digits is refused by name, never guessed (12.500 is not 12.5)", () => {
+    expect(readAmount("12.500")).toBeNull();
+    expect(readAmount("12,500")).toBeNull();
+    expect(readAmount("12.500,00")).toBe(12500);
+    const r = read("Date,Item,Qty,Net Sales\n2026-11-20,Kebab,3,12.500\n2026-11-20,Soup,2,8.50");
+    expect(r.sales.map((s) => s.itemName)).toEqual(["Kebab", "Soup"]);
+    // Soup's "8.50" says the file writes a decimal point, so 12.500 is 12.5 here.
+    expect(r.sales[0].net).toBe(12.5);
+    const alone = read("Date,Item,Qty,Net Sales\n2026-11-20,Kebab,3,12.500");
+    expect(alone.sales).toEqual([]);
+    expect(alone.refusedCount).toBe(1);
+    expect(alone.refused[0]).toContain("12.500");
+    expect(alone.refused[0]).toContain("two ways");
+  });
+
+  it("the file decides the thousands separator, the way it decides slashed dates", () => {
+    const eu = read("Date,Item,Qty,Net Sales\n2026-11-20,Kebab,3,\"12.500\"\n2026-11-20,Soup,2,\"1.234,50\"");
+    expect(eu.sales.find((s) => s.itemName === "Kebab")?.net).toBe(12500);
+    const us = read("Date,Item,Qty,Net Sales\n2026-11-20,Kebab,3,\"12,500\"\n2026-11-20,Soup,2,\"1,234.50\"");
+    expect(us.sales.find((s) => s.itemName === "Kebab")?.net).toBe(12500);
+    // Both styles in one file: no convention, so the ambiguous one is refused.
+    const mixed = read("Date,Item,Qty,Net Sales\n2026-11-20,A,1,\"1,234.50\"\n2026-11-20,B,1,\"1.234,50\"\n2026-11-20,C,1,\"12.500\"");
+    expect(mixed.sales.map((s) => s.itemName)).toEqual(["A", "B"]);
+    expect(mixed.refusedCount).toBe(1);
+  });
+
+  it("a quantity of 1.500 is refused the same way", () => {
+    const r = read("Date,Item,Qty\n2026-11-20,Flour,1.500");
+    expect(r.sales).toEqual([]);
+    expect(r.refused[0]).toContain("the quantity");
+  });
+
+  it("drops the net, keeps the quantity and says so when the net is in another currency than the house's", () => {
+    const csv = "Date,Item,Qty,Net Sales\n2026-11-20,House Red,4,$32.00\n2026-11-20,Bread,2,\"€4.00\"";
+    const eur = read(csv, true, "EUR");
+    expect(eur.sales.find((s) => s.itemName === "House Red")).toMatchObject({ qty: 4, net: null });
+    expect(eur.sales.find((s) => s.itemName === "Bread")).toMatchObject({ qty: 2, net: 4 });
+    expect(eur.netForeignCount).toBe(1);
+    expect(eur.netForeign[0]).toContain("$");
+    expect(eur.netForeign[0]).toContain("EUR");
+    expect(eur.refusedCount).toBe(0);
+    // A dollar sign is fine for a dollar house.
+    expect(read(csv, true, "USD").sales.find((s) => s.itemName === "House Red")?.net).toBe(32);
+    expect(read(csv, true, "USD").netForeignCount).toBe(1); // the euro row
   });
 });
