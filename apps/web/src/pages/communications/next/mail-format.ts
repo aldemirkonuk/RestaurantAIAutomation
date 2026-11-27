@@ -44,6 +44,12 @@ export interface MailPersonRow {
    * predates it. Only `true` is ever drawn.
    */
   newToYou?: boolean | null;
+  /**
+   * Status of the newest letter to this person when it has not left (queued,
+   * refused, pulled back, failed). Null when there is none; absent from a
+   * gateway that predates it.
+   */
+  unsentStatus?: string | null;
 }
 
 export interface MailPeoplePage {
@@ -1017,6 +1023,22 @@ export function noReplyFailWords(err: unknown, marking: boolean): string {
 
 /** The word on a row that is new to the person reading it (r36 mail gap 6). */
 export const NEW_TO_YOU = 'New';
+
+/**
+ * What a person's row says when the newest letter to them has not left, in the
+ * words the thread page uses. Null for a missing status and for one that means
+ * the letter did go (a person's row never claims more than the thread does).
+ */
+export function unsentChipText(status: string | null | undefined): string | null {
+  if (status == null || String(status).trim() === '') return null;
+  const state = sendState(status);
+  if (state === 'sent' || state === 'closed') return null;
+  if (state === 'queued') return 'Queued · not sent yet';
+  if (state === 'cancelled') return 'Pulled back · not sent';
+  if (state === 'unconfirmed') return 'Sent? Not confirmed';
+  if (state === 'sending') return 'Sending · not confirmed yet';
+  return 'Not sent';
+}
 
 /** What POST /mail/thread/seen is told when a thread is on screen. */
 export interface SeenMark {
