@@ -26,13 +26,14 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
 import { MailSetup } from './MailSetup';
+import { FadeAway, MailMotionStyles, enterDelay, useEnteringKeys } from './mail-motion';
 import type { LetterFacts } from './MailThread';
 
 // The letters are read only once a thread is opened, so their code is fetched then;
@@ -131,25 +132,26 @@ function WaitingDot({ on }: { on: WaitingOn }) {
  * gateway (absent) draw nothing, and the row's other facts still stand.
  */
 function NewChip({ on }: { on: boolean | null | undefined }) {
-  if (on !== true) return null;
   return (
-    <span
-      data-testid="new-to-you"
-      style={{
-        fontFamily: MONO,
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        padding: '1px 6px',
-        borderRadius: 4,
-        color: 'var(--paper-0, #FAF7F1)',
-        background: 'var(--seal, #1A5E6B)',
-        alignSelf: 'center',
-      }}
-    >
-      {NEW_TO_YOU}
-    </span>
+    <FadeAway show={on === true}>
+      <span
+        data-testid="new-to-you"
+        style={{
+          fontFamily: MONO,
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+          padding: '2px 7px',
+          borderRadius: 4,
+          color: 'var(--paper-0, #FAF7F1)',
+          background: 'var(--seal, #1A5E6B)',
+          alignSelf: 'center',
+        }}
+      >
+        {NEW_TO_YOU}
+      </span>
+    </FadeAway>
   );
 }
 
@@ -162,8 +164,8 @@ function UnsentChip({ status }: { status: string | null | undefined }) {
       data-testid="mail-unsent"
       style={{
         fontFamily: MONO,
-        fontSize: 10,
-        padding: '1px 6px',
+        fontSize: 11,
+        padding: '2px 7px',
         borderRadius: 4,
         border: '1px dashed var(--ink-4, #665D50)',
         color: 'var(--ink-2, #4F473C)',
@@ -256,10 +258,26 @@ const NO_NAME = {
   guest: 'A guest with no name on file',
 } as const;
 
-function PersonRow({ p, on, onOpen, onLook }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void; onLook: () => void }) {
+function PersonRow({
+  p,
+  on,
+  onOpen,
+  onLook,
+  enterPlace,
+}: {
+  p: MailPersonRow;
+  on: WaitingOn;
+  onOpen: () => void;
+  onLook: () => void;
+  enterPlace?: number;
+}) {
   const unsent = unsentWords(p.unsentStatus ?? null);
   return (
-    <li style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
+    <li
+      className={enterPlace === undefined ? undefined : 'mail-fade-in'}
+      data-entering={enterPlace === undefined ? undefined : ''}
+      style={{ borderBottom: '1px solid var(--paper-2, #EAE4D8)', ...(enterPlace === undefined ? null : enterDelay(enterPlace)) }}
+    >
       <button
         type="button"
         data-testid="mail-person"
@@ -285,8 +303,9 @@ function PersonRow({ p, on, onOpen, onLook }: { p: MailPersonRow; on: WaitingOn;
             <span
               style={{
                 fontFamily: MONO,
-                fontSize: 10,
-                padding: '1px 6px',
+                fontSize: 11,
+                letterSpacing: '0.06em',
+                padding: '2px 7px',
                 borderRadius: 4,
                 border: '1px solid var(--paper-2, #EAE4D8)',
                 color: 'var(--ink-2, #4F473C)',
@@ -296,7 +315,7 @@ function PersonRow({ p, on, onOpen, onLook }: { p: MailPersonRow; on: WaitingOn;
             </span>
           )}
           {p.openThreads > 1 && <span style={QUIET}>{p.openThreads} open threads</span>}
-          <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+          <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
             {fmtWhen(p.lastAt)}
           </span>
         </span>
@@ -378,9 +397,9 @@ function PersonThreads({
                       {t.subject ?? 'No subject'}
                     </span>
                     {t.orderNumber && (
-                      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-2, #4F473C)' }}>order {t.orderNumber}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>order {t.orderNumber}</span>
                     )}
-                    <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+                    <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
                       {fmtWhen(t.lastAt)}
                     </span>
                   </span>
@@ -451,6 +470,16 @@ function People({
   const pages = q.data?.pages ?? [];
   // The gateway has no kind filter on this route, so the list narrows to the chosen kind here.
   const people = pages.flatMap((p) => p.people).filter((p) => kind === 'all' || mailKindOf(p) === kind);
+  const listIdentity = `${kind}|${waitingOnly ? 'w' : 'a'}|${search}`;
+  const ready = Boolean(q.data) && !q.isPlaceholderData;
+  const entering = useEnteringKeys(
+    people.map((p) => p.key),
+    listIdentity,
+    ready,
+  );
+  // Re-key only when the new read lands, not while the old list stands in as a placeholder.
+  const shown = useRef(listIdentity);
+  if (ready) shown.current = listIdentity;
   const storedKinds = pages[0]?.storedKinds ?? null;
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
@@ -461,6 +490,7 @@ function People({
   }, [settled, house, firstPageCount]);
   return (
     <section aria-label="People" className="grid gap-2" style={{ fontFamily: SANS }}>
+      <MailMotionStyles />
       <p data-testid="stored-kinds" style={{ ...QUIET, margin: 0 }}>
         {storedKindsLine(storedKinds)}
       </p>
@@ -492,9 +522,15 @@ function People({
           )}
         </p>
       ) : (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <ul
+          // A new search, filter or kind is a different list: it crossfades in as a whole. More of the same list
+          // adds only the new rows, each fading in; the rows already there never move (r102 mail-motion-4).
+          key={shown.current}
+          className="mail-fade-in"
+          style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}
+        >
           {people.map((p) => (
-            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} onLook={() => lookAhead.threads(p.key)} />
+            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} onLook={() => lookAhead.threads(p.key)} enterPlace={entering.get(p.key)} />
           ))}
         </ul>
       )}

@@ -290,6 +290,7 @@ describe('which address letters leave from', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByTestId('setup-saved').textContent).toBe('Saved.'));
     expect(screen.getByTestId('setup-saved')).toBe(region);
+    expect(region.className).toBe('mail-fade-in');
     expect(region.getAttribute('role')).toBe('status');
     expect(region.getAttribute('aria-live')).toBe('polite');
   });
