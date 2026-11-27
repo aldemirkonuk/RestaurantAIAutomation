@@ -94,6 +94,7 @@ import RecipeCard from './RecipeCard';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
 import { SHEET_HOLD_ROOM } from './holdRoom';
 import { recipeWords, type RecipeWords } from './recipeWords';
+import { useHouseDate } from './useHouseDate';
 import {
   useCanEditRecipe,
   useCostPreview,
@@ -242,12 +243,6 @@ function count(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function when(iso: string): string {
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return 'at a time that was not recorded';
-  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
 const UUIDISH = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
 
 /** The old recipe box's rows exactly as they were written, for anyone to read. */
@@ -357,6 +352,8 @@ function Versions({
 }) {
   const v = useRecipeVersions(cocktailId, true);
   const [open, setOpen] = useState<string | null>(null);
+  // The house's form, as its money is, not the reader's browser's (r109 walk N5).
+  const sayDate = useHouseDate();
   if (v.loading) return <p className="cl-note" role="status">Reading the earlier versions…</p>;
   if (v.error || !v.data) {
     return (
@@ -378,7 +375,7 @@ function Versions({
             onClick={() => setOpen((o) => (o === x.versionId ? null : x.versionId))}
           >
             <span className="cl-num">Version {x.version}</span>
-            <span className="cl-dim"> · {when(x.createdAt)}</span>
+            <span className="cl-dim"> · {sayDate(x.createdAt, true) ?? 'at a time that was not recorded'}</span>
             {x.authorName ? (
               <span className="cl-dim"> · {x.authorName}</span>
             ) : x.author && !UUIDISH.test(x.author) ? (
