@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidationArguments,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ISO_4217_CODES } from "../../common/iso-4217";
@@ -19,8 +20,17 @@ import {
   PLACE_ID_TOO_LONG,
 } from "../house-opening";
 
+const NAME_NEEDED = "Your name is needed, so nothing was recorded.";
+const nameLengthMessage = (a: ValidationArguments) =>
+  typeof a.value === "string" ? CAP.person.message : NAME_NEEDED;
+
 export class RegisterRestaurantDto {
-  @IsString() @MaxLength(255, CAP.person) name: string;
+  // A missing name used to read "Your name is longer than 255 characters, so
+  // nothing was recorded" beside the type message: the length rule also fails
+  // on undefined. Each rule now says only what is true of the value it saw.
+  @IsString({ message: NAME_NEEDED })
+  @MaxLength(255, { message: nameLengthMessage })
+  name: string;
   @IsEmail() email: string;
   @MinLength(8) password: string;
   @IsString() @MaxLength(249, CAP.name) restaurantName: string;
