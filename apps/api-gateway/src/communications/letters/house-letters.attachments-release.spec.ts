@@ -193,7 +193,9 @@ describe("a letter's files at release", () => {
     t.letter().email_headers.files = [{ id: t.uploaded[0].id, sha256: sha(big), size: big.length }];
     await t.letters.dispatchDue(LATER());
     expect(t.sent).toHaveLength(0);
-    expect(t.failure()).toMatch(/over 5 MB/);
+    // The MIME builder caps too (g6a); this pins the release's own check,
+    // which refuses before the token is fetched.
+    expect(t.failure()).toMatch(/over 5 MB.*whole letter was held back/);
   });
 
   it("a sealed list that cannot be read is refused", async () => {
