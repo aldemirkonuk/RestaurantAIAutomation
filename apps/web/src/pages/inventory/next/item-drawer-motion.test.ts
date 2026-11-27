@@ -26,6 +26,12 @@ describe('the detail card opens by rows, closes at once', () => {
     expect(closed).toContain('grid-template-rows: 0fr');
     expect(closed).not.toContain('transition');
   });
+  it('the clip leaves room for a focus ring on an edge control: 4 px in, 4 px back out (WCAG 2.4.7, r102 review)', () => {
+    const clip = rule('.ivd-evclip');
+    expect(clip).toContain('overflow: hidden');
+    expect(clip).toContain('padding-inline: 4px');
+    expect(clip).toContain('margin-inline: -4px');
+  });
   it('reduced motion gets the end state at once', () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.ivd-evwrap\[data-open='true'\] \{\s*transition: none;/);
     expect(css).toContain("animation: none");

@@ -146,6 +146,9 @@ button.ivd-card:active {
 .ivd-evclip {
   min-height: 0;
   overflow: hidden;
+  /* The 2 px focus ring sits 2 px out (inventory-next.css .iv-focus): room for it so an edge control keeps its ring. */
+  padding-inline: 4px;
+  margin-inline: -4px;
 }
 .ivd-evwrap[data-open='true'] .ivd-evidence {
   animation: ivd-ev-in 160ms ease-out 40ms both;
