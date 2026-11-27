@@ -33,8 +33,12 @@ describe('the register nav holds its width above 640 px', () => {
     expect(block).not.toMatch(/transition|animation|opacity/);
   });
 
-  it('the phone rule beside it is unchanged', () => {
+  it('the phone rule keeps its height and takes its own header row from first paint', () => {
     const block = css.match(/@media \(max-width: 640px\) \{\s*\.cl-spine-nav \{[^}]*\}\s*\}/)?.[0] ?? '';
     expect(block).toMatch(/min-height: 64px;/);
+    // Without its own row the nav sits beside the wordmark while one register is listed, then wraps below it
+    // when the house's set lands: the header grows 64 to 100 px (walk r100 N1).
+    expect(block).toMatch(/flex-basis: 100%;/);
+    expect(block).not.toMatch(/transition|animation|opacity/);
   });
 });

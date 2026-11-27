@@ -1180,9 +1180,12 @@ textarea.cl-field {
 /* The register nav ("Wines ... Soft drinks, Menu") sits in the page header. At a phone it wraps to two
    rows of 30px buttons with a 4px gap once the web font lands; before that it can paint on one row, and
    the header then drops 34px and drags the page with it (walk r106: owner 375, CLS 0.2195 at 536 ms).
-   Its two-row room is held from first paint. No transition, and none under reduced motion (ADR 0112). */
+   Its two-row room is held from first paint. No transition, and none under reduced motion (ADR 0112).
+   The room holds the nav's height, not which header row it sits on: with one register (about 110 px beside Menu) it fits
+   beside the wordmark, and when the house's set lands it wraps to its own row, so the header grew 64 to 100 px (walk r100 N1,
+   owner 375 on /cocktails, CLS 0.2204). flex-basis: 100% gives it its own row from first paint. */
 @media (max-width: 640px) {
-  .cl-spine-nav { min-height: 64px; align-content: flex-start; }
+  .cl-spine-nav { min-height: 64px; align-content: flex-start; flex-basis: 100%; }
 }
 /* Above 640 px the nav sits at the right of the header at its content's width. While the readout is unread it holds
    one register (122 px), and when the readout lands it holds the house's set (473 px), so its left edge moved 351 px
