@@ -324,6 +324,8 @@ export default {
         'slide-in-up': 'slide-in-up 0.3s ease-out',
         'fade-in': 'fade-in 0.2s ease-out',
         'popover-in': 'fade-in 120ms ease-out',
+        // r109 onboarding g2: a state swap in a held slot (ADR 0112: motion-safe only, no exit).
+        'swap-in': 'fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1)',
         'scale-in': 'scale-in 0.2s ease-out',
         'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',
