@@ -1473,8 +1473,17 @@ export class MenusService {
     // choosing it again answered "already_current" with zero lines: a switch
     // that could never be finished, reported as one that had been. Now a failed
     // read throws here and nothing is changed.
-    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
-    const version = await this.readVersionRow(restaurantId, menuId);
+    // The lines and the version row need only the ids, so they are asked
+    // together. Settled, not Promise.all, so the lines' failure still wins
+    // when both fail, exactly as when the two reads ran one after the other.
+    const [linesRead, versionRead] = await Promise.allSettled([
+      this.readLines(menuId, restaurantId),
+      this.readVersionRow(restaurantId, menuId),
+    ]);
+    if (linesRead.status === "rejected") throw linesRead.reason;
+    if (versionRead.status === "rejected") throw versionRead.reason;
+    const lines = linesRead.value as unknown as InsertedMenuItem[];
+    const version = versionRead.value;
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
@@ -2221,6 +2230,49 @@ export class MenusService {
     return { default_threshold_min: thresholdMin, threshold_configured: true };
   }
 
+  /**
+   * The progress row with the active-menu self-heal of getOnboardingProgress
+   * and nothing else: no restaurants read. Same heal, same warning text, so
+   * the completed_at rule in updateOnboardingProgress sees what the GET shows.
+   */
+  private async readProgressHealed(userId: string) {
+    const { data, error } = await this.dbService.supabase
+      .from("user_onboarding_progress")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data)
+      throw new NotFoundException(
+        "Onboarding progress not found for this user",
+      );
+
+    let menuUploaded = !!data.menu_uploaded;
+    if (!menuUploaded) {
+      const { data: activeMenu } = await this.dbService.supabase
+        .from("restaurant_menus")
+        .select("id")
+        .eq("restaurant_id", data.restaurant_id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (activeMenu) {
+        menuUploaded = true;
+        const { error: healErr } = await this.dbService.supabase
+          .from("user_onboarding_progress")
+          .update({ menu_uploaded: true })
+          .eq("id", data.id);
+        if (healErr) {
+          this.logger.warn(
+            `Failed to self-heal menu_uploaded for onboarding row ${data.id}: ${healErr.message}`,
+          );
+        }
+      }
+    }
+    return { ...data, menu_uploaded: menuUploaded };
+  }
+
   async updateOnboardingProgress(
     userId: string,
     dto: UpdateOnboardingProgressDto,
@@ -2234,8 +2286,11 @@ export class MenusService {
     if (dto.checklist_dismissed !== undefined)
       updates.checklist_dismissed = dto.checklist_dismissed;
 
-    // Auto-set completed_at when all three tasks become true
-    const current = await this.getOnboardingProgress(userId);
+    // Auto-set completed_at when all three tasks become true. Only the row and
+    // the active-menu heal can change that answer; the restaurants threshold
+    // read getOnboardingProgress also makes is dropped here (the reply is the
+    // update row alone), so it is not made.
+    const current = await this.readProgressHealed(userId);
     const merged = { ...current, ...updates };
     if (
       merged.menu_uploaded &&
