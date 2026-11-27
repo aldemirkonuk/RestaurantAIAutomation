@@ -372,6 +372,27 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(restate!.args.p_restaurant_id).toBe(REST);
   });
 
+  it("r102 F1 - a credit claimed back is not also charged to closed checks: 12 billed at 10 with 2 rejected restates at 10.00", async () => {
+    const { db, calls } = makeDb({ quantity: 12, bottles_total: 12 });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 12,
+      invoiceUnitPrice: 10,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      rejectedQuantity: 2,
+      priceOverrideReason: "two broken in the case",
+    } as any);
+
+    const restate = calls.rpc.find((c) => c.name === "restate_sale_cost");
+    expect(restate).toBeDefined();
+    // (12 x 10 - the 20.00 credit) / 10 accepted. 12.00 would charge the two
+    // broken bottles to the good ones AND claim them back.
+    expect(restate!.args.p_unit_cost).toBeCloseTo(10, 10);
+    const reval = calls.rpc.find((c) => c.name === "revalue_lot");
+    expect(reval!.args.p_unit_cost).toBeCloseTo(10, 10);
+  });
+
   it("an equal-quantity price correction still reaches the lot", async () => {
     // ledgerDelta is 0 here (accepted == already stocked). Pre-fix this was the
     // silent case: no movement, so the corrected price landed nowhere at all.

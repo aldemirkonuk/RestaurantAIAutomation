@@ -781,6 +781,7 @@ export function computeMatch(input: MatchInput): MatchResult {
   // what is claimed back, which is the price each good bottle was billed at
   // (plus its share of charges) - the same figure the delivery path settles.
   // Free goods still lower the cost: nothing is claimed for them.
+  // (r102 F1, #2516, found the same double count on the verify path.)
   const claimedBack =
     hasInvoice && invoiceUnitPrice != null ? unitsOwed * invoiceUnitPrice : 0;
   const effectiveUnitCost =
