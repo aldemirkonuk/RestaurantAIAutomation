@@ -104,6 +104,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     addedTool as any,
     experimentEnded as any,
     mailGrantAbsent as any,
+    stub("price_moved") as any,
   );
   return {
     service,
@@ -150,6 +151,7 @@ describe("arming", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "price_moved",
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
@@ -232,7 +234,7 @@ describe("arming", () => {
 });
 
 describe("the two cadences", () => {
-  it("the fast sweep runs the seven event producers and opens a run row each", async () => {
+  it("the fast sweep runs the eight event producers and opens a run row each", async () => {
     const { service, ledger } = build();
     await service.runFastForTenant(TENANT, new Date("2026-09-03T12:00:00Z"));
     expect(ledger.openRun.calls.map((c: any[]) => c[1])).toEqual([
@@ -240,11 +242,12 @@ describe("the two cadences", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "price_moved",
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
     ]);
-    expect(ledger.closeRun.calls).toHaveLength(7);
+    expect(ledger.closeRun.calls).toHaveLength(8);
   });
 
   it("[REVERT-FAILS] one producer throwing does not cost the others their run", async () => {
@@ -263,6 +266,7 @@ describe("the two cadences", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "price_moved",
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
@@ -298,7 +302,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all ten producers, their schedule and their next tick", async () => {
+  it("names all eleven producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -309,6 +313,7 @@ describe("statusFor — what the page is allowed to say", () => {
       "ceiling_held",
       "delivery_recorded",
       "invoice_confirmed",
+      "price_moved",
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
@@ -317,22 +322,22 @@ describe("statusFor — what the page is allowed to say", () => {
       "market_price",
     ]);
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[6].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[7].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[9].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[8].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
+    expect(status.producers[10].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all ten, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all eleven, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 10 producers/);
-    expect(status.producers).toHaveLength(10);
+    expect(status.armingNote).toMatch(/arms all 11 producers/);
+    expect(status.producers).toHaveLength(11);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 10 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 11 producers at once/s,
       );
     }
   });
