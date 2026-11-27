@@ -1119,23 +1119,39 @@ export function setupFailWords(err: unknown, act: SetupAct): string {
  * with. Null when the thread has no such letter or no vendor.
  */
 export interface MailAnswer {
-  providerId: string;
+  /** The vendor; null on a reply to a team member or a guest (then `person` is set). */
+  providerId: string | null;
   answers: string;
   subject: string;
+  /**
+   * A team or guest person who wrote to the house: the reply goes to this exact
+   * address, on that thread, and nowhere else (r104 mail-gap g1, ADR 0396).
+   */
+  person?: { kind: 'team' | 'guest'; address: string; name: string | null };
 }
 
 export function answerFor(
   head: Pick<MailThreadPage, 'subject' | 'person'> | null,
   letters: readonly MailMessage[],
 ): MailAnswer | null {
-  const providerId = head?.person?.providerId;
-  if (!providerId) return null;
+  const providerId = head?.person?.providerId ?? null;
+  const kind = mailKindOf(head?.person);
+  // A team or guest person has no vendor: their key is kind:address, and the
+  // address is the one that wrote (ADR 0396).
+  const address =
+    head?.person && kind !== 'vendor' && head.person.key.startsWith(`${kind}:`)
+      ? head.person.key.slice(kind.length + 1)
+      : '';
+  if (!providerId && !address) return null;
   // Mail only: a WhatsApp letter has no mail thread to answer. A row with
   // no channel is from before the column, and those are mail.
   const answerable = letters.filter(
     (m) =>
       (!m.channel || m.channel.toLowerCase() === 'email') &&
-      (m.direction === 'inbound' || m.sentAt !== null),
+      (m.direction === 'inbound' || m.sentAt !== null) &&
+      // A person with no vendor is answered on what they wrote: the newest
+      // letter that arrived from them, never an auto-reply or the house's own.
+      (providerId !== null || (m.direction === 'inbound' && !m.automatic)),
   );
   const last = answerable.reduce<MailMessage | null>(
     (best, m) => (best === null || letterAt(m) >= letterAt(best) ? m : best),
@@ -1147,6 +1163,9 @@ export function answerFor(
     providerId,
     answers: last.id,
     subject: subject === '' ? '' : /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`,
+    ...(!providerId && kind !== 'vendor'
+      ? { person: { kind, address, name: head?.person?.name ?? null } }
+      : {}),
   };
 }
 

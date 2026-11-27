@@ -95,7 +95,7 @@ function mount(at = '/communications?tab=mail') {
   render(
     <MemoryRouter initialEntries={[at]}>
       <QueryClientProvider client={qc}>
-        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} />
+        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={vi.fn()} onAnswer={vi.fn()} />
         <Here />
       </QueryClientProvider>
     </MemoryRouter>,
@@ -306,17 +306,24 @@ describe('the letters', () => {
 });
 
 describe('a thread with a team member', () => {
-  it('says who it is with, and offers no vendor reply to someone who is not a vendor', async () => {
+  it('says who it is with, and offers a reply to the address that wrote (ADR 0396)', async () => {
     mount('/communications?tab=mail&thread=gm%3Aabc');
     await screen.findAllByTestId('mail-letter');
     expect(screen.getByTestId('thread-kind')).toHaveTextContent('team');
     expect(screen.getByTestId('thread-arrived-only')).toHaveTextContent(ARRIVED_ONLY);
-    expect(screen.queryByTestId('write-thread-reply')).toBeNull();
+    expect(screen.getByTestId('write-thread-reply')).toBeInTheDocument();
   });
 
-  it('answerFor offers nothing for a person with no provider', () => {
+  it('answerFor answers a guest at the address that wrote, with no vendor (ADR 0396)', () => {
+    const head = { subject: 'Rota', person: { key: 'guest:a@b.co', kind: 'guest' as const, providerId: null, name: 'A Guest' } };
+    const got = answerFor(head, [letter({ id: 'a' }) as never]);
+    expect(got).toMatchObject({ providerId: null, answers: 'a', person: { kind: 'guest', address: 'a@b.co', name: 'A Guest' } });
+  });
+
+  it('answerFor offers nothing when only the house has written to a person', () => {
     const head = { subject: 'Rota', person: { key: 'guest:a@b.co', kind: 'guest' as const, providerId: null, name: 'a@b.co' } };
-    expect(answerFor(head, [letter({ id: 'a' }) as never])).toBeNull();
+    expect(answerFor(head, [letter({ id: 'a', direction: 'outbound', sentAt: '2026-01-01T00:00:00Z' }) as never])).toBeNull();
+    expect(answerFor(head, [letter({ id: 'b', automatic: true }) as never])).toBeNull();
   });
 });
 
