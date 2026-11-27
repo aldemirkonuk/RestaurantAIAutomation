@@ -18,6 +18,7 @@ vi.mock('../../services/api/menus', () => ({
   reviewMenuItem: vi.fn(),
 }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }))
 
 import HouseContents from '../HouseContents'
 import HouseMenu from '../HouseMenu'

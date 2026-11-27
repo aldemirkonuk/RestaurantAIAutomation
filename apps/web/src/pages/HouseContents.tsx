@@ -13,6 +13,23 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
 import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
 import { settingsApi } from '../services/api/settings'
+import { documentsApi } from '../services/api/documents'
+import { skipFolio } from '../services/api/arrival'
+import { useAuth } from '../contexts/AuthContext'
+
+/** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
+const PAPER_MAX_BYTES = 10 * 1024 * 1024
+
+type PaperState = 'ask' | 'sending' | 'sent' | 'failed' | 'unconfirmed' | 'too-big' | 'skipped' | 'skip-unrecorded'
+
+function fileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
 
 /** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
 function proofSaid(standing: ProofStanding): string {
@@ -59,6 +76,10 @@ function vendorNotSaved(cause: unknown, name: string): string {
 
 export default function HouseContents() {
   const navigate = useNavigate()
+  // POST /arrival/skip is owner or manager only (arrival.service.ts manage()):
+  // a staff skip would be refused for good, and said as a passing failure.
+  const { user } = useAuth()
+  const canSkip = user?.role === 'owner' || user?.role === 'manager'
   const proof = readProof()
   const standing = proof ? proofStanding(proof.items) : null
   const [supplier, setSupplier] = useState('')
@@ -164,6 +185,39 @@ export default function HouseContents() {
   const lookAgain = () => {
     setMenuStanding(null)
     setReadCount((count) => count + 1)
+  }
+
+  // Folio 0 (ADR 0144 §1): the last invoice through the door, dropped here.
+  // One upload per paper, with the session's house; a second drop while one is
+  // on its way is ignored. Nothing is read back: proposing registers from the
+  // paper is ADR 0144's known gap, and the row says so. Skippable, and the
+  // skip is recorded on the house's opening book (`evidence`).
+  const [paper, setPaper] = useState<PaperState>('ask')
+  const paperSending = useRef(false)
+  const sendPaper = async (file: File | undefined) => {
+    if (!file || paperSending.current) return
+    if (file.size > PAPER_MAX_BYTES) {
+      setPaper('too-big')
+      return
+    }
+    paperSending.current = true
+    setPaper('sending')
+    try {
+      const contentBase64 = await fileBase64(file)
+      await documentsApi.upload({ contentBase64, filename: file.name, mimeType: file.type || undefined, source: 'upload' })
+      setPaper('sent')
+    } catch (cause) {
+      paperSending.current = false
+      setPaper(isUnconfirmedWrite(cause) ? 'unconfirmed' : 'failed')
+    }
+  }
+  const skipPaper = async () => {
+    setPaper('skipped')
+    try {
+      await skipFolio('evidence')
+    } catch {
+      setPaper('skip-unrecorded')
+    }
   }
 
   const saveSupplier = async () => {
@@ -406,11 +460,71 @@ export default function HouseContents() {
             </form>
           )}
 
-          {/* H-1: nothing is kept here. Receipts is where an invoice is read.
-              r36 gap 8: the checklist calls the first invoice the way to the
-              house's costs, so it is not said here as "not required". */}
-          <p className="py-6 font-serif text-2xl">
+          {/* r36 gap 8: the checklist calls the first invoice the way to the
+              house's costs, so it is not said here as "not required". The
+              drop (DD-r108-10) sends the paper to Receipts; the link stays. */}
+          <div className="py-6 font-serif text-2xl">
             <span className="block text-xs uppercase tracking-[0.12em] text-[#1a5e6b]">Next · for your costs</span>
+            {paper === 'sent' ? (
+              <p className="mt-2" role="status">
+                Your last invoice is on Receipts.{' '}
+                <Link to="/receipts" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                  See it on Receipts
+                </Link>
+              </p>
+            ) : paper === 'sending' ? (
+              <p className="mt-2 text-[#6d685f]" role="status">Sending your last invoice…</p>
+            ) : paper === 'skipped' ? (
+              <p className="mt-2 text-[#6d685f]" data-testid="house-paper-skipped">Skipped for now.</p>
+            ) : paper === 'skip-unrecorded' ? (
+              <p className="mt-2 text-[#6d685f]" role="alert">
+                Skipped here, but the house could not note the skip just now.
+              </p>
+            ) : (
+              <div
+                className="mt-3 border border-dashed border-[#211f1b]/30 p-4"
+                data-testid="house-paper-drop"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  void sendPaper(event.dataTransfer?.files?.[0])
+                }}
+              >
+                <label className="flex min-h-[44px] cursor-pointer items-center text-xl">
+                  Drop your last invoice here, or choose a photo or PDF.
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    aria-label="Your last invoice"
+                    className="sr-only"
+                    onChange={(event) => void sendPaper(event.target.files?.[0])}
+                  />
+                </label>
+                {paper !== 'ask' && (
+                  <p role="alert" className="mt-2 font-sans text-sm text-red-700">
+                    {paper === 'too-big'
+                      ? 'That file is over 10 MB. Try a photo of the page, or send it on Receipts.'
+                      : paper === 'unconfirmed'
+                        ? 'We could not tell whether it arrived: the connection dropped. Look on Receipts before sending it again.'
+                        : 'We could not send it just now. Try again, or send it on Receipts.'}
+                  </p>
+                )}
+                {canSkip && (
+                  <button
+                    type="button"
+                    onClick={() => void skipPaper()}
+                    className="mt-2 min-h-[44px] font-sans text-sm text-[#6d685f] underline underline-offset-4"
+                  >
+                    Skip for now
+                  </button>
+                )}
+              </div>
+            )}
+            {(paper === 'ask' || paper === 'sent') && (
+              <span className="mt-2 block font-sans text-sm text-[#6d685f]">
+                It is not read into the house&apos;s registers yet.
+              </span>
+            )}
             <span className="mt-2 block">
               Costs come from the invoices you check. Read your last one on{' '}
               <Link to="/receipts" className="underline underline-offset-4">
@@ -427,7 +541,7 @@ export default function HouseContents() {
                 </Link>
               </span>
             )}
-          </p>
+          </div>
 
           <KeepOnPhone />
 
