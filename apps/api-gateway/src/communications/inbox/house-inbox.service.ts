@@ -486,13 +486,45 @@ export class HouseInboxService {
     let highWater = cursor;
 
     try {
-      const listing = wide
+      // Each queue is oldest-first. The wider read has two (the wide query and the vendor query beside it); the
+      // vendor-only read has one, in the order `listSince` gave it. ONE budget of MAX_MESSAGES_PER_TICK fetches
+      // covers them all (r103 fixer): a vendor message is never fetched on top of the wide 250.
+      const queues: GmailListed[][] = wide
         ? await this.listWide(token, cursor, addresses)
-        : { ids: await this.listSince(token, addresses, cursor), horizonId: null };
-      const ids = listing.ids;
-      listed = ids.length;
-      /** When each fetched message arrived, for the listing's horizon below. */
-      const arrivedAt = new Map<string, number>();
+        : [await this.listSince(token, addresses, cursor)];
+      listed = queues.reduce((n, q) => n + q.length, 0);
+      type Fetched = { listedMessage: GmailListed; message: NonNullable<Awaited<ReturnType<HouseInboxService["getMessage"]>>> };
+      /** The fetched, not yet filed, front of each queue. */
+      const heads: Array<Fetched | null> = queues.map(() => null);
+      let fetches = 0;
+      /**
+       * The oldest message left across the queues, fetched lazily and under the budget. Merging by arrival time
+       * means the cursor can only pass what was read: whatever is not fetched when the budget ends is newer than
+       * everything filed, in its own queue and in the other.
+       */
+      const takeOldest = async (): Promise<Fetched | null> => {
+        for (let i = 0; i < queues.length; i += 1) {
+          while (heads[i] === null && queues[i].length > 0 && fetches < MAX_MESSAGES_PER_TICK) {
+            const listedMessage = queues[i].shift()!;
+            fetches += 1;
+            const message = await this.getMessage(token, listedMessage.id);
+            if (message) heads[i] = { listedMessage, message };
+          }
+        }
+        // A queue still holding ids but no fetched head means the budget ended before it was read: a head of
+        // another queue may be newer than what that queue holds, so filing it would put the cursor over unread mail.
+        if (queues.some((q, i) => q.length > 0 && heads[i] === null)) return null;
+        let best = -1;
+        for (let i = 0; i < heads.length; i += 1) {
+          const h = heads[i];
+          if (!h) continue;
+          if (best === -1 || Number(h.message.internalDate ?? 0) < Number(heads[best]!.message.internalDate ?? 0)) best = i;
+        }
+        if (best === -1) return null;
+        const out = heads[best];
+        heads[best] = null;
+        return out;
+      };
 
       // Fetch, filter, THEN sort oldest-first before anything is published.
       //
@@ -512,10 +544,8 @@ export class HouseInboxService {
         payload: GmailPayloadPart;
       }> = [];
 
-      for (const listedMessage of ids) {
-        const message = await this.getMessage(token, listedMessage.id);
-        if (!message) continue;
-        arrivedAt.set(listedMessage.id, Number(message.internalDate ?? 0));
+      for (let next = await takeOldest(); next; next = await takeOldest()) {
+        const { listedMessage, message } = next;
 
         const headers = (message.payload?.headers ?? []) as Array<{
           name?: string | null;
@@ -557,23 +587,6 @@ export class HouseInboxService {
           headers,
           payload: (message.payload ?? {}) as GmailPayloadPart,
         });
-      }
-
-      // A cut wide listing: nothing newer than its newest kept message is filed
-      // this tick (see listWide). The rest is listed again next tick. A horizon
-      // that cannot be dated is a failed read, never a guess.
-      if (listing.horizonId !== null) {
-        const horizon = arrivedAt.get(listing.horizonId);
-        if (horizon === undefined || !Number.isFinite(horizon)) {
-          throw new Error(
-            "the newest message of a cut listing could not be dated, so what may be filed this tick could not be bounded",
-          );
-        }
-        const before = admissible.length;
-        const kept = admissible.filter((m) => m.internalDate <= horizon);
-        admissible.length = 0;
-        admissible.push(...kept);
-        admitted -= before - kept.length;
       }
 
       admissible.sort((a, b) => a.internalDate - b.internalDate);
@@ -778,36 +791,33 @@ export class HouseInboxService {
   }
 
   /**
-   * What the wider grant reads: the wide query (every conversation, without the
-   * newsletter tabs) and, beside it, the vendor query (the book's addresses,
-   * with no category bound), joined by id.
+   * What the wider grant reads, as queues, each OLDEST-first: the wide query (every conversation, without the
+   * newsletter tabs) and, beside it, the vendor query (the book's addresses, with no category bound) minus the ids
+   * already held, one queue per address chunk, so each message is in one queue only.
    *
-   * Gmail lists newest-first. Cutting a listing short at the cap would keep the
-   * NEWEST messages, advance the cursor above them and silently skip every older
-   * one it never saw. So the wide listing is taken whole and its oldest
-   * `MAX_MESSAGES_PER_TICK` kept. When it was cut, `horizonId` names the newest
-   * message kept: nothing newer than it may be filed this tick, vendor mail
-   * included, because the cursor would then pass wide mail that was never read.
-   * The vendor listings are taken whole and never cut.
+   * Gmail lists newest-first. Cutting a listing short at the cap would keep the NEWEST messages, advance the
+   * cursor above them and silently skip every older one it never saw. So both listings are taken whole, and the
+   * caller walks them oldest-first under ONE budget of `MAX_MESSAGES_PER_TICK` fetches, merged by arrival time.
    */
   private async listWide(
     token: string,
     sinceMs: number,
     addresses: string[],
-  ): Promise<{ ids: GmailListed[]; horizonId: string | null }> {
-    let wide = await this.listEveryPage(token, this.buildQueryAll(sinceMs));
-    let horizonId: string | null = null;
-    if (wide.length > MAX_MESSAGES_PER_TICK) {
-      wide = wide.slice(wide.length - MAX_MESSAGES_PER_TICK);
-      horizonId = wide[0].id;
-    }
-    const byId = new Map(wide.map((m) => [m.id, m]));
+  ): Promise<GmailListed[][]> {
+    const wide = await this.listEveryPage(token, this.buildQueryAll(sinceMs));
+    const seen = new Set(wide.map((m) => m.id));
+    // One queue per address chunk: each chunk's listing is newest-first on its own, so merging them stays exact.
+    const vendorQueues: GmailListed[][] = [];
     for (const q of this.buildQuery(addresses, sinceMs)) {
+      const own: GmailListed[] = [];
       for (const m of await this.listEveryPage(token, q)) {
-        if (!byId.has(m.id)) byId.set(m.id, m);
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        own.push(m);
       }
+      vendorQueues.push(own.reverse());
     }
-    return { ids: [...byId.values()], horizonId };
+    return [wide.slice().reverse(), ...vendorQueues];
   }
 
   /**
