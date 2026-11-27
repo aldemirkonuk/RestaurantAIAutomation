@@ -6,10 +6,11 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { DataTermsSignInGate } from './DataTermsSignInGate';
 import type { DataTermsReadout } from '../../services/api/dataTerms';
+import { Sheet } from '../mudavym/Sheet';
 
 const roleMock = vi.hoisted(() => ({ current: 'owner' as 'owner' | 'manager' | 'staff' | null }));
 vi.mock('../../contexts/AuthContext', () => ({
@@ -71,6 +72,34 @@ describe('who is even asked', () => {
   it('reads the terms for an owner', () => {
     mount();
     expect(dataTermsMock.lastEnabled).toBe(true);
+  });
+});
+
+describe('the terms go first (ADR 0207 §19; one queue: terms, the opened drawer, theme)', () => {
+  it('shows alone and exactly once, with no drawer; Escape keeps it and nothing puts it down', () => {
+    dataTermsMock.data = readout();
+    mount();
+    expect(screen.getAllByRole('button', { name: /hold to accept/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /put it down/i })).toBeNull();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getAllByRole('button', { name: /hold to accept/i })).toHaveLength(1);
+  });
+
+  it('is never put behind another overlay: the gate does not wait for a sheet that is already open', () => {
+    dataTermsMock.data = readout();
+    const page = (gate: boolean) => (
+      <MemoryRouter>
+        <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+          <p>an open sheet</p>
+        </Sheet>
+        {gate ? <DataTermsSignInGate /> : null}
+      </MemoryRouter>
+    );
+    // The sheet is on the stack before the gate mounts (the walked order).
+    const { rerender } = render(page(false));
+    expect(screen.getByText('an open sheet')).toBeTruthy();
+    rerender(page(true));
+    expect(screen.getAllByRole('button', { name: /hold to accept/i })).toHaveLength(1);
   });
 });
 
