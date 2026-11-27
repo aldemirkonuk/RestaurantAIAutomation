@@ -265,6 +265,12 @@ export interface ReportsNextData {
    */
   sheetKnown: boolean;
   /**
+   * True when the gateway keeps the till's takings from this reader (staff, or a role not yet
+   * known: its `salesGateFor` reads those as staff). The page then offers no compare at all,
+   * rather than a button the withheld read takes back.
+   */
+  salesKept: boolean;
+  /**
    * The house's money, three states (`HouseCurrency`, services/api/settings.ts):
    * `stated` with a code; `unstated` (nobody recorded one); `unread` (the read
    * failed, or has not answered yet). Only `stated` prints a currency mark.
@@ -499,6 +505,7 @@ export function useReportsNextData(
     sheet,
     saveSheet,
     sheetKnown,
+    salesKept: activeRole !== 'owner' && activeRole !== 'manager',
     sheetUnread,
     sheetStale,
     currency,
