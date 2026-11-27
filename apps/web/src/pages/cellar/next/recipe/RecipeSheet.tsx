@@ -88,6 +88,7 @@ import { useListTax } from './useListTax';
 import { useSayGrams } from './WeighBox';
 import WhatIsInAServe from './WhatIsInAServe';
 import YieldForm from './YieldForm';
+import { NO_COST_DIFFERENCE, costDifference, diffLines, diffMeta } from './versionDiff';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import RecipeCard from './RecipeCard';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
@@ -293,11 +294,14 @@ function PastVersion({
   versionId,
   onStartFrom,
   say,
+  current,
 }: {
   cocktailId: string | RecipeOwner;
   versionId: string;
   onStartFrom: ((v: RecipeVersion) => void) | null;
   say: ((n: number) => string) | null;
+  /** The version on the sheet and its cost at today's prices, to say what differs (r109 drinks-g4). */
+  current: { version: RecipeVersion; cost: CocktailRecipe['cost'] } | null;
 }) {
   const v = useRecipeVersion(cocktailId, versionId, true);
   const sayPct = useHousePercent();
@@ -310,6 +314,7 @@ function PastVersion({
     );
   }
   const { version, cost } = v.data;
+  const unit = ownerOf(cocktailId).kind === 'dish' ? 'plate' : 'serve';
   return (
     <div className="cl-rcp-past" data-testid="recipe-past-version">
       <ol className="cl-rcp-lines">
@@ -318,7 +323,29 @@ function PastVersion({
         ))}
       </ol>
       {say && cost?.complete && cost.perServe != null ? (
-        <p className="cl-note">Would cost {say(cost.perServe)} a {ownerOf(cocktailId).kind === 'dish' ? 'plate' : 'serve'} at today's prices.</p>
+        <p className="cl-note">Would cost {say(cost.perServe)} a {unit} at today's prices.</p>
+      ) : null}
+      {current ? (
+        <div className="cl-vdiff" data-testid="recipe-version-diff">
+          <p className="cl-note" style={{ margin: 0 }}>{`Against the current version ${current.version.version}:`}</p>
+          <ul>
+            {[...diffMeta(version, current.version, unit).map((text) => ({ kind: 'changed' as const, text })), ...diffLines(version.lines, current.version.lines)]
+              .filter((d) => d.kind !== 'same')
+              .map((d, i) => (
+                <li key={i} className="cl-vdiff-item" data-kind={d.kind}>
+                  {d.kind === 'changed' ? `Changed: ${d.text}` : d.text}
+                </li>
+              ))}
+          </ul>
+          {diffLines(version.lines, current.version.lines).every((d) => d.kind === 'same') && diffMeta(version, current.version, unit).length === 0 ? (
+            <p className="cl-note" style={{ margin: 0 }}>The same recipe as the current one.</p>
+          ) : null}
+          {say ? (
+            <p className="cl-note" style={{ margin: 0 }} data-testid="recipe-version-cost-diff">
+              {cost && current.cost ? costDifference(cost, current.cost, say, unit) : NO_COST_DIFFERENCE}
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {onStartFrom ? (
         <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={() => onStartFrom(version)}>
@@ -340,11 +367,13 @@ function Versions({
   currentId,
   onStartFrom,
   say,
+  current,
 }: {
   cocktailId: string | RecipeOwner;
   currentId: string | null;
   onStartFrom: ((v: RecipeVersion) => void) | null;
   say: ((n: number) => string) | null;
+  current: { version: RecipeVersion; cost: CocktailRecipe['cost'] } | null;
 }) {
   const v = useRecipeVersions(cocktailId, true);
   const [open, setOpen] = useState<string | null>(null);
@@ -378,7 +407,7 @@ function Versions({
             <span className="cl-dim"> · {count(x.lineCount, 'ingredient', 'ingredients')}</span>
           </button>
           {open === x.versionId ? (
-            <PastVersion cocktailId={cocktailId} versionId={x.versionId} onStartFrom={onStartFrom} say={say} />
+            <PastVersion cocktailId={cocktailId} versionId={x.versionId} onStartFrom={onStartFrom} say={say} current={current} />
           ) : null}
         </li>
       ))}
@@ -1092,7 +1121,13 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
             Earlier versions ({earlier})
           </button>
           {showVersions ? (
-            <Versions cocktailId={owner} currentId={versionId} onStartFrom={canEdit ? startFrom : null} say={say} />
+            <Versions
+              cocktailId={owner}
+              currentId={versionId}
+              onStartFrom={canEdit ? startFrom : null}
+              say={say}
+              current={data.current ? { version: data.current, cost: data.cost } : null}
+            />
           ) : null}
         </div>
       ) : null}
