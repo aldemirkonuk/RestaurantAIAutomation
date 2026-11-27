@@ -1013,6 +1013,7 @@ export function MailTab({
           draftedOrderIds={draftedOrderIds}
           onOpenReply={onOpenReply}
           onAnswer={onAnswer}
+          onOpenThread={(key) => go({ thread: key })}
           bookFacts={bookFacts}
         />
         </Suspense>
