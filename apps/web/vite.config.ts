@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { crawlSurface } from './src/lib/seo/vite-plugin'
 import { buildProvenancePlugin } from './src/lib/build-provenance'
+import { landingPreloadPlugin } from './src/lib/landing-preload'
 
 // https://vitejs.dev/config/
 // Using @vitejs/plugin-react (Babel) instead of react-swc due to SWC binary issues
@@ -12,7 +13,7 @@ export default defineConfig({
   // llms.txt and each public route's served head from the built shell (ADR
   // 0158), reading dist/index.html AFTER Vite has already written it with the
   // commit tag in place (see build-provenance.ts's own note on hook order).
-  plugins: [react(), buildProvenancePlugin(), crawlSurface()],
+  plugins: [react(), buildProvenancePlugin(), landingPreloadPlugin(), crawlSurface()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
