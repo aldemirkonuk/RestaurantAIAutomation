@@ -30,6 +30,11 @@
   font-size: 15px;
 }
 
+.mdv-drop__next {
+  min-height: 44px;
+  font-size: 14px;
+}
+
 .mdv-drop {
   display: flex;
   align-items: center;
@@ -202,6 +207,8 @@
 
 .mdv-drop__acts {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
   flex: none;
 }
