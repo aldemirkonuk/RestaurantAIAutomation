@@ -2697,3 +2697,34 @@ describe('ReportsNext — the phone till card holds the compare answer (r107 g5)
     expect(on - off).toBe(66);
   });
 });
+
+/* ── r109 g3: the till's grain is kept in the page link, never in the sheet ── */
+describe('the till grain is kept in the page link (r109 g3)', () => {
+  beforeEach(() => {
+    hook.current = base();
+    saveSheet.mockClear();
+  });
+  const grainGroup = () =>
+    within(screen.getByRole('region', { name: 'Through the till' })).queryByRole('group', { name: 'Till bars by' });
+
+  it('[REVERT-FAILS] opens on the grain the link names, and a grain the window does not offer reads as Day', () => {
+    paint('/reports?days=90&grain=month');
+    expect(within(grainGroup()!).getByRole('button', { name: 'Month' })).toHaveAttribute('aria-pressed', 'true');
+    cleanup();
+    paint('/reports?grain=month');
+    expect(within(grainGroup()!).getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
+    cleanup();
+    paint('/reports?days=7&grain=week');
+    expect(grainGroup()).toBeNull();
+  });
+
+  it('[REVERT-FAILS] picking a grain writes it to the link, Day leaves it clean, and the sheet is never saved', () => {
+    paint('/reports?keep=1');
+    fireEvent.click(within(grainGroup()!).getByRole('button', { name: 'Week' }));
+    expect(screen.getByTestId('link').textContent).toBe('?keep=1&grain=week');
+    expect(within(grainGroup()!).getByRole('button', { name: 'Week' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(grainGroup()!).getByRole('button', { name: 'Day' }));
+    expect(screen.getByTestId('link').textContent).toBe('?keep=1');
+    expect(saveSheet).not.toHaveBeenCalled();
+  });
+});

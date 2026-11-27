@@ -221,7 +221,9 @@ export default function CuttingFlat({
       </div>
       <p className="rp-cap rp-flat__note">
         This view is not saved to your sheet.
-        {windowControl ? ' The window you pick is kept in the page link, so a reload or a shared link opens on it.' : ''}
+        {windowControl
+          ? ' The window and the day, week or month you pick are kept in the page link, so a reload or a shared link opens on them.'
+          : ''}
       </p>
     </div>,
     document.body,
