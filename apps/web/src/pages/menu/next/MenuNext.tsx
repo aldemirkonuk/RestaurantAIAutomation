@@ -45,7 +45,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { addMenuItem, discardMenuItem, getMenu, restoreMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuSheetButton } from './MenuSheetButton';
 import { MenuVersions, useKeptMenuName } from './MenuVersions';
@@ -547,6 +547,32 @@ export default function MenuNext() {
   // The menu is named the way the kept list names it, not by the name the gateway stored (r104 menu-7, F4).
   const kept = useKeptMenuName(q.data?.menuId ?? null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  // The line just taken off, until the next discard or a restore: its way back (r107 menu-4).
+  // It carries the house it was taken off in: the page stays mounted across a house switch.
+  const [offList, setOffList] = useState<{ id: string; name: string; house: string | null } | null>(null);
+  const houseNow = useRef(activeRestaurantId);
+  houseNow.current = activeRestaurantId;
+  const offHere = offList && offList.house === activeRestaurantId ? offList : null;
+  const [backSaid, setBackSaid] = useState<{ tone: 'alert' | 'said'; text: string } | null>(null);
+  const [putting, setPutting] = useState(false);
+  const putBack = async (off: { id: string; name: string; house: string | null }) => {
+    setPutting(true);
+    setBackSaid(null);
+    // Only this line's way back is cleared when it settles: another line may have been taken off since.
+    // And a sentence about a house is said only while that house is the one on the page.
+    const here = () => houseNow.current === off.house;
+    try {
+      await restoreMenuItem(off.house as string, off.id);
+      setOffList((cur) => (cur?.id === off.id ? null : cur));
+      if (here()) setBackSaid({ tone: 'said', text: `${off.name} is back on the menu.` });
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
+      await queryClient.invalidateQueries({ queryKey: ['menu', 'active', off.house] });
+    } catch (err) {
+      if (here()) setBackSaid({ tone: 'alert', text: gatewaySaid(err) ?? `${off.name} was not put back. Nothing was changed.` });
+    } finally {
+      setPutting(false);
+    }
+  };
   const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
   const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const lines = q.data?.items ?? [];
@@ -594,7 +620,11 @@ export default function MenuNext() {
       isNew={fresh?.has(line.id) ?? false}
       onDiscard={!canManage ? undefined : () => {
         setDiscardingId(line.id);
-        discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
+        setBackSaid(null);
+        discard.mutate(line.id, {
+          onSuccess: () => setOffList({ id: line.id, name: line.name, house: activeRestaurantId }),
+          onSettled: () => setDiscardingId(null),
+        });
       }}
       edit={
         !canManage
@@ -729,6 +759,27 @@ export default function MenuNext() {
                 ) : null;
               })()}
             </div>
+
+            {offHere || backSaid ? (
+              <p
+                role={backSaid?.tone === 'alert' ? 'alert' : 'status'}
+                className="cl-said"
+                style={{ marginTop: 10 }}
+                data-testid="menu-off-list-said"
+              >
+                {offHere ? (
+                  <>
+                    Taken off the list.{' '}
+                    {canManage ? (
+                      <button type="button" className="cl-btn cl-focus" disabled={putting} onClick={() => void putBack(offHere)}>
+                        {putting ? 'Putting back…' : `Put ${offHere.name} back`}
+                      </button>
+                    ) : null}{' '}
+                  </>
+                ) : null}
+                {backSaid?.text}
+              </p>
+            ) : null}
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
               <table className="cl-table mdv-cards" style={{ width: '100%' }} aria-label="Drinks on the current menu">
