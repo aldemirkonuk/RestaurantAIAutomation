@@ -34,6 +34,19 @@ function dateLocale(tag: string | undefined): string | undefined {
   }
 }
 
+/** The zone the house states for itself, or undefined while it is read, when none is stated, or when it could not be read. */
+export function useHouseZone(): string | undefined {
+  const { activeRestaurantId } = useAuth();
+  const z = useQuery({
+    queryKey: ['settings', 'time-zone', activeRestaurantId ?? null],
+    enabled: Boolean(activeRestaurantId),
+    queryFn: () => settingsApi.houseTimeZone(),
+    staleTime: 5 * 60_000,
+    refetchOnMount: true,
+  });
+  return z.data?.readable && z.data.zone ? z.data.zone : undefined;
+}
+
 export function useHouseDate(): SayDate {
   const { activeRestaurantId } = useAuth();
   const q = useQuery({
@@ -43,14 +56,7 @@ export function useHouseDate(): SayDate {
     staleTime: 5 * 60_000,
     refetchOnMount: true,
   });
-  const z = useQuery({
-    queryKey: ['settings', 'time-zone', activeRestaurantId ?? null],
-    enabled: Boolean(activeRestaurantId),
-    queryFn: () => settingsApi.houseTimeZone(),
-    staleTime: 5 * 60_000,
-    refetchOnMount: true,
-  });
-  const timeZone = z.data?.readable && z.data.zone ? z.data.zone : undefined;
+  const timeZone = useHouseZone();
   const locale = dateLocale(houseNumberLocale(q.data?.readable ? q.data.code : null));
   return (iso) => {
     const made = new Date(iso ?? '');

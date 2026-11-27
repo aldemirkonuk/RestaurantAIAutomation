@@ -11,8 +11,9 @@ import { Sheet } from '../../../../components/mudavym/Sheet';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { dishesApi, type CardComponent, type DrinkCard } from '../../../../services/api/recipes';
 import { useCanEditRecipe } from './useRecipe';
+import { useHouseDate, useHouseZone } from './useHouseDate';
 import {
-  SERVES_SAID, keepPlan, localDay, makeWords, planKey, planPrep, planWas, pullWords, readServes, type PrepPlan,
+  SERVES_SAID, houseDay, keepPlan, localDay, makeWords, planKey, planPrep, pullWords, readPlan, readServes, type PrepPlan,
 } from './prepPlan';
 
 const FLAG = 'data-print-prep';
@@ -78,8 +79,12 @@ export default function PlanPrep() {
   const canEdit = useCanEditRecipe();
   const [open, setOpen] = useState(false);
   const [read, setRead] = useState<{ drinks: DrinkCard[]; components: CardComponent[] } | 'reading' | 'unread' | null>(null);
-  const key = planKey(activeRestaurantId, localDay());
-  const [texts, setTexts] = useState<Record<string, string>>(() => planWas(key));
+  // The day is the house's (its zone and its date form), not this browser's: 23:30 UTC is already tomorrow in an Istanbul house.
+  const zone = useHouseZone();
+  const sayDate = useHouseDate();
+  const key = planKey(activeRestaurantId, houseDay(zone));
+  const browserKey = planKey(activeRestaurantId, localDay());
+  const [texts, setTexts] = useState<Record<string, string>>(() => readPlan(key, browserKey));
   const [printing, setPrinting] = useState(false);
   // One number per ask: an answer counts only if it is still the latest ask for the house still open. The component does not
   // remount on a house switch, so a slow read for the house left behind would otherwise land on the house now open.
@@ -105,7 +110,7 @@ export default function PlanPrep() {
 
   const start = async () => {
     setOpen(true);
-    setTexts(planWas(key));
+    setTexts(readPlan(key, browserKey));
     if (!activeRestaurantId) return;
     setRead('reading');
     const mine = ++ask.current;
@@ -190,7 +195,7 @@ export default function PlanPrep() {
       {printing && plan
         ? createPortal(
             <div className="cl-print-prep" data-testid="prep-paper" aria-hidden="true">
-              <h1>Prep list, {localDay()}</h1>
+              <h1>Prep list, {sayDate(new Date().toISOString()) ?? houseDay(zone)}</h1>
               <ul>
                 {drinks.filter((d) => (serves[d.cocktailId] ?? 0) > 0).map((d) => (
                   <li key={d.cocktailId}>{`${serves[d.cocktailId]} ${d.name}`}</li>
