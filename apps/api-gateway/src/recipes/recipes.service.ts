@@ -353,40 +353,45 @@ export class RecipesService {
     const out = new Map<string, { name: string; perBase: number | null; partial?: boolean }>();
     if (!componentIds.length) return out;
     const client = this.db.getClient();
-    const [dishes, pointers] = await Promise.all([
-      client
-        .from("dishes")
-        .select("id, name, yield_qty_base, deleted_at")
-        .eq("restaurant_id", restaurantId)
-        .in("id", componentIds),
-      client
-        .from("recipe_current_dish")
-        .select("dish_id, version_id")
-        .eq("restaurant_id", restaurantId)
-        .in("dish_id", componentIds),
+    // Chunked, so no read is cut by the 1,000-row cap or a long URL: a chunk of
+    // 20 versions holds at most 800 lines, so a component never loses a line
+    // and is never priced over the lines that happened to come back.
+    const chunked = async <T>(ids: string[], n: number, read: (part: string[]) => PromiseLike<{ data: unknown; error: unknown }>, what: string) => {
+      const rows: T[] = [];
+      for (let i = 0; i < ids.length; i += n) {
+        const { data, error } = await read(ids.slice(i, i + n));
+        if (error) this.failed(what, error);
+        rows.push(...((data ?? []) as T[]));
+      }
+      return rows;
+    };
+    const [dishRows, pointerRows] = await Promise.all([
+      chunked<any>(componentIds, 50, (part) => client.from("dishes").select("id, name, yield_qty_base, deleted_at").eq("restaurant_id", restaurantId).in("id", part), "component read"),
+      chunked<any>(componentIds, 50, (part) => client.from("recipe_current_dish").select("dish_id, version_id").eq("restaurant_id", restaurantId).in("dish_id", part), "component recipe read"),
     ]);
-    if (dishes.error) this.failed("component read", dishes.error);
-    if (pointers.error) this.failed("component recipe read", pointers.error);
-    const versionOf = new Map(((pointers.data ?? []) as any[]).map((p) => [p.dish_id as string, p.version_id as string]));
+    const versionOf = new Map(pointerRows.map((p) => [p.dish_id as string, p.version_id as string]));
     const versionIds = [...new Set(versionOf.values())];
-    const lineRead = versionIds.length
-      ? await client
+    const lineRows = await chunked<any>(
+      versionIds,
+      20,
+      (part) =>
+        client
           .from("recipe_lines")
           .select("version_id, role, inventory_id, component_dish_id, qty_base, base_unit, usable_pct")
           .eq("restaurant_id", restaurantId)
-          .in("version_id", versionIds)
-      : { data: [], error: null };
-    if (lineRead.error) this.failed("component line read", lineRead.error);
+          .in("version_id", part),
+      "component line read",
+    );
     const linesOf = new Map<string, any[]>();
-    for (const l of (lineRead.data ?? []) as any[]) linesOf.set(l.version_id, [...(linesOf.get(l.version_id) ?? []), l]);
-    const rows = [...linesOf.values()].flat();
+    for (const l of lineRows) linesOf.set(l.version_id, [...(linesOf.get(l.version_id) ?? []), l]);
+    const rows = lineRows;
     const [{ items, lots }, inner] = await Promise.all([
       this.readPricing(restaurantId, [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[], money),
       depth >= 3
         ? Promise.resolve(new Map<string, { name: string; perBase: number | null; partial?: boolean }>())
         : this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1),
     ]);
-    for (const d of (dishes.data ?? []) as any[]) {
+    for (const d of dishRows) {
       const lines = linesOf.get(versionOf.get(d.id) ?? "") ?? [];
       const batch = recipeCost(
         lines.map((l) => ({
