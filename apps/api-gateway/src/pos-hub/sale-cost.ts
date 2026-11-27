@@ -14,6 +14,7 @@ import { glassCostFrom } from "../pricing/margin-to-target";
 export type SaleCostBasis =
   | "invoice_lot_wac"
   | "invoice_lot_wac_partial"
+  | "agreed_lot_wac"
   | "last_purchase_price"
   /** A pour's share of a bottle costed at the recorded WAC: no ledger row prices a pour (r105). */
   | "pour_lot_wac"
