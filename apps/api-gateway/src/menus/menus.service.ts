@@ -907,13 +907,15 @@ export class MenusService {
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
-    // A failed resolve must not leave the draft behind: a version that says
-    // lines_extracted > 0 and holds none could be made current (r102 menu-func-3).
+    // A failed resolve keeps the version, its extraction and its source: the
+    // read was paid for and ADR 0193 keeps every extraction. The reason its lines
+    // are missing is written on the version, and a menu with no line cannot be
+    // made current (r102 menu-func-3), so the draft is harmless.
     let reviewItems: MenuImportReviewItem[];
     try {
       reviewItems = await this.resolveAndPersistItems(items, restaurantId, menu.id, userId, dto.method, false);
     } catch (err) {
-      await this.dropDraft(restaurantId, menu.id);
+      await this.noteMissingLines(restaurantId, menu.id, kept?.failure ?? null, err);
       throw err;
     }
 
@@ -1472,17 +1474,15 @@ export class MenusService {
     }
   }
 
-  /** Takes a draft and its stray lines away after a failed import; a failure to do so is logged, never hidden. */
-  private async dropDraft(restaurantId: string, menuId: string): Promise<void> {
-    const lines = await this.dbService.supabase.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
-    const menu = await this.dbService.supabase
+  /** Says on a kept version why its lines are missing; a failure to write it is logged, never hidden. */
+  private async noteMissingLines(restaurantId: string, menuId: string, earlier: string | null, cause: unknown): Promise<void> {
+    const why = `the lines could not be matched to wines: ${(cause as Error)?.message ?? "unknown error"}`;
+    const { error } = await this.dbService.supabase
       .from("restaurant_menus")
-      .delete()
+      .update({ source_failure: earlier ? `${earlier}; ${why}` : why })
       .eq("id", menuId)
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "draft");
-    const failure = lines.error?.message ?? menu.error?.message;
-    if (failure) this.logger.error(`menu ${menuId}: the draft of a failed import could not be removed: ${failure}`);
+      .eq("restaurant_id", restaurantId);
+    if (error) this.logger.error(`menu ${menuId}: why its lines are missing could not be written: ${error.message}`);
   }
 
   /** A note when a menu the house keeps was read from these same bytes; one too when that could not be looked up. */
@@ -2701,7 +2701,7 @@ export class MenusService {
     // (r102 menu-func-3). Said in words; nothing is changed.
     if (lines.length === 0 && version.status !== "active") {
       throw new BadRequestException(
-        "This menu has no lines left, so it cannot become the current menu: that would retire the menu the house has and put nothing in its place. Nothing was changed.",
+        "A menu with no lines cannot be the current menu. Nothing was changed.",
       );
     }
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
@@ -2857,7 +2857,10 @@ export class MenusService {
     };
     return linked.filter((l) => {
       const h = house.get(String(l.wine_library_id));
-      return !h || differs(l.bottle_price, h.bottle) || differs(l.by_glass_price, h.glass);
+      // A line never linked to its house row is unfinished even when its price
+      // already matches: the backfill runs after the price loop, so a cut-off
+      // carry leaves lines with the price and no link (r102 menu-func-2).
+      return !h || !l.inventory_item_id || differs(l.bottle_price, h.bottle) || differs(l.by_glass_price, h.glass);
     });
   }
 

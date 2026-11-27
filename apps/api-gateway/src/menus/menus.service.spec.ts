@@ -1289,15 +1289,20 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(tables.menu_items.every((l) => l.menu_id === r.menuId)).toBe(true);
   });
 
-  it("a failed resolve leaves no draft and no stray line behind (r102 menu-func-3)", async () => {
+  it("a failed resolve keeps the version and its extraction, says why its lines are missing, and it cannot be made current (r102 menu-func-3)", async () => {
     const tables: Record<string, Row[]> = base();
     const service = makeService(tables, {
       wineSubmissions: { ...wineSubmissions, resolveLibraryWinesBatch: async () => { throw new Error("library unreachable"); } },
       csvParser: new CsvParserService(),
     });
     await expect(service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1")).rejects.toThrow(/library unreachable/);
-    expect(tables.restaurant_menus.map((m) => m.id)).toEqual(["menu-old"]);
+    const kept = tables.restaurant_menus.filter((m) => m.id !== "menu-old");
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ status: "draft" });
+    expect(kept[0].extraction).toEqual([expect.objectContaining({ name: "Opus One" })]);
+    expect(kept[0].source_failure).toMatch(/the lines could not be matched to wines: .*library unreachable/);
     expect(tables.menu_items).toHaveLength(0);
+    await expect(service.makeCurrent("rest-1", kept[0].id as string, "user-2", "any")).rejects.toThrow(/A menu with no lines cannot be the current menu\. Nothing was changed/);
   });
 
   it("each kept menu is named for how it was read and its date, never 'Wine List' (r102 menu-func-5)", async () => {
@@ -2226,6 +2231,25 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(moves()).toEqual(after);
       // The line that was carried at the first choice moved once in all.
       expect(moves().filter((m) => m.startsWith(`${done.id}:`))).toHaveLength(1);
+    });
+
+    it("a finished carry counts the line it flagged for a blank price (r102 menu-func-2)", async () => {
+      const { tables, service, read } = await readThenChoose([{ name: "Opus One", by_glass_price: 15 }]);
+      await choose(service, read.menuId);
+      expect(tables.menu_items[0].price_flag).toBe("blank_kept_last_known");
+      const again = await choose(service, read.menuId);
+      expect(again).toMatchObject({ outcome: "already_current", lines: 1, flagged: 1 });
+    });
+
+    it("a line the cut-off carry priced but never linked is finished too (r102 menu-func-2)", async () => {
+      const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15 }]);
+      await choose(service, read.menuId);
+      // The house already holds the menu's prices; the backfill never ran.
+      Object.assign(tables.restaurant_inventory[0], { menu_price_current: 64, menu_price_glass: 15 });
+      tables.menu_items[0].inventory_item_id = null;
+      const again = await choose(service, read.menuId);
+      expect(again).toMatchObject({ outcome: "already_current", lines: 1 });
+      expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
     });
 
     it("the setup's menu step ticks when a menu is made current, not when one is read (r102 menu-func-5)", async () => {
