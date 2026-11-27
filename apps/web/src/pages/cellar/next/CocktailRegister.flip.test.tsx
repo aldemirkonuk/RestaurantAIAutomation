@@ -42,18 +42,25 @@ const cost = (n: number) => ({ perServe: n, perServeExact: n, priced: 1, of: 1, 
 const figures = [1, 2, 3].map((n) => ({ cocktailId: id(n), price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: cost(n === 1 ? 2 : n === 2 ? 4 : 3) }));
 
 let reduced = false;
-const animate = vi.fn();
+// A running slide: while it is not cancelled, its row is drawn RESIDUE px below where it is laid out.
+const RESIDUE = 20;
+const running = new Map<Element, number>();
+const animate = vi.fn(function (this: Element, _frames: unknown, _options: unknown) {
+  running.set(this, RESIDUE);
+  return { cancel: () => void running.delete(this) };
+});
 const realRect = HTMLElement.prototype.getBoundingClientRect;
 
 beforeEach(() => {
   reduced = false;
-  animate.mockReset();
+  running.clear();
+  animate.mockClear();
   (Element.prototype as unknown as { animate: unknown }).animate = animate;
   window.matchMedia = ((q: string) => ({ matches: reduced && q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })) as never;
   // A row sits 40 px below the one before it in the tbody: where the DOM puts it is where it is.
   HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
     const row = this.closest('tr[data-row]');
-    const at = row ? Array.from(row.parentElement!.children).indexOf(row) * 40 : 0;
+    const at = row ? Array.from(row.parentElement!.children).indexOf(row) * 40 + (running.get(row) ?? 0) : 0;
     return { top: at, bottom: at + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: at, toJSON() {} } as DOMRect;
   };
   h.get.mockReset().mockImplementation(async (url: string) => {
@@ -105,6 +112,20 @@ describe('sorting slides the rows', () => {
       fireEvent.click(screen.getByTestId('sort-cost'));
       expect(animate.mock.calls.length).toBeGreaterThan(0);
     }
+  });
+
+  it('pressing again mid-slide starts each row where it is SEEN, not where it was laid out', async () => {
+    await mount();
+    fireEvent.click(screen.getByTestId('sort-cost')); // Alpha, Charlie, Bravo; every row now mid-slide, RESIDUE px low
+    animate.mockClear();
+    fireEvent.click(screen.getByTestId('sort-cost')); // back: Bravo, Charlie, Alpha
+    const start = (name: string) => {
+      const i = animate.mock.contexts.findIndex((c) => (c as HTMLElement).dataset.row === name);
+      return i < 0 ? null : (animate.mock.calls[i][0] as Array<{ transform: string }>)[0].transform;
+    };
+    // Bravo was SEEN at 80 + 20 and is laid out at 0; Alpha was seen at 0 + 20 and is laid out at 80.
+    expect(start(id(1))).toBe('translateY(100px)');
+    expect(start(id(2))).toBe('translateY(-60px)');
   });
 });
 
