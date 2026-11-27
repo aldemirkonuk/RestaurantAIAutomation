@@ -33,7 +33,7 @@ import { NamingUnread } from './NameThisWine';
 import { houseWordsFor } from './iv-house-words';
 import { IV_DEFAULT, KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
-import { createInventoryItem, houseFieldsOf } from '../../../services/api/inventory';
+import { createInventoryItem, getNutritionCoverage, houseFieldsOf, inventoryItemKeys } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
 import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
 import { fmtWhen } from '../../../lib/mudavym/format';
@@ -277,13 +277,38 @@ export default function InventoryNext() {
       : priceSignalsHaveBasis(rows ?? [])
         ? 'ready'
         : 'nothing';
-  const activeChip: ChipId = (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') ? 'all' : chip;
+  // DD-r108-36: which goods have their nutrition recorded, read whole by the
+  // gateway. Ids only, so every reader of the list sees it. Pending or failed
+  // is never "every good is missing": the chip is held, and says why.
+  const nutCov = useQuery({
+    queryKey: inventoryItemKeys.nutritionCoverage(data.rid ?? ''),
+    queryFn: () => getNutritionCoverage(data.rid as string),
+    enabled: Boolean(data.rid),
+    staleTime: 60_000,
+    retry: false,
+  });
+  // A failed re-read holds the chip even when an earlier answer is still cached:
+  // the count would otherwise stand as if it had just been read.
+  const recorded = useMemo(() => (nutCov.data && !nutCov.isError ? new Set(nutCov.data.recordedItemIds) : null), [nutCov.data, nutCov.isError]);
+  // A food or supply is a house item with its own kind (house-items, #862);
+  // every other row is a drink. The kind chips show once the house carries one.
+  const goodOf = useMemo(() => {
+    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
+    return (r: InvRow): GoodKind => {
+      const own = k.get(r.id) ?? r.kind;
+      return own === 'food' || own === 'supply' ? own : 'drink';
+    };
+  }, [data.rawItems]);
+  const activeChip: ChipId =
+    (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') || (chip === 'nutrition' && recorded === null)
+      ? 'all'
+      : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
-    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now)).length);
+    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, recorded, goodOf(r))).length);
     return m;
-  }, [rows]);
+  }, [rows, recorded, goodOf]);
   const chipCount = (id: ChipId) => {
     const k = chipCounts.get(id);
     return k === undefined ? EM : fmtCount(k);
@@ -315,15 +340,6 @@ export default function InventoryNext() {
     return opts;
   }, [rows, data.libraryAnswered]);
 
-  // A food or supply is a house item with its own kind (house-items, #862);
-  // every other row is a drink. The kind chips show once the house carries one.
-  const goodOf = useMemo(() => {
-    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
-    return (r: InvRow): GoodKind => {
-      const own = k.get(r.id) ?? r.kind;
-      return own === 'food' || own === 'supply' ? own : 'drink';
-    };
-  }, [data.rawItems]);
   const words = useMemo(() => houseWordsFor((rows ?? []).map(goodOf)), [rows, goodOf]);
   // The exported files head the name column the way the page does.
   const nameHead = words.one === 'good' ? 'Good' : 'Title';
@@ -335,7 +351,7 @@ export default function InventoryNext() {
     return sortRows(
       rows.filter(
         (r) =>
-          chipMatch(r, activeChip, now) &&
+          chipMatch(r, activeChip, now, recorded, goodOf(r)) &&
           (kind === '' || goodOf(r) === kind) &&
           inZone(r, zone) &&
           ofType(r, type) &&
@@ -343,7 +359,7 @@ export default function InventoryNext() {
       ),
       sort,
     );
-  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list, recorded]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -649,6 +665,21 @@ export default function InventoryNext() {
             className="iv-chip"
             disabled
             title="Whether a title is dead stock could not be read: the selling pace did not answer"
+          >
+            {c.label} <span className="iv-num">{EM}</span>
+          </button>
+        ) : c.id === 'nutrition' && recorded === null ? (
+          <button
+            key={c.id}
+            type="button"
+            className="iv-chip"
+            disabled
+            data-testid="iv-chip-nutrition-unread"
+            title={
+              nutCov.isError
+                ? 'Which goods have their nutrition recorded could not be read, so none is named as missing'
+                : 'Reading which goods have their nutrition recorded'
+            }
           >
             {c.label} <span className="iv-num">{EM}</span>
           </button>

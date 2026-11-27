@@ -7,7 +7,7 @@
  * their own tests, and none of them is under test here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -68,6 +68,8 @@ vi.mock('../../../components/inventory/AutoLocatePreviewModal', () => ({
 }));
 // The ADR 0192 research list (NameThisWine.tsx) and the insights rail.
 const research = vi.hoisted(() => ({ fetch: vi.fn(async (): Promise<unknown[]> => []) }));
+// DD-r108-36: the nutrition coverage read; pending unless a test answers it.
+const nutCov = vi.hoisted(() => ({ read: vi.fn((): Promise<unknown> => new Promise(() => undefined)) }));
 const insights = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
 const pos = vi.hoisted(() => ({ lines: vi.fn(async (): Promise<unknown> => ({ summary: { open_lines: 0 } })) }));
 vi.mock('../../../services/api/posHub', async (orig) => ({
@@ -87,6 +89,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemFigures: vi.fn(() => new Promise(() => undefined)),
   getItemUsedIn: vi.fn(() => new Promise(() => undefined)),
   getItemNutrition: vi.fn(() => new Promise(() => undefined)),
+  getNutritionCoverage: nutCov.read,
 }));
 vi.mock('../../../services/api/itemDishes', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -458,6 +461,64 @@ describe('chips', () => {
     expect(price.disabled).toBe(true);
     expect(price.textContent).toContain('—');
     expect(price.title).toMatch(/could not be read/);
+  });
+
+  it('Nutrition not recorded counts and lists the goods the coverage read does not name (DD-r108-36)', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 3 });
+    mock.data = data({ rows: [row({ id: 'has' }), row({ id: 'none1' }), row({ id: 'none2' })] });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const nut = (await within(chips).findByRole('button', { name: /^Nutrition not recorded 2$/ })) as HTMLButtonElement;
+    expect(nut.disabled).toBe(false);
+    fireEvent.click(nut);
+    expect(screen.getByTestId('inv-row-none1')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-none2')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-has')).toBeNull();
+  });
+
+  it('Nutrition not recorded never counts or lists a supply: it holds nothing to state', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 3 });
+    mock.data = data({
+      rows: [row({ id: 'has' }), row({ id: 'none1' }), row({ id: 'sup', wineId: null, name: 'Napkins', type: null, kind: null })],
+      rawItems: [{ id: 'sup', kind: 'supply', uom: 'each', display_name: 'Napkins' }],
+    });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const nut = (await within(chips).findByRole('button', { name: /^Nutrition not recorded 1$/ })) as HTMLButtonElement;
+    fireEvent.click(nut);
+    expect(screen.getByTestId('inv-row-none1')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-sup')).toBeNull();
+  });
+
+  it('Nutrition not recorded is held, not shown at its old count, when a later re-read fails', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 2 });
+    mock.data = data({ rows: [row({ id: 'has' }), row({ id: 'none1' })] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await within(screen.getByTestId('inventory-chips')).findByRole('button', { name: /^Nutrition not recorded 1$/ });
+    nutCov.read.mockRejectedValueOnce(Object.assign(new Error('status 503'), { response: { status: 503, data: {} } }));
+    await qc.invalidateQueries({ queryKey: ['inventory', 'r1', 'nutrition', 'coverage'] });
+    await waitFor(() => expect(screen.getByTestId('iv-chip-nutrition-unread')).toBeTruthy());
+    expect((screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Nutrition not recorded says it could not be read, never 0 and never every good, when the read fails', async () => {
+    nutCov.read.mockRejectedValueOnce(Object.assign(new Error('status 503'), { response: { status: 503, data: {} } }));
+    mock.data = data({ rows: [row({ id: 'a' }), row({ id: 'b' })] });
+    renderPage();
+    await waitFor(() =>
+      expect((screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement).title).toMatch(/could not be read/),
+    );
+    const nut = screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    expect(nut.textContent).toContain('—');
+    expect(nut.textContent).not.toMatch(/\b[02]\b/);
   });
 
   it('Price signals is a cost figure: staff are not shown the chip', () => {

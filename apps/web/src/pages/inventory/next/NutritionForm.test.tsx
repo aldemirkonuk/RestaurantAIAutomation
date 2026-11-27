@@ -43,9 +43,11 @@ const answer = (figures: StoredNutrition | null): ItemNutrition => ({
 
 const httpError = (status: number) => Object.assign(new Error(`status ${status}`), { response: { status, data: {} } });
 
+let lastQc: QueryClient;
 function show(data: ItemNutrition, startWithLookup = false) {
   const onDone = vi.fn();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastQc = qc;
   render(
     <QueryClientProvider client={qc}>
       <NutritionForm restaurantId="r1" itemId="i1" data={data} startWithLookup={startWithLookup} onDone={onDone} />
@@ -75,6 +77,16 @@ describe('editing what is in it', () => {
     expect(body.figures.sugarsG).toBeNull();
     expect(body.allergens).toHaveLength(14);
     await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+
+  it('a save re-reads which goods have their nutrition recorded, so the list chip moves', async () => {
+    api.save.mockResolvedValue(answer(stored));
+    const onDone = show(answer(null));
+    const spy = vi.spyOn(lastQc, 'invalidateQueries');
+    fireEvent.change(screen.getByLabelText('Salt (g)'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['inventory', 'r1', 'nutrition', 'coverage'] });
   });
 
   it('reads a box: empty is not known, a comma is a decimal point, a word is refused', () => {

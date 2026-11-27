@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import {
   ALLERGENS,
   basisFor,
@@ -44,6 +45,17 @@ export interface AllergenLine {
 }
 
 /** GET /inventory/:rid/item/:id/nutrition. All 14 allergens, always; a missing one is not_stated. */
+/**
+ * Which of the house's items have their nutrition recorded (DD-r108-36), for
+ * the list's "Nutrition not recorded" chip. Ids only: no figure and no money.
+ */
+export interface NutritionCoverage {
+  /** The house's items that have an item_nutrition row, sorted. */
+  recordedItemIds: string[];
+  /** How many items the house has in all. */
+  houseItems: number;
+}
+
 export interface ItemNutrition {
   item: { id: string; name: string; kind: string | null; uom: string | null };
   /** Per 100 g or 100 ml from the item's own unit; null when only a person can say. */
@@ -151,6 +163,32 @@ export class ItemNutritionService {
       figures,
       allergens,
     };
+  }
+
+  /**
+   * DD-r108-36: every item of this house whose nutrition is recorded, read
+   * WHOLE (ADR 0292: keyset pages of 1,000 on the row id, so the 1,001st row
+   * is not cut off), and the house's item count. Both reads name the house. A
+   * failed read is a 503 sentence (WholeReadError is one), never 0 recorded.
+   */
+  async coverage(restaurantId: string): Promise<NutritionCoverage> {
+    const rows = await readWholeWindow<{ id: string; inventory_id: string }>(
+      "The items whose nutrition is recorded",
+      () =>
+        this.db
+          .from("item_nutrition")
+          .select("id, inventory_id", { count: "exact" })
+          .eq("restaurant_id", restaurantId),
+    );
+    const { count, error } = await this.db
+      .from("restaurant_inventory")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId);
+    if (error || typeof count !== "number") {
+      this.failed("item count", restaurantId, "*", error?.message ?? "no count came back");
+    }
+    const recordedItemIds = [...new Set(rows.map((r) => r.inventory_id))].sort();
+    return { recordedItemIds, houseItems: count as number };
   }
 
   /**
