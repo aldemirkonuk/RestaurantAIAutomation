@@ -81,6 +81,24 @@ describe('Wrong address? Change it', () => {
     expect(screen.queryByLabelText('The address you meant')).toBeNull()
   })
 
+  it("a not-sent answer for the old address is gone once the address is changed (r106)", async () => {
+    h.post.mockResolvedValueOnce({ data: { success: true, sent: false, verificationMail: 'not_sent' } })
+    mount()
+    await userEvent.click(screen.getByRole('button', { name: /^Resend/ }))
+    expect(await screen.findByTestId('verify-resend-tried')).toBeInTheDocument()
+    h.post.mockResolvedValueOnce({ data: { accessToken: 'a2', refreshToken: 'r2', email: 'selin@house.test' } })
+    // The new session carries the new address, as the real context does.
+    h.auth.signInWithSession.mockImplementation(async () => {
+      h.auth.user = { email: 'selin@house.test', emailVerified: false }
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Wrong address? Change it' }))
+    await userEvent.type(screen.getByLabelText('The address you meant'), 'selin@house.test')
+    await userEvent.click(screen.getByRole('button', { name: 'Send it to this address' }))
+    await waitFor(() => expect(h.auth.signInWithSession).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByTestId('verify-resend-tried')).toBeNull())
+    expect(screen.queryByText(/Nothing was sent|Still not/)).toBeNull()
+  })
+
   it('a taken address says so in its own sentence and keeps the form open', async () => {
     h.post.mockRejectedValue({ response: { status: 409, data: { code: 'EMAIL_TAKEN' } } })
     mount()

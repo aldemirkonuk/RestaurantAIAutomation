@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, afterEach, expect, it, vi, describe } from 'vitest'
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -99,6 +101,22 @@ describe('with no session', () => {
     expect(screen.getByText('After you verify, sign in to continue.')).toBeInTheDocument()
     const link = screen.getByRole('link', { name: 'I verified it, sign in' })
     expect(link).toHaveAttribute('href', '/login')
+    expect(link).toHaveClass('mdv-pub__verified')
     expect(screen.queryByTestId('verify-poll-slot')).not.toBeInTheDocument()
+  })
+})
+
+describe('the verified-it link is a 44px, centred target', () => {
+  it('has a rule that gives it 44px and centres it', () => {
+    const css = readFileSync(
+      resolve(__dirname, '../../components/mudavym/public-shell.css'),
+      'utf8',
+    )
+    const rule = css.match(/\.mdv-pub__stack > a\.mdv-pub__verified \{([^}]*)\}/)
+    expect(rule).not.toBeNull()
+    expect(rule![1]).toMatch(/min-height:\s*44px/)
+    expect(rule![1]).toMatch(/display:\s*inline-flex/)
+    expect(rule![1]).toMatch(/justify-self:\s*center/)
+    expect(rule![1]).not.toMatch(/transition|animation/)
   })
 })
