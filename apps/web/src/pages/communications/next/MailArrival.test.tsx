@@ -163,13 +163,48 @@ describe('the test letter', () => {
     expect(api.put).not.toHaveBeenCalled();
   });
 
-  it('arrived: says when and from whom', async () => {
+  it('arrived: says when, and who the letter only claims to be from', async () => {
+    // QA round 26, #974 defect 3: the From line of a letter is not checked by
+    // anyone, so the page does not vouch for it.
     answer(view({ testLetter: { failed: null, latest: LETTER({ arrivedAt: ago(4 * 60_000 + 5_000), arrivedFrom: 'me@gmail.test' }) } }));
     mount();
     const s = await screen.findByTestId('setup-test-state');
     expect(s.getAttribute('data-state')).toBe('arrived');
-    expect(s.textContent).toBe('Arrived 4 min ago, from me@gmail.test. Mail reaches this house.');
+    expect(s.textContent).toBe('Arrived 4 min ago. It claims to be from me@gmail.test; nothing checks that. Mail reaches this house.');
     expect(screen.getByRole('button', { name: 'Send another test letter' })).toBeTruthy();
+  });
+
+  it('an earlier test letter that arrived after the newest was started is shown', async () => {
+    // QA round 26, #974 defect 2 (probe B6-older-arrives).
+    answer(
+      view({
+        testLetter: {
+          failed: null,
+          latest: LETTER({ startedAt: ago(5 * 60_000) }),
+          lastArrival: { code: 'AAAA-AAAA', arrivedAt: ago(60_000 + 5_000), arrivedFrom: 'me@gmail.test' },
+        },
+      }),
+    );
+    mount();
+    expect((await screen.findByTestId('setup-test-earlier')).textContent).toBe(
+      'An earlier test letter, AAAA-AAAA, arrived 1 min ago. It claims to be from me@gmail.test; nothing checks that. Mail reaches this house.',
+    );
+    expect(screen.getByTestId('setup-test-state').getAttribute('data-state')).toBe('waiting');
+  });
+
+  it('an arrival from before the newest letter was started is not shown as news', async () => {
+    answer(
+      view({
+        testLetter: {
+          failed: null,
+          latest: LETTER({ startedAt: ago(5 * 60_000) }),
+          lastArrival: { code: 'AAAA-AAAA', arrivedAt: ago(60 * 60_000), arrivedFrom: 'me@gmail.test' },
+        },
+      }),
+    );
+    mount();
+    await screen.findByTestId('setup-test-state');
+    expect(screen.queryByTestId('setup-test-earlier')).toBeNull();
   });
 
   it('late: past the wait it says it has not arrived and what to check', async () => {

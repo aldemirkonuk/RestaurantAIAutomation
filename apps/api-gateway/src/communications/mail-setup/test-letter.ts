@@ -47,7 +47,9 @@ export function testSubject(code: string): string {
  * letter arrived.
  */
 export function testCodeIn(subject: string | null | undefined): string | null {
-  const m = CODE_IN_SUBJECT.exec(String(subject ?? ""));
+  // Spaces as a person types them, or a mail client folds them, are one space
+  // (QA round 26, #974): "MUDAVYM  TEST  LETTER" is still the test letter.
+  const m = CODE_IN_SUBJECT.exec(String(subject ?? "").replace(/\s+/g, " "));
   return m ? m[1].toUpperCase() : null;
 }
 
@@ -55,10 +57,19 @@ export function testCodeIn(subject: string | null | undefined): string | null {
  * Mark a test letter arrived. Scoped twice: the house is the one the letter's
  * own recipient address resolved to, AND the code must belong to that house.
  * A code copied into a letter to another house's address matches nothing.
- * Only the first arrival is kept.
  *
- * Returns true when a check was marked; false when nothing matched. Throws on
- * a failed write, so the caller can say it failed instead of passing it off.
+ * Only the first arrival is kept (`.is("arrived_at", null)`; guarded by
+ * test-letter-arrives.spec.ts). A later copy of a code this house already
+ * holds is a `repeat`: still the house's own test letter, so the caller keeps
+ * it out of the vendor pipeline (QA round 26, #974) instead of publishing it
+ * as a stranger's letter.
+ *
+ *   marked — an open check of this house was marked arrived now
+ *   repeat — this house has the code, already arrived; nothing was changed
+ *   none   — not this house's code; the letter is somebody's real mail
+ *
+ * Throws on a failed write or read, so the caller can say it failed instead of
+ * guessing either way.
  */
 export async function recordTestLetterArrival(
   client: SupabaseClient,
@@ -66,7 +77,7 @@ export async function recordTestLetterArrival(
   code: string,
   from: string,
   at: Date = new Date(),
-): Promise<boolean> {
+): Promise<"marked" | "repeat" | "none"> {
   const { data, error } = await client
     .from("mail_setup_checks")
     .update({ arrived_at: at.toISOString(), arrived_from: from.slice(0, 320) })
@@ -75,5 +86,13 @@ export async function recordTestLetterArrival(
     .is("arrived_at", null)
     .select("id");
   if (error) throw new Error(error.message);
-  return Array.isArray(data) && data.length > 0;
+  if (Array.isArray(data) && data.length > 0) return "marked";
+  const known = await client
+    .from("mail_setup_checks")
+    .select("id")
+    .eq("restaurant_id", restaurantId)
+    .eq("code", code)
+    .limit(1);
+  if (known.error) throw new Error(known.error.message);
+  return Array.isArray(known.data) && known.data.length > 0 ? "repeat" : "none";
 }

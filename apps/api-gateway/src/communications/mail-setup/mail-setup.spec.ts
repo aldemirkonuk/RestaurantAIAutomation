@@ -168,13 +168,45 @@ describe("MailSetupService.read", () => {
       arrivedAt: "2026-11-07T10:02:00Z",
       arrivedFrom: "me@gmail.test",
     });
+    expect(testLetter.lastArrival).toEqual({
+      code: "K7QM-2RZD",
+      arrivedAt: "2026-11-07T10:02:00Z",
+      arrivedFrom: "me@gmail.test",
+    });
     expect(testLetter.latest!.mailto).toMatch(/^mailto:r-mine@in\.example\.test\?subject=Mudavym%20test%20letter%20K7QM-2RZD&body=/);
   });
 
   it("no test letter yet is null; a failed read says it failed", async () => {
-    expect((await build({}).service.read(HOUSE, ME, "owner")).testLetter).toEqual({ failed: null, latest: null });
+    expect((await build({}).service.read(HOUSE, ME, "owner")).testLetter).toEqual({
+      failed: null,
+      latest: null,
+      lastArrival: null,
+    });
     const failed = await build({ mail_setup_checks: { error: { message: "x" } } }).service.read(HOUSE, ME, "owner");
-    expect(failed.testLetter).toEqual({ failed: "Whether the test letter arrived could not be read.", latest: null });
+    expect(failed.testLetter).toEqual({
+      failed: "Whether the test letter arrived could not be read.",
+      latest: null,
+      lastArrival: null,
+    });
+  });
+
+  it("an earlier check's arrival is shown while a newer check is still open", async () => {
+    // QA round 26, #974 defect 2 (probe B6-older-arrives): test A started,
+    // then B before A landed; A arrives. The page read only the newest check
+    // and said "not arrived" while mail was in fact arriving.
+    const { service } = build({
+      mail_setup_checks: {
+        rows: [
+          { restaurant_id: HOUSE, code: "AAAA-AAAA", address: "r-mine@in.example.test", started_at: "2026-11-07T10:00:00Z", arrived_at: "2026-11-07T10:05:00Z", arrived_from: "me@gmail.test" },
+          { restaurant_id: HOUSE, code: "BBBB-BBBB", address: "r-mine@in.example.test", started_at: "2026-11-07T10:01:00Z", arrived_at: null, arrived_from: null },
+          { restaurant_id: OTHER, code: "ZZZZ-ZZZZ", address: "r-other@in.example.test", started_at: "2026-11-07T09:00:00Z", arrived_at: "2026-11-07T11:00:00Z", arrived_from: "them@x.test" },
+        ],
+      },
+    });
+    const { testLetter } = await service.read(HOUSE, ME, "owner");
+    expect(testLetter.latest?.code).toBe("BBBB-BBBB");
+    expect(testLetter.latest?.arrivedAt).toBeNull();
+    expect(testLetter.lastArrival).toEqual({ code: "AAAA-AAAA", arrivedAt: "2026-11-07T10:05:00Z", arrivedFrom: "me@gmail.test" });
   });
 });
 
