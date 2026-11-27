@@ -3330,6 +3330,9 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     const service = makeService(tables);
     await service.removeFailedRead("rest-1", "m-failed", "user-1");
     await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
 describe("MenusService.getOnboardingProgress — the self-heal counts the lines a house has", () => {
   // A fake for this block alone, closer to PostgREST than the shared one where
   // it matters here: `.maybeSingle()` answers MORE than one row with an error
