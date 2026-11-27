@@ -28,6 +28,7 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { clearFlagSeeds } from "../lib/mudavym/flagSeed";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -55,6 +56,7 @@ export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
  * provider bare) there is no cache to forget.
  */
 export function forgetHouseReads(client: QueryClient | undefined): void {
+  clearFlagSeeds(); // the page-design answers were this house's too (perf-p10-2)
   if (!client) return;
   const cache = client.getQueryCache();
   notifyManager.batch(() => {

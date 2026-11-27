@@ -20,6 +20,18 @@ import { useCallback } from 'react'
 // Query: Inventory list
 // ---------------------------------------------------------------------------
 
+/** The list read, defined once so a route can start it before the page that draws it mounts. */
+export function inventoryListQuery(restaurantId: string) {
+  return {
+    queryKey: queryKeys.inventory.list(restaurantId),
+    queryFn: async () => {
+      const items = await inventoryApi.getInventory(restaurantId)
+      return items.map(normalizeInventoryItem)
+    },
+    staleTime: 30_000,
+  }
+}
+
 export function useInventory() {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
@@ -60,13 +72,8 @@ export function useInventory() {
   )
 
   return useQuery({
-    queryKey: queryKeys.inventory.list(activeRestaurantId ?? ''),
-    queryFn: async () => {
-      const items = await inventoryApi.getInventory(activeRestaurantId!)
-      return items.map(normalizeInventoryItem)
-    },
+    ...inventoryListQuery(activeRestaurantId ?? ''),
     enabled: !!activeRestaurantId && isAuthenticated,
-    staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
