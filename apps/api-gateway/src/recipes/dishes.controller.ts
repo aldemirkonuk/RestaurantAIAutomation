@@ -188,6 +188,12 @@ export class DishesController {
     return this.dishes.drinkFigures(restaurantId, user?.role);
   }
 
+  @Get(":restaurantId/drinks/cards")
+  @ApiOperation({ summary: "Every drink with a current recipe as one printable card, for the spec book; carries no money for any role" })
+  drinkCards(@Param("restaurantId", ParseUUIDPipe) restaurantId: string) {
+    return this.dishes.drinkCards(restaurantId);
+  }
+
   @Get(":restaurantId/menu-prices")
   @ApiOperation({ summary: "The current menu's price for each dish and drink of the same name (nothing for a role without money)" })
   menuPrices(

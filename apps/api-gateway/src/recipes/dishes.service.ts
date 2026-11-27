@@ -21,6 +21,7 @@ export const DISHES_UNREAD = "Your dishes could not be read just now. Nothing is
 export const DISH_USE_UNREAD = "Which dishes use this item could not be read just now.";
 export const DRINK_USE_UNREAD = "Which drinks use this item could not be read just now.";
 export const MENU_PRICES_UNREAD = "Your menu's prices could not be read just now, so none is shown beside your list.";
+export const DRINK_CARDS_UNREAD = "The recipe cards could not be read just now, so no book is shown rather than a shorter one.";
 export const DRINK_FIGURES_UNREAD = "Your drinks' costs could not be read just now, so none is shown.";
 export const DISH_FIGURES_UNREAD = "Your dishes' costs and allergens could not be read just now, so none is shown.";
 
@@ -89,6 +90,8 @@ export async function inWaves<T, R>(xs: T[], read: (x: T) => Promise<R>, width =
  * 50 items are at most 700 rows, under the 1,000-row cap; the read pages anyway.
  */
 export const ALLERGEN_CHUNK = 50;
+/** Ids sent in one `in()` filter by the spec book; its lines page past the 1,000-row cap. */
+export const CARD_CHUNK = 100;
 
 /**
  * What a list row says of its allergens (r36 recipes audit, gap 8), by the
@@ -100,6 +103,21 @@ export const ALLERGEN_CHUNK = 50;
 export type RowAllergens =
   | { readable: true; status: Record<Allergen, AllergenStatus>; unstatedBy: string[] }
   | { readable: false };
+
+/** One drink's printable card (GET drinks/cards): no money at any key, for any role. */
+export interface DrinkCard {
+  cocktailId: string;
+  name: string;
+  section: string | null;
+  glass: string | null;
+  method: string | null;
+  garnish: string | null;
+  yieldServes: number;
+  version: number;
+  versionDate: string | null;
+  lines: Array<{ label: string; qty: number; unit: string | null; name: string | null }>;
+  allergens: RowAllergens;
+}
 
 type Read = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
 
@@ -633,6 +651,129 @@ export class DishesService {
         allergens: figures.get(d.id)?.allergens ?? null,
       })),
     };
+  }
+
+  /**
+   * Every drink with a current recipe, as one printable card each (the spec book,
+   * r108 drinks-g7): name, section, glass, method, garnish, serves, the version and
+   * its date, the lines (label, amount, unit, the shelf good or made component each
+   * names) and the allergens by the sheet's own rule (rowAllergens). NO MONEY for any
+   * role: a book is handed round, so it carries no price, no cost and no margin, the
+   * owner's too, and the answer is one for every role. Ids go in chunks of 100 and
+   * every read pages past the 1,000-row cap, scoped to the house. A failed read is a
+   * 503 with a sentence, never a shorter book (ADR 0020); a failed allergen read says
+   * so on the card and never reads as allergen-free.
+   */
+  async drinkCards(restaurantId: string): Promise<{ drinks: DrinkCard[] }> {
+    const client = this.db.getClient();
+    const drinks = await this.all<any>("card drink read", DRINK_CARDS_UNREAD, (from, to) =>
+      client
+        .from("cocktails")
+        .select("id, name, display_name, menu_section, glass, garnish, method")
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+    const pointers = (
+      await inWaves(chunks(drinks.map((d) => d.id), CARD_CHUNK), (ids) =>
+        this.all<any>("card pointer read", DRINK_CARDS_UNREAD, (from, to) =>
+          client
+            .from("recipe_current")
+            .select("cocktail_id, version_id")
+            .eq("restaurant_id", restaurantId)
+            .in("cocktail_id", ids)
+            .order("cocktail_id", { ascending: true })
+            .range(from, to),
+        ),
+      )
+    ).flat();
+    const versionIds = [...new Set(pointers.map((p) => p.version_id as string))];
+    const versions = new Map<string, any>();
+    const linesOf = new Map<string, any[]>();
+    for (const [v, l] of await inWaves(chunks(versionIds, CARD_CHUNK), (ids) =>
+      Promise.all([
+        this.all<any>("card version read", DRINK_CARDS_UNREAD, (from, to) =>
+          client
+            .from("recipe_versions")
+            .select("id, cocktail_id, version, yield_serves, method, glass, garnish, created_at")
+            .eq("restaurant_id", restaurantId)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+        this.all<any>("card line read", DRINK_CARDS_UNREAD, (from, to) =>
+          client
+            .from("recipe_lines")
+            .select("id, version_id, position, label, role, inventory_id, component_dish_id, qty_entered, unit_code, qty_base, base_unit")
+            .eq("restaurant_id", restaurantId)
+            .in("version_id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ]),
+    )) {
+      for (const r of v) versions.set(r.id, r);
+      for (const r of l) linesOf.set(r.version_id, [...(linesOf.get(r.version_id) ?? []), r]);
+    }
+    const allLines = [...linesOf.values()].flat();
+    const itemIds = [...new Set(allLines.map((l) => l.inventory_id).filter(Boolean))] as string[];
+    const madeIds = [...new Set(allLines.map((l) => l.component_dish_id).filter(Boolean))] as string[];
+    const [stated, itemNames, madeNames] = await Promise.all([
+      this.allergensOf(restaurantId, itemIds, DRINK_CARDS_UNREAD),
+      inWaves(chunks(itemIds, CARD_CHUNK), (ids) =>
+        this.all<any>("card good read", DRINK_CARDS_UNREAD, (from, to) =>
+          client
+            .from("restaurant_inventory")
+            .select("id, display_name")
+            .eq("restaurant_id", restaurantId)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ),
+      inWaves(chunks(madeIds, CARD_CHUNK), (ids) =>
+        this.all<any>("card component read", DRINK_CARDS_UNREAD, (from, to) =>
+          client
+            .from("dishes")
+            .select("id, name")
+            .eq("restaurant_id", restaurantId)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ),
+    ]);
+    const goodName = new Map(itemNames.flat().map((r) => [r.id as string, r.display_name as string | null]));
+    const madeName = new Map(madeNames.flat().map((r) => [r.id as string, r.name as string | null]));
+    const versionOf = new Map(pointers.map((p) => [p.cocktail_id as string, p.version_id as string]));
+    const cards: DrinkCard[] = [];
+    for (const d of drinks) {
+      const v = versions.get(versionOf.get(d.id) ?? "");
+      // A pointer whose version is not this house's or not this drink's is not read as a recipe.
+      if (!v || v.cocktail_id !== d.id) continue;
+      const rows = [...(linesOf.get(v.id) ?? [])].sort((a, b) => a.position - b.position);
+      const yieldServes = Number(v.yield_serves);
+      cards.push({
+        cocktailId: d.id as string,
+        name: (d.display_name || d.name) as string,
+        section: (d.menu_section ?? null) as string | null,
+        glass: (v.glass ?? d.glass ?? null) as string | null,
+        method: (v.method ?? d.method ?? null) as string | null,
+        garnish: (v.garnish ?? d.garnish ?? null) as string | null,
+        yieldServes,
+        version: Number(v.version),
+        versionDate: (v.created_at ?? null) as string | null,
+        lines: rows.map((l) => ({
+          label: (l.label ?? "") as string,
+          qty: Number(l.qty_entered),
+          unit: (l.unit_code ?? null) as string | null,
+          name: ((l.inventory_id && goodName.get(l.inventory_id)) || (l.component_dish_id && madeName.get(l.component_dish_id)) || null) as string | null,
+        })),
+        allergens: rowAllergens(rows, yieldServes, stated),
+      });
+    }
+    return { drinks: cards };
   }
 
   /**
