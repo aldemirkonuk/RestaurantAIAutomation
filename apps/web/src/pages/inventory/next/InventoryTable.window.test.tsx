@@ -251,6 +251,23 @@ describe("the phone's cards draw only the cards near the screen", () => {
     expect(screen.getByTestId('inv-row-i1150')).toBeTruthy();
   });
 
+  it('a good opened by a link puts the page on its card at once, in the first paint (r108-7)', () => {
+    const calls: Array<{ row: string | null; opts: ScrollIntoViewOptions | undefined }> = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) {
+      calls.push({ row: this.getAttribute('data-row-id'), opts: o as ScrollIntoViewOptions });
+    };
+    // No animation frame ever runs: only the paint's own layout work can have scrolled.
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(0);
+    try {
+      draw(many(), { openId: 'i1150' });
+      expect(calls).toEqual([{ row: 'i1150', opts: { block: 'center', behavior: 'instant' } }]);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      raf.mockRestore();
+    }
+  });
+
   it('select-all still reads the whole list', () => {
     const rows = many();
     draw(rows, { selected: new Set(rows.map((r) => r.id)), onSelect: vi.fn(), onSelectAll: vi.fn() });
