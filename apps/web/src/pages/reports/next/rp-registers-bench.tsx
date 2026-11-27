@@ -51,6 +51,8 @@ export interface BenchGoalRow {
   current: number | null;
   target: number | null;
   direction: string;
+  /** Why the latest reading was refused (the gateway then sends no current). */
+  unread: string | null;
 }
 
 export interface BenchRegister {
@@ -120,6 +122,7 @@ export const bench = analysis<BenchRegister>({
         current: num(g.current_value),
         target: num(g.target_value),
         direction: str(g.direction) || 'at_least',
+        unread: str(g.current_unread) || null,
       })),
       // A source whose read failed arrives as `null` (useReportsNextData):
       // a read that did not happen, never "this house bought nothing".
@@ -265,6 +268,11 @@ export const bench = analysis<BenchRegister>({
           : b.goals.length === 0
           ? 'No goal is running, so there is nothing to measure against a baseline. Set one on the goals desk and it appears here.'
           : null,
+        // A refused reading leaves no "now": the older number is not shown as
+        // where the goal stands, and the reason is the gateway's own.
+        ...b.goals
+          .filter((g) => g.unread !== null)
+          .map((g) => `${g.name}: its latest reading was refused, so it has no figure for now (${g.unread?.replace(/\.$/, '')}).`),
       ].filter((n): n is string => n !== null),
       basis: b.basis,
     };

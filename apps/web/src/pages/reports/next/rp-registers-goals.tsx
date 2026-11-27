@@ -735,7 +735,7 @@ function Desk({
                       <div
                         className="rp-bar"
                         role="img"
-                        aria-label={`${ratioPct(Math.min(1, g.progressPct))} of the target`}
+                        aria-label={`${ratioPct(Math.min(1, g.progressPct))} of the ${g.direction === 'at_most' ? 'ceiling' : 'target'}`}
                       >
                         <span style={{ width: `${Math.min(100, Math.max(0, g.progressPct * 100))}%` }} />
                       </div>
