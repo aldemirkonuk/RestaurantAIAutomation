@@ -240,14 +240,14 @@ describe('useReportsNextData — the other till windows are read when idle (perf
       { wrapper: wrapper(), initialProps: { days: 30 } },
     );
     await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
-    await waitFor(() => expect(idle).toHaveLength(1));
+    await waitFor(() => expect(idle).toHaveLength(1), { timeout: 4000 });
     expect(paths()).not.toContain(TILL(7)); // nothing before the browser is idle
     expect(paths()).not.toContain(TILL(90));
 
     await runIdle();
     await waitFor(() => expect(paths()).toContain(TILL(7)));
     expect(paths()).not.toContain(TILL(90)); // one window at a time
-    await waitFor(() => expect(idle).toHaveLength(1));
+    await waitFor(() => expect(idle).toHaveLength(1), { timeout: 4000 });
     await runIdle();
     await waitFor(() => expect(paths()).toContain(TILL(90)));
 
@@ -260,6 +260,30 @@ describe('useReportsNextData — the other till windows are read when idle (perf
     const direct = renderHook(() => useReportsNextData(90, () => {}, ['till']), { wrapper: wrapper() });
     await waitFor(() => expect(direct.result.current.registers.till?.loading).toBe(false));
     expect(prefetched).toEqual(direct.result.current.registers.till?.data);
+  });
+
+  it('waits while another read is in flight, then reads one window after it clears', async () => {
+    arrange();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    let release = () => {};
+    // A read the page itself is waiting on, sharing the client.
+    void qc.prefetchQuery({
+      queryKey: ['page-own-read'],
+      queryFn: () => new Promise<null>((res) => (release = () => res(null))),
+    });
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrap });
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    await new Promise((r) => setTimeout(r, 1800)); // past the quiet beat and one re-check
+    expect(idle).toHaveLength(0); // yielded: no warm-up queued while a read is in flight
+    expect(paths()).not.toContain(TILL(7));
+    await act(async () => release());
+    await waitFor(() => expect(idle).toHaveLength(1), { timeout: 4000 });
+    await runIdle();
+    await waitFor(() => expect(paths()).toContain(TILL(7)));
+    expect(paths()).not.toContain(TILL(90)); // still one window at a time
   });
 
   it('reads nothing ahead on a data-saver connection', async () => {
