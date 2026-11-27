@@ -38,6 +38,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Label,
   Line,
@@ -76,9 +77,14 @@ const RULE = { stroke: 'var(--ink-3)', strokeDasharray: '2 3' } as const;
 /** Room for the two axis labels. Kept in one place so every plot agrees. */
 const MARGIN = { top: 8, right: 8, bottom: 14, left: 2 } as const;
 
-function Plot({ children }: { children: ReactNode }) {
+/**
+ * The frame every recharts drawing sits in. It names itself for a screen
+ * reader in words (`label`), because the SVG inside is a picture: the same
+ * register's table drawing is the readable form, one "Draw as" away.
+ */
+function Plot({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="rp-plot">
+    <div className="rp-plot" role="img" aria-label={label}>
       <ResponsiveContainer width="100%" height="100%" debounce={1}>
         {children as never}
       </ResponsiveContainer>
@@ -103,18 +109,23 @@ function Tip({
   projectedLabel?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
-  const row = payload[0]?.payload as { full?: string } | undefined;
+  const row = payload[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
   const rows = payload.filter((p) => typeof p.value === 'number');
   if (rows.length === 0) return null;
   return (
     <div className="rp-tip">
       <span className="rp-tip__head">{row?.full ?? String(label ?? '')}</span>
-      {rows.map((p) => (
-        <span key={String(p.dataKey)} className="rp-tip__row">
-          <b>{format(p.value as number)}</b> {unit}
-          {p.dataKey === 'projected' && projectedLabel ? ` · ${projectedLabel}` : ''}
-        </span>
-      ))}
+      {rows.map((p) => {
+        // A bar drawing carries one series, so a projected bar says so itself.
+        const projected =
+          p.dataKey === 'projected' || (p.dataKey === 'shown' && row?.isProjected === true);
+        return (
+          <span key={String(p.dataKey)} className="rp-tip__row">
+            <b>{format(p.value as number)}</b> {unit}
+            {projected && projectedLabel ? ` · ${projectedLabel}` : ''}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -276,9 +287,14 @@ export function BigFigure({ fig, window }: { fig: Fig; window: string }) {
  * `projected` is always the dashed/hollow half: a forecast that looks like a
  * measurement is a lie told with a stroke width.
  */
+const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
+
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
   const { data, xLabel, yLabel, unit, format, refs, projectedLabel } = series;
   const hasProjection = data.some((d) => d.projected != null);
+  const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
+    hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
+  }`;
   const tip = (
     <Tooltip
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : { stroke: 'var(--seal-ring)' }}
@@ -315,29 +331,44 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     </>
   );
 
-  if (kind === 'bars')
+  if (kind === 'bars') {
+    // ONE bar series, so every day keeps a full-width slot. A day that was
+    // measured is drawn measured, including the seam day the line drawings
+    // share between both halves; a day that is only expected is the hollow,
+    // dashed bar in the same slot. Two grouped series put a measured and a
+    // projected bar side by side at half width, and drew the seam twice.
+    const rows = data.map((d) => ({
+      ...d,
+      shown: d.value ?? d.projected ?? null,
+      isProjected: d.value == null && d.projected != null,
+    }));
     return (
-      <Plot>
-        <BarChart data={data} margin={MARGIN}>
+      <Plot label={label}>
+        <BarChart data={rows} margin={MARGIN}>
           {axes}
-          <Bar dataKey="value" fill="var(--seal)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-          {hasProjection && (
-            <Bar
-              dataKey="projected"
-              fill="var(--seal-tint)"
-              stroke="var(--seal-deep)"
-              strokeDasharray="3 2"
-              radius={[3, 3, 0, 0]}
-              isAnimationActive={false}
-            />
-          )}
+          <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
+            {rows.map((r, i) =>
+              r.isProjected ? (
+                <Cell
+                  key={`${i}:${r.label}`}
+                  fill="var(--seal-tint)"
+                  stroke="var(--seal-deep)"
+                  strokeDasharray="3 2"
+                  data-projected="true"
+                />
+              ) : (
+                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" />
+              ),
+            )}
+          </Bar>
         </BarChart>
       </Plot>
     );
+  }
 
   if (kind === 'area')
     return (
-      <Plot>
+      <Plot label={label}>
         <AreaChart data={data} margin={MARGIN}>
           {axes}
           <Area
@@ -368,7 +399,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot>
+    <Plot label={label}>
       <LineChart data={data} margin={MARGIN}>
         {axes}
         <Line
@@ -415,8 +446,9 @@ function named(m: { label: string; unit: string }): string {
  * The picker is shown only when the register offers more than two measures; with
  * exactly two there is nothing to choose. `pick`/`onPick` make it controlled
  * (the sheet keeps the choice above the cutting, keyed by its id, so moving the
- * cutting never loses it); with no `onPick` it keeps its own, which is what the
- * full-screen view wants — that view is not saved to the sheet.
+ * cutting never loses it). The full-screen view holds its own choice the same
+ * way, one level up in `CuttingFlat`, so it survives a "Draw as" flip there and
+ * is never written to the sheet. With no `onPick` at all it keeps its own.
  */
 export function ComboPlot({
   series,
@@ -476,7 +508,7 @@ export function ComboPlot({
           </label>
         </div>
       )}
-      <Plot>
+      <Plot label={`Bars of ${bars.label} and a line of ${line.label} by ${series.xLabel}`}>
         <ComposedChart
           data={rows}
           margin={split ? { ...MARGIN, right: 2 } : MARGIN}
@@ -583,7 +615,7 @@ function ComboTip({
 export function PointPlot({ series }: { series: PointSeries }) {
   const { data, xLabel, yLabel, formatX, formatY, refX, refY } = series;
   return (
-    <Plot>
+    <Plot label={`${yLabel} against ${xLabel}, one point each`}>
       <ScatterChart margin={MARGIN}>
         <CartesianGrid stroke="var(--paper-2)" />
         <XAxis type="number" dataKey="x" {...AXIS} tickFormatter={(v: number) => formatX(v)}>
@@ -686,8 +718,8 @@ export function HeatGrid({ series }: { series: MatrixSeries }) {
                     key={c}
                     className="rp-heat__cell"
                     data-blank={v == null}
-                    title={cell ? `${cell.title} — ${format(v as number)} ${unit}` : undefined}
-                    aria-label={cell ? `${cell.title}, ${format(v as number)} ${unit}` : undefined}
+                    title={cell ? `${cell.title} — ${heatWords(v, format, unit)}` : undefined}
+                    aria-label={cell ? `${cell.title}, ${heatWords(v, format, unit)}` : undefined}
                   >
                     <span style={{ opacity: v == null ? 0 : 0.1 + 0.9 * t }} />
                   </td>
@@ -699,6 +731,11 @@ export function HeatGrid({ series }: { series: MatrixSeries }) {
       </table>
     </div>
   );
+}
+
+/** A heat cell's figure in words; a cell with no value is "nothing recorded", never a formatted null. */
+function heatWords(v: number | null, format: (n: number) => string, unit: string): string {
+  return v == null ? 'nothing recorded' : `${format(v)} ${unit}`;
 }
 
 /** The plain register: rows as they are, already formatted, dashes intact. */

@@ -39,6 +39,7 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft } from 'lucide-react';
 import { lockBodyScroll, openStack } from '@/components/mudavym/overlayState';
 import { readGroundFromDom, type MudavymGround } from '@/lib/mudavym/shellGround';
+import type { ComboPick } from './rp-combo';
 import { GRAPH_LABEL, type GraphType } from './rp-sheet';
 import './reports-flat.css';
 
@@ -61,8 +62,17 @@ export interface CuttingFlatProps {
   /** `spec.graphs`; the view starts from the sheet's `initialGraph`. */
   graphs: GraphType[];
   initialGraph: GraphType;
-  /** The cutting's own body, drawn as `graph`, with the working open. */
-  renderBody: (graph: GraphType) => ReactNode;
+  /** The sheet's bars-and-line choice for this cutting, the view's starting point. */
+  initialComboPick?: Partial<ComboPick>;
+  /**
+   * The cutting's own body, drawn as `graph`, with the working open. `combo` is
+   * this view's own bars-and-line choice: held here, above the drawing, so
+   * flipping "Draw as" away and back keeps it, and never handed to the sheet.
+   */
+  renderBody: (
+    graph: GraphType,
+    combo: { pick?: Partial<ComboPick>; onPick: (p: ComboPick) => void },
+  ) => ReactNode;
   /** The till's window picker, wired to the page's state. */
   windowControl?: ReactNode;
   anchorRef: RefObject<HTMLElement | null>;
@@ -74,12 +84,14 @@ export default function CuttingFlat({
   windowLine,
   graphs,
   initialGraph,
+  initialComboPick,
   renderBody,
   windowControl,
   anchorRef,
   onClose,
 }: CuttingFlatProps) {
   const [graph, setGraph] = useState<GraphType>(initialGraph);
+  const [comboPick, setComboPick] = useState<Partial<ComboPick> | undefined>(initialComboPick);
   const [ground, setGround] = useState<MudavymGround | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const backRef = useRef<HTMLButtonElement | null>(null);
@@ -203,7 +215,9 @@ export default function CuttingFlat({
         </div>
         <p className="rp-cap">This view is not saved to your sheet.</p>
       </div>
-      <div className="rp-flat__body">{renderBody(graph)}</div>
+      <div className="rp-flat__body">
+        {renderBody(graph, { pick: comboPick, onPick: setComboPick })}
+      </div>
     </div>,
     document.body,
   );
