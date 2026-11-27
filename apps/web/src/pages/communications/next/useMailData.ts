@@ -33,6 +33,7 @@ import type {
   MailSummary,
   MailThreadPage,
   MailThreadsPage,
+  NotNowChoice,
   SeenMark,
 } from './mail-format';
 import { READ_ALL_ID } from './mail-format';
@@ -332,6 +333,33 @@ export function useNoReplyMark() {
     // line appears. A failed refetch still settles (TanStack does not throw
     // from an invalidation), and the API client's 30 s timeout bounds a slow
     // one. The lists behind the thread are read again without waiting.
+    onSuccess: () => {
+      for (const root of ['mail-threads', 'mail-people', 'mail-summary']) {
+        void qc.invalidateQueries({ queryKey: [root, house] });
+      }
+      return qc.invalidateQueries({ queryKey: ['mail-thread', house] });
+    },
+  });
+}
+
+/**
+ * POST / DELETE /mail/thread/not-now (r110 mail): put a vendor thread off
+ * until a time on the house's clock (`choice`), or take that back (`choice`
+ * null). Every read that says who is waiting is read again, as for "No reply
+ * needed"; the thread's own read is awaited so the line holds until drawn.
+ */
+export function useNotNow() {
+  const house = useHouse();
+  const qc = useQueryClient();
+  return useMutation<unknown, unknown, { key: string; with: string; choice: NotNowChoice | null }>({
+    mutationFn: async ({ key, with: withKey, choice }) => {
+      const params = { key, with: withKey };
+      return (
+        choice
+          ? await apiClient.post('/mail/thread/not-now', { choice }, { params })
+          : await apiClient.delete('/mail/thread/not-now', { params })
+      ).data;
+    },
     onSuccess: () => {
       for (const root of ['mail-threads', 'mail-people', 'mail-summary']) {
         void qc.invalidateQueries({ queryKey: [root, house] });

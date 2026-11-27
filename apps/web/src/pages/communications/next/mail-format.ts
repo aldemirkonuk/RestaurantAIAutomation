@@ -155,6 +155,8 @@ export interface MailPersonRow {
    * gateway that predates it.
    */
   unsentStatus?: string | null;
+  /** A thread of theirs put off with "Not now" came back and waits (r110). Absent from an older gateway. */
+  backFromNotNow?: boolean;
 }
 
 export interface MailPeoplePage {
@@ -191,6 +193,10 @@ export interface MailThreadRow {
    * predates it. Only `true` is ever drawn.
    */
   newToYou?: boolean | null;
+  /** Put off with "Not now" until this instant (r110); null or absent when it is not. */
+  notNowUntil?: string | null;
+  /** Its "Not now" time came, the vendor has not written since, and it waits. */
+  backFromNotNow?: boolean;
 }
 
 export interface MailThreadsPage {
@@ -263,6 +269,8 @@ export interface MailThreadPage {
   waiting?: boolean;
   /** False when the letters' files could not be read with this page (gap 13). */
   attachmentsRead?: boolean;
+  /** "Not now" (r110): put off until `until`, or back once its time came. Null or absent otherwise. */
+  notNow?: { until: string; state: 'on' | 'back' } | null;
 }
 
 export interface MailSummary {
@@ -1183,6 +1191,30 @@ export function noReplyFailWords(err: unknown, marking: boolean): string {
   return marking
     ? 'It could not be marked just now, so nothing changed. Try again.'
     : 'The mark could not be taken back just now; it still holds. Try again.';
+}
+
+/** "Not now" (r110 mail, DD-r109-13): the three times a thread can be put off until. */
+export const NOT_NOW_CHOICES = [
+  { choice: 'in_3_hours', label: 'In 3 hours' },
+  { choice: 'tomorrow_9', label: 'Tomorrow 09:00' },
+  { choice: 'monday_9', label: 'Monday 09:00' },
+] as const;
+export type NotNowChoice = (typeof NOT_NOW_CHOICES)[number]['choice'];
+
+/** The quiet word on a row whose "Not now" time came and that waits again. */
+export const BACK_FROM_NOT_NOW = 'Back from Not now';
+
+/** Why putting a thread off, or taking that back, did not hold. */
+export function notNowFailWords(err: unknown, putting: boolean): string {
+  const status = (err as { response?: { status?: unknown } } | null)?.response?.status;
+  if (typeof status !== 'number') return 'No answer. Check the connection; nothing was changed.';
+  if (status === 403) return "Only the house's owner or a manager can put a letter off with Not now.";
+  if (status === 404) return "That thread is no longer in this house's mail. Nothing was changed.";
+  if (status === 409)
+    return "This house's time zone isn't set, so 09:00 has no house clock. Choose In 3 hours, or set the zone in Settings, under Time zone.";
+  return putting
+    ? 'Not now could not be saved just now, so nothing changed. Try again.'
+    : 'It could not be taken back just now; it still holds. Try again.';
 }
 
 /** The word on a row that is new to the person reading it (r36 mail gap 6). */

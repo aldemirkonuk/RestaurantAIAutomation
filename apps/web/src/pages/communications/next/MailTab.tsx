@@ -42,6 +42,7 @@ const MailThread = lazy(() => loaders.thread().then((m) => ({ default: m.MailThr
 // The setup page is read only after its entry is clicked, so its code is too.
 const MailSetup = lazy(() => loaders.setup().then((m) => ({ default: m.MailSetup })));
 import {
+  BACK_FROM_NOT_NOW,
   MAIL_KIND_FILTERS,
   READS_ALL_LINE,
   READS_ALL_SWITCH_OFF_WORDS,
@@ -349,6 +350,11 @@ function PersonRow({
           )}
           {p.openThreads > 1 && <span style={QUIET}>{p.openThreads} open threads</span>}
           <UnsentChip status={p.unsentStatus} />
+          {p.backFromNotNow && (
+            <span data-testid="person-back-from-not-now" style={QUIET}>
+              {BACK_FROM_NOT_NOW}
+            </span>
+          )}
         </span>
         <span
           style={{
@@ -453,6 +459,11 @@ function PersonThreads({
                   <span data-testid="mail-thread-count" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
                     {threadCountWords(t) && <>{threadCountWords(t)} · </>}
                     {lastWriterWords(t.lastDirection, person.name, t.messageCount, mailKindOf(person))}
+                    {t.backFromNotNow ? (
+                      <span data-testid="thread-back-from-not-now"> · {BACK_FROM_NOT_NOW}</span>
+                    ) : t.notNowUntil ? (
+                      <span data-testid="thread-not-now-until"> · Not now until {fmtWhen(t.notNowUntil)}</span>
+                    ) : null}
                   </span>
                 </button>
               </li>

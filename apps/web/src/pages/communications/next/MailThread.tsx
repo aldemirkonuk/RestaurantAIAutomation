@@ -42,6 +42,8 @@ import {
   mailKindOf,
   noReplyFailWords,
   noReplyTarget,
+  notNowFailWords,
+  NOT_NOW_CHOICES,
   seenMarkFor,
   type MailAnswer,
   type MailMessage,
@@ -49,7 +51,7 @@ import {
 import { LetterFiles } from './LetterFiles';
 import { FadeAway, MailMotionStyles, useArriveFocus } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
-import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
+import { useMailThread, useMarkThreadSeen, useNoReplyMark, useNotNow } from './useMailData';
 import { RetryRead, useReadAgain } from './MailRetry';
 
 const QUIET = { fontSize: 12, color: 'var(--ink-4, #665D50)' } as const;
@@ -285,6 +287,23 @@ export function MailThread({
     ? (letters.filter((m) => m.direction === 'inbound' && m.noReplyMarkedAt).slice(-1)[0]?.id ?? null)
     : null;
 
+  // "Not now" (r110 mail): a vendor thread that waits can be put off until a
+  // time on the house's clock; while it is, it says until when, with Undo.
+  // No motion: the choices and the line appear and go at once (ADR 0112).
+  const notNow = useNotNow();
+  const [choosing, setChoosing] = useState(false);
+  const vendorWith =
+    head?.person?.kind === 'vendor' && head.person.providerId ? `vendor:${head.person.providerId}` : null;
+  const canPutOff = Boolean(settleId && vendorWith);
+  const putOffUntil = canReply && vendorWith && head?.notNow?.state === 'on' ? head.notNow.until : null;
+  // A thread that came back is "Back from Not now" on its row until an owner
+  // or manager opens it: opening it clears the snooze, once.
+  const clearBack = useNotNow();
+  const backId = canReply && vendorWith && head?.notNow?.state === 'back' ? `${vendorWith}|${head.key}` : null;
+  useEffect(() => {
+    if (backId && head && vendorWith) clearBack.mutate({ key: head.key, with: vendorWith, choice: null });
+  }, [backId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // "New to you" (r36 mail gap 6): a thread on screen is read by this person
   // through the newest vendor letter it shows. Once per letter (the effect
   // runs only when that letter changes): a poll that brings nothing new sends
@@ -423,6 +442,28 @@ export function MailThread({
             </p>
           )}
 
+          {putOffUntil && vendorWith && head && (
+            <p data-testid="thread-not-now" className="flex flex-wrap items-baseline gap-2" style={{ ...QUIET, margin: 0 }}>
+              <span>Not now until {fmtWhen(putOffUntil)}.</span>
+              <button
+                type="button"
+                data-testid="thread-not-now-undo"
+                className="max-sm:min-h-[44px]"
+                onClick={() => notNow.mutate({ key: head.key, with: vendorWith, choice: null })}
+                disabled={notNow.isPending}
+                style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+              >
+                {notNow.isPending && notNow.variables?.choice === null ? 'Taking it back…' : 'Undo'}
+              </button>
+            </p>
+          )}
+
+          {notNow.isError && (
+            <p role="alert" data-testid="not-now-failed" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
+              {notNowFailWords(notNow.error, notNow.variables?.choice != null)}
+            </p>
+          )}
+
           {(replyOrder || answer || settleId) && (
             <div className="flex flex-wrap gap-2">
               {replyOrder && (
@@ -484,6 +525,59 @@ export function MailThread({
                   {noReply.isPending && noReply.variables?.marked ? 'Saving…' : 'No reply needed'}
                 </button>
               )}
+              {canPutOff && (
+                <button
+                  type="button"
+                  data-testid="thread-not-now-open"
+                  className="max-sm:min-h-[44px]"
+                  aria-expanded={choosing}
+                  onClick={() => setChoosing((v) => !v)}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--rule, rgba(33,28,22,.14))',
+                    background: 'transparent',
+                    color: 'var(--ink-2, #4F473C)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Not now
+                </button>
+              )}
+            </div>
+          )}
+
+          {canPutOff && choosing && vendorWith && head && (
+            <div role="group" aria-label="Not now until" data-testid="thread-not-now-choices" className="flex flex-wrap items-center gap-2">
+              {NOT_NOW_CHOICES.map((c) => (
+                <button
+                  key={c.choice}
+                  type="button"
+                  data-testid={`thread-not-now-${c.choice}`}
+                  className="max-sm:min-h-[44px]"
+                  disabled={notNow.isPending}
+                  onClick={() =>
+                    notNow.mutate(
+                      { key: head.key, with: vendorWith, choice: c.choice },
+                      { onSuccess: () => setChoosing(false) },
+                    )
+                  }
+                  style={{
+                    fontSize: 12,
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    border: '1px solid var(--rule, rgba(33,28,22,.14))',
+                    background: 'transparent',
+                    color: 'var(--ink-2, #4F473C)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {c.label}
+                </button>
+              ))}
+              <span style={QUIET}>09:00 house time</span>
             </div>
           )}
         </>
