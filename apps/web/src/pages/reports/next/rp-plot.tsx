@@ -220,7 +220,7 @@ function Tip({
   priorLabel?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
-  const row = payload[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
+  const row = payload[0]?.payload as { full?: string; isProjected?: boolean; partWord?: string } | undefined;
   const rows = payload.filter((p) => typeof p.value === 'number');
   if (rows.length === 0) return null;
   return (
@@ -230,10 +230,13 @@ function Tip({
         // A bar drawing carries one series, so a projected bar says so itself.
         const projected =
           p.dataKey === 'projected' || (p.dataKey === 'shown' && row?.isProjected === true);
+        // The dashed part-bucket series shares a whole neighbour's figure so the line joins; say it once.
+        if (p.dataKey === 'partValue' && rows.some((r) => r.dataKey === 'value')) return null;
         return (
           <span key={String(p.dataKey)} className="rp-tip__row">
             <b>{format(p.value as number)}</b> {unit}
             {projected && projectedLabel ? ` · ${projectedLabel}` : ''}
+            {p.dataKey === 'partValue' ? ` · ${row?.partWord ?? 'part'}` : ''}
             {p.dataKey === 'prior' && priorLabel ? ` · ${priorLabel}` : ''}
           </span>
         );
@@ -494,7 +497,12 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   // The window just before, dashed beside the measured one. Drawn only when
   // some day of it is known; a day that is not stays a gap, never a zero.
   const hasPrior = all.some((d) => d.prior != null);
-  const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
+  // An edge week or month that does not hold its whole span (r109 g3). Bars draw it lighter. A line or an
+  // area would read it as a slow bucket, so there it leaves the solid series and rides a dashed one that
+  // joins its whole neighbour, as a projection does.
+  const hasPart = all.some((d) => d.part);
+  const partWords = hasPart ? (kind === 'bars' ? `part ${xLabel}s lighter` : `part ${xLabel}s dashed`) : '';
+  const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${hasPart ? `, ${partWords}` : ''}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
   }${hasPrior ? `, ${priorLabel ?? 'the prior window'} dashed beside it` : ''}${readingOf(
     all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
@@ -614,10 +622,24 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
   }
 
+  // Line and area: a part bucket and its whole neighbours ride `partValue` (dashed), and the part bucket
+  // leaves `value`, so the solid series is whole buckets only.
+  const drawn = hasPart
+    ? data.map((d, i) => {
+        const nearPart = data[i - 1]?.part === true || data[i + 1]?.part === true;
+        return {
+          ...d,
+          value: d.part ? null : d.value,
+          partValue: d.part || nearPart ? d.value : null,
+          partWord: `part ${xLabel}`,
+        };
+      })
+    : data;
+
   if (kind === 'area')
     return (
       <Plot label={label} caption={caption} held={held}>
-        <AreaChart data={data} margin={MARGIN}>
+        <AreaChart data={drawn} margin={MARGIN}>
           {axes}
           <Area
             type="monotone"
@@ -629,6 +651,20 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
             connectNulls={false}
             dot={false}
           />
+          {hasPart && (
+            <Area
+              type="monotone"
+              dataKey="partValue"
+              className="rp-part"
+              stroke="var(--seal)"
+              strokeWidth={1.6}
+              strokeDasharray="4 3"
+              fill="transparent"
+              isAnimationActive={false}
+              connectNulls={false}
+              dot={false}
+            />
+          )}
           {hasProjection && (
             <Area
               type="monotone"
@@ -662,7 +698,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   return (
     <Plot label={label} caption={caption} held={held}>
-      <LineChart data={data} margin={MARGIN}>
+      <LineChart data={drawn} margin={MARGIN}>
         {axes}
         <Line
           type="monotone"
@@ -673,6 +709,19 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
           isAnimationActive={false}
           connectNulls={false}
         />
+        {hasPart && (
+          <Line
+            type="monotone"
+            dataKey="partValue"
+            className="rp-part"
+            stroke="var(--seal)"
+            strokeWidth={1.6}
+            strokeDasharray="4 3"
+            dot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+        )}
         {hasProjection && (
           <Line
             type="monotone"
