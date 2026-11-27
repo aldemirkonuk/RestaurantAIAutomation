@@ -717,6 +717,12 @@ export interface AheadRegister {
   totalForecastDemand: number | null;
   accuracy: { mape: number | null; scoredPoints: number; basis: string } | null;
   basis?: { demand?: string; model?: string; total?: string };
+  /**
+   * The days the house has records for (r36 reports gap 1). `young` is true
+   * under two of each weekday: nothing is projected, and the page says why
+   * rather than "no model fitted".
+   */
+  observed?: { young: boolean; observedDays: number | null } | null;
 }
 
 /**
@@ -776,6 +782,9 @@ const ahead = analysis<AheadRegister>({
       totalForecastDemand: num(d.totalForecastDemand),
       accuracy: (d.accuracy ?? null) as AheadRegister['accuracy'],
       basis: d.basis as AheadRegister['basis'],
+      observed: d.observed
+        ? { young: obj(d.observed).young === true, observedDays: num(obj(d.observed).observedDays) }
+        : null,
     };
   },
   view: (a) => {
@@ -789,15 +798,22 @@ const ahead = analysis<AheadRegister>({
     // Since 2026-09-03 the endpoint publishes no projection at all when the
     // history holds no observation, so this branch is now the server's own
     // verdict rather than this page inferring one from an empty array.
-    if (a.forecast.length === 0 || a.modelFitted === false)
+    if (a.forecast.length === 0 || a.modelFitted === false) {
+      // A house younger than two of each weekday is not "no model fitted":
+      // the gateway did not try (r39 walk, on r36 gap 1).
+      const young = a.observed?.young === true;
+      const why = young ? 'Too few days of records to project from' : 'No model fitted this history';
       return {
-        say: 'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.',
+        say: young
+          ? `Nothing is projected yet: the house has ${a.observed?.observedDays == null ? 'too few' : figure(a.observed.observedDays)} days of records, and a forecast needs two of each weekday.`
+          : 'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.',
         figures: [
-          { label: `Next ${a.horizon} days`, value: EM, note: 'No model fitted this history' },
+          { label: `Next ${a.horizon} days`, value: EM, note: why },
         ],
         notes: [],
         basis,
       };
+    }
     const tail = 28;
     const values = a.history.values.slice(-tail);
     const hist: Cat[] = a.history.dates.slice(-tail).map((d, i) => ({
