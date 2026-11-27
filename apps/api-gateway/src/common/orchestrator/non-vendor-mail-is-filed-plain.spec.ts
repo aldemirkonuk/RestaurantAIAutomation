@@ -104,6 +104,18 @@ describe("team and guest mail from the wider reader", () => {
     expect(h.gateway.emitRestaurantNotification).not.toHaveBeenCalled();
   });
 
+  it("stores the transport signals, so an out-of-office reply is known as automatic", async () => {
+    const h = harness();
+    await (h.bridge as any).handleInboundEmail(
+      event({ headers: { "auto-submitted": "auto-replied" } }),
+    );
+    const { body } = h.inserts[0];
+    expect(body.email_headers.transport).toMatchObject({ autoSubmitted: true });
+    const plain = harness();
+    await (plain.bridge as any).handleInboundEmail(event());
+    expect(plain.inserts[0].body.email_headers.transport).toMatchObject({ autoSubmitted: false });
+  });
+
   it("files a message once: a repeat of the same message id in the same house is skipped", async () => {
     const h = harness({ existing: true });
     await (h.bridge as any).handleInboundEmail(event({ house_mail_kind: "team" }));
