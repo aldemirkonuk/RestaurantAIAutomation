@@ -1268,12 +1268,12 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
               The linked order could not be read — the pairing is unverified, not wrong.
             </p>
           ) : (
-            <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+            <p className="rc-order-wait" style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
               Reading the linked order…
             </p>
           )
         ) : linkedOrderIds === undefined ? (
-          <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+          <p className="rc-order-wait" style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
             {detailQ.isError
               ? 'Whether an order is linked could not be read.'
               : 'Reading which order this pairs with…'}
@@ -1410,7 +1410,18 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
               </button>
             </div>
           ) : lines === undefined ? (
-            <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>Reading the lines…</p>
+            /*
+              r109: a STATIC reserve, no tween. The card used to be one sentence
+              tall and grew to its lines when they arrived, pushing the seal and
+              the money down (CLS 0.095 to 0.114 at 375, r108 walk). The list row
+              carries no line count, so the reserve is three lines at the real
+              row height (see `.rc-lines-wait`); a paper of another length still
+              moves, by less than it did, and the sealed-changes reserve is the
+              same kind of thing.
+            */
+            <div className="rc-lines-wait" data-testid="lines-reserve">
+              <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>Reading the lines…</p>
+            </div>
           ) : lines.length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
               No lines were extracted from this document.
@@ -1871,7 +1882,11 @@ export default function ReceiptsNext() {
         /* W35: on a phone each line of THE LINES is a short block: the name, then
            Qty, Unit and Total side by side under their own words, then the order
            line, so the total is never past the edge. Screen only. */
+        .rc-lines-wait { min-height: 130px }
         @media screen and (max-width: 639px) {
+          .rc-lines-wait { min-height: 355px }
+          /* the answer wraps to two lines on a phone; the wait holds both */
+          .rc-order-wait { min-height: 38px }
           .rc-lines, .rc-lines tbody { display: block; width: 100% }
           .rc-lines thead { display: none }
           .rc-lines tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px; padding: 8px 0 }
