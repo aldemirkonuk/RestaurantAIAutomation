@@ -354,6 +354,46 @@ describe("BeveragesService cocktail writes", () => {
     );
   });
 
+  it("a copy inserts its own non-null id: fresh per drink, never the source's (r108 drinks-r108-1)", async () => {
+    // Copy on /cocktails writes the new drink through this same insert (the
+    // web's copy mutation POSTs /cocktails/:rid), so the id rule is the copy's
+    // too: a migrations-built database has no id default and refused it (500).
+    const inserted: Array<Record<string, unknown>> = [];
+    const db = {
+      getClient: () => ({
+        from: () => {
+          const self: Record<string, unknown> = {};
+          for (const m of ["select", "eq", "is"]) self[m] = jest.fn(() => self);
+          self.insert = jest.fn((row: Record<string, unknown>) => {
+            inserted.push(row);
+            return self;
+          });
+          self.single = jest.fn(() => Promise.resolve({ data: { id: inserted.at(-1)?.id }, error: null }));
+          return self;
+        },
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    const service = moduleRef.get(BeveragesService);
+    const SOURCE = "22222222-2222-4222-8222-222222222222";
+    const copyBody = { name: "Gimlet copy", menuSection: "Sours", method: "Shake", glass: "Coupe", garnish: "Lime" };
+
+    await service.createCocktail(RID, { ...copyBody, id: SOURCE } as never);
+    await service.createCocktail(RID, copyBody as never);
+
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    expect(inserted).toHaveLength(2);
+    for (const row of inserted) {
+      expect(row.id).not.toBeNull();
+      expect(row.id).toEqual(expect.stringMatching(uuid));
+      expect(row.id).not.toBe(SOURCE);
+      expect(row).toMatchObject({ restaurant_id: RID, name: "Gimlet copy" });
+    }
+    expect(inserted[0].id).not.toBe(inserted[1].id);
+  });
+
   it("refuses to report success for an update that matched no row", async () => {
     const { service } = await richService({
       tables: { cocktails: [{ data: null }] },
