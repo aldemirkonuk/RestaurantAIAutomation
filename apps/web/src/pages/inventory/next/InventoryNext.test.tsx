@@ -1955,6 +1955,28 @@ describe('a house of goods is not a cellar', () => {
     expect(screen.getByRole('table', { name: 'The book: every good on hand' })).toBeTruthy();
   });
 
+  it('counts and selects "the listed goods" in a house of goods, and says titles with one drink', () => {
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    const view = renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Count the listed goods' }));
+    expect(screen.getAllByText('Count the 2 listed goods').length).toBeGreaterThan(0);
+    view.unmount();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Bread Flour' }));
+    expect(screen.getByRole('checkbox', { name: 'Select every listed good' })).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: /every listed title/ })).toBeNull();
+  });
+
+  it('a house with one drink keeps the drink words on those buttons (the goods words need no drink at all)', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    expect(screen.getByRole('button', { name: 'Count the listed titles' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Bread Flour' }));
+    expect(screen.getByRole('checkbox', { name: 'Select every listed title' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Count the listed goods' })).toBeNull();
+  });
+
   it('says the no-match line in goods', () => {
     mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
     renderPage();
