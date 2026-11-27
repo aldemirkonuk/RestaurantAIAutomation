@@ -43,8 +43,14 @@ export interface TieOutRow {
 
 export interface TieOut {
   rows: TieOutRow[];
-  /** Papers from this vendor dated inside the statement's span that it does not list. */
-  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; kind: "invoice" | "credit" }[];
+  /**
+   * Papers from this vendor dated inside the statement's span that it does not
+   * list, IN THE STATEMENT'S MONEY only (r110 F3): a TRY paper never prints as
+   * "$120.00" under a USD statement. Each row also carries its own money.
+   */
+  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; currency: string | null; kind: "invoice" | "credit" }[];
+  /** How many such papers were left out because their money is not the statement's (or is not known). */
+  notOnStatementOtherMoney: number;
   paymentsIgnored: number;
 }
 
@@ -144,7 +150,7 @@ export function tieOutStatement(
     if (d !== 0n) rows.push({ ...withPaper, verdict: "amount_differs", differsBy: centsText(d) });
     else rows.push({ ...withPaper, verdict: match.status === "verified" ? "checked_same" : "on_file_not_checked" });
   }
-  const notOnStatement =
+  const unlisted =
     ctx.vendorNamed && lo && hi
       ? live
           .filter((p) => (p.doc_type === "invoice" || p.doc_type === "credit_memo") && p.doc_date && p.doc_date >= lo! && p.doc_date <= hi!)
@@ -152,10 +158,13 @@ export function tieOutStatement(
             const n = normalDocNumber(p.doc_number);
             return !n || !listed.has(`${p.doc_type}\u0000${n}`);
           })
-          .map((p) => {
-            const t = toCents(p.total);
-            return { id: p.id, docNumber: p.doc_number, docDate: p.doc_date, total: t === null ? null : centsText(t), kind: p.doc_type === "credit_memo" ? ("credit" as const) : ("invoice" as const) };
-          })
       : [];
-  return { rows, notOnStatement, paymentsIgnored };
+  // Only a paper KNOWN to be in the statement's money is listed under it; an
+  // unknown statement money lists nothing, since no total can be said in it.
+  const inMoney = (p: TieOutPaper) => !!money && ((p.currency ?? "").trim().toUpperCase() || null) === money;
+  const notOnStatement = unlisted.filter(inMoney).map((p) => {
+    const t = toCents(p.total);
+    return { id: p.id, docNumber: p.doc_number, docDate: p.doc_date, total: t === null ? null : centsText(t), currency: money, kind: p.doc_type === "credit_memo" ? ("credit" as const) : ("invoice" as const) };
+  });
+  return { rows, notOnStatement, notOnStatementOtherMoney: unlisted.length - notOnStatement.length, paymentsIgnored };
 }
