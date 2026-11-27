@@ -1364,9 +1364,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
       onVerified(sealByKeyboard.current);
     },
   });
-  // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
-  // would fall to BODY). Taken when the gesture COMPLETES, while the control
-  // still holds focus; a pointer seal never moves focus.
+  // r109: a keyboard seal hands its focus on (the swipe unmounts, and focus
+  // would fall to BODY). The gesture itself says it was a keyboard hold; the
+  // handle is already disabled by the time onConfirm runs, so focus is no
+  // witness. A pointer seal never moves focus.
   const sealByKeyboard = useRef(false);
 
   /**
@@ -1918,7 +1919,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                 verify.mutate(challenge);
               }}
             />
-            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
@@ -2009,20 +2009,30 @@ export default function ReceiptsNext() {
     const at = reviewRows.findIndex((d) => d.id === id);
     return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
   };
-  // r108: after a keyboard seal the next row takes focus, so j/k work without a Tab back.
+  // r108/r109: after a keyboard seal the next paper takes focus, so j/k work
+  // without a Tab back. Below 2xl an open paper hides the list (`hidden
+  // 2xl:block`), so a row there cannot hold focus: the opened paper's own pane
+  // takes it, and j/k walk from there. jsdom has no CSS and cannot see the
+  // difference; the Playwright check `receipts-seal-focus` does.
   const focusAfterSeal = useRef<string | null>(null);
+  const detailPane = useRef<HTMLElement>(null);
   useEffect(() => {
     const id = focusAfterSeal.current;
     if (!id || selectedId !== id) return;
     focusAfterSeal.current = null;
-    // Under the 2xl width the lanes are display:none while a paper is open, and
-    // .focus() on a hidden row does nothing, leaving focus on BODY. Judge by where
-    // focus actually went, not by whether the call was made, and fall back to the
-    // open paper's own controls (the back control, then the review card heading).
+    // Below 2xl the lanes are display:none while a paper is open, and .focus() on
+    // a hidden row does nothing (r108). Focus goes to the row only when its lane
+    // is shown AND it actually took focus; otherwise to the open paper's pane,
+    // where j/k open the adjacent paper (r109), then the back control, then the
+    // review card heading. Judged by where focus went, never by the call.
     const row = document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null;
-    row?.focus();
-    if (row && document.activeElement === row) return;
-    for (const el of [document.querySelector('[data-rc-back]'), document.getElementById('rc-check')]) {
+    const lane = row?.closest('section');
+    const listShown = !!row && !!lane && getComputedStyle(lane).display !== 'none';
+    if (listShown) {
+      row.focus();
+      if (document.activeElement === row) return;
+    }
+    for (const el of [detailPane.current, document.querySelector('[data-rc-back]'), document.getElementById('rc-check')]) {
       (el as HTMLElement | null)?.focus();
       if (el && document.activeElement === el) return;
     }
@@ -2047,6 +2057,19 @@ export default function ReceiptsNext() {
     e.preventDefault();
     setRovingId(to.id);
     (e.currentTarget.closest('section')?.querySelector(`[data-rc-id="${to.id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  // j / k from the open paper itself, for the layouts where the list is hidden.
+  const onDetailKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || sealHeld.current) return;
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+    const from = reviewRows.findIndex((d) => d.id === selectedId);
+    const to = from >= 0 ? reviewRows[from + (e.key === 'j' ? 1 : -1)] : undefined;
+    if (!to) return;
+    e.preventDefault();
+    focusAfterSeal.current = to.id;
+    select(to.id);
   };
 
   /*
@@ -2542,6 +2565,9 @@ export default function ReceiptsNext() {
           <section
             aria-label="Document detail"
             data-testid="detail-placeholder"
+            ref={detailPane}
+            tabIndex={-1}
+            onKeyDown={onDetailKey}
             onPointerDownCapture={() => { sealHeld.current = true; }}
             onPointerUpCapture={() => { sealHeld.current = false; }}
             onPointerCancelCapture={() => { sealHeld.current = false; }}
