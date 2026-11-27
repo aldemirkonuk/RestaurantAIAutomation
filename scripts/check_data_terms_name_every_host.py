@@ -181,6 +181,13 @@ EXCUSED_HOSTS: dict[str, tuple[str, str]] = {
     ),
     **_group(
         "reference",
+        "Gmail's authserv-id (sender-authentication.ts, QA round 24): a name the code "
+        "compares with the first word of an inbound letter's Authentication-Results "
+        "header; never contacted, nothing is sent to it",
+        "mx.google.com",
+    ),
+    **_group(
+        "reference",
         "a citation carried as data in the retention rules, shown to a person; never fetched",
         "developers.google.com",
         "gdpr-info.eu",

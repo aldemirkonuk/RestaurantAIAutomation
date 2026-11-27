@@ -154,6 +154,8 @@ function message(params: {
   subject: string;
   body: string;
   internalDate: number;
+  /** Headers above From, in delivery order (the receiving server's first). */
+  top?: Array<{ name: string; value: string }>;
 }) {
   return {
     id: params.id,
@@ -162,6 +164,7 @@ function message(params: {
     payload: {
       mimeType: "text/plain",
       headers: [
+        ...(params.top ?? []),
         { name: "From", value: params.from },
         { name: "Subject", value: params.subject },
         { name: "Message-ID", value: `<${params.id}@mail.example>` },
@@ -419,6 +422,37 @@ describe("a reply from the book reaches the book, and nothing else does", () => 
     expect(
       rec.inserts.filter((i) => i.table === "procurement_conversations"),
     ).toHaveLength(0);
+  });
+
+  // QA round 24, item 2: the header map keeps the sender's last line; the
+  // event carries Gmail's topmost one.
+  it("carries Gmail's own Authentication-Results, never a lower one the sender wrote", async () => {
+    const GMAIL =
+      "mx.google.com; spf=fail smtp.mailfrom=fikri@fikritarim.com; dmarc=fail header.from=fikritarim.com";
+    const FORGED = "mx.google.com; spf=pass; dkim=pass header.d=fikritarim.com; dmarc=pass";
+    const { db } = build(rows());
+    const { service, publish } = serviceOver(db);
+    const vendor = message({
+      id: "m-vendor",
+      from: "fikri@fikritarim.com",
+      subject: "Fatura",
+      body: "Ödeme bekleniyor.",
+      internalDate: CURSOR + 60_000,
+      top: [
+        { name: "Authentication-Results", value: GMAIL },
+        { name: "Authentication-Results", value: FORGED },
+      ],
+    });
+    service.fetchImpl = gmail({
+      list: { messages: [{ id: "m-vendor" }] },
+      messages: { "m-vendor": vendor },
+    }).impl;
+
+    await service.readDue(CURSOR + 300_000);
+
+    const event = publish.mock.calls[0][2];
+    expect(event.ingress_authentication_results).toBe(GMAIL);
+    expect(event.headers["authentication-results"]).toBe(FORGED);
   });
 
   it("discards a message Gmail returned that the book does not hold", async () => {

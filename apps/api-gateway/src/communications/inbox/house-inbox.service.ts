@@ -110,6 +110,7 @@ import {
   type GmailPayloadPart,
 } from "../gmail-mime";
 import { decodeEncodedWords } from "../inbound-headers";
+import { ingressAuthenticationResults } from "../sender-authentication";
 
 /**
  * The scope, the integration id and the switch live in `house-inbox-flag.ts`,
@@ -506,6 +507,10 @@ export class HouseInboxService {
                 .filter((h) => h.name && h.value)
                 .map((h) => [h.name!.toLowerCase(), h.value]),
             ),
+            // Gmail's own verdict, from the ordered list: the map above keeps
+            // the sender's last line (`sender-authentication.ts`).
+            ingress_authentication_results:
+              ingressAuthenticationResults(headers),
             source: "house-inbox",
             // WHICH GRANT MIRRORED IT (ADR 0118, retention, 2026-09-05).
             // `source: "house-inbox"` says a personal mailbox was the origin

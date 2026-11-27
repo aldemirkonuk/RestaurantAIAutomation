@@ -43,6 +43,7 @@ import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
+import { ingressAuthenticationResults } from "./sender-authentication";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 
 @ApiTags("Communications")
@@ -1317,6 +1318,10 @@ export class CommunicationsController {
                   .filter((h) => h.name && h.value)
                   .map((h) => [h.name!.toLowerCase(), h.value]),
               ),
+              // Gmail's own verdict, from the ordered list: the map above
+              // keeps the sender's last line (`sender-authentication.ts`).
+              ingress_authentication_results:
+                ingressAuthenticationResults(headers),
             },
           );
         } catch (pubErr) {
@@ -1467,6 +1472,10 @@ export class CommunicationsController {
                   .filter((h) => h.name && h.value)
                   .map((h) => [h.name!.toLowerCase(), h.value]),
               ),
+              // Gmail's own verdict, from the ordered list: the map above
+              // keeps the sender's last line (`sender-authentication.ts`).
+              ingress_authentication_results:
+                ingressAuthenticationResults(headers),
             },
           );
           processed++;
