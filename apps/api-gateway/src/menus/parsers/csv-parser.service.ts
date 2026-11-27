@@ -95,14 +95,18 @@ function headerKey(header: string): string {
 }
 
 /** RFC 4180 records (quoted delimiter, line break, `""`), each with its source text and first row. */
-function readRecords(text: string, delimiter: string): Rec[] {
+function readRecords(
+  text: string,
+  delimiter: string,
+  opts: { lineBound?: boolean; firstRow?: number } = {},
+): { records: Rec[]; unclosed: { at: number; row: number } | null } {
   const records: Rec[] = [];
   let cells: string[] = [];
   let cell = "";
   let inQuotes = false;
   let start = 0;
-  let row = 1;
-  let startRow = 1;
+  let row = opts.firstRow ?? 1;
+  let startRow = row;
 
   const endRecord = (end: number) => {
     cells.push(cell);
@@ -113,6 +117,9 @@ function readRecords(text: string, delimiter: string): Rec[] {
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+    // Line-bound (the re-read after an unclosed quote): a quote never spans lines.
+    if (inQuotes && opts.lineBound && (ch === "\n" || ch === "\r"))
+      inQuotes = false;
     if (inQuotes) {
       if (ch === '"') {
         if (text[i + 1] === '"') {
@@ -139,9 +146,31 @@ function readRecords(text: string, delimiter: string): Rec[] {
       cell += ch;
     }
   }
+  // A quote that never closes would swallow the rest of the file into one
+  // cell. Drop that record and say where it began; the caller re-reads from there.
+  if (inQuotes) return { records, unclosed: { at: start, row: startRow } };
   if (start < text.length || cells.length > 0 || cell !== "")
     endRecord(text.length);
-  return records;
+  return { records, unclosed: null };
+}
+
+/**
+ * All records of a file. From an unclosed quote on, each line stands alone
+ * (the old line reader's loss: one line, not every line after it).
+ * `unclosedRow` is the row where that quote opened.
+ */
+function readAllRecords(
+  text: string,
+  delimiter: string,
+): { records: Rec[]; unclosedRow: number | null } {
+  const first = readRecords(text, delimiter);
+  if (!first.unclosed) return { records: first.records, unclosedRow: null };
+  const { at, row } = first.unclosed;
+  const rest = readRecords(text.slice(at), delimiter, {
+    lineBound: true,
+    firstRow: row,
+  });
+  return { records: [...first.records, ...rest.records], unclosedRow: row };
 }
 
 /** The delimiter the header line uses most outside quotes; else a comma. */
@@ -174,8 +203,8 @@ export class CsvParserService {
     const text = (
       typeof csvContent === "string" ? csvContent : String(csvContent ?? "")
     ).replace(/^\uFEFF/, "");
-    const records = readRecords(text, sniffDelimiter(text)).filter((r) =>
-      r.cells.some((c) => c.trim().length > 0),
+    const records = readAllRecords(text, sniffDelimiter(text)).records.filter(
+      (r) => r.cells.some((c) => c.trim().length > 0),
     );
     if (records.length < 2) return { items: [], issues: [] };
 
