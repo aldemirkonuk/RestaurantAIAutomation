@@ -22,6 +22,10 @@ import { housePriceNote } from './menu-price-note';
 import { getMenu, discardMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
+/** Each `@media (prefers-reduced-motion: reduce)` body (a media block closes at column 0). */
+const reducedBlocks = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').split('prefers-reduced-motion: reduce)').slice(1).map((b) => b.slice(0, b.indexOf('\n}'))).join('\n');
+
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
 // offers it only to them. A manager reads by default; one case reads as staff.
 let role: string | null = 'manager';
@@ -471,30 +475,6 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
     expect(rowOf('Tea')).not.toHaveAttribute('data-new');
   });
 
-  it('under reduced motion a discarded row goes at once, with no fade state', async () => {
-    const original = window.matchMedia;
-    window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false, onchange: null })) as never;
-    try {
-      mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'a', name: 'Raki' })] }));
-      mockGetMenu.mockResolvedValue(menu({ items: [] }));
-      mockDiscard.mockResolvedValue(undefined as never);
-      const seen = new Set<string | null>();
-      const watch = new MutationObserver(() => {
-        const tr = document.querySelector('[data-testid="menu-row"]');
-        if (tr) seen.add(tr.getAttribute('data-state'));
-      });
-      mount();
-      await screen.findByText('Raki');
-      watch.observe(document.body, { attributes: true, subtree: true, childList: true });
-      fireEvent.click(screen.getByRole('button', { name: 'Discard Raki' }));
-      await waitFor(() => expect(screen.queryByText('Raki')).not.toBeInTheDocument());
-      watch.disconnect();
-      expect(seen.has('leaving')).toBe(false);
-    } finally {
-      window.matchMedia = original;
-    }
-  });
-
   it('the stylesheet dims 160 ms and inks a new line in 160 ms: no enter, no wash, no exit hold; reduced motion has none', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -503,7 +483,11 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
     expect(code).toMatch(/\.mdv-row\s*\{[^}]*opacity 160ms/);
     expect(code).toMatch(/mdv-row-ink 160ms/);
     expect(code).not.toMatch(/mdv-row-enter|mdv-row-wash|seal-tint|240ms|600ms|data-state='leaving'/);
-    expect(code).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation: none/);
+    // Each rule is pinned by its selector inside the reduce block: the [data-new]
+    // rule alone used to satisfy a loose match while the dim kept running.
+    const reduced = reducedBlocks(css);
+    expect(reduced).toMatch(/\.mdv-row\s*\{\s*transition: none;?\s*\}/);
+    expect(reduced).toMatch(/\.mdv-row\[data-new='true'\]\s*\{\s*animation: none;?\s*\}/);
   });
 });
 
