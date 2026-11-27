@@ -58,7 +58,14 @@ import {
   type MailPersonRow,
   type TestArrival,
 } from './mail-format';
-import { useMailIntake, useMailPeople, useMailSender, useMailSummary, useMailThreads } from './useMailData';
+import {
+  useMailIntake,
+  useMailListsFollowSummary,
+  useMailPeople,
+  useMailSender,
+  useMailSummary,
+  useMailThreads,
+} from './useMailData';
 import { useMailSetup } from './useMailSetup';
 
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
@@ -435,6 +442,8 @@ export function MailTab({
   const location = useLocation();
   const navigate = useNavigate();
   const summaryQ = useMailSummary(true);
+  // Only the summary polls; the lists are read again when it moves.
+  useMailListsFollowSummary(summaryQ.data);
   const senderQ = useMailSender(true);
   const now = Date.now();
   const intake = useMailIntake(sheet);

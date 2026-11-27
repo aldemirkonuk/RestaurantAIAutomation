@@ -3,16 +3,22 @@
  * read goes through the shared `apiClient` and is house-scoped server-side
  * (GET /mail/* takes the house from the token, never a parameter).
  *
- * Freshness (proposal F13): the people list and the summary poll every 30 s
- * only while the Mail tab is shown — the tab mounts these hooks only then,
- * and the tab label's count reads the summary once, without polling, while
- * Letters is shown. React Query already stops an interval in a hidden browser
- * tab (`refetchIntervalInBackground` is false).
+ * Freshness (proposal F13; r41 mail audit, gaps 4 and 5): only the summary
+ * polls every 30 s, and only while the Mail tab is shown; the tab label's
+ * count reads it once, without polling, while Letters is shown. The lists —
+ * people, a person's threads, an open thread — are read again when the
+ * summary says something moved ({@link useMailListsFollowSummary}), and
+ * otherwise every {@link MAIL_LIST_FALLBACK_MS}. Each list re-read fetches
+ * every page already loaded, one after another, and a search re-runs over
+ * every letter, so a quiet house no longer pays for them every 30 s. React
+ * Query already stops an interval in a hidden browser tab
+ * (`refetchIntervalInBackground` is false).
  *
  * Paging never caps (proposal G5): people and threads follow the server's
  * `next` cursor; a thread pages backwards by `before`.
  */
 
+import { useEffect, useRef } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
@@ -29,6 +35,14 @@ import type {
 } from './mail-format';
 
 export const MAIL_POLL_MS = 30_000;
+
+/**
+ * How often a list is read again when the summary says nothing moved. It
+ * bounds what the summary cannot see: a letter that was refused or pulled
+ * back, or a letter a colleague sent from a house with no zone (its "out
+ * today" is unknown, so it does not move).
+ */
+export const MAIL_LIST_FALLBACK_MS = 120_000;
 
 export function useHouse(): string {
   const { user, activeRestaurantId } = useAuth();
@@ -55,6 +69,47 @@ export function useMailSummary(poll: boolean) {
 }
 
 /**
+ * What, in the summary, moves when a Mail list can have changed: who is
+ * waiting and since when, the day's and the month's letters in and out, and
+ * the last letter stored at each door. Null before the summary is read.
+ */
+export function mailChangeMark(summary: MailSummary | null | undefined): string | null {
+  if (!summary) return null;
+  return JSON.stringify([
+    summary.waitingPeople,
+    summary.oldestWaitAt,
+    summary.inToday,
+    summary.outToday,
+    summary.inLast30 ?? null,
+    summary.doors.houseMailbox.lastStoredAt,
+    summary.doors.whatsapp.lastStoredAt,
+    summary.doors.mudavymMail.lastStoredAt,
+  ]);
+}
+
+/**
+ * The lists follow the summary (r41 mail audit, gaps 4 and 5): when its mark
+ * moves, the people, every person's threads and every open thread of this
+ * house are read again. The first summary read, and a summary that answers
+ * the same again, read nothing. Mounted once, by the Mail tab.
+ */
+export function useMailListsFollowSummary(summary: MailSummary | null | undefined): void {
+  const house = useHouse();
+  const qc = useQueryClient();
+  const mark = mailChangeMark(summary);
+  const last = useRef<{ house: string; mark: string } | null>(null);
+  useEffect(() => {
+    if (mark === null) return;
+    const before = last.current;
+    last.current = { house, mark };
+    if (!before || before.house !== house || before.mark === mark) return;
+    for (const root of ['mail-people', 'mail-threads', 'mail-thread']) {
+      void qc.invalidateQueries({ queryKey: [root, house] });
+    }
+  }, [house, mark, qc]);
+}
+
+/**
  * GET /mail/people, cursor-paged; "Show older people" appends the next page.
  * `search` (r28 mail gap 16) is the trimmed term, '' for none: the server
  * searches, so a person past the first page is found too. While a new term
@@ -76,7 +131,7 @@ export function useMailPeople(waitingOnly: boolean, search = '') {
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: Boolean(house),
     staleTime: 15_000,
-    refetchInterval: MAIL_POLL_MS,
+    refetchInterval: MAIL_LIST_FALLBACK_MS,
   });
 }
 
@@ -94,7 +149,7 @@ export function useMailThreads(withKey: string | null) {
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: Boolean(house && withKey),
     staleTime: 15_000,
-    refetchInterval: MAIL_POLL_MS,
+    refetchInterval: MAIL_LIST_FALLBACK_MS,
   });
 }
 
@@ -119,7 +174,7 @@ export function useMailThread(key: string | null, withKey: string | null = null)
     getNextPageParam: (last) => last.before ?? undefined,
     enabled: Boolean(house && key),
     staleTime: 15_000,
-    refetchInterval: MAIL_POLL_MS,
+    refetchInterval: MAIL_LIST_FALLBACK_MS,
   });
 }
 
