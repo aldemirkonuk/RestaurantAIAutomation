@@ -14,13 +14,14 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
 import { listFigure, listPace, listUnitTail } from './ItemCards';
 import PhoneRows from './PhoneRows';
+import { useItemPrefetch } from './use-item-prefetch';
 import { emptyColumns } from './iv-columns';
 import { useIsPhone } from '../../../hooks/useIsPhone';
 import { rowOffsets, useRowWindow } from './useRowWindow';
@@ -75,6 +76,8 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
 
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
+  const kindOf = useCallback((id: string) => rows.find((r) => r.id === id)?.kind, [rows]);
+  const prefetch = useItemPrefetch(props.restaurantId, kindOf);
   // A phone cannot read nine columns: it gets two-line cards (critic c2 P0-2).
   const phone = useIsPhone();
   // A column of nothing but dashes stays out of the way until asked for (N-18).
@@ -145,6 +148,7 @@ export default function InventoryTable(props: InventoryTableProps) {
         selected={props.selected}
         onSelect={props.onSelect}
         onSelectAll={props.onSelectAll}
+        prefetch={prefetch}
       />
     );
   }
@@ -153,8 +157,20 @@ export default function InventoryTable(props: InventoryTableProps) {
     <div
       className="iv-tablewrap"
       ref={wrapRef}
-      onFocus={(e) => setFocusId((e.target as HTMLElement).closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null)}
-      onBlur={() => setFocusId(null)}
+      onFocus={(e) => {
+        setFocusId((e.target as HTMLElement).closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null);
+        prefetch.onFocusRow(e);
+      }}
+      onBlur={() => {
+        setFocusId(null);
+        prefetch.onBlurRow();
+      }}
+      onPointerOver={prefetch.onPointerOver}
+      onPointerOut={prefetch.onPointerOut}
+      onPointerDown={prefetch.onPointerDown}
+      onPointerMove={prefetch.onPointerMove}
+      onPointerUp={prefetch.onPointerUp}
+      onPointerCancel={prefetch.onPointerCancel}
     >
       {empty.size > 0 ? (
         <div className="iv-colsbar">

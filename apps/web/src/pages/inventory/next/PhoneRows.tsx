@@ -11,6 +11,7 @@
  * the card: the price sits beside the tap target, not inside it.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import type { useItemPrefetch } from './use-item-prefetch';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import { cellMoney, fmtCount, SEVERITY_GROUP, severity, statusWord, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
@@ -37,6 +38,8 @@ export interface PhoneRowsProps {
   selected?: Set<string>;
   onSelect?: (id: string) => void;
   onSelectAll?: () => void;
+  /** Hover and focus handlers that warm the drawer's reads (use-item-prefetch.ts). */
+  prefetch?: ReturnType<typeof useItemPrefetch>;
 }
 
 /** The first few cards rise in one after another (28 ms apart); card 9 on is just there. */
@@ -89,8 +92,20 @@ export default function PhoneRows(props: PhoneRowsProps) {
     <div
       className="ivc-list"
       ref={listRef}
-      onFocus={(e) => setFocusId((e.target as HTMLElement).closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null)}
-      onBlur={() => setFocusId(null)}
+      onFocus={(e) => {
+        setFocusId((e.target as HTMLElement).closest?.('[data-row-id]')?.getAttribute('data-row-id') ?? null);
+        props.prefetch?.onFocusRow(e);
+      }}
+      onBlur={() => {
+        setFocusId(null);
+        props.prefetch?.onBlurRow();
+      }}
+      onPointerOver={props.prefetch?.onPointerOver}
+      onPointerOut={props.prefetch?.onPointerOut}
+      onPointerDown={props.prefetch?.onPointerDown}
+      onPointerMove={props.prefetch?.onPointerMove}
+      onPointerUp={props.prefetch?.onPointerUp}
+      onPointerCancel={props.prefetch?.onPointerCancel}
       data-testid="inventory-cards"
       role="group"
       aria-label={`The book: every ${thing} on hand`}
