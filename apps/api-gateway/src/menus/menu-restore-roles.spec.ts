@@ -51,3 +51,25 @@ describe("POST /menu-versions/:menuId/restore -- owner or manager only", () => {
     expect(restoreFailedRead).not.toHaveBeenCalled();
   });
 });
+
+describe("GET /menus/:restaurantId/discarded -- owner or manager only (r110 menu-4)", () => {
+  const make = (role: string | null) => {
+    const listDiscardedLines = jest.fn(async () => ({ lines: [{ id: "l-1", name: "Raki" }], truncated: false }));
+    return { c: new MenusController({ listDiscardedLines } as any, orgs(role)), listDiscardedLines };
+  };
+  it.each(["owner", "manager"])("a %s reads the lines taken off", async (role) => {
+    const { c, listDiscardedLines } = make(role);
+    await expect(c.listDiscardedLines("rest-1", { userId: "u-1" })).resolves.toEqual({ lines: [{ id: "l-1", name: "Raki" }], truncated: false });
+    expect(listDiscardedLines).toHaveBeenCalledWith("rest-1");
+  });
+  it.each(["staff", null])("%s is refused with 403 and nothing is read", async (role) => {
+    const { c, listDiscardedLines } = make(role);
+    await expect(c.listDiscardedLines("rest-1", { userId: "u-1" })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(listDiscardedLines).not.toHaveBeenCalled();
+  });
+  it("a session that names nobody is refused", async () => {
+    const { c, listDiscardedLines } = make("owner");
+    await expect(c.listDiscardedLines("rest-1", {})).rejects.toBeInstanceOf(ForbiddenException);
+    expect(listDiscardedLines).not.toHaveBeenCalled();
+  });
+});

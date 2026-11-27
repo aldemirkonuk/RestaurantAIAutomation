@@ -1648,6 +1648,46 @@ export class MenusService {
   }
 
   /**
+   * The lines taken off the current menu, so the way back survives a reload (r110 menu-4).
+   * Names only: no price, no raw line, no cost. The house's own lines on its active menu;
+   * a menu with no discarded line is an empty list, a failed read is a 500 in words (never
+   * an empty list that reads as "nothing taken off"). At most 500 are sent and `truncated`
+   * says when there were more.
+   */
+  async listDiscardedLines(restaurantId: string): Promise<{ lines: Array<{ id: string; name: string }>; truncated: boolean }> {
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (menuErr) {
+      throw new InternalServerErrorException(
+        `The lines taken off the menu could not be read just now. Try again (${menuErr.message}).`,
+      );
+    }
+    if (!menu) return { lines: [], truncated: false };
+    const { data, error } = await this.dbService.supabase
+      .from("menu_items")
+      .select("id, name")
+      .eq("menu_id", menu.id)
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "discarded")
+      .order("name", { ascending: true })
+      .limit(501);
+    if (error) {
+      throw new InternalServerErrorException(
+        `The lines taken off the menu could not be read just now. Try again (${error.message}).`,
+      );
+    }
+    const rows = (data ?? []) as Array<{ id: string; name: string | null }>;
+    return {
+      lines: rows.slice(0, 500).map((r) => ({ id: r.id, name: r.name ?? "A line" })),
+      truncated: rows.length > 500,
+    };
+  }
+
+  /**
    * Applies a manager's inline correction to one menu_items field.
    *
    * The edit takes effect immediately for this restaurant's own inventory

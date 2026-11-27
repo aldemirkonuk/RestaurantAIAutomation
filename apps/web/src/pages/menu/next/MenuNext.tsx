@@ -45,7 +45,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, restoreMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { addMenuItem, discardMenuItem, getMenu, listDiscardedMenuLines, restoreMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuSheetButton } from './MenuSheetButton';
 import { MenuVersions, useKeptMenuName } from './MenuVersions';
@@ -160,15 +160,24 @@ function useActiveMenu(restaurantId: string | null) {
     queryFn: () => getMenu(restaurantId as string),
   });
 
-  // A discarded line leaves at once: on success the page's own copy drops it
-  // (no wait on the refetch, no exit hold), then the read confirms. While the
-  // discard is pending the row is dimmed; a failure puts it back (DD-r103-7).
+  // A discarded line leaves at once, before the gateway answers (no exit hold, no wait):
+  // the page's own copy drops it on click, the read confirms after, and a failure puts
+  // the row back where it was (DD-r103-7, r110 menu-4).
   const discard = useMutation({
     mutationFn: (itemId: string) => discardMenuItem(restaurantId as string, itemId),
-    onSuccess: async (_done, itemId) => {
+    onMutate: async (itemId: string) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const before = queryClient.getQueryData<ActiveMenu>(key);
       queryClient.setQueryData(key, (old: ActiveMenu | undefined) =>
         old ? { ...old, items: old.items.filter((l) => l.id !== itemId) } : old,
       );
+      return { before };
+    },
+    onError: (_err, _itemId, ctx) => {
+      if (ctx?.before) queryClient.setQueryData(key, ctx.before);
+    },
+    onSuccess: async () => {
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'discarded', restaurantId] });
       // The kept list counts this menu's lines too: it reads again, or it keeps saying the old count (r104 walk).
       void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
       await queryClient.invalidateQueries({ queryKey: key });
@@ -551,6 +560,12 @@ export default function MenuNext() {
   const [offList, setOffList] = useState<{ id: string; name: string } | null>(null);
   const [backSaid, setBackSaid] = useState<{ tone: 'alert' | 'said'; text: string } | null>(null);
   const [putting, setPutting] = useState(false);
+  // The lines taken off, read from the gateway: the way back after a reload (r110 menu-4).
+  const taken = useQuery({
+    queryKey: ['menu', 'discarded', activeRestaurantId],
+    enabled: Boolean(activeRestaurantId) && canManage,
+    queryFn: () => listDiscardedMenuLines(activeRestaurantId as string),
+  });
   const putBack = async (off: { id: string; name: string }) => {
     setPutting(true);
     setBackSaid(null);
@@ -559,6 +574,7 @@ export default function MenuNext() {
       setOffList(null);
       setBackSaid({ tone: 'said', text: `${off.name} is back on the menu.` });
       void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
+      void queryClient.invalidateQueries({ queryKey: ['menu', 'discarded', activeRestaurantId] });
       await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
     } catch (err) {
       setBackSaid({ tone: 'alert', text: gatewaySaid(err) ?? `${off.name} was not put back. Nothing was changed.` });
@@ -613,9 +629,12 @@ export default function MenuNext() {
       isNew={fresh?.has(line.id) ?? false}
       onDiscard={!canManage ? undefined : () => {
         setDiscardingId(line.id);
+        // The sentence is said at once, with the row's going; a failure takes it back.
         setBackSaid(null);
+        setOffList({ id: line.id, name: line.name });
         discard.mutate(line.id, {
-          onSuccess: () => setOffList({ id: line.id, name: line.name }),
+          // The failure is said by the alert below, with Retry; the row is already back.
+          onError: () => setOffList(null),
           onSettled: () => setDiscardingId(null),
         });
       }}
@@ -764,7 +783,7 @@ export default function MenuNext() {
                   <>
                     Taken off the list.{' '}
                     {canManage ? (
-                      <button type="button" className="cl-btn cl-focus" disabled={putting} onClick={() => void putBack(offList)}>
+                      <button type="button" className="cl-btn cl-focus" disabled={putting || discard.isPending} onClick={() => void putBack(offList)}>
                         {putting ? 'Putting back…' : `Put ${offList.name} back`}
                       </button>
                     ) : null}{' '}
@@ -772,6 +791,37 @@ export default function MenuNext() {
                 ) : null}
                 {backSaid?.text}
               </p>
+            ) : null}
+
+            {canManage && (taken.isError || (taken.data && taken.data.lines.length > 0)) ? (
+              <details style={{ marginTop: 10 }} data-testid="menu-discarded-fold">
+                <summary className="cl-note cl-focus" style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center' }}>
+                  {taken.isError ? 'Lines taken off the menu' : `Lines taken off the menu (${taken.data?.lines.length}${taken.data?.truncated ? '+' : ''})`}
+                </summary>
+                {taken.isError ? (
+                  <p role="alert" className="cl-said" data-testid="menu-discarded-error">
+                    {gatewaySaid(taken.error) ?? 'The lines taken off the menu could not be read just now. Reload to try again.'}
+                  </p>
+                ) : (
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+                    {taken.data?.lines.map((l) => (
+                      <li key={l.id} className="cl-said" data-testid="menu-discarded-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                        <span>{l.name}: taken off the menu.</span>
+                        <button
+                          type="button"
+                          className="cl-btn cl-focus"
+                          style={{ minHeight: 44 }}
+                          disabled={putting}
+                          aria-label={`Put ${l.name} back`}
+                          onClick={() => void putBack({ id: l.id, name: l.name })}
+                        >
+                          {putting ? 'Putting back…' : 'Put back'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
             ) : null}
 
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 16 }}>
@@ -822,7 +872,15 @@ export default function MenuNext() {
                     const id = discard.variables;
                     if (!id) return;
                     setDiscardingId(id);
-                    discard.mutate(id, { onSettled: () => setDiscardingId(null) });
+                    const again = lines.find((l) => l.id === id);
+                    if (again) {
+                      setBackSaid(null);
+                      setOffList({ id, name: again.name });
+                    }
+                    discard.mutate(id, {
+                      onError: () => setOffList(null),
+                      onSettled: () => setDiscardingId(null),
+                    });
                   }}
                 >
                   Retry

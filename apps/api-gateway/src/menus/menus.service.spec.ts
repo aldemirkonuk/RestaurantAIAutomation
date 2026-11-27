@@ -3395,4 +3395,26 @@ describe("a discarded line, and a failed read taken off the list, can be put bac
     await expect(service.restoreFailedRead("rest-1", "m-other")).rejects.toBeInstanceOf(NotFoundException);
     expect(tables.restaurant_menus.find((m) => m.id === "m-done")!.status).toBe("archived");
   });
+
+  it("lists the discarded lines of the current menu by name only: not another house's, not an old menu's, not a live line (r110 menu-4)", async () => {
+    const service = makeService(house());
+    const out = await service.listDiscardedLines("rest-1");
+    expect(out).toEqual({ lines: [{ id: "l-off", name: "Barolo" }], truncated: false });
+    expect(Object.keys(out.lines[0]).sort()).toEqual(["id", "name"]);
+  });
+
+  it("a house with no current menu has nothing taken off, said as an empty list", async () => {
+    const tables = house();
+    tables.restaurant_menus = tables.restaurant_menus.filter((m) => m.status !== "active");
+    await expect(makeService(tables).listDiscardedLines("rest-1")).resolves.toEqual({ lines: [], truncated: false });
+  });
+
+  it("a failed read is a 500 in words, never an empty list that reads as nothing taken off", async () => {
+    const tables = house();
+    (tables as any).__readFails = [{ menu_items: "statement timeout" }];
+    const service = makeService(tables);
+    const err: any = await service.listDiscardedLines("rest-1").catch((e) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(err.message).toMatch(/could not be read just now/);
+  });
 });
