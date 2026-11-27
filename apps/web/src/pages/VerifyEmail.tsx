@@ -26,6 +26,7 @@ import {
   type VerificationMail,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
+import { inboxLinkFor } from '../lib/mailProvider'
 
 type SessionPair = { accessToken: string; refreshToken: string }
 
@@ -322,6 +323,8 @@ export function VerifyEmail() {
   // The code box: signed in, no link in the URL, not yet verified (F3). A
   // signed-out person keeps today's sign-in path and sees no box.
   const canTypeCode = !token && !loading && Boolean(user) && user?.emailVerified !== true
+  // A mail the mailer failed to send is in no inbox: no button to open one.
+  const inbox = mailState === 'not_sent' ? null : inboxLinkFor(user?.email)
   const mailTrouble = mailState === 'not_sent' || mailState === 'unconfirmed'
 
   const codeBox = canTypeCode ? (
@@ -495,9 +498,21 @@ export function VerifyEmail() {
                     </p>
                   )}
                   {codeBox}
+                  {inbox && (
+                    <a
+                      className="mdv-btn mdv-btn--seal"
+                      style={{ minHeight: 44 }}
+                      href={inbox.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="verify-open-inbox"
+                    >
+                      {inbox.label}
+                    </a>
+                  )}
                   {user ? (
                     <button
-                      className="mdv-btn mdv-btn--seal"
+                      className={inbox ? 'mdv-btn' : 'mdv-btn mdv-btn--seal'}
                       onClick={handleResend}
                       disabled={resendLocked}
                     >
