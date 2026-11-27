@@ -452,7 +452,7 @@ describe("glass and bottle still derive correctly", () => {
     expect(calls.unresolvedInserts).toHaveLength(0);
   });
 
-  it("a void still reverses, and writes no consumption row (B19)", async () => {
+  it("a void still reverses, by its booked sale, and writes no consumption row", async () => {
     const { service, calls } = makeService({
       mappings: [mapping({ sale_unit: "bottle" })],
       inventory: [std750],
@@ -462,8 +462,10 @@ describe("glass and bottle still derive correctly", () => {
       closedCheck({ voided: true }),
     ]);
 
-    expect(moves(calls)[0].args.p_delta).toBe(1);
-    expect(moves(calls)[0].args.p_transaction_type).toBe("return");
+    // QA 8c: the booked unit decides, so the void never calls apply_stock_movement.
+    expect(moves(calls)).toEqual([]);
+    expect(calls.rpc.map((c: any) => c.name)).toEqual(["return_glass_pour"]);
+    expect(calls.rpc[0].args.p_pours).toBe(1);
     expect(calls.consumptionUpserts).toHaveLength(0);
   });
 });

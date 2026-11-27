@@ -645,48 +645,43 @@ export class ToastService {
       // addressed).
       let rpcError: { message?: string } | null = null;
       try {
-        if (unit === "glass") {
-          if (isVoid) {
-            // B19: voids reverse glasses as well as bottles.
-            // record_glass_pour has no reversal mode, so a glass void is
-            // booked as a live-stock return of the equivalent glass count —
-            // previously this branch logged a warning and skipped entirely.
-            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
-              p_inventory_id: inventoryId,
-              p_stock_state: "live",
-              p_delta: qty,
-              p_transaction_type: "return",
-              p_source: "pos",
-              p_reason: `POS void (glass): ${line.name}`,
-              p_idempotency_key: idem,
-              // ADR 0141 — the house this POS line is for. `inventoryId` is
-              // resolved from `pos_item_mappings` (or the legacy
-              // `toast_item_guid` column) read with
-              // `.eq("restaurant_id", restaurantId)`; the mapping ROW belongs
-              // here, and its `inventory_id` column carries no tenant
-              // constraint, so a stale or mis-seeded mapping could point at
-              // another house's shelf. It now refuses instead of moving it.
-              p_restaurant_id: restaurantId,
-            }));
-          } else {
-            ({ error: rpcError } = await db.rpc("record_glass_pour", {
-              p_inventory_id: inventoryId,
-              p_pours: qty,
-              p_pour_ml: null,
-              p_location_id: null,
-              p_source: "pos",
-              p_reason: `POS sale: ${line.name}`,
-              p_idempotency_key: idem,
-            }));
-          }
+        if (isVoid) {
+          // A void gives back what its sale BOOKED, in the unit it was booked
+          // in (ml of a glass sale, bottles of a bottle sale), whatever the
+          // mapping says now, at most once per sale; no booked sale is an
+          // error (B19 superseded, ADR 0011 amendment 2026-11-07; QA 8c).
+          ({ error: rpcError } = await db.rpc("return_glass_pour", {
+            p_inventory_id: inventoryId,
+            p_sale_key: `toast_sale_${order.guid}_${menuGuid}`,
+            p_pours: qty,
+            p_idempotency_key: idem,
+            // ADR 0141 — the house this POS line is for. `inventoryId` is
+            // resolved from `pos_item_mappings` (or the legacy
+            // `toast_item_guid` column) read with
+            // `.eq("restaurant_id", restaurantId)`; the mapping ROW belongs
+            // here, and its `inventory_id` column carries no tenant
+            // constraint, so a stale or mis-seeded mapping could point at
+            // another house's shelf. It now refuses instead of moving it.
+            p_restaurant_id: restaurantId,
+          }));
+        } else if (unit === "glass") {
+          ({ error: rpcError } = await db.rpc("record_glass_pour", {
+            p_inventory_id: inventoryId,
+            p_pours: qty,
+            p_pour_ml: null,
+            p_location_id: null,
+            p_source: "pos",
+            p_reason: `POS sale: ${line.name}`,
+            p_idempotency_key: idem,
+          }));
         } else {
           ({ error: rpcError } = await db.rpc("apply_stock_movement", {
             p_inventory_id: inventoryId,
             p_stock_state: "live",
-            p_delta: isVoid ? qty : -qty,
-            p_transaction_type: isVoid ? "return" : "sale",
+            p_delta: -qty,
+            p_transaction_type: "sale",
             p_source: "pos",
-            p_reason: `POS ${isVoid ? "void" : "sale"}: ${line.name}`,
+            p_reason: `POS sale: ${line.name}`,
             p_idempotency_key: idem,
             // ADR 0141 — same mapping-derived id, same refusal.
             p_restaurant_id: restaurantId,
