@@ -1,6 +1,6 @@
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AuthContext } from '../contexts/AuthContext'
+import { useAuth } from '../contexts/AuthContext'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
   addMenuItem,
@@ -50,6 +50,21 @@ function price(item: MenuImportReviewItem) {
   return parts.join(' · ')
 }
 
+type SessionRole = { activeRole?: string | null; user?: { role?: string | null } | null } | null
+
+/**
+ * The session's role, read without requiring one: `useAuth` throws outside an
+ * AuthProvider, and a page with no signed-in context simply has no role. The
+ * hook is called either way, so the order of hooks never changes.
+ */
+function useSessionRole(): SessionRole {
+  try {
+    return useAuth() as SessionRole
+  } catch {
+    return null
+  }
+}
+
 /**
  * One calm line after the first proof: the way on to a working team. The
  * invite itself is the settings team section's own sheet (no new endpoint, no
@@ -58,7 +73,7 @@ function price(item: MenuImportReviewItem) {
  * pointer, not a fact about the house.
  */
 function InviteYourPeople() {
-  const auth = useContext(AuthContext) as { activeRole?: string | null; user?: { role?: string | null } | null } | null
+  const auth = useSessionRole()
   const role = auth?.activeRole ?? auth?.user?.role ?? null
   const mayInvite = role === 'owner' || role === 'manager'
   const [invited, setInvited] = useState<boolean | null>(null)
