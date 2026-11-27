@@ -8,7 +8,7 @@
  * (ItemUsedIn).
  */
 import { useEffect, useRef, useState, type ComponentType } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { type HouseFields } from '../../../services/api/inventory';
 import { fmtWhen } from '../../../lib/mudavym/format';
@@ -101,6 +101,11 @@ export interface ItemDrawerProps {
   startWith?: SheetId;
   /** The list's "Used in" count opened this: scroll to where the good is used once it is open. */
   scrollToUsed?: boolean;
+  /**
+   * The visible rows, in the order the list shows them (after the filter and the sort), and what stepping to one
+   * does. Absent: the drawer has no step buttons (a drawer opened from anywhere that has no list behind it).
+   */
+  steps?: { ids: readonly string[]; onStep: (id: string) => void };
 }
 
 /** How long the evidence takes to open: its 200 ms tween, or none when the person asked for reduced motion. */
@@ -112,14 +117,25 @@ function openMs(): number {
   }
 }
 
-export default function ItemDrawer(props: ItemDrawerProps) {
-  const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
+function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
+  const { row, house, canManage, currency, zoneName, restaurantId } = props;
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
   const TasteCard = props.TasteCard ?? HowItTastes;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
   // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
   const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
   const detailRef = useRef<HTMLElement | null>(null);
+  const clipRef = useRef<HTMLDivElement | null>(null);
+  const [switched, setSwitched] = useState(false);
+  // The held height is let go one frame after the swap was drawn.
+  useEffect(() => {
+    const clip = clipRef.current;
+    if (!clip || clip.style.minHeight === '') return;
+    const f = window.requestAnimationFrame(() => {
+      clip.style.minHeight = '';
+    });
+    return () => window.cancelAnimationFrame(f);
+  }, [evidence]);
   const tasteRef = useRef<HTMLDivElement | null>(null);
   // The first-screen taste line opens the evidence and brings the taste card into view.
   const [wantTaste, setWantTaste] = useState(false);
@@ -160,17 +176,6 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const dishesQ = useQuery({ ...dishesQuery(restaurantId ?? '', id), enabled });
   // The drinks that use it, with the cards a dish has (founder /goal 2026-11-07).
   const drinksQ = useQuery({ ...drinksQuery(restaurantId ?? '', id), enabled });
-
-  if (row === null) {
-    return (
-      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer" bodyClassName="iv-sheet-body">
-        <p className="iv-said" data-testid="ivd-gone">
-          This item is not on the list any more. It may have been removed, or the link is from another house.
-          Close returns to the list.
-        </p>
-      </Sheet>
-    );
-  }
 
   const figures: FiguresLoad = figuresQ.isError
     ? { status: 'failed', reason: failureReason(figuresQ.error) }
@@ -231,22 +236,17 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const counted = row.lastCountedAt ? `counted ${fmtWhen(row.lastCountedAt)}` : 'never counted';
   const head = [kindWords(row, house), bottleWords(row, house), where, counted].filter(Boolean).join(' · ');
 
-  const toggle = (next: CardId | 'all') => setEvidence((cur) => (cur === next ? null : next));
+  // Pressing a second card swaps the detail card's content in one frame. Its clip holds the height it had for
+  // that one frame, so the block under it (Used in) is not dropped under the reader, then lets go (r108 g15).
+  const toggle = (next: CardId | 'all') => {
+    const switching = evidence !== null && evidence !== next;
+    setSwitched(switching);
+    if (switching && clipRef.current) clipRef.current.style.minHeight = `${clipRef.current.offsetHeight}px`;
+    setEvidence((cur) => (cur === next ? null : next));
+  };
 
   return (
-    <Sheet
-      open
-      onClose={onClose}
-      label={`${name}: its figures, their evidence and where it is used. Closing writes nothing.`}
-      eyebrow="Item"
-      title={name}
-      spine={name}
-      wide
-      className="iv-drawer"
-      // The body's side gutter: without it the head, the evidence and "Used in"
-      // sat flush on the sheet's edge (browser walk 2026-11-11).
-      bodyClassName="iv-sheet-body"
-    >
+    <>
       <p className="ivd-head" data-testid="ivd-head">
         {head}
       </p>
@@ -326,15 +326,17 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         </button>
       </p>
       <div className="ivd-evwrap" data-open={evidence !== null} data-testid="ivd-evwrap">
-        <div className="ivd-evclip">
+        <div ref={clipRef} className="ivd-evclip">
       {evidence !== null ? (
         <section
+          key={evidence}
           ref={detailRef}
           id="ivd-evidence"
           className="ivd-evidence"
           aria-label={`${name}: detail card`}
           data-testid="ivd-evidence"
           data-card={evidence}
+          data-switched={switched ? 'true' : undefined}
         >
           <h3 className="iv-sec">{evidence === 'all' ? 'All the evidence' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
           {CARD_EVIDENCE[evidence].length > 0 ? (
@@ -383,6 +385,103 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         onRetryDishes={() => void dishesQ.refetch()}
         onRetryDrinks={() => void drinksQ.refetch()}
       />
+    </>
+  );
+}
+
+/** The shortcut keys the sheet answers to while focus is in it and not in a field or a menu. */
+const STEP_KEYS: Record<string, 'next' | 'prev'> = { j: 'next', J: 'next', ArrowDown: 'next', k: 'prev', K: 'prev', ArrowUp: 'prev' };
+
+/**
+ * The drawer: one Sheet that stays up while the good in it changes. Stepping to the next or the previous good
+ * swaps the body (keyed by the good) under the same head and the same buttons, so focus stays where it was
+ * pressed (r108 g12; SOTA: Linear's peek, J and K move the preview through the list).
+ */
+export default function ItemDrawer(props: ItemDrawerProps) {
+  const { row, house, onClose, steps, restaurantId } = props;
+  const qc = useQueryClient();
+  const [dir, setDir] = useState<'next' | 'prev' | null>(null);
+  const at = steps && row ? steps.ids.indexOf(row.id) : -1;
+  const prevId = steps && at > 0 ? steps.ids[at - 1] : null;
+  const nextId = steps && at >= 0 && at < steps.ids.length - 1 ? steps.ids[at + 1] : null;
+  const stepRef = useRef<(d: 'next' | 'prev') => void>(() => {});
+  stepRef.current = (d) => {
+    const to = d === 'next' ? nextId : prevId;
+    if (to === null || !steps) return;
+    setDir(d);
+    steps.onStep(to);
+  };
+  useEffect(() => {
+    if (!steps) return;
+    const onKey = (e: KeyboardEvent) => {
+      const d = STEP_KEYS[e.key];
+      if (!d || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest?.('.iv-drawer')) return;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
+      if (t.closest('[role="menu"],[role="listbox"]')) return;
+      e.preventDefault();
+      stepRef.current(d);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [steps !== undefined]);
+  // The next row's reads are warmed once the drawer is on a row, so the swap lands on an answered body.
+  useEffect(() => {
+    if (restaurantId === null) return;
+    for (const other of [prevId, nextId]) {
+      if (other === null) continue;
+      void qc.prefetchQuery({
+        queryKey: inventoryItemKeys.figures(restaurantId, other),
+        queryFn: () => getItemFigures(other, restaurantId),
+        staleTime: 30_000,
+      });
+      void qc.prefetchQuery({
+        queryKey: inventoryItemKeys.usedIn(restaurantId, other),
+        queryFn: () => getItemUsedIn(other, restaurantId),
+        staleTime: 60_000,
+      });
+    }
+  }, [qc, restaurantId, prevId, nextId]);
+
+  if (row === null) {
+    return (
+      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer" bodyClassName="iv-sheet-body">
+        <p className="iv-said" data-testid="ivd-gone">
+          This item is not on the list any more. It may have been removed, or the link is from another house.
+          Close returns to the list.
+        </p>
+      </Sheet>
+    );
+  }
+  const name = row.name ?? house.displayName ?? 'Unnamed item';
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      label={`${name}: its figures, their evidence and where it is used. Closing writes nothing.`}
+      eyebrow="Item"
+      title={name}
+      spine={name}
+      wide
+      className="iv-drawer"
+      // The body's side gutter: without it the head, the evidence and "Used in"
+      // sat flush on the sheet's edge (browser walk 2026-11-11).
+      bodyClassName="iv-sheet-body"
+    >
+      {steps && at >= 0 ? (
+        <div className="ivd-steps" role="group" aria-label="Step through the list">
+          <button type="button" className="ivd-step iv-focus" data-testid="ivd-prev" aria-keyshortcuts="K" disabled={prevId === null} onClick={() => stepRef.current('prev')}>
+            Previous good
+          </button>
+          <button type="button" className="ivd-step iv-focus" data-testid="ivd-next" aria-keyshortcuts="J" disabled={nextId === null} onClick={() => stepRef.current('next')}>
+            Next good
+          </button>
+        </div>
+      ) : null}
+      <div key={row.id} className="ivd-stepbody" data-step={dir ?? undefined} data-testid="ivd-stepbody">
+        <DrawerBody {...props} row={row} />
+      </div>
     </Sheet>
   );
 }

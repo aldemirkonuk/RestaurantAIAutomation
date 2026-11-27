@@ -154,6 +154,11 @@ button.ivd-card:active {
 .ivd-evwrap[data-open='true'] .ivd-evidence {
   animation: ivd-ev-in 160ms ease-out 40ms both;
 }
+/* A second card pressed while the card is open replays the fade on the new content, with no 40 ms wait: the
+   section is keyed by the card, so it is a new node. Height is not tweened (DD-r106-32). */
+.ivd-evwrap[data-open='true'] .ivd-evidence[data-switched='true'] {
+  animation-delay: 0ms;
+}
 @keyframes ivd-ev-in {
   from {
     opacity: 0;
@@ -288,6 +293,54 @@ button.ivd-card:active {
 }
 @media (prefers-reduced-motion: reduce) {
   .ivd-hold .iv-skel-bar {
+    animation: none;
+  }
+}
+
+/* Step to the next or the previous good (r108 g12). The new body enters in 160 ms, +12 px up for the next good
+   and -12 px down for the previous; the old body has no exit (ADR 0112); the steps are not on a phone's screen
+   twice. Reduced motion: an instant swap, no opacity. */
+.ivd-steps {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.ivd-step {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ivd-step:disabled {
+  color: var(--ink-4);
+  cursor: default;
+}
+.ivd-stepbody[data-step='next'] {
+  animation: ivd-step-next 160ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.ivd-stepbody[data-step='prev'] {
+  animation: ivd-step-prev 160ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@keyframes ivd-step-next {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes ivd-step-prev {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ivd-stepbody[data-step] {
     animation: none;
   }
 }
