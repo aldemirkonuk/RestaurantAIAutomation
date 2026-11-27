@@ -669,7 +669,7 @@ function PlanChecks({ menuId }: { menuId: string }) {
   return <MenuReadChecks lines={checkLinesFromPlan(q.data.lines)} onShow={(id) => showLineById(`plan-line-${id}`)} />;
 }
 
-function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, zone }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, onStale, zone }: {
   v: MenuVersion
   zone: string | null
   /** Its name among the house's kept menus (versionLabels): no two alike. */
@@ -680,6 +680,8 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemov
   onPlan: (menuId: string) => void
   /** A failed read was taken off the list: read the list again. */
   onRemoved: () => void
+  /** The gateway said the read is gone (404) or no longer a failed read (409): the list on screen is stale, read it again. */
+  onStale: () => void
 }) {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -692,6 +694,8 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemov
       onRemoved();
     } catch (err) {
       setRemoveError(reasonOf(err));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404 || status === 409) onStale();
     } finally {
       setRemoving(false);
     }
@@ -1129,6 +1133,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                         setTaken(v.menuId);
                         refresh();
                       }}
+                      onStale={refresh}
                       onPlan={(id) => {
                         setSaid(null);
                         setPlanFor(id);
