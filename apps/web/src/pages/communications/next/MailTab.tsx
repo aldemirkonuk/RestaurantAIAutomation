@@ -998,6 +998,7 @@ export function MailTab({
         conversationWords={senderQ.data?.conversation?.words ?? null}
         intake={intake}
         now={now}
+        canCheck={canReply}
       />
     </div>
   );
