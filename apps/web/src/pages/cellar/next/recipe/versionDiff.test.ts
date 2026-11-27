@@ -50,6 +50,28 @@ describe('diffLines', () => {
     ]);
     expect(diffLines([L('Soda', 60)], [L('Soda', 60, { role: 'untracked' })])[0].text).toBe('Soda: now not counted');
   });
+
+  // r100 P3: a line whose link or counted state changed pairs with itself by its label, never reads as taken out and added.
+  it('a linked line marked not counted is one change, not one taken out and one added', () => {
+    const d = diffLines([gin(50)], [L('gin', 50, { role: 'untracked' })]);
+    expect(d).toEqual([{ kind: 'changed', text: 'gin: now not counted' }]);
+  });
+
+  it('an untracked line that is now counted and linked is one change', () => {
+    const d = diffLines([L('soda', 60, { role: 'untracked' })], [L('soda', 60, { inventoryId: 's1', itemName: 'Soda water' })]);
+    expect(d).toEqual([{ kind: 'changed', text: 'Soda water: now counted' }]);
+  });
+
+  it('a loose line that was linked while another stocked line was added above it is not paired with the wrong good', () => {
+    const was = [gin(50, 'g1', 'Gin'), L('lime juice', 25)];
+    const now = [gin(50, 'g1', 'Gin'), L('syrup', 15, { inventoryId: 's1', itemName: 'Sugar Syrup' }), L('lime juice', 25, { inventoryId: 'lj', itemName: 'Lime Juice' })];
+    const d = diffLines(was, now);
+    expect(d).toEqual([
+      { kind: 'same', text: 'Gin 50 ml' },
+      { kind: 'changed', text: 'lime juice 25 ml, now Lime Juice' },
+      { kind: 'added', text: 'Added since: Sugar Syrup 15 ml' },
+    ]);
+  });
 });
 
 describe('diffMeta and costDifference', () => {

@@ -7,7 +7,11 @@
  *      its component, any other line by its folded name (the gateway's
  *      name-fold rule: case, spaces, the dotless ı and accents). Inside one
  *      key, duplicates pair in position order;
- *   2. a stocked line left over pairs with a stocked line left over on the
+ *   2. a line left over pairs with one left over on the other side that has
+ *      the same folded label, whatever its role: the label survives a link and
+ *      a switch between counted and not counted, so a line that gained a good
+ *      (or lost it) reads as changed, never as one removed and one added;
+ *   3. a stocked line left over pairs with a stocked line left over on the
  *      other side, in position order: a good swapped for another reads as
  *      changed, never as one removed and one added.
  * Whatever is still alone is added (only in the current) or taken out (only
@@ -57,7 +61,8 @@ const usableWords = (u: number | null) => (u == null ? 'all of it' : `${u}%`);
 
 /** "Gin 50 ml, now 45 ml"; "Plymouth gin 50 ml, now Tanqueray gin"; null when nothing differs. */
 function changeWords(was: Line, now: Line): string | null {
-  const swapped = keyOf(was) !== keyOf(now) || foldName(nameOf(was)) !== foldName(nameOf(now));
+  // A change of role is said as "now counted" or "now not counted"; the name beside it is the line's own, not a swap.
+  const swapped = was.role === now.role && (keyOf(was) !== keyOf(now) || foldName(nameOf(was)) !== foldName(nameOf(now)));
   const moved = amountOf(was) !== amountOf(now);
   const parts: string[] = [];
   if (swapped || moved) {
@@ -83,7 +88,13 @@ export function diffLines(was: Line[], now: Line[]): LineDiff[] {
     const j = b.findIndex((m, k) => !taken.has(k) && keyOf(m) === keyOf(l));
     if (j >= 0) (pairOf.set(i, j), taken.add(j));
   });
-  // 2. a stocked line left over meets one left over on the other side: a swap.
+  // 2. a line left over meets one left over with the same label, whatever its role: it was linked, or its counted state changed.
+  a.forEach((l, i) => {
+    if (pairOf.has(i)) return;
+    const j = b.findIndex((m, k) => !taken.has(k) && foldName(m.label) === foldName(l.label));
+    if (j >= 0) (pairOf.set(i, j), taken.add(j));
+  });
+  // 3. a stocked line left over meets one left over on the other side: a swap.
   a.forEach((l, i) => {
     if (pairOf.has(i) || l.role !== 'stocked') return;
     const j = b.findIndex((m, k) => !taken.has(k) && m.role === 'stocked');
