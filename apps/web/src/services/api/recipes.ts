@@ -207,12 +207,42 @@ export interface SaveRecipeLine {
   usablePct?: number | null;
 }
 
+/** GET /recipes/:rid/drinks/loose-lines (owner/manager): every counted line of a current drink recipe with no shelf good. */
+export interface LooseLineGroup {
+  key: string;
+  label: string;
+  /** `baseUnit` (ml10, mg, each_milli) is how the line is measured; absent from an older gateway. */
+  lines: Array<{ cocktailId: string; index: number; baseUnit?: string }>;
+  drinkCount: number;
+  proposed: ShelfItem | null;
+  sameName: number;
+}
+export interface LooseDrink {
+  cocktailId: string;
+  name: string;
+  versionId: string;
+  yieldServes: number;
+  method: string | null;
+  glass: string | null;
+  garnish: string | null;
+  lines: Array<Required<Pick<SaveRecipeLine, 'role' | 'inventoryId' | 'label' | 'qty' | 'unit'>> & { componentId: string | null; usablePct: number | null }>;
+}
+export interface LooseLines {
+  lineCount: number;
+  drinkCount: number;
+  /** With `linkedTo`: how many dishes' current recipes use the good too. */
+  dishCount?: number;
+  groups: LooseLineGroup[];
+  drinks: LooseDrink[];
+}
+
 export interface SaveRecipeBody {
   expectedVersionId: string | null;
   yieldServes: number;
-  method?: string;
-  glass?: string;
-  garnish?: string;
+  /** Null is "none": a whole version read back (the loose-lines queue) sends what it read. */
+  method?: string | null;
+  glass?: string | null;
+  garnish?: string | null;
   lines: SaveRecipeLine[];
 }
 
@@ -327,6 +357,13 @@ export const recipesApi = {
   /** Prices an unsaved draft at today's prices. The server prices it; nothing is written. */
   async previewCost(restaurantId: string, owner: string | RecipeOwner, body: PreviewCostBody): Promise<CostPreview> {
     const r = await apiClient.post<CostPreview>(`${ownerPath(restaurantId, owner)}/cost-preview`, body);
+    return r.data;
+  },
+
+  /** Every counted line of a drink's current recipe that names no shelf good (owner/manager); writes nothing. */
+  async looseLines(restaurantId: string, linkedTo?: string): Promise<LooseLines> {
+    const q = linkedTo ? `?linkedTo=${encodeURIComponent(linkedTo)}` : '';
+    const r = await apiClient.get<LooseLines>(`${base(restaurantId)}/drinks/loose-lines${q}`);
     return r.data;
   },
 
