@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
 import { listTaxFromReadout } from './useListTax';
 import type { ListTax } from './listTax';
-import DrinkCards, { POUR_COST_BASIS, ROUNDING_NOTE, marginPerServe, pourCostShare, type DraftCost } from './DrinkCards';
+import DrinkCards, { POUR_COST_BASIS, ROUNDING_NOTE, ShareBasisCaption, ShareFigure, marginPerServe, pourCostShare, type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import { formatHousePercent } from '../../../../lib/house-number';
 
@@ -547,5 +547,29 @@ describe('listTaxFromReadout', () => {
     expect(listTaxFromReadout(undefined, false)).toEqual({ basis: 'unread', failed: false });
     expect(listTaxFromReadout(undefined, true)).toEqual({ basis: 'unread', failed: true });
     expect(listTaxFromReadout({ basis: 'unset', readable: false }, false)).toEqual({ basis: 'unread', failed: true });
+  });
+});
+
+describe('the share basis is said once under a list, not under every row (r103 walk FAIL 11)', () => {
+  const unset = { basis: 'unset' } as const;
+  const reading = { basis: 'unread', failed: false } as const;
+  it('a row share is only its figure in the warn tone, whether the basis is unset or still being read', () => {
+    for (const tax of [unset, reading]) {
+      const { container, unmount } = render(<ShareFigure text="20.6%" tax={tax} />);
+      expect(container.textContent).toBe('20.6%');
+      expect(container.querySelector('[data-testid="share-basis"]')).toBeNull();
+      expect(container.querySelector('[data-warn="true"]')).not.toBeNull();
+      unmount();
+    }
+  });
+  it('the caption holds one line from first paint and only its words change when the read lands', () => {
+    const { rerender } = render(<ShareBasisCaption tax={reading} />);
+    const first = screen.getByTestId('share-basis');
+    expect(first.textContent).toContain('is being read');
+    expect(first.style.minHeight).toBe('16px');
+    rerender(<ShareBasisCaption tax={{ basis: 'prices_exclude_tax' }} />);
+    const after = screen.getByTestId('share-basis');
+    expect(after.textContent).toContain('holds no tax');
+    expect(after.style.minHeight).toBe('16px');
   });
 });

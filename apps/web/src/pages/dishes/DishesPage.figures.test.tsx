@@ -97,7 +97,7 @@ describe('/dishes reads its names and its figures apart', () => {
     expect(screen.getByTestId('no-recipe-yet')).toHaveTextContent('1 of 2 dishes has no recipe yet');
   });
 
-  it('the food cost is of the price before tax once the house says its basis; unset it is warned, with the sentence under it (r103 need 2)', async () => {
+  it('the food cost is of the price before tax once the house says its basis; unset it is warned and the sentence is said once under the list (r103 need 2)', async () => {
     answer['/settings/tax-basis'] = async () => ({ data: { basis: 'prices_exclude_tax', readable: true } });
     const { unmount } = mount();
     await waitFor(() => expect(row(A)).toHaveTextContent('%33,3'));
@@ -106,7 +106,9 @@ describe('/dishes reads its names and its figures apart', () => {
     unmount();
     answer['/settings/tax-basis'] = async () => ({ data: { basis: 'unset', readable: true } });
     mount();
-    await waitFor(() => expect(row(A)).toHaveTextContent('whether that price includes tax is not recorded'));
+    await waitFor(() => expect(screen.getByTestId('share-basis')).toHaveTextContent('whether that price includes tax is not recorded'));
+    expect(screen.getAllByTestId('share-basis')).toHaveLength(1);
+    expect(row(A)).not.toHaveTextContent('whether that price includes tax');
     expect(row(A).querySelector('[data-warn="true"]')).toHaveTextContent('%33,3');
   });
 

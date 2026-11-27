@@ -119,17 +119,32 @@ function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string, words:
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
 }
 
-/** A share in a list cell: plain once the basis is set, else warned with its sentence under it. */
+/**
+ * A share in a list cell: plain once the basis is set, else in the warn tone. The
+ * sentence about the basis is NOT said under each row (it grew every row and
+ * shifted the page when the basis read landed): the list says it once, under
+ * the table, in `ShareBasisCaption`.
+ */
 export function ShareFigure({ text, tax }: { text: string; tax: ListTax }) {
   const basis = shareBasis(tax);
   if (!basis.warn) return <span title={basis.text}>{text}</span>;
   return (
-    <>
-      <span style={{ color: 'var(--warn)' }} data-warn="true">{text}</span>
-      <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid="share-basis">
-        {basis.text}
-      </span>
-    </>
+    <span style={{ color: 'var(--warn)' }} data-warn="true" title={basis.text}>
+      {text}
+    </span>
+  );
+}
+
+/**
+ * What the shares in a list are of, said once under its table. Its line is held
+ * from the first paint (one line high), so the read landing changes the words,
+ * never the height of the rows or the page.
+ */
+export function ShareBasisCaption({ tax }: { tax: ListTax }) {
+  return (
+    <p className="cl-dim" style={{ fontSize: 11, margin: '6px 2px 0', minHeight: 16 }} data-testid="share-basis">
+      {taxSaid(tax)}
+    </p>
   );
 }
 
