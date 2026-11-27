@@ -25,6 +25,7 @@ import { WebsocketModule } from "../websocket/websocket.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { DocumentsController } from "./documents/documents.controller";
 import { DocumentIntakeService } from "./documents/document-intake.service";
+import { MemberForwardIntakeService } from "./documents/member-forward-intake.service";
 import { DocumentExtractorService } from "./documents/document-extractor.service";
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
@@ -101,6 +102,8 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     RecurringOrdersService,
     OrderRecurrenceService,
     DocumentIntakeService,
+    // onboarding-r110-g1: a house lead's forwarded invoice reaches intake.
+    MemberForwardIntakeService,
     DocumentExtractorService,
     ReceivingService,
     // ADR 0104 D12 slice 2. Slice 1 shipped these unregistered — the class

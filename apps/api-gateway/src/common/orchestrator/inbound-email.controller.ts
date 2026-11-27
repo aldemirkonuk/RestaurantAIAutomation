@@ -26,6 +26,15 @@ interface NormalizedInbound {
   headers: Record<string, string>;
 }
 
+/** Verdict headers a receiving server prepends; the first copy is its own. */
+const TRACE_HEADERS = new Set([
+  "authentication-results",
+  "arc-authentication-results",
+  "received-spf",
+  "x-spam-tests",
+  "x-spam-status",
+]);
+
 /**
  * InboundEmailController — Phase 1/2 provider-agnostic inbound-email webhook for the
  * dedicated inbound domain (see .planning/PROSPECTS_ATTRIBUTION_ARCHITECTURE.md).
@@ -40,6 +49,7 @@ interface NormalizedInbound {
  * header or `?secret=` query). With no secret configured the endpoint refuses, so it can never
  * act as an open relay.
  */
+
 @Controller("webhooks")
 export class InboundEmailController {
   private readonly logger = new Logger(InboundEmailController.name);
@@ -130,10 +140,17 @@ export class InboundEmailController {
     // we never received. Reads below (`headerMap["from"]` etc.) then treat
     // that as a present value.
     const headerMap: Record<string, string> = Object.create(null);
+    // Trace headers keep their FIRST occurrence (onboarding-r110-g1). The
+    // receiving server prepends its own verdict (Postmark: Received-SPF,
+    // X-Spam-Tests), so a later copy is one the sender wrote, and letting it
+    // win would let anyone claim a pass for a forged From.
+    const set = (name: string, value: string) => {
+      if (TRACE_HEADERS.has(name) && name in headerMap) return;
+      headerMap[name] = value;
+    };
     if (Array.isArray(b.Headers)) {
       for (const h of b.Headers)
-        if (h?.Name)
-          headerMap[String(h.Name).toLowerCase()] = String(h.Value ?? "");
+        if (h?.Name) set(String(h.Name).toLowerCase(), String(h.Value ?? ""));
     }
     if (
       b.headers &&
@@ -141,7 +158,7 @@ export class InboundEmailController {
       !Array.isArray(b.headers)
     ) {
       for (const [k, v] of Object.entries(b.headers))
-        headerMap[k.toLowerCase()] = String(v ?? "");
+        set(k.toLowerCase(), String(v ?? ""));
     }
 
     const from: string =
