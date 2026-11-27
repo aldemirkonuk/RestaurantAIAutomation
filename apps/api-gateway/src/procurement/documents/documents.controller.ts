@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   HttpException,
   HttpStatus,
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
+import { verifiedCsv, type ExportRow } from "./documents-export";
 import {
   ApplyExtractionDto,
   CorrectFieldDto,
@@ -1315,6 +1317,68 @@ export class DocumentsController {
       );
     }
     return out;
+  }
+
+  @Get("export/verified.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="verified-papers.csv"')
+  @ApiOperation({
+    summary:
+      "Every verified paper of this house as one CSV (managers: money roles only)",
+  })
+  async exportVerified(@CurrentUser() user: AuthedUser): Promise<string> {
+    // The role before any read: a person who may not see house money gets a
+    // refusal in words, not an empty file.
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        "The papers' money is for the people who keep the books here; ask a manager for the export.",
+        HttpStatus.FORBIDDEN,
+      );
+    // Paged past the list's 200-row cap so the file holds the whole book.
+    // Keyset on (created_at, id): an offset page shifts when a paper is verified
+    // mid-read and writes the boundary row twice. The cursor is the raw
+    // timestamptz string the database gave, never a JS Date (milliseconds only).
+    const PAGE = 1000;
+    const rows: Record<string, unknown>[] = [];
+    let after: { at: string; id: string } | null = null;
+    for (;;) {
+      let q = this.db
+        .getClient()
+        .from("procurement_documents")
+        .select("*")
+        .eq("restaurant_id", user.restaurantId)
+        .eq("status", "verified")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (after)
+        q = q.or(
+          `created_at.gt."${after.at}",and(created_at.eq."${after.at}",id.gt."${after.id}")`,
+        );
+      const { data, error } = await q.limit(PAGE);
+      if (error)
+        throw new HttpException(
+          `The verified papers could not be read, so no file was made: ${error.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const page = (data ?? []) as Record<string, unknown>[];
+      rows.push(...page);
+      if (page.length < PAGE) break;
+      const last = page[page.length - 1];
+      after = { at: String(last.created_at), id: String(last.id) };
+    }
+    const names = await this.vendorNamesFor(rows);
+    const out: ExportRow[] = rows.map((r) => ({
+      doc_number: (r.doc_number as string | null) ?? null,
+      doc_date: (r.doc_date as string | null) ?? null,
+      doc_type: (r.doc_type as string | null) ?? null,
+      vendor: names.get(r.id as string) ?? null,
+      currency: (r.currency as string | null) ?? null,
+      subtotal: (r.subtotal as number | null) ?? null,
+      freight: (r.freight as number | null) ?? null,
+      tax: (r.tax as number | null) ?? null,
+      total: (r.total as number | null) ?? null,
+    }));
+    return verifiedCsv(out);
   }
 
   @Get()
