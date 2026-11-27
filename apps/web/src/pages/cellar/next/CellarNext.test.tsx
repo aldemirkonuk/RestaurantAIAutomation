@@ -88,6 +88,7 @@ vi.mock('./recipe/RecipeSheet', () => ({
 // The spec book button reads the signed-in house; this page suite mounts no AuthProvider. Its own suite is
 // recipe/RecipeBook.test.tsx.
 vi.mock('./recipe/RecipeBook', () => ({ default: () => null }));
+vi.mock('./recipe/PlanPrep', () => ({ default: () => null }));
 // The cocktail list prints through the house's money (`useHouseMoney`), which
 // reads the signed-in house; this page suite mounts no AuthProvider, so the
 // house is a lira one here. Its own behaviour is CocktailRegister.recipe.test.

@@ -480,8 +480,28 @@ export interface DrinkCard {
   yieldServes: number;
   version: number;
   versionDate: string | null;
-  lines: Array<{ label: string; qty: number; unit: string | null; name: string | null }>;
+  lines: Array<{
+    label: string;
+    qty: number;
+    unit: string | null;
+    name: string | null;
+    /** What a prep plan sums by (r109 drinks-g3); absent from an older gateway. Quantities only. */
+    role?: RecipeLineRole;
+    inventoryId?: string | null;
+    componentId?: string | null;
+    qtyBase?: number | null;
+    baseUnit?: string | null;
+    usablePct?: number | null;
+  }>;
   allergens: RowAllergens;
+}
+
+/** A house-made component a card's made line draws, with what one batch makes (null while unset). */
+export interface CardComponent {
+  id: string;
+  name: string | null;
+  yieldQtyBase: number | null;
+  yieldBaseUnit: string | null;
 }
 
 /**
@@ -592,6 +612,14 @@ export const dishesApi = {
     // An answer without its rows is unread, never an empty book.
     if (!Array.isArray(r.data?.drinks)) throw new Error('The recipe cards came back without their rows.');
     return r.data.drinks;
+  },
+
+  /** The same read plus components, for a prep plan; an older gateway (no line roles) is unread. */
+  async prepCards(restaurantId: string): Promise<{ drinks: DrinkCard[]; components: CardComponent[] }> {
+    const r = await apiClient.get<{ drinks: DrinkCard[]; components?: CardComponent[] }>(`${base(restaurantId)}/drinks/cards`);
+    if (!Array.isArray(r.data?.drinks) || !Array.isArray(r.data?.components)) throw new Error('The recipe cards came back without their rows.');
+    if (r.data.drinks.some((d) => d.lines.some((l) => !l.role))) throw new Error('The recipe cards came back without what a plan sums by.');
+    return { drinks: r.data.drinks, components: r.data.components };
   },
 
   /** The current menu's price beside each dish and drink, in one read (r28 recipes audit, gap 2). */
