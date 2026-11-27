@@ -322,7 +322,7 @@ export function MailThread({
   // modifier makes the key the reader's. No motion of its own: the view change
   // is the page's existing cross-fade, none under reduced motion.
   const qc = useQueryClient();
-  const house = useHouse();
+  const houseId = useHouse();
   const keyAct = useRef<(e: KeyboardEvent) => void>(() => {});
   // `g` then a letter is the app's go-to (the provider's own 1.2 s window): the
   // second key is its, not ours.
@@ -337,7 +337,7 @@ export function MailThread({
       e.preventDefault();
       onAnswer(answer);
     } else if (act === 'next' && withKey && onOpenThread) {
-      const held = qc.getQueryData<InfiniteData<MailThreadsPage>>(mailKeys.threads(house, withKey));
+      const held = qc.getQueryData<InfiniteData<MailThreadsPage>>(mailKeys.threads(houseId, withKey));
       const next = nextWaiting(held?.pages.flatMap((p) => p.threads) ?? [], threadKey);
       if (!next) return;
       e.preventDefault();

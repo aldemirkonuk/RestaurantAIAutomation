@@ -2105,7 +2105,7 @@ those numbers had already drifted since §13.38 was written.
     `feature-flag-registry.ts`'s own `readBy` for both keys exactly. Moved both
     into the structured `readBy` line with the corrected citation and dropped the
     now-redundant (and wrong) prose sentence.
-  - `FeaturesSection.tsx` "Read this house's mailbox" — `house-inbox.service.ts:339`
+  - `FeaturesSection.tsx` "Read this house's mailbox" — `house-inbox.service.ts:609`
     verified (`isEnabled` gate) and moved into `readBy` the same way.
   - `FeaturesSection.tsx` redesign-flag loop (all `mudavym_design_*` rows) — added
     `readBy: lib/mudavym/useMudavymDesign.ts:105` (verified: the literal
