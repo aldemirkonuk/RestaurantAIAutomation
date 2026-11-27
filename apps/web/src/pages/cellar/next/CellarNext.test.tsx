@@ -764,15 +764,13 @@ function registerVM(over: Record<string, unknown> = {}) {
 
 describe('CellarNext — tells the data hook which register is open (p9-3)', () => {
   it.each([
-    ['cocktails', { category: 'cocktails' as const }, '/cellar'],
-    ['beer', { category: 'beer' as const }, '/cellar'],
-    ['a queried register', {}, '/cellar?register=whiskey'],
-  ])('%s', (_name, props, route) => {
+    ['cocktails', { category: 'cocktails' }, '/cellar', 'cocktails'],
+    ['beer', { category: 'beer' }, '/cellar', 'beer'],
+    ['a queried register', {}, '/cellar?register=whiskey', 'whiskey'],
+  ] as [string, Partial<CellarNextProps>, string, string][])('%s', (_name, props, route, want) => {
     mock.current = { ...base, registers: readout() };
     draw(props, route);
-    expect(mock.openSeen).toBe(
-      props.category ?? (route.includes('whiskey') ? 'whiskey' : null),
-    );
+    expect(mock.openSeen).toBe(want);
   });
 
   it('the overview opens none', () => {
