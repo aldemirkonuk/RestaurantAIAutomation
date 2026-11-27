@@ -296,8 +296,9 @@ describe("the old grant is never widened", () => {
     const queries = urls
       .filter((u) => u.includes("/messages?"))
       .map((u) => new URL(u).searchParams.get("q")!);
-    // Each grant also asks for delivery notices, by that bound alone (r109 g1).
-    expect(queries.filter((q) => q.startsWith("from:(mailer-daemon OR postmaster) after:"))).toHaveLength(2);
+    // Neither grant carries a consent receipt naming delivery notices, so neither
+    // asks for them (r110 item 4; house-inbox.dsn.spec.ts pins the named case).
+    expect(queries.filter((q) => q.includes("mailer-daemon"))).toHaveLength(0);
     expect(queries.filter((q) => q.includes("from:(") && !q.includes("mailer-daemon"))).toHaveLength(1);
     expect(queries.filter((q) => !q.includes("from:"))).toHaveLength(1);
     // The token for each grant is asked for under ITS OWN id.

@@ -58,6 +58,14 @@ export interface DataHandlingDisclosure {
    * derivation; this field is the rule the figure is an instance of.
    */
   keptFor: string;
+  /**
+   * The delivery notices a reading grant asks Gmail for (r109 mail-gap g1,
+   * DD-r109-11 narrowed, r110 mail-fix item 4). A grant reads notices ONLY
+   * when the words its person consented to carry this sentence: the reader
+   * checks the grant's own consent receipt (`house-inbox-notice-terms.ts`),
+   * so a grant consented to before this field existed is never widened.
+   */
+  notices?: string;
 }
 
 export interface IntegrationDefinition {
@@ -236,7 +244,7 @@ export const INTEGRATION_DEFINITIONS: Record<
         scope: "https://www.googleapis.com/auth/gmail.readonly",
         label: "Read mail in your mailbox — used only for the vendors in this house's book",
         reason:
-          "Google offers no scope that can read one sender and not another, so this is the narrowest one that can fetch a vendor's reply at all. What Mudavym actually asks Gmail for is narrower than what the scope permits: every request carries a from: filter built from the vendor addresses in this house's book, and a message from anyone else is discarded without being read. It can never send, label, archive or delete anything.",
+          "Google offers no scope that can read one sender and not another, so this is the narrowest one that can fetch a vendor's reply at all. What Mudavym actually asks Gmail for is narrower than what the scope permits: every request for vendor mail carries a from: filter built from the vendor addresses in this house's book, the one request for delivery notices carries from:(mailer-daemon OR postmaster), and a message from anyone else is discarded without being read. It can never send, label, archive or delete anything.",
       },
     ],
     notRequested: [
@@ -248,7 +256,7 @@ export const INTEGRATION_DEFINITIONS: Record<
     ],
     dataHandling: {
       reads:
-        "Mail from the vendor addresses in this restaurant's book, and nothing else. The book is `providers.contact_email`, `providers.primary_contact.email` and `provider_contacts.email` for this restaurant — the same list the composer may write to. An empty book means no request is made at all.",
+        "Mail from the vendor addresses in this restaurant's book, and the delivery notices below; nothing else. The book is `providers.contact_email`, `providers.primary_contact.email` and `provider_contacts.email` for this restaurant — the same list the composer may write to. An empty book means no request for vendor mail is made at all.",
       doesNotRead:
         "Every other message in your mailbox. Mail from an address that is not in the book is never fetched (the from: filter) and, if Gmail's fuzzy sender matching returns one anyway, it is discarded on arrival without its body being stored, logged or shown. Nothing that arrived before you consented is ever read: the cursor starts at the moment the grant is switched on.",
       landsIn:
@@ -257,6 +265,8 @@ export const INTEGRATION_DEFINITIONS: Record<
         "Everyone who works in this restaurant, which is the point of the grant: a vendor reply stops being private to whoever's inbox it happened to reach. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it — either one stops the reading on the next run.",
       keptFor:
         "A reply is kept as two separate things. The MAIL ITSELF — the body, its headers and any attachment — is a copy of your mailbox and has a window: the longest dispute this restaurant has actually recorded, plus a margin, worked out again every quarter from this restaurant's own conversations. When it runs out, the body, headers and attachment bytes are deleted and the row says when and why. Disconnecting deletes that raw mail straight away, without waiting for the window. What the ORDER needs from the reply — a quoted price, a confirmed date, a commitment and the exact sentence it was stated in — is written onto this restaurant's own order record and stays there under the bookkeeping law of the country the restaurant is in, because that is the house's record and not a copy of your mailbox. The current figure, its derivation and the statute behind the floor are on this page.",
+      notices:
+        "When a letter this house sent did not arrive, Gmail writes back from mailer-daemon or postmaster. Mudavym asks Gmail for those notices too, by that sender alone, and keeps one only when Gmail checked who sent it and it names a letter this restaurant sent; then it marks that letter as did not arrive, or delayed. Any other notice is dropped unread: never stored, logged or counted. Connected before these words, a mailbox is not asked for notices until you connect it again.",
     },
   },
   /**
@@ -307,6 +317,8 @@ export const INTEGRATION_DEFINITIONS: Record<
         "Vendor mail: everyone who works in this restaurant. Team and guest mail: the restaurant's owner and managers only. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it; either one stops the reading on the next run.",
       keptFor:
         "A vendor reply is kept as the vendor-only connection keeps it: the raw mail has a window and the order's own facts stay on the order. A team or guest message has no order, so it is deleted whole, with its attachments, when the window runs out. Disconnecting deletes every team and guest message this connection filed straight away, without waiting for the window, and so does every reply this house sent to a team member or a guest (unless another wide connection of this house is still on). Vendor replies stay while this house still has the vendor-only connection switched on, because that connection would have stored them anyway; when all mail reading is disconnected, the vendor raw mail is deleted straight away too.",
+      notices:
+        "When a letter this house sent did not arrive, Gmail writes back from mailer-daemon or postmaster. Mudavym asks Gmail for those notices too, by that sender alone, and keeps one only when Gmail checked who sent it and it names a letter this restaurant sent; then it marks that letter as did not arrive, or delayed. Any other notice is dropped unread: never stored, logged or counted. Connected before these words, a mailbox is not asked for notices until you connect it again.",
     },
   },
   excel: {
