@@ -31,6 +31,7 @@ import { RolesGuard } from "../../auth/guards/roles.guard";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
+import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import {
   HouseLettersService,
   type CreditLetter,
@@ -132,6 +133,7 @@ export class CreditsController {
   constructor(
     private readonly db: DatabaseService,
     private readonly letters: HouseLettersService,
+    private readonly stock: DeliveryStockService,
   ) {}
 
   @Get()
@@ -357,6 +359,15 @@ export class CreditsController {
     // until a person sends it.
     if (outcome.next.state === "requested") {
       return { ...data, letter: await draftLetter(this.letters, user, id) };
+    }
+    // r110 (DD-r109-29): a credited price claim lowers the cost of its lots and
+    // restates the sales made from them. The credit is what the vendor allowed,
+    // so it STANDS when the re-cost fails; the failure is said, in words.
+    if (outcome.next.state === "credited") {
+      const r = await this.stock
+        .recostAfterCredit(user.restaurantId, id, user.userId ?? null)
+        .catch((e: unknown) => ({ ok: false as const, status: 500, error: e instanceof Error ? e.message : String(e) }));
+      return { ...data, recost: r.ok ? { ok: true, ...r.value } : { ok: false, error: r.error } };
     }
     return data;
   }
