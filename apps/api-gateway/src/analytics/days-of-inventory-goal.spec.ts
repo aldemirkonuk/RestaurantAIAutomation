@@ -87,8 +87,34 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         metricKey: "days_of_inventory",
         targetValue: 9,
         direction: "at_most",
-      }),
+      }, { withSales: true }),
     ).rejects.toThrow(/every bottle on hand carries a recorded cost/);
+  });
+
+  it("names which input is missing when the cost of what sold is withheld (batch review 2026-11-11)", async () => {
+    const service = serviceWith(12.5);
+    (service as any).analyticsService = {
+      getFinancialSummary: async () => ({
+        daysInventoryOutstanding: null,
+        cogs: null,
+        cogsCoverage: { itemsMoved: 12, itemsCosted: 11 },
+        inventoryValue: 900,
+        cogsWindow: { spanDays: 120 },
+      }),
+    };
+    await expect(
+      service.createGoal("r1", { name: "x", metricKey: "days_of_inventory", targetValue: 9 }, { withSales: true }),
+    ).rejects.toThrow(/known for 11 of 12 items sold\.$/);
+  });
+
+  it("refuses, naming the gate, for a caller who does not see sales (cost-math 3.1)", async () => {
+    const service = serviceWith(12.5);
+    (service as any).analyticsService = {
+      getFinancialSummary: async () => ({ daysInventoryOutstanding: null }),
+    };
+    await expect(
+      service.createGoal("r1", { name: "x", metricKey: "days_of_inventory", targetValue: 9 }),
+    ).rejects.toThrow(/owners and managers only/);
   });
 
   it("does NOT fall through to zero — the shape the other six still have", async () => {
@@ -116,14 +142,14 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
           name: "x",
           metricKey: "days_of_inventory",
           targetValue: 9,
-        }),
+        }, { withSales: true }),
       ).rejects.toThrow(/Days of stock cannot be read/);
     }
   });
 });
 
-describe("the gate the goal methods take changes nothing yet (ADR 0298 decision 9)", () => {
-  it("createGoal reads the register the same way and stores the same baseline for every gate", async () => {
+describe("the goal methods hand their sales gate to the register (ADR 0298 decision 9, cost-math 3.1)", () => {
+  it("createGoal passes the gate on, closed when absent, and stores the register's baseline", async () => {
     const calls: unknown[][] = [];
     const baselines: unknown[] = [];
     for (const gate of [{ withSales: true }, { withSales: false }, undefined]) {
@@ -142,7 +168,13 @@ describe("the gate the goal methods take changes nothing yet (ADR 0298 decision 
       );
       baselines.push(seen.patch.baseline_value);
     }
-    expect(calls).toEqual([["r1"], ["r1"], ["r1"]]);
+    // Days of stock now divides by the cost of what the till sold, so the
+    // register reads the till only for a caller who sees sales.
+    expect(calls).toEqual([
+      ["r1", 0, { withSales: true }],
+      ["r1", 0, { withSales: false }],
+      ["r1", 0, { withSales: false }],
+    ]);
     expect(baselines).toEqual([12.5, 12.5, 12.5]);
   });
 
