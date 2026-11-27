@@ -152,7 +152,7 @@ describe('a drink a link names opens after the table has drawn', () => {
     // The books are still unseen while the settle runs.
     expect(ledger().style.visibility).toBe('hidden');
     expect(screen.getByTestId('cocktail-register')).toHaveAttribute('data-settling', 'true');
-    await act(async () => { vi.advanceTimersByTime(339); });
+    await act(async () => { vi.advanceTimersByTime(299); });
     expect(ledger().style.visibility).toBe('hidden');
     await act(async () => { vi.advanceTimersByTime(2); });
     expect(ledger().style.visibility).toBe('');

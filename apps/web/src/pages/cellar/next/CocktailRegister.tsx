@@ -338,7 +338,7 @@ export default function CocktailRegister({
   }, [laid, listed]);
   useEffect(() => {
     if (!laid || steady) return;
-    const t = setTimeout(() => setSteady(true), 340);
+    const t = setTimeout(() => setSteady(true), 300);
     return () => clearTimeout(t);
   }, [laid, steady]);
   // The books below the list (and, by data-settling, the signature) also wait

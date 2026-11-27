@@ -130,8 +130,8 @@ function SectionList({ id, sections }: { id: string; sections: string[] }) {
 
 /**
  * The row an opened dish's sheet sits in. It draws closed, then (after a forced style flush, so
- * the change is seen as one) opens with the cocktail leaf's own settle (`.cl-stand`: grid rows
- * 0fr to 1fr, 320 ms, the house curve; none under reduced motion). `tr > td[colspan] > div` so
+ * the change is seen as one) opens with the cocktail leaf's own settle (`.cl-stand`: the room is
+ * taken at once and the content settles 8 px into place, 280 ms, ease-out; none under reduced motion). `tr > td[colspan] > div` so
  * the table stays valid. Switching from one open dish to another does not settle again, as the
  * cocktail leaf does not; closing removes the row at once, as the cocktail leaf's content goes
  * at once (the empty track under it has nothing to show).
