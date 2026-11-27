@@ -34,6 +34,7 @@ import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
+import { forgetWarm } from "@/pages/reports/next/rp-warm";
 
 /** How long sign-out waits for the read-cache clear before finishing anyway. */
 export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
@@ -55,6 +56,9 @@ export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
  * provider bare) there is no cache to forget.
  */
 export function forgetHouseReads(client: QueryClient | undefined): void {
+  // The reports page's warm start keeps this session's reads in sessionStorage
+  // (r108 g8): they are the last house's and the last person's too.
+  forgetWarm();
   if (!client) return;
   const cache = client.getQueryCache();
   notifyManager.batch(() => {
