@@ -47,7 +47,14 @@ import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
-import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
+import {
+  DEFAULT_MOVE_THRESHOLD_PCT,
+  addPerBottle,
+  perBottlePrinted,
+  printedPriceMove,
+  type PerBottle,
+  type PrintedLine,
+} from "./price-move";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -135,6 +142,13 @@ function requireUuid(value: string, label: string): void {
     `The ${label} in this address is not an id we can read: "${value}".`,
     HttpStatus.BAD_REQUEST,
   );
+}
+
+/** How many of the newest papers the first price read takes (r108 g15). */
+const LAST_PAPER_WINDOW = 200;
+interface Earlier {
+  price: PerBottle;
+  formatMl: number | null;
 }
 
 /**
@@ -1509,7 +1523,7 @@ export class DocumentsController {
           : null;
     const { data: lines, error } = await client
       .from("procurement_document_lines")
-      .select("id, line_no, description, uom, unit_price, inventory_id")
+      .select("id, line_no, description, uom, unit_price, inventory_id, line_total, qty, pack_size, qty_bottles, format_ml")
       .eq("document_id", id)
       .eq("restaurant_id", user.restaurantId)
       .order("line_no", { ascending: true });
@@ -1518,36 +1532,18 @@ export class DocumentsController {
         `The lines could not be read, so no price was compared: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
-    const rows = (lines ?? []) as {
+    type Line = PrintedLine & {
       id: string;
       line_no: number;
       description: string | null;
-      uom: string | null;
-      unit_price: number | string | null;
       inventory_id: string | null;
-    }[];
+      format_ml?: number | null;
+    };
+    const rows = (lines ?? []) as Line[];
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
-    const last = new Map<string, number>();
-    if (goods.length) {
-      const { data: lots, error: lotErr } = await client
-        .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
-        .eq("restaurant_id", user.restaurantId)
-        .eq("cost_provenance", "invoice")
-        .in("inventory_id", goods)
-        .not("unit_cost", "is", null)
-        .order("received_at", { ascending: false })
-        .limit(1000);
-      if (lotErr)
-        throw new HttpException(
-          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
-    }
-    const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
+    // r108 g15: against the newest OTHER verified paper's printed price, not a
+    // lot cost (landed, tax basis, FX and revaluations; maybe this paper's own).
+    const last = currencyReason ? new Map<string, Earlier>() : await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId);
     return {
       thresholdPct: threshold,
       // Carried so the page can say WHY nothing was compared (r106): the two
@@ -1555,20 +1551,74 @@ export class DocumentsController {
       paperCurrency: paperCurrency || null,
       houseCurrency: houseCurrency || null,
       lines: rows.map((l) => {
+        const head = { lineId: l.id, lineNo: l.line_no, description: l.description };
+        if (currencyReason) return { ...head, compared: false as const, reason: currencyReason };
+        const next = perBottlePrinted(l);
+        if (typeof next === "string") return { ...head, compared: false as const, reason: next };
         const prev = l.inventory_id ? last.get(l.inventory_id) : undefined;
-        const price = l.unit_price == null ? null : Number(l.unit_price);
-        // A lot's cost is per bottle. A line priced per case (or in a unit this
-        // does not know) is not converted here: it is not compared.
-        if (currencyReason)
-          return { lineId: l.id, lineNo: l.line_no, description: l.description, compared: false as const, reason: currencyReason };
-        const result = priceMove(
-          prev == null ? null : { cost: prev, unit: "bottle" },
-          { cost: price, unit: perBottle(l.uom) ? "bottle" : l.uom },
-          threshold,
-        );
-        return { lineId: l.id, lineNo: l.line_no, description: l.description, ...result };
+        // A 375 ml bottle is not the same unit as a 750 ml one of the good.
+        if (prev && prev.formatMl != null && l.format_ml != null && Number(prev.formatMl) !== Number(l.format_ml))
+          return { ...head, compared: false as const, reason: "unit_differs" as const };
+        return { ...head, ...printedPriceMove(prev?.price, next, threshold) };
       }),
     };
+  }
+
+  /**
+   * Each good's printed price per bottle on the newest other verified paper of
+   * this house in this money (r108 g15): one bounded read, then limit(1) per
+   * good it missed, so a quarterly good is never lost off a row cap.
+   */
+  private async lastPrintedPrices(
+    paperId: string,
+    currency: string,
+    goods: string[],
+    restaurantId: string,
+  ): Promise<Map<string, Earlier>> {
+    const last = new Map<string, Earlier>();
+    if (!goods.length) return last;
+    const client = this.db.getClient();
+    const read = async (only: string[], limit: number) => {
+      const { data, error } = await client
+        .from("procurement_documents")
+        .select(
+          "id, verified_at, procurement_document_lines!inner(inventory_id, restaurant_id, line_total, qty, pack_size, qty_bottles, uom, format_ml)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "verified")
+        .neq("id", paperId)
+        .ilike("currency", currency)
+        .not("doc_type", "in", "(credit_memo,purchase_order,statement)")
+        .eq("procurement_document_lines.restaurant_id", restaurantId)
+        .in("procurement_document_lines.inventory_id", only)
+        .gt("procurement_document_lines.line_total", 0)
+        .order("verified_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      if (error)
+        throw new HttpException(
+          `The goods' earlier papers could not be read, so no price was compared: ${error.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      // Newest first; two lines of one good on a paper are one price, summed.
+      for (const p of (data ?? []) as { id: string; procurement_document_lines: (PrintedLine & { inventory_id: string; format_ml?: number | null })[] }[]) {
+        const here = new Map<string, Earlier>();
+        for (const l of p.procurement_document_lines ?? []) {
+          if (!l.inventory_id || last.has(l.inventory_id)) continue;
+          const pb = perBottlePrinted(l);
+          if (typeof pb === "string") continue;
+          const seen = here.get(l.inventory_id);
+          here.set(l.inventory_id, {
+            price: seen ? addPerBottle(seen.price, pb) : pb,
+            formatMl: seen?.formatMl ?? l.format_ml ?? null,
+          });
+        }
+        for (const [g, e] of here) last.set(g, e);
+      }
+    };
+    await read(goods, LAST_PAPER_WINDOW);
+    const missing = goods.filter((g) => !last.has(g));
+    await Promise.all(missing.map((g) => read([g], 1)));
+    return last;
   }
 
   @Get(":id")
