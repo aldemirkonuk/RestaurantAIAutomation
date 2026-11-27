@@ -104,7 +104,9 @@ function failWords(e: unknown, none: string): string {
 /**
  * The room the current menu's table takes, from the walk: 4 lines were 287 px
  * (a 63 px head and 56 px a line). The count is the house's last, kept on this
- * device; with none it is 4. A house with no current menu reserves nothing.
+ * device; with none kept it is 0, because a guess held for a house with one line
+ * or forty collapses or jumps by the guess's error (r103 review: F8 collapsed
+ * 267 px on a house with no current menu). A house with no current menu stores 0.
  */
 const HEAD_PX = 63;
 const LINE_PX = 56;
@@ -114,10 +116,11 @@ export function reservedFor(lines: number): number {
 const countKey = (house: string | null) => `mdv.menu.lines.${house ?? ''}`;
 function lastLineCount(house: string | null): number {
   try {
-    const n = Number(window.localStorage.getItem(countKey(house)));
-    return Number.isInteger(n) && n >= 0 && window.localStorage.getItem(countKey(house)) !== null ? n : 4;
+    const kept = window.localStorage.getItem(countKey(house));
+    const n = Number(kept);
+    return kept !== null && Number.isInteger(n) && n >= 0 ? n : 0;
   } catch {
-    return 4;
+    return 0;
   }
 }
 
@@ -371,8 +374,8 @@ export default function MenuNext() {
         </h1>
 
         {authLoading || q.isLoading ? (
-          // The table that lands is about 287 px for 4 lines at desktop width: the room is held while it is read, so the
-          // sections below do not jump when it arrives (r103 menu-7, walk F2).
+          // The room the last table took on this device is held while it is read, so the sections below do not jump when
+          // it arrives; with no count kept nothing is held (r103 menu-7, walk F2).
           <div className="mdv-reserve" style={{ ['--mdv-reserve' as string]: `${reservedFor(lastCount)}px` }} data-testid="menu-reserve">
             <p className="cl-said" role="status">
               Reading the menu…

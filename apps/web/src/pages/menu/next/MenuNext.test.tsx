@@ -14,7 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
@@ -423,12 +423,23 @@ describe('MenuNext — the table\'s room is held while it is read (r103 menu-7)'
     expect(within(held).getByText('Reading the menu…')).toBeInTheDocument();
   });
 
-  it('with no count kept it holds 4 lines, and the count is kept once the menu lands', async () => {
+  it('with no count kept it holds nothing, and the count is kept once the menu lands', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' }), line({ id: 'c', name: 'Salep' })] }));
     mount();
-    expect(screen.getByTestId('menu-reserve').style.getPropertyValue('--mdv-reserve')).toBe('287px');
+    expect(screen.getByTestId('menu-reserve').style.getPropertyValue('--mdv-reserve')).toBe('0px');
     await screen.findAllByTestId('menu-row');
     await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('3'));
+  });
+
+  it('a house with no current menu keeps 0, so the next visit holds nothing for the one-line answer', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: null, name: null, status: null, items: [] }));
+    mount();
+    await screen.findByText(/No current menu yet/);
+    await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('0'));
+    cleanup();
+    mockGetMenu.mockReturnValue(new Promise(() => {}));
+    mount();
+    expect((await screen.findByTestId('menu-reserve')).style.getPropertyValue('--mdv-reserve')).toBe('0px');
   });
 
   it('is held on desktop only, where the jump was measured', async () => {
