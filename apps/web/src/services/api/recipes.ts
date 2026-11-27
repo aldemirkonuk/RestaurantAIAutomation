@@ -201,14 +201,43 @@ export interface SaveRecipeLine {
   label: string;
   qty: number;
   unit: string;
+  /** The usable share in percent; sent back as read by the loose-lines queue, never dropped by a link. */
+  usablePct?: number | null;
+}
+
+/** GET /recipes/:rid/drinks/loose-lines (owner/manager): every counted line of a current drink recipe with no shelf good. */
+export interface LooseLineGroup {
+  key: string;
+  label: string;
+  lines: Array<{ cocktailId: string; index: number }>;
+  drinkCount: number;
+  proposed: ShelfItem | null;
+  sameName: number;
+}
+export interface LooseDrink {
+  cocktailId: string;
+  name: string;
+  versionId: string;
+  yieldServes: number;
+  method: string | null;
+  glass: string | null;
+  garnish: string | null;
+  lines: Array<Required<Pick<SaveRecipeLine, 'role' | 'inventoryId' | 'label' | 'qty' | 'unit'>> & { componentId: string | null; usablePct: number | null }>;
+}
+export interface LooseLines {
+  lineCount: number;
+  drinkCount: number;
+  groups: LooseLineGroup[];
+  drinks: LooseDrink[];
 }
 
 export interface SaveRecipeBody {
   expectedVersionId: string | null;
   yieldServes: number;
-  method?: string;
-  glass?: string;
-  garnish?: string;
+  /** Null is "none": a whole version read back (the loose-lines queue) sends what it read. */
+  method?: string | null;
+  glass?: string | null;
+  garnish?: string | null;
   lines: SaveRecipeLine[];
 }
 
@@ -321,6 +350,12 @@ export const recipesApi = {
   /** Prices an unsaved draft at today's prices. The server prices it; nothing is written. */
   async previewCost(restaurantId: string, owner: string | RecipeOwner, body: PreviewCostBody): Promise<CostPreview> {
     const r = await apiClient.post<CostPreview>(`${ownerPath(restaurantId, owner)}/cost-preview`, body);
+    return r.data;
+  },
+
+  /** Every counted line of a drink's current recipe that names no shelf good (owner/manager); writes nothing. */
+  async looseLines(restaurantId: string): Promise<LooseLines> {
+    const r = await apiClient.get<LooseLines>(`${base(restaurantId)}/drinks/loose-lines`);
     return r.data;
   },
 
