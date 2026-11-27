@@ -217,6 +217,12 @@ describe("what is not newer, and is queued as before", () => {
   it("a letter at or before the one seen, and the one seen itself", () =>
     queues([ayseReply({ created_at: SEEN.createdAt }), ayseReply({ created_at: "2026-11-27T13:00:00.000Z" })]));
 
+  it("the letter seen is never newer than itself, even when the client's time is cut to the second", async () => {
+    const { queue, inserts } = build([]);
+    await queue({ seenThrough: { id: ANSWERED, createdAt: "2026-11-27T13:59:59Z" } });
+    expect(inserts).toHaveLength(1);
+  });
+
   it("a reply with no seenThrough is not asked (the old composer), and nothing is read", async () => {
     const { queue, inserts, threadQuery } = build([ayseReply()]);
     await queue({ seenThrough: undefined });
