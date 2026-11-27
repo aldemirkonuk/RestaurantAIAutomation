@@ -7,6 +7,7 @@
  */
 
 import type { AuthContextType } from '@/contexts/AuthContext';
+import type { Grain } from './rp-grain';
 import type { GraphType } from './rp-sheet';
 import type { MoneyIn } from './rp-format';
 import type { AnalysisView } from './rp-view';
@@ -20,6 +21,8 @@ export interface ViewCtx {
   days: number;
   /** True when the reader asked to lay the window beside the same-length one just before it (`?compare=prior`). Only `till` takes it. */
   compare?: boolean;
+  /** Day, week or month bars for the till (`?grain=week`, r109 g3); page state, never written to the sheet. Only `till` takes it. */
+  grain?: Grain;
   /**
    * The house's ISO 4217 code from `GET /settings/currency`; null or absent
    * when it was never stated or could not be read (money then prints bare,

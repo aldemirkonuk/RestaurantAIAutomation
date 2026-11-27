@@ -38,6 +38,8 @@ export interface Cat {
   full?: string;
   /** The till rang no check this day: a stated absence, which the tip says as such, not as "not stated". */
   noCheck?: boolean;
+  /** An edge week or month that does not hold its whole span: its bar is drawn lighter, and `full` says so. */
+  part?: boolean;
 }
 
 /** A rule drawn across a plot, and the words for why it is there. */
