@@ -37,6 +37,7 @@ import {
   filedFromHeldWords,
   letterLook,
   ARRIVED_ONLY,
+  AUTOMATIC_LETTER_WORDS,
   mailKindOf,
   noReplyFailWords,
   noReplyTarget,
@@ -136,6 +137,13 @@ function Letter({
       {inbound && m.filedFromHeld && (
         <p data-testid="letter-filed-from-held" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
           {filedFromHeldWords(m.filedFromHeld, vendor)}
+        </p>
+      )}
+      {m.automatic === true && (
+        // r103 mail-6: the gateway names an out-of-office or a bounce; the letter says so too, so it is not read as
+        // a person's answer. Static text, no motion, 11.5px like the lines around it.
+        <p data-testid="letter-automatic" style={{ ...QUIET, margin: 0 }}>
+          {AUTOMATIC_LETTER_WORDS}
         </p>
       )}
       {!inbound && m.status === 'RELAY_REFUSED' && (
