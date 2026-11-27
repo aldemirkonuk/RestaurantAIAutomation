@@ -16,10 +16,12 @@
  * sits in this file so the PR stays within its 15 files.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { ahead, projectedBottles, till, type TillWindow } from './rp-registers-trade';
+import { ahead, projectedBottles, till, week, type TillWindow } from './rp-registers-trade';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import { seats, service } from './rp-registers-house';
 import type { GoalsDesk } from './useGoalsDesk';
@@ -313,5 +315,37 @@ describe('the forecast says bottles the way bottles are counted (browser walk 20
     expect(projectedBottles(1203.4, 'total')).toBe('1,203 bottles');
     expect(projectedBottles(0, 'total')).toBe('0 bottles');
     expect(projectedBottles(null, 'total')).toBe('—');
+  });
+});
+
+// r110 reports-r110-4: the rest of DD-r109-2. #2323 gave the till its words;
+// the week's shape, the stretch line and every other sentence the page writes
+// itself say the house's words too. A prose literal (one with a space in it)
+// in a register file never carries a snake_case table or column name; a bare
+// enum code ('at_least') is data, not prose, and is not read out.
+describe("the page's own working is in the house's words, on every cutting (r110)", () => {
+  const SNAKE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/;
+  const FILES = ['rp-registers-trade.tsx', 'rp-registers-house.tsx', 'rp-registers-goals.tsx', 'rp-registers-bench.tsx', 'rp-stretch.ts'];
+  const prose = (file: string) => {
+    const src = readFileSync(resolve(__dirname, file), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[\s;,(){}])\/\/[^\n]*/g, '$1');
+    const lits = src.match(/'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g) ?? [];
+    return lits.filter((l) => /\s/.test(l.slice(1, -1)));
+  };
+
+  it('[REVERT-FAILS] no sentence a register file writes names a table or column', () => {
+    const named = FILES.flatMap((f) => prose(f).filter((l) => SNAKE.test(l)).map((l) => `${f}: ${l.slice(0, 80)}`));
+    expect(named).toEqual([]);
+    // The scan reads real sentences, so an empty answer is not an empty scan.
+    expect(prose('rp-registers-trade.tsx').length).toBeGreaterThan(50);
+  });
+
+  it("[REVERT-FAILS] the week's shape, read before the server names its basis, keeps its window and its blank-not-zero rule", () => {
+    const view = week.view(week.select({ weekdayProfile: [{ day: 'Friday', mean: 3, stdev: 1, n: 12 }] }) as never, ctx);
+    const line = String(view.basis[0]);
+    expect(line).not.toMatch(SNAKE);
+    expect(line).toContain('over the last 90 days');
+    expect(line).toContain('left blank rather than drawn at zero');
   });
 });

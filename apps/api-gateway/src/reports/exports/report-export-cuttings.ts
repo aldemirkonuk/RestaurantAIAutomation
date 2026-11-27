@@ -287,8 +287,8 @@ function writeTill(payload: unknown, ctx: { days: number | null }): ExportDoc {
           ],
     basis: [
       timezone
-        ? `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
-        : `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
+        ? `Takings of checks that were not voided, between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
+        : `Takings of checks that were not voided, between ${from || "—"} and ${to || "—"}.`,
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
     ],
   });
@@ -360,7 +360,7 @@ function writeWeek(payload: unknown): ExportDoc {
   const basisObj = obj(w.basis);
   const basis = sentences(
     basisObj.weekday ??
-      "Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than written as zero.",
+      "Mean units per weekday over the last 90 days, from the house's record of bottles poured and sold; a weekday with no observation is left blank rather than written as zero.",
     // How many lines rest on the 750 ml stand-in, and how many carry no
     // bottle figure (ADR 0297).
     basisObj.units,

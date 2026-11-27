@@ -326,6 +326,11 @@ describe("the week's shape leaves out a weekday the house never recorded", () =>
     expect(out.worstDay).toBe("Tuesday");
     expect(out.bestDay).toBe("Saturday");
     expect(out.basis.weekday).toContain("Monday has no counted consumption line in the window");
+    // r110 reports-r110-4: the week's working says the house's words: no
+    // table name and no payload field, with the same zero rule.
+    expect(out.basis.weekday).not.toMatch(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b|weekdayProfile/);
+    expect(out.basis.weekday).toContain("from the house's record of bottles poured and sold");
+    expect(out.basis.weekday).toContain("a day with no line counts as 0");
     // The measured weekdays keep their real means: never diluted by Monday.
     expect(out.weekdayProfile.find((p: any) => p.day === "Tuesday").mean).toBe(2);
   });
