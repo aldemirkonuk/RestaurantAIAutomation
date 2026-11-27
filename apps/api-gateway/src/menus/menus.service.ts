@@ -10,6 +10,7 @@ import {
   ForbiddenException,
   HttpException,
   InternalServerErrorException,
+  Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
@@ -21,6 +22,7 @@ import { readMenuPrice } from "./parsers/menu-price";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
@@ -429,6 +431,30 @@ const STOPPED_READ_FAILED =
 /** A read still `reading` after this long is no longer being read by anyone. */
 const READ_STALE_MS = 30 * 60 * 1000;
 
+/**
+ * Who hears that a long read ended (DD-r108-18): the house's owners and
+ * managers, who choose whether a read becomes the current menu. Staff do not.
+ */
+const READ_ENDED_AUDIENCE = ["owner", "manager"] as const;
+
+/** The bell row for a read that ended. A failed one carries no figure. */
+export function readEndedNote(outcome: { state: "done"; lines: number } | { state: "failed" }): {
+  title: string;
+  message: string;
+} {
+  if (outcome.state === "failed") {
+    return {
+      title: "The menu you sent could not be read",
+      message: "No line from it was kept and no price changed. The Menu page says why, and you can send it again there.",
+    };
+  }
+  const lines = outcome.lines === 1 ? "1 line was read" : `${outcome.lines} lines were read`;
+  return {
+    title: "The menu you sent is read",
+    message: `${lines}. No price has changed yet: look them over on the Menu page, then choose whether it becomes the current menu.`,
+  };
+}
+
 /** What `POST /menus/import` says when a read finds no line (422, nothing kept). */
 const EMPTY_READ_REFUSAL: Record<string, string> = {
   scan: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
@@ -779,6 +805,9 @@ export class MenusService {
     private readonly csvParser: CsvParserService,
     private readonly scanParser: ScanParserService,
     private readonly wineSubmissions: WineSubmissionsService,
+    // DD-r108-18. Optional only so the specs that build the service by hand
+    // keep compiling; MenusModule imports NotificationsModule, so Nest fills it.
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -1127,7 +1156,8 @@ export class MenusService {
     try {
       const { items, warnings } = await this.scanParser.parseWithWarnings(file, restaurantId);
       if (items.length === 0) {
-        await this.endRead(menuId, { read_state: "failed", read_failure: EMPTY_SCAN_FAILED, read_warnings: warnings });
+        const ended = await this.endRead(menuId, { read_state: "failed", read_failure: EMPTY_SCAN_FAILED, read_warnings: warnings });
+        if (ended === "ended") await this.tellReadEnded(menuId, restaurantId, { state: "failed" });
         return;
       }
       const { error: linesError } = await sb
@@ -1150,17 +1180,69 @@ export class MenusService {
       // The sweep already said this read stopped (it ran past half an hour, or
       // another server took it for dead): it stays failed, so it keeps no line.
       if (ended === "not_reading") await this.dropUnfinishedRead(menuId, restaurantId);
+      if (ended === "ended") await this.tellReadEnded(menuId, restaurantId, { state: "done", lines: items.length });
     } catch (err) {
       this.logger.error(`Menu read ${menuId} failed: ${(err as Error)?.message ?? err}`);
       // A failed read keeps no half of what it wrote: its lines and the library
       // submissions made for them go (dropUnfinishedRead); the version says why.
       await this.dropUnfinishedRead(menuId, restaurantId);
-      await this.endRead(menuId, {
+      const ended = await this.endRead(menuId, {
         read_state: "failed",
         read_failure: failureWords(err),
         lines_extracted: 0,
         extraction: [],
       });
+      if (ended === "ended") await this.tellReadEnded(menuId, restaurantId, { state: "failed" });
+    }
+  }
+
+  /**
+   * One bell row for each owner and manager of the house when a read ends
+   * (DD-r108-18). Only the call that WON the `read_state = 'reading'` update
+   * calls this, so two endings of one read (a slow read and the sweep, or two
+   * servers) write one row, not two, and no unique key is needed. Never
+   * rejects: a bell that cannot be written must not turn a finished read into
+   * a failed one (the caller's catch would drop its lines).
+   */
+  private async tellReadEnded(
+    menuId: string,
+    restaurantId: string,
+    outcome: { state: "done"; lines: number } | { state: "failed" },
+  ): Promise<void> {
+    if (!this.notifications) return;
+    try {
+      const { data, error } = await this.dbService.supabase
+        .from("user_restaurant_access")
+        .select("user_id, role")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .in("role", READ_ENDED_AUDIENCE as unknown as string[]);
+      if (error) {
+        // An unreadable roster tells nobody, never the whole house.
+        this.logger.error(`Menu read ${menuId} ended, but who to tell could not be read: ${error.message}`);
+        return;
+      }
+      const people = new Set(((data ?? []) as Array<{ user_id?: string | null }>).map((r) => r.user_id).filter((id): id is string => !!id));
+      const note = readEndedNote(outcome);
+      for (const userId of people) {
+        try {
+          await this.notifications.createNotification({
+            userId,
+            restaurantId,
+            type: "menu_read",
+            title: note.title,
+            message: note.message,
+            priority: "medium",
+            actionUrl: "/menu",
+            actionLabel: "Open the Menu page",
+            metadata: { menuId, readState: outcome.state },
+          });
+        } catch (err) {
+          this.logger.error(`Menu read ${menuId} ended, but ${userId} could not be told: ${(err as Error)?.message ?? err}`);
+        }
+      }
+    } catch (err) {
+      this.logger.error(`Menu read ${menuId} ended, but nobody could be told: ${(err as Error)?.message ?? err}`);
     }
   }
 
@@ -1245,7 +1327,11 @@ export class MenusService {
       .select("id");
     if (upd) return void this.logger.warn(`Could not end stopped menu reads: ${upd.message}`);
     // A stopped read keeps no half of what it wrote, as a failed one does.
-    for (const row of (ended ?? []) as Array<{ id: string }>) await this.dropUnfinishedRead(row.id, restaurantId);
+    // This sweep won those rows' transition, so it is the one that tells the house.
+    for (const row of (ended ?? []) as Array<{ id: string }>) {
+      await this.dropUnfinishedRead(row.id, restaurantId);
+      await this.tellReadEnded(row.id, restaurantId, { state: "failed" });
+    }
   }
 
   /** Where one read stands, and what it found once it is done (`GET /menu-versions/:id/read`). */
