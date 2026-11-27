@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { readHouseZone, type HouseZone } from "../common/house-day";
 import type {
   MailMessage,
   MailOrderRef,
@@ -311,10 +312,22 @@ export class MailService {
     const domain = (
       this.configService.get<string>("INBOUND_EMAIL_DOMAIN") || ""
     ).trim();
+    // The house's day is read by the one rule every house-day reader uses
+    // (common/house-day.ts): its own zone, else its country's only zone, else
+    // none — never UTC (D7). A failed read of the house row is a failed
+    // summary, never "no zone": that would make a database fault read as a
+    // settings gap.
+    let zone: HouseZone;
+    try {
+      zone = await readHouseZone(this.db, houseId);
+    } catch (e) {
+      this.failed("zone", { message: (e as Error)?.message });
+    }
     const [sumRes, addrRes] = await Promise.all([
       this.db.rpc("mail_inbox_summary", {
         p_restaurant_id: houseId,
         p_withhold_house_letters: withholdsHouseLetters(callerRole),
+        p_zone: zone.zone,
       }),
       // A plain read of the address that exists. It must never provision one:
       // InboundAddressService.addressFor inserts on read (QA M-12), so it is
@@ -339,8 +352,12 @@ export class MailService {
     return {
       waitingPeople: Number(s.waiting_people ?? 0),
       oldestWaitAt: s.oldest_wait_at ?? null,
-      inToday: Number(s.in_today ?? 0),
-      outToday: Number(s.out_today ?? 0),
+      // Null only when the house has no zone: the SQL withholds the count
+      // then, and so does this (a 0 would read as a quiet day).
+      inToday: zone.zone === null || s.in_today == null ? null : Number(s.in_today),
+      outToday: zone.zone === null || s.out_today == null ? null : Number(s.out_today),
+      zone: { zone: zone.zone, source: zone.source },
+      inLast30: Number(s.in_30d ?? 0),
       heldAtDoor: null,
       doors: {
         houseMailbox: { lastStoredAt: s.house_mailbox_last_at ?? null },

@@ -60,7 +60,7 @@ function answer(r: Read) {
 
 function chain(r: Read): any {
   const c: any = {};
-  for (const m of ["select", "eq", "or", "not", "order", "limit"]) {
+  for (const m of ["select", "eq", "or", "not", "order", "limit", "maybeSingle"]) {
     c[m] = (...args: unknown[]) => {
       r.calls.push([m, args]);
       return c;

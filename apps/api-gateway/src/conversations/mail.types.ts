@@ -144,9 +144,22 @@ export interface MailDoorState {
 export interface MailSummary {
   waitingPeople: number;
   oldestWaitAt: string | null;
-  /** Letters in and out on the house's own day (restaurants.timezone). */
-  inToday: number;
-  outToday: number;
+  /**
+   * Letters in and out on the house's own day: in its own zone, else its
+   * country's only zone (common/house-day.ts). NULL when the house has
+   * neither — the day has no midnight, so the count is unknown, never a UTC
+   * day's count (D7).
+   */
+  inToday: number | null;
+  outToday: number | null;
+  /** The zone "today" was counted in, and where it came from. */
+  zone: { zone: string | null; source: "house" | "country" | "none" };
+  /**
+   * Letters in over the last 30 days, counted like inToday: a bounce, an
+   * auto-reply or a second copy of one letter is not a letter. The Letters
+   * strip's "Replies · 30 days" (D6).
+   */
+  inLast30: number;
   /**
    * Letters held at a door. Always null today: no intake record exists until
    * the durable intake store (proposal L2), so it cannot be told — never 0.
