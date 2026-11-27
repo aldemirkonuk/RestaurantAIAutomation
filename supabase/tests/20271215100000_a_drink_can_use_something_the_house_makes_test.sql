@@ -115,12 +115,34 @@ begin
   r := public.save_recipe_version(pg_temp.u('1'), pg_temp.u('10c'),
     (select version_id from public.recipe_current where cocktail_id = pg_temp.u('10c')), 1, null, null, null, null, jsonb_build_array(pg_temp.made('11b')));
   assert (r ->> 'version')::int = 2, 'b, c, d under a drink is three levels';
-  -- d may use a (nothing looks upward), but then b, c, d, a is four under a drink using b.
-  perform public.save_dish_recipe_version(pg_temp.u('1'), pg_temp.u('11d'), null, 1, null, null, null, jsonb_build_array(pg_temp.made('11a')));
-  assert pg_temp.drink_refused(jsonb_build_array(pg_temp.made('11b'))) = 'RCP00', 'four levels under a drink is refused';
+  -- d may not use a: b, c, d, a would be four under the drink that uses b (the chain is checked upward too).
+  assert pg_temp.component_refused('11d', null, jsonb_build_array(pg_temp.made('11a'))) = 'RCP00', 'a save that deepens a drink''s chain past three is refused';
   assert (public.save_recipe_version(pg_temp.u('1'), pg_temp.u('10c'),
     (select version_id from public.recipe_current where cocktail_id = pg_temp.u('10c')), 1, null, null, null, null, jsonb_build_array(pg_temp.made('11c'))) ->> 'version')::int = 3,
-    'c, d, a is three and is allowed';
+    'c, d is two and is allowed';
+end $$;
+
+-- M6. The chain is built bottom-last: drink uses x (house 2), then x uses a, a uses b, b uses c.
+-- Every save looks fine from where it is made; the last one makes the drink four deep and is refused.
+do $$
+declare dv uuid;
+begin
+  perform public.save_recipe_version(pg_temp.u('2'), pg_temp.u('20c'), null, 1, null, null, null, null, jsonb_build_array(pg_temp.made('21d')));
+  perform public.save_dish_recipe_version(pg_temp.u('2'), pg_temp.u('21d'), null, 1, null, null, null, jsonb_build_array(pg_temp.made('21a')));
+  perform public.save_dish_recipe_version(pg_temp.u('2'), pg_temp.u('21a'), null, 1, null, null, null, jsonb_build_array(pg_temp.made('21b')));
+  assert (select count(*) from public.recipe_versions where dish_id = pg_temp.u('21b')) = 0, 'b has no recipe yet';
+  assert (select public.recipe_component_chain_ok(pg_temp.u('21b'), pg_temp.u('21c'))) = false, 'b using c makes drink, d, a, b, c: four under the drink';
+  begin
+    perform public.save_dish_recipe_version(pg_temp.u('2'), pg_temp.u('21b'), null, 1, null, null, null, jsonb_build_array(pg_temp.made('21c')));
+    assert false, 'the fourth level got in';
+  exception when sqlstate 'RCP00' then null; end;
+end $$;
+
+-- M7. A made line takes the house's component lock for the rest of the transaction, so two
+-- saves that would cross ("A uses B", "B uses A") cannot both read the same old picture.
+do $$
+begin
+  assert (select count(*) from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()) >= 1, 'the component lock is held';
 end $$;
 
 rollback;

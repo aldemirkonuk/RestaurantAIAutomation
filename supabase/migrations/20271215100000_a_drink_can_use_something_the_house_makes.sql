@@ -12,7 +12,9 @@
 --   * the component is a live dish of the same house with a yield, and the line
 --     is measured in the unit the component is made in (ml against ml, g against g);
 --   * a component cannot contain itself, and a chain of components is at most
---     three deep (syrup in batch in base), checked down the current versions.
+--     three deep (syrup in batch in base), checked down the current versions and
+--     up through the recipes that already use the owner; component edits in a
+--     house are serialised by an advisory lock so two saves cannot cross.
 -- `recipe_lines_untracked_has_no_item` needs no lifting: a made line has no shelf
 -- item, which that CHECK already allows.
 
@@ -35,9 +37,12 @@ COMMENT ON COLUMN public.recipe_lines.component_dish_id IS
   'The house-made component this line draws (role = made): a dish with a yield. Its cost per base unit prices the line (ADR 0371).';
 
 -- Does putting `p_component` into a recipe of dish `p_owner` keep the chain sound?
--- False when the component is the owner or leads back to it, or when the chain of
--- components under it, with it, is more than three deep. Walks current versions.
--- A cocktail owner (NULL here) cannot be reached from a component, so only depth counts.
+-- False when the component is the owner or leads back to it, or when the chain is
+-- more than three deep through the owner: the levels of recipes that already use the
+-- owner (up) plus the levels under the component, with it (down). The gateway prices
+-- three levels under a recipe, so a deeper chain the DB accepted would read "not
+-- priced" for the recipe at the top. Walks current versions, cocktails included on
+-- the way up (a cocktail uses a component but is never one).
 CREATE OR REPLACE FUNCTION public.recipe_component_chain_ok(p_owner uuid, p_component uuid)
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public, pg_temp AS $$
@@ -49,8 +54,28 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = public, pg_temp AS $$
       JOIN public.recipe_current_dish rc ON rc.dish_id = c.dish_id
       JOIN public.recipe_lines l ON l.version_id = rc.version_id AND l.role = 'made'
      WHERE c.depth < 5
+  ),
+  up(dish_id, depth) AS (
+    SELECT p_owner, 0
+    UNION ALL
+    SELECT rc.dish_id, u.depth + 1
+      FROM up u
+      JOIN public.recipe_lines l ON l.component_dish_id = u.dish_id AND l.role = 'made'
+      JOIN public.recipe_current_dish rc ON rc.version_id = l.version_id
+     WHERE u.depth < 5
+  ),
+  up_depth(n) AS (
+    SELECT COALESCE(MAX(x.n), 0) FROM (
+      SELECT u.depth AS n FROM up u
+      UNION ALL
+      SELECT u.depth + 1
+        FROM up u
+        JOIN public.recipe_lines l ON l.component_dish_id = u.dish_id AND l.role = 'made'
+        JOIN public.recipe_current rcc ON rcc.version_id = l.version_id
+    ) x
   )
-  SELECT NOT EXISTS (SELECT 1 FROM chain WHERE depth > 3 OR dish_id = p_owner)
+  SELECT NOT EXISTS (SELECT 1 FROM chain WHERE dish_id = p_owner)
+     AND (SELECT MAX(depth) FROM chain) + (SELECT n FROM up_depth) <= 3
 $$;
 
 CREATE OR REPLACE FUNCTION public.recipe_insert_lines(p_version_id uuid, p_restaurant uuid, p_lines jsonb)
@@ -150,6 +175,10 @@ BEGIN
         RAISE EXCEPTION 'Ingredient % (%) is measured in %, but the component is made in %.', v_pos, v_label, v_base.base_unit, v_yield_unit
           USING ERRCODE = 'RCP00', HINT = 'component_unit';
       END IF;
+      -- Two saves at once ("A uses B" and "B uses A") each read the other's committed
+      -- version, so under READ COMMITTED both pass the check below and a loop is stored.
+      -- One lock per house serialises component edits; the next statement sees the winner.
+      PERFORM pg_advisory_xact_lock(hashtext('recipe_components:' || p_restaurant::text));
       IF NOT public.recipe_component_chain_ok(v_owner, v_component) THEN
         RAISE EXCEPTION 'Ingredient % (%) would make a component contain itself, or sit more than three levels deep.', v_pos, v_label
           USING ERRCODE = 'RCP00', HINT = 'component_cycle';
