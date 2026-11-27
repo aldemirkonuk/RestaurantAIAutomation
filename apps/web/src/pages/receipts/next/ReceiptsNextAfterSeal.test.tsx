@@ -318,6 +318,35 @@ describe('where focus goes after a seal (r108)', () => {
     await waitFor(() => expect(screen.getByRole('button', { pressed: true, hidden: true }).textContent).toMatch(/INV-89/));
   });
 
+  it('a keyboard seal of the LAST paper lands focus on the review lane, not BODY', async () => {
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    fireEvent.keyDown(swipe, { key: 'Enter' });
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    const lane = screen.getByRole('region', { name: 'Awaiting review' });
+    await waitFor(() => expect(document.activeElement).toBe(lane));
+    expect(lane.tabIndex).toBe(-1);
+  });
+
+  it('a pointer seal of the last paper leaves focus alone', async () => {
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.setPointerCapture = vi.fn();
+    swipe.focus();
+    fireEvent.pointerDown(swipe, { clientY: 600, pointerId: 1 });
+    fireEvent.pointerMove(swipe, { clientY: 0, pointerId: 1 });
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('button', { pressed: true })).toBeNull());
+    expect(document.activeElement).not.toBe(screen.getByRole('region', { name: 'Awaiting review' }));
+  });
+
   it('a pointer seal leaves focus alone, even though the press focused the handle', async () => {
     render(<ReceiptsNext />, { wrapper });
     fireEvent.click(await paperRow('INV-88'));

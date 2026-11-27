@@ -1754,6 +1754,23 @@ export default function ReceiptsNext() {
     const listShown = !!row && !!lane && getComputedStyle(lane).display !== 'none';
     (listShown ? row : detailPane.current)?.focus();
   }, [selectedId]);
+  // r109: the LAST paper of the queue sealed by keyboard has no next row to take
+  // focus, and the swipe that held it unmounts, so focus would fall to BODY and
+  // j / k would be dead. The lane the paper left takes it (a labelled region,
+  // tabIndex -1), and the pane holds the height it had so "Choose a document"
+  // does not pull the page up (walk F5, a 0.3165 layout shift at 375).
+  const reviewLane = useRef<HTMLElement>(null);
+  const focusLaneAfterSeal = useRef(false);
+  const [heldPaneHeight, setHeldPaneHeight] = useState<number | null>(null);
+  useEffect(() => {
+    if (selectedId) {
+      setHeldPaneHeight(null);
+      return;
+    }
+    if (!focusLaneAfterSeal.current) return;
+    focusLaneAfterSeal.current = false;
+    reviewLane.current?.focus();
+  }, [selectedId]);
   const [rovingId, setRovingId] = useState<string | null>(null);
   const rovingRowId = reviewRows.some((d) => d.id === rovingId)
     ? rovingId
@@ -2094,7 +2111,13 @@ export default function ReceiptsNext() {
           }
         >
           {/* the queue */}
-          <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
+          <section
+            aria-label="Awaiting review"
+            ref={reviewLane}
+            tabIndex={-1}
+            className={selected ? 'hidden 2xl:block' : undefined}
+            style={{ outline: 'none' }}
+          >
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
               <div
                 data-testid={data.lanesSettling ? 'lane-slot-queue' : undefined}
@@ -2284,7 +2307,7 @@ export default function ReceiptsNext() {
             onPointerCancelCapture={() => { sealHeld.current = false; }}
             // With nothing open the section keeps its line, so the grid does not
             // lose it when the lanes beside it land (r105).
-            style={selected ? undefined : { minHeight: 41 }}
+            style={selected ? undefined : { minHeight: Math.max(41, heldPaneHeight ?? 0) }}
           >
             {selected ? (
               <>
@@ -2333,6 +2356,10 @@ export default function ReceiptsNext() {
                 <DocView key={selected.id} doc={selected} onVerified={(viaKeyboard) => {
                     const next = nextAfter(selected.id);
                     if (viaKeyboard && next) focusAfterSeal.current = next;
+                    else if (viaKeyboard) {
+                      focusLaneAfterSeal.current = true;
+                      setHeldPaneHeight(detailPane.current?.offsetHeight ?? null);
+                    }
                     select(next);
                   }}
                 />
