@@ -4,10 +4,8 @@
 -- printed_marks holds only what the menu PRINTS (a legend symbol or words:
 -- V, VG, GF, a chilli, "contains nuts"), never a mark worked out from the
 -- dish's name: a wrong "no nuts" is a safety harm. The gateway keeps a mark
--- only when its token appears in the line's own raw text. For a scan that
--- text comes from the same model read as the mark, so the check shows the mark
--- agrees with the read, not that the menu prints it; a CSV mark comes only
--- from an explicitly named marks column. NULL = the line prints no mark (or the read could not
+-- only when its token appears in the line's own raw text; for a scan that
+-- text is the same model read, so it shows agreement, not independent proof. NULL = the line prints no mark (or the read could not
 -- show one); it never means "free of".
 ALTER TABLE public.menu_items
   ADD COLUMN IF NOT EXISTS description TEXT,

@@ -6,10 +6,8 @@
  * line's own raw text, the text the gateway holds for that line (a CSV row,
  * or the line a scan transcribes because it prints a mark). A mark the reader
  * worked out from the dish's name is not on the line's text and is dropped.
- * Limit, stated plainly: for a scan the raw text comes from the same model call
- * that listed the mark, so this fence shows the read agrees with itself, not
- * that the menu prints the mark; the UI says "as read" for a scan. A CSV mark
- * comes only from an explicitly named marks column, never Notes.
+ * Limit: for a scan the raw text is the same model call as the mark, so this
+ * shows the read agrees with itself; the UI says "as read". CSV: never Notes.
  * Rejected: inference ("a wrong 'no nuts' is a safety harm"; SOTA parsers'
  * EU-14 allergen tags are estimates "with confidence"), and a fixed EU-14
  * enum (a meyhane prints its own legend). Absence is never "free of".
@@ -35,10 +33,9 @@ export function splitMarks(text: string): string[] {
 }
 
 /**
- * A legend token has a legend's shape: short, at most three words, no digit.
- * "GF", "vegan", "contains nuts" pass; "cost 210 TL" and "reorder at 6" do not.
- * A CSV row is its own raw text, so the row-text fence cannot tell a mark from a
- * note: this is the fence a CSV mark has.
+ * A legend token's shape: short, at most three words, no digit ("GF", "contains
+ * nuts" pass; "cost 210 TL" does not). A CSV row is its own raw text, so this
+ * is the only fence a CSV mark has.
  */
 export function looksLikeLegendMark(mark: string): boolean {
   const m = mark.trim();
