@@ -537,6 +537,10 @@ describe("a send INSIDE the window goes once, and is metered once", () => {
     expect(out.refusal).toBe("mirror_failed");
     // The database's own text is logged, never handed to the caller.
     expect(out.words).not.toMatch(/constraint/);
+    // The conversation book is retired (#885): the refusal names no page
+    // the house can no longer open.
+    expect(out.words).not.toMatch(/conversation book/i);
+    expect(out.words).toContain("NOT sent");
     expect(db.tables.house_message_meter).toHaveLength(0);
   });
 

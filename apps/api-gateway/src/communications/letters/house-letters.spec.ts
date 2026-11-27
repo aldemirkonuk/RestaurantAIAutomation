@@ -28,6 +28,8 @@ import {
   ForbiddenException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { DatabaseService } from "../../database/database.service";
 import { AUTO_SEND_UNDO_MS } from "../../common/orchestrator/inbound-responder.service";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
@@ -547,6 +549,33 @@ describe("pulling a letter back", () => {
       .catch((e) => {
         expect(String(e.message)).toContain("was NOT cancelled");
       });
+  });
+
+  it("a refusal says where to look in the house's words: Mail, never the retired conversation book (QA round 16, HARM 2)", async () => {
+    const { service } = svcWith({
+      id: "letter-1",
+      status: LETTER_STATUS.QUEUED,
+      scheduled_send_at: new Date(Date.now() - 1_000).toISOString(),
+      restaurant_id: HOUSE,
+      email_headers: { written_by: PERSON },
+    });
+    const err = await service
+      .cancel({ restaurantId: HOUSE, userId: PERSON, id: "letter-1" })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(String(err.message)).toContain("Mail in Communications");
+    expect(String(err.message)).not.toMatch(/conversation book/i);
+  });
+
+  it("no message this service can say points at the conversation book (HARM 2)", () => {
+    // The book was retired for Mail (#885); every sentence a person can be
+    // shown from this service is a string literal in it, so none may name it.
+    const source = readFileSync(
+      join(__dirname, "house-letters.service.ts"),
+      "utf8",
+    );
+    const said = source.match(/(["`])(?:(?!\1)[^\\]|\\.)*\1/g) ?? [];
+    expect(said.filter((s) => /conversation book/i.test(s))).toEqual([]);
   });
 
   it("refuses a letter that is not queued at all", async () => {

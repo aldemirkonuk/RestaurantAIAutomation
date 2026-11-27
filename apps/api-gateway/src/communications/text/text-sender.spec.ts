@@ -439,6 +439,12 @@ describe("The catalogue — what a house must provide", () => {
     const dtos = codeOf("text-senders.dto.ts");
     expect(dtos).not.toMatch(/password|authToken|auth_token|apiSecret/i);
   });
+
+  it("names no page the house can no longer open: the conversation book is retired (#885)", () => {
+    expect(JSON.stringify(TEXT_SENDER_DEFINITIONS)).not.toMatch(
+      /conversation book/i,
+    );
+  });
 });
 
 describe("The shared Plivo number is not a fallback", () => {
