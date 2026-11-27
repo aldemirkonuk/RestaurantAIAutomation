@@ -4,7 +4,6 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { readWholeWindow } from "../common/read-whole-window";
 import {
   HOUSE_ZONE_UNSET,
   houseDayOf,
@@ -13,6 +12,7 @@ import {
   shiftHouseDay,
 } from "../common/house-day";
 import { readByIds } from "../common/read-by-ids";
+import { readConsumptionRows } from "./consumption-read-shared";
 import * as E from "./engine";
 import {
   FirstRecord,
@@ -176,22 +176,13 @@ export class AdvancedAnalyticsService {
    * null lens (`getOverview`), as it does for any lens that throws.
    */
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
-    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const client = this.dbService.getClient();
     let data: any[];
     try {
-      data = await readWholeWindow<any>(
-        "The consumption lines in this window",
-        () =>
-          client
-            .from("wine_consumption_log")
-            // No master_wine_id column on this table — resolve via the inventory FK.
-            .select(
-              "id, inventory_id, consumption_type, quantity, volume_ml, created_at, restaurant_inventory(master_wine_id, bottle_size_ml)",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .gte("created_at", since),
+      // One shared read per (house, window): see consumption-read-shared.ts.
+      data = await readConsumptionRows(
+        this.dbService.getClient(),
+        restaurantId,
+        sinceDays,
       );
     } catch (err: any) {
       this.logger.error(
