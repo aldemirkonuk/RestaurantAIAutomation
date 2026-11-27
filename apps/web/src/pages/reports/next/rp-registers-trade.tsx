@@ -117,6 +117,8 @@ export interface TillWindow {
   zoneUnset: boolean;
   /** Sparse; a `null` revenue is a day the server could not state. */
   dailySeries: Array<{ date: string; revenue: number | null }>;
+  /** True when the gateway withheld the till from this reader (ADR 0298 decision 9). */
+  salesWithheld: boolean;
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -156,6 +158,9 @@ const till = analysis<TillWindow>({
   answers: 'What guests actually paid, day by day',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
   path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
+  // The till's takings are a sales figure (ADR 0298 decision 9, ADR 0348):
+  // staff keep the page, and this register is held back for them, never asked.
+  readers: ['owner', 'manager'],
   graphs: ['area', 'line', 'bars', 'heatmap', 'table', 'figure'],
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. No scatter — there is only one measure per day, and a scatter needs two.',
@@ -171,6 +176,7 @@ const till = analysis<TillWindow>({
       days: num(d.days) ?? 0,
       timezone: str(d.timezone) || null,
       zoneUnset: d.zoneUnset === true,
+      salesWithheld: d.salesWithheld === true,
       // A day the server sent with no figure stays unknown (null), never 0.
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
@@ -180,6 +186,16 @@ const till = analysis<TillWindow>({
   },
   view: (w, ctx) => {
     const money = moneyIn(ctx.currency);
+    // A role the page took for a manager, which the gateway reads as staff
+    // (a demotion mid-session): the answer carries no figure, and saying "no
+    // till" here would be a claim about the house, not about the reader.
+    if (w.salesWithheld)
+      return {
+        say: 'The till register is written for owners and managers. Nothing below is claimed.',
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     if (!w.posConnected)
       return {
         say: (
