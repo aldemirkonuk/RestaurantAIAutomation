@@ -157,6 +157,11 @@ button.ivd-card:active {
 .ivd-evwrap[data-open='true'] .ivd-evidence {
   animation: ivd-ev-in 160ms ease-out 40ms both;
 }
+/* A second card pressed while the card is open replays the fade on the new content, with no 40 ms wait: the
+   section is keyed by the card, so it is a new node. Height is not tweened (DD-r106-32). */
+.ivd-evwrap[data-open='true'] .ivd-evidence[data-switched='true'] {
+  animation-delay: 0ms;
+}
 @keyframes ivd-ev-in {
   from {
     opacity: 0;
