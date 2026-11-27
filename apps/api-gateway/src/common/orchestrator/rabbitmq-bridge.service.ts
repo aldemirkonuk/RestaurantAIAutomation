@@ -23,7 +23,12 @@ import { deriveTransportSignals, looksPromotional } from "./email-triage";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
-import { OWNER_AND_MANAGER } from "../tenant/live-membership";
+import { OWNER_AND_MANAGER, isLiveMembership } from "../tenant/live-membership";
+import {
+  MemberForwardSink,
+  exactLikePattern,
+  senderAuthenticated,
+} from "./inbound-member-forward";
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -110,6 +115,12 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   private isConnected = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private readonly RECONNECT_DELAY_MS = 5000;
+  /**
+   * Where a house member's forwarded invoice goes (onboarding-r110-g1). Set by
+   * procurement's `MemberForwardIntakeService`, never injected here: see
+   * `inbound-member-forward.ts` for why. Null means today's path for all mail.
+   */
+  private memberForwardSink: MemberForwardSink | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -612,6 +623,48 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   // INBOUND EMAIL HANDLER (NestJS fallback — stores to DB without Python agent)
   // ===========================================================================
 
+  /** Procurement registers where a member's forwarded documents go. */
+  registerMemberForwardSink(sink: MemberForwardSink): void {
+    this.memberForwardSink = sink;
+  }
+
+  /**
+   * Is `senderEmail` the verified address of a live owner or manager of
+   * `restaurantId`? Fails closed: any read error is "no", which keeps the
+   * mail on today's path.
+   */
+  private async isHouseLead(
+    restaurantId: string,
+    senderEmail: string,
+  ): Promise<boolean> {
+    const db = this.databaseService.supabase;
+    const { data: users, error } = await db
+      .from("users")
+      .select("user_id, email, email_verified")
+      .ilike("email", exactLikePattern(senderEmail));
+    if (error) return false;
+    const ids = (users ?? [])
+      .filter(
+        (u: any) =>
+          u?.email_verified === true &&
+          String(u?.email ?? "").trim().toLowerCase() === senderEmail,
+      )
+      .map((u: any) => u.user_id);
+    if (ids.length === 0) return false;
+    const { data: access, error: accessError } = await db
+      .from("user_restaurant_access")
+      .select("user_id, role, is_active, valid_from, valid_until")
+      .eq("restaurant_id", restaurantId)
+      .in("user_id", ids);
+    if (accessError) return false;
+    return (access ?? []).some(
+      (row: any) =>
+        (OWNER_AND_MANAGER as readonly string[]).includes(
+          String(row?.role ?? "").toLowerCase(),
+        ) && isLiveMembership(row),
+    );
+  }
+
   private async handleInboundEmail(msg: any): Promise<void> {
     const payload = msg?.payload || msg;
     // The Python email agents put correlation_id on the message envelope
@@ -678,6 +731,29 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       const { data: providers } = await providerQuery.limit(1);
       const provider = providers?.[0];
       if (!provider) {
+        // onboarding-r110-g1 — the house's own owner or manager forwarded a
+        // paper to the house's address. Its documents go to Receipts; it is
+        // never captured as a prospect and never answered. Anyone else
+        // (staff, a stranger, another house's member, an unauthenticated
+        // sender) falls through to today's path below.
+        if (
+          payload.source === "inbound-domain" &&
+          restaurantIdFromEvent &&
+          this.memberForwardSink &&
+          senderAuthenticated(rawHeaders, senderEmail) &&
+          (await this.isHouseLead(restaurantIdFromEvent, senderEmail))
+        ) {
+          const result = await this.memberForwardSink({
+            restaurantId: restaurantIdFromEvent,
+            messageId: messageIdHeader || gmailMessageId || correlationId,
+            senderEmail,
+            attachments,
+          });
+          this.logger.log(
+            `handleInboundEmail: a house lead forwarded ${result.taken} document(s) to Receipts (${result.skipped} left out)`,
+          );
+          return;
+        }
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
         // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
         // drop mass marketing blasts (bulk/list transport) so this never becomes a spam magnet.
