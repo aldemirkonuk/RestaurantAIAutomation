@@ -29,18 +29,22 @@ function fakePostgrest(
       const state: {
         counted: boolean;
         orders: string[];
+        ascending: boolean[];
         gt: [string, string] | null;
         limit: number | null;
         range: [number, number] | null;
-      } = { counted: false, orders: [], gt: null, limit: null, range: null };
+      } = { counted: false, orders: [], ascending: [], gt: null, limit: null, range: null };
       const q: any = {
         select(_cols: string, o?: { count?: string }) {
           state.counted = o?.count === "exact";
           return q;
         },
         eq: () => q,
-        order(c: string) {
+        // Honour {ascending:false}: a double that always sorts ascending
+        // cannot tell a descending keyset from the real one (r103 review).
+        order(c: string, o?: { ascending?: boolean }) {
           state.orders.push(c);
+          state.ascending.push(o?.ascending !== false);
           return q;
         },
         gt(c: string, v: string) {
@@ -76,7 +80,10 @@ function fakePostgrest(
               const a = key(x);
               const b = key(y);
               for (let i = 0; i < a.length; i++) {
-                if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+                if (a[i] !== b[i]) {
+                  const asc = a[i] < b[i] ? -1 : 1;
+                  return state.ascending[i] ? asc : -asc;
+                }
               }
               return 0;
             });
