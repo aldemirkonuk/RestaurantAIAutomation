@@ -46,8 +46,35 @@ describe("overlayCorrections", () => {
     expect(out.lines[0]).toEqual({ ...cases[0], qty: 3, qty_bottles: 18 });
   });
 
+  it("a corrected line kind is laid on the snapshot entry of that line_no, not on array position (r110)", () => {
+    const snap = [
+      { lineNo: 2, lineKind: "goods", description: "Nakliye" },
+      { lineNo: 1, lineKind: "goods" },
+    ];
+    const out = overlayCorrections({ id: "d", extracted_lines: snap }, rows, [
+      { revision: 2, kind: "correction", field_path: "lines[1].lineKind", after: env("fee") },
+    ]);
+    expect(out.header.extracted_lines).toEqual([{ lineNo: 2, lineKind: "fee", description: "Nakliye" }, { lineNo: 1, lineKind: "goods" }]);
+    expect(out.lines[0]).toBe(rows[0]);
+    expect(out.lines[1]).toBe(rows[1]);
+    expect(snap[0].lineKind).toBe("goods");
+  });
+
+  it("a line the snapshot lacks gets an entry; a kind no line has is not written", () => {
+    const snap = [{ lineNo: 1, lineKind: "goods" }];
+    const added = overlayCorrections({ id: "d", extracted_lines: snap }, rows, [
+      { revision: 2, kind: "correction", field_path: "lines[1].lineKind", after: env("deposit") },
+    ]);
+    expect(added.header.extracted_lines).toEqual([{ lineNo: 1, lineKind: "goods" }, { lineNo: 2, lineKind: "deposit" }]);
+    const junk = overlayCorrections({ id: "d", extracted_lines: snap }, rows, [
+      { revision: 2, kind: "correction", field_path: "lines[0].lineKind", after: env("freight") },
+      { revision: 3, kind: "correction", field_path: "lines[5].lineKind", after: env("fee") },
+    ]);
+    expect(junk.header.extracted_lines).toBe(snap);
+  });
+
   it("movesCost names the money fields and nothing else", () => {
-    expect(["lines[0].netPrice", "lines[2].quantity", "lines[1].unit", "lines[0].priceBaseQuantity", "lines[0].priceBaseUnit", "lines[0].netAmount", "currency"].every(movesCost)).toBe(true);
+    expect(["lines[0].netPrice", "lines[2].quantity", "lines[1].unit", "lines[0].priceBaseQuantity", "lines[0].priceBaseUnit", "lines[0].netAmount", "currency", "lines[3].lineKind"].every(movesCost)).toBe(true);
     expect(["lines[0].description", "documentNumber", "lines[0].vintage", "nope"].some(movesCost)).toBe(false);
   });
 });
@@ -80,6 +107,44 @@ describe("verify costs the corrected paper (r109)", () => {
     corrected([2, "lines[0].netPrice", 55], [3, "lines[0].netAmount", 550]);
     await service.finaliseAtVerified(REST, DEL, "u1");
     expect(posted()).toEqual([55]);
+  });
+
+  describe("a line corrected into or out of a charge (r110)", () => {
+    const freight = (kind: string) => {
+      db.answers.procurement_documents = {
+        data: [{ id: "inv-1", doc_number: "A-1", freight: 50, extracted_lines: [{ lineNo: 1, lineKind: "goods" }, { lineNo: 2, lineKind: kind }] }],
+        error: null,
+      };
+      db.answers.procurement_document_lines = {
+        data: [
+          { document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty: 10, qty_bottles: 10, uom: "bottle", pack_size: 1, unit_price: 60, line_total: 600 },
+          { document_id: "inv-1", line_no: 2, inventory_id: null, qty: 1, qty_bottles: null, uom: null, pack_size: null, unit_price: 50, line_total: 50, description: "Nakliye" },
+        ],
+        error: null,
+      };
+    };
+    // The paper prints freight 50 in its header and again as line 2. A fee
+    // line is not stock, so the item carries all 50: (600 + 50) / 10.
+    it("as read, a fee line is not stock and the item carries the freight", async () => {
+      freight("fee");
+      corrected();
+      await service.finaliseAtVerified(REST, DEL, "u1");
+      expect(posted()).toEqual([65]);
+    });
+    it("a goods line corrected to a fee is costed like one", async () => {
+      freight("goods");
+      corrected([2, "lines[1].lineKind", "fee"]);
+      await service.finaliseAtVerified(REST, DEL, "u1");
+      expect(posted()).toEqual([65]);
+    });
+    // A stock line naming no item cannot take its share of the freight, so
+    // the paper's charges are held and nothing is posted on a guess.
+    it("a fee corrected to goods is stock again, and its charge share holds the cost", async () => {
+      freight("fee");
+      corrected([2, "lines[1].lineKind", "goods"]);
+      await service.finaliseAtVerified(REST, DEL, "u1");
+      expect(posted()).toEqual([]);
+    });
   });
 
   it("a paper with no corrections costs as stored", async () => {

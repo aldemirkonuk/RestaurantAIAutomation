@@ -33,10 +33,35 @@ const COST_COLUMNS: Record<string, Copy> = {
   "totals.taxInclusiveAmount": (d) => ({ total: d.total }),
 };
 
+/**
+ * What a line IS moves a cost too: goods are stocked, a deposit or a fee is a
+ * charge spread over the goods (r110, DD-r109-33). Costing reads it from the
+ * intake snapshot (`extracted_lines[].lineKind`, keyed on `lineNo`), so it is
+ * laid over the header's `extracted_lines`, never over a line column.
+ */
+const LINE_KIND = "lines[].lineKind";
+
+const isCostPath = (template: string) => template in COST_COLUMNS || template === LINE_KIND;
+
 /** True when a correction at `path` can move what a lot costs. */
 export function movesCost(path: string): boolean {
   const p = splitPath(path);
-  return !!p && p.template in COST_COLUMNS && !!CORRECTABLE_PATHS[p.template];
+  return !!p && isCostPath(p.template) && !!CORRECTABLE_PATHS[p.template];
+}
+
+/** The snapshot's lines with each corrected `lineNo` given its kind; a line the snapshot lacks is added. */
+function withKinds(snapshot: unknown, kinds: Map<number, string>): unknown[] {
+  const rows: unknown[] = Array.isArray(snapshot) ? snapshot : [];
+  const seen = new Set<number>();
+  const out = rows.map((r) => {
+    const o = r && typeof r === "object" ? (r as Record<string, unknown>) : null;
+    const n = o && o.lineNo != null ? Number(o.lineNo) : NaN;
+    if (!o || !kinds.has(n)) return r;
+    seen.add(n);
+    return { ...o, lineKind: kinds.get(n) };
+  });
+  for (const [lineNo, lineKind] of kinds) if (!seen.has(lineNo)) out.push({ lineNo, lineKind });
+  return out;
 }
 
 /** One `document_corrections` row, as costing reads it. */
@@ -64,7 +89,7 @@ export function overlayCorrections<H extends Record<string, unknown>, L extends 
     .filter((c) => c.kind == null || c.kind === "correction")
     .sort((a, b) => a.revision - b.revision)
     .map((c) => ({ c, p: splitPath(c.field_path) }))
-    .filter((x) => x.p && x.p.template in COST_COLUMNS);
+    .filter((x) => x.p && isCostPath(x.p.template));
   if (!cost.length) return { header, lines, touched: false };
 
   const ordered = lines
@@ -81,15 +106,21 @@ export function overlayCorrections<H extends Record<string, unknown>, L extends 
   }
 
   const outLines = [...lines];
+  const kinds = new Map<number, string>();
   for (const [n, templates] of lineTouch) {
     const at = ordered[n];
     const line = parsed.lines[n];
     if (!at || !line) continue;
     let row: Record<string, unknown> = { ...at.row };
-    for (const t of templates) row = { ...row, ...COST_COLUMNS[t](parsed, line) };
-    outLines[at.i] = row as L;
+    for (const t of templates) {
+      if (t === LINE_KIND) {
+        if (line.lineKind) kinds.set(Number(at.row.line_no ?? 0), line.lineKind);
+      } else row = { ...row, ...COST_COLUMNS[t](parsed, line) };
+    }
+    if (templates.size > (templates.has(LINE_KIND) ? 1 : 0)) outLines[at.i] = row as L;
   }
   let outHeader: Record<string, unknown> = { ...header };
   for (const t of headTouch) outHeader = { ...outHeader, ...COST_COLUMNS[t](parsed, null) };
+  if (kinds.size) outHeader = { ...outHeader, extracted_lines: withKinds(header.extracted_lines, kinds) };
   return { header: outHeader as H, lines: outLines, touched: true };
 }
