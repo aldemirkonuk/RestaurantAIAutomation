@@ -495,18 +495,7 @@ const till = analysis<TillWindow>({
         basis,
       };
 
-    const cols = weekColumns(w.from, w.to);
     const byDate = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
-    const cells: Cell[] = [];
-    for (const [date, revenue] of byDate) {
-      if (revenue == null) continue;
-      cells.push({
-        row: WEEKDAY_SHORT[weekdayIndex(date)],
-        col: weekLabel(weekStart(date)),
-        value: revenue,
-        title: shortDay(date),
-      });
-    }
     // Every house day of the window gets its slot, so a day with no check is
     // a gap in the line or an empty bar slot, not a day the axis skips and
     // the line quietly bridges.
@@ -557,8 +546,14 @@ const till = analysis<TillWindow>({
           : undefined,
       };
     };
-    return {
-      cats: grained ? grainedCats(grained) : {
+    // Only the drawing the cutting is set to is ever read, so each is built when (and if) it is
+    // asked for, once: the default drawing no longer pays for the heat map's dates and the table's
+    // formatted rows on every window click (perf-p10-4, #2459, ported onto the grain/stretch view).
+    const once = <T,>(build: () => T): (() => T) => {
+      let built: { v: T } | null = null;
+      return () => (built ??= { v: build() }).v;
+    };
+    const getCats = once((): CatSeries => (grained ? grainedCats(grained) : {
         data: shown.map((date, i) => ({
           label: shortDay(date),
           value: byDate.get(date) ?? null,
@@ -579,8 +574,20 @@ const till = analysis<TillWindow>({
           return r ? stretchWords(r, money) : undefined;
         },
         stretchFrom: (a) => halfWords(shown[a] ?? ''),
-      },
-      matrix: {
+      }));
+    const getMatrix = once(() => {
+      const cols = weekColumns(w.from, w.to);
+      const cells: Cell[] = [];
+      for (const [date, revenue] of byDate) {
+        if (revenue == null) continue;
+        cells.push({
+          row: WEEKDAY_SHORT[weekdayIndex(date)],
+          col: weekLabel(weekStart(date)),
+          value: revenue,
+          title: shortDay(date),
+        });
+      }
+      return {
         rows: [...WEEKDAY_SHORT],
         cols: cols.map(weekLabel),
         cells,
@@ -588,8 +595,9 @@ const till = analysis<TillWindow>({
         yLabel: 'weekday',
         unit: 'taken',
         format: (v) => money(v, 'compact'),
-      },
-      table: {
+      };
+    });
+    const getTable = once(() => ({
         cols: [
           { key: 'day', label: 'Day' },
           { key: 'taken', label: 'Taken', numeric: true },
@@ -607,6 +615,16 @@ const till = analysis<TillWindow>({
           w.dailySeries.length < w.days
             ? `${w.dailySeries.length} of the ${w.days} days in the window rang up a check; the rest are absent rather than zero.`
             : undefined,
+      }));
+    return {
+      get cats() {
+        return getCats();
+      },
+      get matrix() {
+        return getMatrix();
+      },
+      get table() {
+        return getTable();
       },
       figures,
       notes: [],

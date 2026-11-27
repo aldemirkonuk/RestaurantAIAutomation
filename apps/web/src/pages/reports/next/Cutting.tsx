@@ -467,11 +467,18 @@ function CuttingBody({
         : `Reading the last ${ctx.days} days again. Until they arrive, the drawing shown still has the days before beside it.`
       : standInSentence(standIn);
   const answer = drawn0.data;
+  // The register's view, built once per answer and window rather than on every render of the cutting
+  // (perf-p10-4, #2459): the offered graphs, the compare hold and the body all read this one.
+  const answeredView = useMemo(
+    () => (readsRegister(spec) && answer !== undefined ? spec.view(answer, shownCtx) : undefined),
+    [spec, answer, shownCtx],
+  );
+  const viewOf = (data: unknown) => (data === answer && answeredView !== undefined ? answeredView : spec.view(data, shownCtx));
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
   const offered = ((): GraphType[] => {
     if (!readsRegister(spec) || answer === undefined) return spec.graphs;
-    const v = spec.view(answer, shownCtx);
+    const v = viewOf(answer);
     if (v.say) return spec.graphs;
     return spec.graphs.filter((g) => !(g === 'combo' && cannotDraw(v, 'combo')));
   })();
@@ -509,7 +516,7 @@ function CuttingBody({
         >
           {(data) => (
             <Body
-              view={spec.view(data, shownCtx)}
+              view={viewOf(data)}
               graph={g}
               windowLine={windowLine}
               workingOpen={workingOpen}
@@ -530,7 +537,7 @@ function CuttingBody({
       />
     );
   // A till kept from this reader's role has nothing to lay beside a prior.
-  const compareHeld = spec.takesWindow && readsRegister(spec) && answer !== undefined && !!spec.view(answer, shownCtx).withheld;
+  const compareHeld = spec.takesWindow && readsRegister(spec) && answer !== undefined && !!viewOf(answer).withheld;
   const compareOn = compareHeld ? undefined : compareFor;
   // A withheld till draws nothing, so it offers no grain either.
   const grainOn = compareHeld ? undefined : onGrain;
