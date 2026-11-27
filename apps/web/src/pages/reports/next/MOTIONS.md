@@ -59,8 +59,8 @@ to those would put a moving cutting somewhere the announcement says it is not.
   already made.
 - **Nothing animates when full screen steps to the next cutting.** Previous, Next
   and the Left and Right keys lay the neighbouring cutting flat in sheet order;
-  the dialog it lands on appears as any full-screen opening does, and the one
-  it leaves is gone. No slide, no cross-fade, no count on the marker. It is a
+  the dialog it lands on appears at once, without the `rp-flat-in` arrival an
+  opening plays (`data-stepped`), and the one it leaves is gone. No slide, no cross-fade, no count on the marker. It is a
   subject change, and the reader pressed the button that named the subject.
 - **The keyboard's tooltip moves no differently from the pointer's.** Left and Right
   walk the same `.rp-tip` that hovering moves, so it keeps `rp-tip-in`'s 120 ms
