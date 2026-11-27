@@ -60,7 +60,7 @@ import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';
 import { compareOffered } from './rp-registers-trade';
-import { cannotDraw } from './rp-strip';
+import { cannotDraw, drawnRegister, type LastRead } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
 import RuledOff from './RuledOff';
@@ -356,18 +356,10 @@ export default function Cutting({
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
      labelled with its own days (ADR 0020); never for a first read or another house. */
-  const lastRead = useRef<{ data: unknown; days: number } | null>(null);
-  if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
-    lastRead.current = { data: register.data, days: ctx.days };
-  const standIn =
-    spec.takesWindow &&
-    register?.loading &&
-    !register.failure &&
-    lastRead.current &&
-    lastRead.current.days !== ctx.days
-      ? lastRead.current
-      : null;
-  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
+  const lastRead = useRef<LastRead>(null);
+  const drawn0 = drawnRegister(!!spec.takesWindow, register as Register<unknown> | undefined, ctx, lastRead);
+  const standIn = drawn0.standIn;
+  const viewCtx: ViewCtx = drawn0.ctx;
   const windowLine = spec.window(viewCtx);
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
