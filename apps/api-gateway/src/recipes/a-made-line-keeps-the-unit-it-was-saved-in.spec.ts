@@ -81,7 +81,7 @@ describe("a made line is priced only in the kind of unit its component is made i
   it("does not price a millilitre line against a component now made in grams, or one with no unit", () => {
     for (const unit of ["mg", "each_milli", null]) {
       const c = made(unit);
-      expect(c.lines[0]).toMatchObject({ costPerServe: null, costPerServeExact: null, costBasis: "component_not_priced", throughComponent: "Simple syrup" });
+      expect(c.lines[0]).toMatchObject({ costPerServe: null, costPerServeExact: null, costBasis: "unit_mismatch", throughComponent: "Simple syrup" });
       expect(c).toMatchObject({ complete: false, perServe: null });
     }
   });
@@ -99,7 +99,7 @@ describe("an old version after its component changed kind", () => {
     await services(rows).dishes.setYield(HOUSE_A, SYRUP, { amount: 500, unit: "g" });
     expect(rows.dishes.find((d) => d.id === SYRUP)).toMatchObject({ yield_qty_base: 500_000, yield_base_unit: "mg" });
     const { line: first, cost } = await oldVersion(rows);
-    expect(first).toMatchObject({ costPerServe: null, costPerServeExact: null, costBasis: "component_not_priced", componentName: "Simple syrup" });
+    expect(first).toMatchObject({ costPerServe: null, costPerServeExact: null, costBasis: "unit_mismatch", componentName: "Simple syrup" });
     expect(cost).toMatchObject({ complete: false, perServe: null });
   });
 });

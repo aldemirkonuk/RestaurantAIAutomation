@@ -531,6 +531,10 @@
     "owner",
     "manager"
   ],
+  "PATCH /recipes/:restaurantId/dishes/:dishId/yield (DishesController.setYield)": [
+    "owner",
+    "manager"
+  ],
   "DELETE /recipes/:restaurantId/dishes/:dishId (DishesController.removeDish)": [
     "owner",
     "manager"
@@ -549,6 +553,11 @@
   "GET /recipes/:restaurantId/items/:itemId/dishes (DishesController.dishesUsingItem)": "open",
   "GET /recipes/:restaurantId/items/:itemId/drinks (DishesController.drinksUsingItem)": "open",
   "GET /recipes/:restaurantId/drinks/figures (DishesController.drinkFigures)": "open",
+  "GET /recipes/:restaurantId/drinks/cards (DishesController.drinkCards)": "open",
+  "GET /recipes/:restaurantId/drinks/loose-lines (LooseLinesController.looseLines)": [
+    "owner",
+    "manager"
+  ],
   "GET /recipes/:restaurantId/menu-prices (DishesController.menuPrices)": "open",
   "POST /recipes/:restaurantId/shelf/match (DishesController.matchShelf)": [
     "owner",

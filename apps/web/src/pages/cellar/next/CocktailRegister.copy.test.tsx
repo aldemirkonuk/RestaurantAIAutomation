@@ -42,6 +42,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
 }));
 
 import CocktailRegister from './CocktailRegister';
+import { COPY_CANNOT_CARRY } from './recipe/copyDrink';
 
 const L = (over: Partial<RecipeLine>): RecipeLine => ({
   id: 'l', position: 0, role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', itemName: 'Bourbon', itemKind: 'spirit',
@@ -122,8 +123,8 @@ describe('Copy a drink', () => {
     expect(putUrl).toContain(`/cocktails/${NEW}`);
     expect(put.expectedVersionId).toBeNull();
     expect(put.lines).toEqual([
-      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml', usablePct: null },
-      { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 25, unit: 'ml', usablePct: null },
+      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml' },
+      { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 25, unit: 'ml' },
       { role: 'untracked', inventoryId: null, label: 'Bitters', qty: 2, unit: 'dash' },
     ]);
     expect(await screen.findByText('“Sour No. 2” is on this house’s list, with the recipe of “Whiskey Sour”.')).toBeTruthy();
@@ -184,7 +185,7 @@ describe('Copy a drink', () => {
     mount();
     fireEvent.click(await screen.findByTestId('cocktail-copy'));
     save();
-    expect(await screen.findByText('This drink has a line a copy cannot carry yet, so nothing was copied.')).toBeTruthy();
+    expect(await screen.findByText(COPY_CANNOT_CARRY)).toBeTruthy();
     expect(h.post).not.toHaveBeenCalled();
     expect(h.put).not.toHaveBeenCalled();
   });

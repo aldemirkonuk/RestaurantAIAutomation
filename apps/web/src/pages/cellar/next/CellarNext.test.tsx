@@ -2545,8 +2545,7 @@ describe('CellarNext — first paint is the loaded layout (r90)', () => {
   it('the signature keeps its place but is not drawn until the page has been read', () => {
     mock.current = { ...base, registers: null, registersLoading: true };
     const { container, unmount } = draw();
-    const foot = () => container.querySelector('footer') as HTMLElement;
-    expect(foot().style.visibility).toBe('hidden');
+    expect(container.querySelector('footer')).toBeNull();
     unmount();
     mock.current = { ...base, registers: readout(), registersLoading: false };
     const read = draw();
