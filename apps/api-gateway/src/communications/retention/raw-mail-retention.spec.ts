@@ -94,6 +94,8 @@ function build(rows: Record<string, Rows>, removeError?: string) {
     self.not = track("not");
     self.order = track("order");
     self.limit = track("limit");
+    // Paged reads (readAllPages) end the query with .range(); the seeded rows are short of a page.
+    self.range = () => self;
     self.insert = (body: Record<string, unknown>) => {
       rec.inserts.push({ table, body });
       return self;

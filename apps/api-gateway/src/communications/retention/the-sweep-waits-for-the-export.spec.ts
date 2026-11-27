@@ -66,6 +66,7 @@ function build(rows: Record<string, Rows>) {
     self.not = pass;
     self.order = pass;
     self.limit = pass;
+    self.range = pass;
     // The real client's `update(...).in(ids).select("id")` returns ONLY the
     // rows it changed, and `deleted` is that length — so the stub has to
     // narrow too, or every test would read as "everything was deleted".
