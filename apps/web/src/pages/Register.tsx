@@ -3,19 +3,13 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
+import { Wine, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
-import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
-import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
-import { currencyForCountry, currencyToRecord } from '../lib/currency'
-import { getBrowserTimezone } from '../lib/browserTimezone'
-import { houseNotOpened } from '../lib/houseOpeningWords'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
-import { CuisinePicker } from '../components/ui/CuisinePicker'
 import { apiClient } from '../services/api/client'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
@@ -74,7 +68,7 @@ export function Register() {
   // /invite/<code> as a fragment. Sent with the join; without it the new
   // account is unverified.
   const inviteMailSecret = readInviteMailSecret(useLocation().hash)
-  const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
+  const { registerAccount, joinViaInvite, error: authError } = useAuth()
   const on = usePublicDesign()
 
   // Read the address before the first paint. The two-card chooser is retired
@@ -111,15 +105,12 @@ export function Register() {
   const [createConfirm, setCreateConfirm] = useState('')
 
   // Path B restaurant fields
-  const [restaurantName, setRestaurantName] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
   const [stateProvince, setStateProvince] = useState('')
   const [postalCode, setPostalCode] = useState('')
   const [neighborhood, setNeighborhood] = useState('')
-  const [phone, setPhone] = useState('')
-  const [cuisineType, setCuisineType] = useState('')
 
   /**
    * The money this house reports in — asked, never assumed.
@@ -140,27 +131,6 @@ export function Register() {
    */
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
 
-  /**
-   * The point the house asserted, taken from the Google Places selection.
-   *
-   * `restaurants.latitude` / `.longitude` have existed since
-   * `supabase/migrations/20260807001252_distributor_geo_foundation.sql:50-51`
-   * and were NULL on all 14 production rows, because this form resolved the
-   * coordinate as part of the same `fetchFields` call that fills in the city and
-   * postcode (PlacesAutocomplete.tsx:248-260) and then dropped it. Nothing that
-   * needs a location — the calendar's weather overlay first — can exist without
-   * it (ADR 0111 slice 1).
-   *
-   * It is null until a place is CHOSEN from the list, and it is cleared the
-   * moment the address is edited by hand: a coordinate that no longer matches
-   * the address on screen is worse than none, because nothing downstream can
-   * tell the two apart.
-   */
-  const [placePoint, setPlacePoint] = useState<{
-    latitude: number
-    longitude: number
-    googlePlaceId: string | null
-  } | null>(null)
 
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
@@ -925,64 +895,9 @@ export function Register() {
       areaLabel: 'Neighborhood / Area', areaPlaceholder: 'e.g. Downtown',
     }
   })()
-
-  const handleCreateSubmit = async () => {
-    if (!restaurantName || !address || !city || !country) {
-      setError('Restaurant name, address, city, and country are required')
-      return
-    }
-    if (phone.trim() && !isValidPhone(phone)) {
-      setError('Please enter a valid phone number for the selected country')
-      return
-    }
-    setError(null)
-    setLoading(true)
-    try {
-      await registerRestaurant({
-        name: createName,
-        email: createEmail,
-        password: createPassword,
-        restaurantName,
-        address,
-        city,
-        country,
-        stateProvince: stateProvince || undefined,
-        postalCode: postalCode || undefined,
-        neighborhood: neighborhood || undefined,
-        phone: phone ? toE164(phone, countryToPhoneDefault(country)) : undefined,
-        cuisineType: cuisineType || undefined,
-        // The browser's own zone, or omitted if it will not say (item 62,
-        // 2026-09-27) — never a made-up default. See lib/browserTimezone.ts.
-        timezone: getBrowserTimezone(),
-        // Sent only when the currency step produced an answer — the stated
-        // default the manager left standing, or the code they picked. Omitted
-        // when they chose "not now", and the gateway then writes NULL rather
-        // than USD (ADR 0117 Q25). Never `|| 'USD'`: that fallback is exactly
-        // what put dollars on a restaurant in Fethiye.
-        currency: willRecordCurrency ?? undefined,
-        // Sent only when a place was chosen from the list. A hand-typed address
-        // carries no point, and the gateway stores NULL rather than a guess.
-        latitude: placePoint?.latitude,
-        longitude: placePoint?.longitude,
-        googlePlaceId: placePoint?.googlePlaceId ?? undefined,
-      })
-      navigate('/verify-email', { replace: true })
-    } catch (err: unknown) {
-      setError(houseNotOpened(err, 'register'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // Country entered enough to trigger the rest of the form
   const countryReady = country.trim().length >= 2
 
-  // The default worked out from the address's country, or null when this table
-  // has no row for it. `null` is shown as a question, never filled with USD.
-  const currencyDefault = currencyForCountry(country)
-  // What will actually be recorded: the manager's answer if they gave one, the
-  // stated default otherwise, and nothing at all if they chose "not now".
-  const willRecordCurrency = currencyToRecord(currencyChoice, currencyDefault)
 
   // Left-rail section labels
   const railSections = [
@@ -1073,47 +988,6 @@ export function Register() {
           {/* Panel 1: Identity */}
           {restaurantSection === 1 && (
             <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
-                Section 1 of 3
-              </span>
-              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
-                Restaurant Identity
-              </h2>
-              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
-                What's the name and type of your restaurant?
-              </p>
-
-              {/* Restaurant Name */}
-              <div className="mb-[18px]">
-                <label htmlFor="restaurant-name" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Restaurant Name <span className={on ? 'text-seal' : 'text-wine-600'}>*</span>
-                </label>
-                <div className="relative">
-                  <Building2 className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-                  <input
-                    id="restaurant-name"
-                    type="text"
-                    value={restaurantName}
-                    onChange={(e) => setRestaurantName(e.target.value)}
-                    placeholder="The Oak Room"
-                    className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              {/* Cuisine Type */}
-              <div className="mb-0" role="group" aria-labelledby="restaurant-cuisine-label">
-                {/* eslint-disable-next-line jsx-a11y/label-has-associated-control --
-                    group label for the CuisinePicker composite: associated via the
-                    wrapper's role="group" + aria-labelledby, which the rule cannot see.
-                    An htmlFor at the trigger would overwrite its accessible name. */}
-                <label id="restaurant-cuisine-label" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Cuisine Type <span className={on ? 'text-inkm-3 font-normal text-xs' : 'text-gray-400 font-normal text-xs'}>(optional)</span>
-                </label>
-                <CuisinePicker value={cuisineType} onChange={setCuisineType} />
-              </div>
-
               {/* Nav */}
               <div className="flex gap-[10px] mt-5">
                 <button
@@ -1168,9 +1042,6 @@ export function Register() {
                   value={address}
                   onChange={(next) => {
                     setAddress(next)
-                    // Typed by hand: whatever point was captured belongs to a
-                    // different address now.
-                    setPlacePoint(null)
                   }}
                   onPlaceSelect={(place: PlaceResult) => {
                     setAddress(place.streetAddress)
@@ -1179,17 +1050,6 @@ export function Register() {
                     if (place.postalCode) setPostalCode(place.postalCode)
                     if (place.country) setCountry(place.country)
                     if (place.neighborhood) setNeighborhood(place.neighborhood)
-                    // Google declines a location for some predictions; that is a
-                    // real "no coordinate", never 0,0.
-                    setPlacePoint(
-                      typeof place.latitude === 'number' && typeof place.longitude === 'number'
-                        ? {
-                            latitude: place.latitude,
-                            longitude: place.longitude,
-                            googlePlaceId: place.googlePlaceId,
-                          }
-                        : null,
-                    )
                   }}
                   placeholder="Start typing your street address…"
                   className={on ? 'py-3 border-paper-2 bg-paper-0' : 'py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500'}
@@ -1283,85 +1143,6 @@ export function Register() {
               </div>
             </div>
           )}
-
-          {/* Panel 3: Contact */}
-          {restaurantSection === 3 && (
-            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
-                Section 3 of 3
-              </span>
-              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
-                Contact Details
-              </h2>
-              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
-                Optional. Helps with reservations.
-              </p>
-
-              {/* Phone */}
-              <div className="mb-0">
-                <label htmlFor="restaurant-phone" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Phone Number <span className={on ? 'text-inkm-3 font-normal text-xs' : 'text-gray-400 font-normal text-xs'}>(optional)</span>
-                </label>
-                <PhoneNumberInput
-                  id="restaurant-phone"
-                  value={phone}
-                  onChange={setPhone}
-                  countryHint={country}
-                  className={on ? 'bg-paper-0 py-3' : 'bg-white/80 py-3'}
-                  invalid={Boolean(phone.trim() && !isValidPhone(phone))}
-                />
-                {phone.trim() && !isValidPhone(phone) && (
-                  <p className={on ? 'text-xs !text-rose-600 mt-1' : 'text-xs text-rose-600 mt-1'}>Enter a valid phone number for the selected country.</p>
-                )}
-                <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>You can add this any time from Settings.</p>
-              </div>
-
-              {/* Error banner */}
-              <AnimatePresence>
-                {(error || authError) && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    role={on ? 'alert' : undefined}
-                    className={on ? 'mdv-ep-note mt-4 flex items-start gap-2 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2'}
-                  >
-                    {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
-                    <p className={on ? 'mdv-ep-note-title flex-1 !text-red-800' : 'text-sm text-red-700 flex-1'}>{error || authError}</p>
-                    <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-1">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Nav */}
-              <div className="flex gap-[10px] mt-5">
-                <button
-                  type="button"
-                  onClick={() => setRestaurantSection(2)}
-                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
-                >
-                  ← Location
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCreateSubmit}
-                  disabled={loading || !restaurantName || !address || !city || !country}
-                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px] disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none'}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Creating your restaurant…
-                    </>
-                  ) : (
-                    'Create Restaurant →'
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </motion.div>
@@ -1405,20 +1186,11 @@ export function Register() {
             : `Your own line in ${named ?? 'the house'}'s book.`,
       }
     }
-    if (pathBStep === 1) {
-      return {
-        ...voice,
-        folio: 'Register',
-        title: 'Who keeps this book?',
-        lede: 'Name, email, and a password — or continue with Google. The house comes after you verify.',
-      }
-    }
     return {
-      houseLine: restaurantName.trim() || voice.houseLine,
-      tag: voice.tag,
-      folio: 'Register · 2 of 2',
-      title: 'What house is this?',
-      lede: 'Its name, where it is, and how to reach it.',
+      ...voice,
+      folio: 'Register',
+      title: 'Who keeps this book?',
+      lede: 'Name, email, and a password — or continue with Google. The house comes after you verify.',
     }
   }
 
