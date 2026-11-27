@@ -268,3 +268,56 @@ export const recipesApi = {
     return r.data;
   },
 };
+
+/** One row of GET /dishes. Price and cost are null for staff. */
+export interface DishListRow {
+  id: string;
+  name: string;
+  section: string | null;
+  price: number | null;
+  hasRecipe: boolean;
+  yieldServes: number | null;
+  lineCount: number;
+  cost: null | {
+    perServe: number | null;
+    perServeExact: number | null;
+    priced: number;
+    of: number;
+    complete: boolean;
+    partial: number;
+  };
+}
+
+export interface DishBody {
+  name: string;
+  section?: string;
+  price?: number;
+  description?: string;
+}
+
+export interface Dish {
+  id: string;
+  name: string;
+  section: string | null;
+  price: number | null;
+  description: string | null;
+}
+
+
+
+export const dishesApi = {
+  async list(restaurantId: string): Promise<DishListRow[]> {
+    const r = await apiClient.get<DishListRow[]>(`${base(restaurantId)}/dishes`);
+    return r.data;
+  },
+
+  async create(restaurantId: string, body: DishBody): Promise<Dish> {
+    const r = await apiClient.post<Dish>(`${base(restaurantId)}/dishes`, body);
+    return r.data;
+  },
+
+  async update(restaurantId: string, dishId: string, body: Partial<DishBody>): Promise<Dish> {
+    const r = await apiClient.patch<Dish>(`${base(restaurantId)}/dishes/${encodeURIComponent(dishId)}`, body);
+    return r.data;
+  },
+};
