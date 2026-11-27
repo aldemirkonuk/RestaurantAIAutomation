@@ -55,6 +55,8 @@ const api = vi.hoisted(() => ({
   mintVerifySeal: vi.fn(() => Promise.resolve('seal-verify' as string | null)),
   mintLineEditSeal: vi.fn(() => Promise.resolve('seal-edit' as string | null)),
   mintCurrencySeal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
+  /** r109 g2: the coverage strip's read; held open so it says nothing in these tests. */
+  saleCostCoverage: vi.fn(() => new Promise(() => {})),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
@@ -102,6 +104,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       mintVerifySeal: api.mintVerifySeal,
       mintLineEditSeal: api.mintLineEditSeal,
       mintCurrencySeal: api.mintCurrencySeal,
+      saleCostCoverage: api.saleCostCoverage,
     },
   };
 });
@@ -282,6 +285,20 @@ function holdToApprove(name: RegExp) {
 }
 
 describe('ReceiptsNext', () => {
+  it('r109 g2: a manager reads how exact the till cost is; staff see no strip and send no request', async () => {
+    api.saleCostCoverage.mockClear();
+    const { unmount } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByTestId('sale-cost-coverage')).toBeTruthy();
+    expect(api.saleCostCoverage).toHaveBeenCalledWith(7);
+    unmount();
+    api.saleCostCoverage.mockClear();
+    api.role = 'staff';
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(screen.queryByTestId('sale-cost-coverage')).toBeNull();
+    expect(api.saleCostCoverage).not.toHaveBeenCalled();
+  });
+
   it('edits a line in place and shows the recomputed tie-out immediately', async () => {
     const { container } = render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
