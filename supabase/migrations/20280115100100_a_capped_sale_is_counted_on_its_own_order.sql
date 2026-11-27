@@ -6,8 +6,13 @@
 -- order being verified, so one capped sale from last year was reported again
 -- on every verify of every order of the item.
 --
--- WHAT. Count only capped rows whose cost_source_order_id is the order the
--- paper checks. Nothing else in restate_sale_cost changes.
+-- WHAT. Count only the capped rows this order can have fed: the row names it
+-- (cost_source_order_id is the order of the OLDEST lot it drew on), or it was
+-- recorded on or after the earliest receipt of this order's lots for the item
+-- (a capped row keeps no parts, so a sale drawn over 21 orders names only the
+-- first; the later 20 would never be counted without the date). A sale made
+-- before the order's lots arrived cannot have drawn on them. Nothing else in
+-- restate_sale_cost changes.
 
 CREATE OR REPLACE FUNCTION public.restate_sale_cost(
   p_restaurant_id uuid,
@@ -166,13 +171,18 @@ BEGIN
     v_after := v_after + v_new;
   END LOOP;
 
-  -- 3. Capped rows costed from this order: never restated, and counted so it is said.
+  -- 3. Capped rows this order can have fed: never restated, and counted so it is said.
   SELECT count(*) INTO v_capped
     FROM public.wine_consumption_log
    WHERE restaurant_id = p_restaurant_id
      AND inventory_id = p_inventory_id
      AND cost_parts_capped
-     AND cost_source_order_id = p_source_order_id
+     AND (cost_source_order_id = p_source_order_id
+          OR recorded_at >= (SELECT min(l.received_at)
+                               FROM public.inventory_lots l
+                              WHERE l.restaurant_id = p_restaurant_id
+                                AND l.inventory_id = p_inventory_id
+                                AND l.source_order_id = p_source_order_id))
      AND cost_at_sale > 0;
 
   RETURN jsonb_build_object('rows_restated', v_rows, 'rows_capped', v_capped,
