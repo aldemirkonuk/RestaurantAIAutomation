@@ -107,6 +107,29 @@ describe('walking the lines by key', () => {
     await waitFor(() => expect(document.activeElement).toBe(row('b')))
   })
 
+  it('j pressed while focus is on a button outside the review does not pull focus in', () => {
+    mount()
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.focus()
+    press('j', {}, outside)
+    expect(document.activeElement).toBe(outside)
+    outside.remove()
+  })
+
+  it('a save made by Tab does not pull focus to the next line, only one made by Enter does', async () => {
+    mount()
+    press('j')
+    press('Enter', {}, row('a'))
+    const input = screen.getByRole('textbox')
+    fireEvent.change(input, { target: { value: 'Fixed' } })
+    press('Tab', {}, input)
+    fireEvent.blur(input)
+    await waitFor(() => expect(reviewMenuItem).toHaveBeenCalledWith('a', 'name', 'Fixed'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.activeElement).not.toBe(row('b'))
+  })
+
   it('Escape returns to the row', async () => {
     mount()
     press('j')

@@ -184,6 +184,9 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   const [cur, setCur] = useState<string | null>(null)
   const [said, setSaid] = useState('')
   const walking = useRef(false)
+  const root = useRef<HTMLDivElement>(null)
+  // True only while the last key in a cell was Enter: a save from Tab or a click must not move focus on.
+  const savedByEnter = useRef(false)
   const fine = useFinePointer()
   const walkIds = [...flagged, ...(showClean ? clean : [])].map((i) => i.menuItemId)
   const stop = cur && walkIds.includes(cur) ? cur : (walkIds[0] ?? null)
@@ -203,7 +206,10 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (planning || e.defaultPrevented || e.ctrlKey || e.metaKey) return
-      if ((e.target as HTMLElement | null)?.closest?.('input,textarea,select,[contenteditable="true"]')) return
+      const t = e.target as HTMLElement | null
+      if (t?.closest?.('input,textarea,select,[contenteditable="true"]')) return
+      // Only keys meant for the review: from inside it, or from the page with nothing focused (not another widget's button).
+      if (t !== document.body && !root.current?.contains(t)) return
       const down = e.altKey ? e.key === 'ArrowDown' : e.key === 'j'
       const up = e.altKey ? e.key === 'ArrowUp' : e.key === 'k'
       if ((!down && !up) || walkIds.length === 0) return
@@ -244,7 +250,8 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
       ),
     )
     // A save made while walking by key moves on to the next line.
-    if (walking.current) {
+    if (walking.current && savedByEnter.current) {
+      savedByEnter.current = false
       const at = walkIds.indexOf(menuItemId)
       const next = walkIds[at + 1] ?? walkIds[at]
       if (next) window.setTimeout(() => goTo(next), 0)
@@ -299,6 +306,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
             }
             return
           }
+          if ((e.target as HTMLElement).tagName === 'INPUT') savedByEnter.current = e.key === 'Enter'
           // Escape (or a save) closes the cell; the focus goes back to its row, not to the page.
           if ((e.key === 'Escape' || e.key === 'Enter') && walking.current && (e.target as HTMLElement).tagName === 'INPUT') {
             window.setTimeout(() => {
@@ -355,6 +363,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
 
   return (
     <div
+      ref={root}
       className={embedded ? 'bg-paper-0 text-inkm-1 rounded-2xl border border-paper-2 flex flex-col items-center px-4 py-6' : 'min-h-screen bg-paper-0 flex flex-col items-center px-4 pt-10 pb-16'}
       data-testid="menu-read-review"
     >
