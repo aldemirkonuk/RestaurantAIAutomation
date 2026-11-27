@@ -7,8 +7,8 @@
  * multiplied by 100. Every case below fails on that helper.
  */
 
-import { describe, expect, it } from 'vitest';
-import { EM, pct } from './rp-format';
+import { describe, expect, it, vi } from 'vitest';
+import { EM, pct, shortDay } from './rp-format';
 
 describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
   it('multiplies by 100: the measured trend reads +20.7%, not +0.21%', () => {
@@ -33,5 +33,39 @@ describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
     expect(pct(undefined)).toBe(EM);
     expect(pct(Number.NaN)).toBe(EM);
     expect(pct('not a number')).toBe(EM);
+  });
+});
+
+/**
+ * Perf p8-2. The 90-day till view asks `shortDay` for 360 labels per draw, and
+ * `toLocaleDateString(locale, options)` builds a new Intl formatter on every
+ * call. The words must stay the same; only the building stops.
+ */
+describe('shortDay — the same words, without a formatter built per label', () => {
+  const old = (s: string) =>
+    new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10))).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+
+  it('reads every day of a leap year exactly as toLocaleDateString did', () => {
+    for (let i = 0; i < 366; i += 1) {
+      const d = new Date(2028, 0, 1 + i);
+      const s = `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`;
+      expect(shortDay(s)).toBe(old(s));
+    }
+    expect(shortDay('2026-08-28')).toBe('Aug 28');
+  });
+
+  it('leaves a string that is not a date alone', () => {
+    expect(shortDay('Aug 28')).toBe('Aug 28');
+    expect(shortDay('')).toBe('');
+  });
+
+  it('never calls toLocaleDateString for a label', () => {
+    const spy = vi.spyOn(Date.prototype, 'toLocaleDateString');
+    for (let i = 1; i <= 28; i += 1) shortDay(`2031-02-${`${i}`.padStart(2, '0')}`);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

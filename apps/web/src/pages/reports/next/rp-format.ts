@@ -83,8 +83,19 @@ export function parseDateStr(s: string): Date {
 /** "Aug 28" from a YYYY-MM-DD string, for a chart axis. */
 export function shortDay(dateStr: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  return parseDateStr(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const held = SHORT_DAYS.get(dateStr);
+  if (held !== undefined) return held;
+  // One formatter, built once: `toLocaleDateString(locale, options)` builds a
+  // new Intl formatter on every call, and a 90-day till asks for 360 labels per
+  // draw (perf p8-2). Same locale, same options, so the same words.
+  const label = SHORT_DAY.format(parseDateStr(dateStr));
+  if (SHORT_DAYS.size >= 2000) SHORT_DAYS.clear();
+  SHORT_DAYS.set(dateStr, label);
+  return label;
 }
+
+const SHORT_DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+const SHORT_DAYS = new Map<string, string>();
 
 /* ───────────────────────────────── the engine's categories, in words ───── */
 
