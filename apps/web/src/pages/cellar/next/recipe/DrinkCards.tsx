@@ -239,9 +239,11 @@ function ingredientsCard(data: CocktailRecipe): Card | null {
   if (!lines) return null;
   const stocked = lines.filter((l) => l.role === 'stocked');
   const unlinked = stocked.filter((l) => !l.inventoryId).length;
-  const notCounted = lines.length - stocked.length;
+  const made = lines.filter((l) => l.role === 'made').length;
+  const notCounted = lines.length - stocked.length - made;
   const parts = [`${stocked.length - unlinked} from your shelf`];
   if (unlinked > 0) parts.push(`${unlinked} not linked to it yet`);
+  if (made > 0) parts.push(`${made} made in the house`);
   if (notCounted > 0) parts.push(`${notCounted} not counted`);
   const serves = data.current?.yieldServes ?? 1;
   const unit = data.kind === 'dish' ? 'plate' : 'serve';

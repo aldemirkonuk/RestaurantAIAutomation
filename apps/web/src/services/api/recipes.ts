@@ -11,7 +11,7 @@
  */
 import { apiClient } from './client';
 
-export type RecipeLineRole = 'stocked' | 'untracked';
+export type RecipeLineRole = 'stocked' | 'untracked' | 'made';
 export type RecipeLineStatus = 'linked' | 'not_linked' | 'untracked';
 
 export interface RecipeLine {
@@ -19,6 +19,9 @@ export interface RecipeLine {
   position: number;
   role: RecipeLineRole;
   inventoryId: string | null;
+  /** A made line: the house-made component it draws, and its name (money roles only). */
+  componentId?: string | null;
+  componentName?: string | null;
   label: string;
   itemName: string | null;
   itemKind: string | null;
@@ -193,6 +196,8 @@ export interface PastRecipeVersion {
 export interface SaveRecipeLine {
   role: RecipeLineRole;
   inventoryId: string | null;
+  /** A made line carries the component it draws back on save; the gateway refuses one that names nothing. */
+  componentId?: string | null;
   label: string;
   qty: number;
   unit: string;
