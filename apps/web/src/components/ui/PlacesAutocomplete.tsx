@@ -47,6 +47,11 @@ export interface PlaceResult {
    */
   phone?: string | null;
   utcOffsetMinutes?: number | null;
+  /**
+   * The place's own website, asked on the same `withContact` call. It sits in
+   * the same Place Details tier as the phone, so asking it adds no SKU.
+   */
+  websiteUri?: string | null;
 }
 
 interface SuggestionRow {
@@ -285,7 +290,7 @@ export function PlacesAutocomplete({
       const place = row.prediction.toPlace();
       await place.fetchFields({
         fields: withContact
-          ? ['addressComponents', 'formattedAddress', 'location', 'internationalPhoneNumber', 'utcOffsetMinutes']
+          ? ['addressComponents', 'formattedAddress', 'location', 'internationalPhoneNumber', 'utcOffsetMinutes', 'websiteURI']
           : ['addressComponents', 'formattedAddress', 'location'],
       });
 
@@ -304,6 +309,7 @@ export function PlacesAutocomplete({
       if (withContact) {
         result.phone = place.internationalPhoneNumber ?? null;
         result.utcOffsetMinutes = typeof place.utcOffsetMinutes === 'number' ? place.utcOffsetMinutes : null;
+        result.websiteUri = place.websiteURI ?? null;
       }
       onPlaceSelect(result);
     } catch (err) {
