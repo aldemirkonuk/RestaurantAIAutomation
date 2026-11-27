@@ -36,6 +36,7 @@ import {
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { MenuReadNotes } from '../../../components/onboarding/MenuReadNotes';
 
 const EM = '—';
 
@@ -222,6 +223,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               : ''}
             It is not the current menu, and no price has changed.
           </p>
+          <MenuReadNotes notes={result.notes} className="cl-note" />
           {canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
