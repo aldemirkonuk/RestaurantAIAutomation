@@ -35,6 +35,7 @@ import { IntakeHealthSheet } from './IntakeHealthSheet';
 import { MailSetup } from './MailSetup';
 import { MailThread, type LetterFacts } from './MailThread';
 import {
+  NEW_TO_YOU,
   channelWords,
   emptyListWords,
   headerSentence,
@@ -95,6 +96,34 @@ function WaitingDot({ on }: { on: WaitingOn }) {
   );
 }
 
+/**
+ * "New" on a row whose newest vendor letter this person has not been shown
+ * (r36 mail gap 6). Drawn only for `true`: unknown (null) and an older
+ * gateway (absent) draw nothing, and the row's other facts still stand.
+ */
+function NewChip({ on }: { on: boolean | null | undefined }) {
+  if (on !== true) return null;
+  return (
+    <span
+      data-testid="new-to-you"
+      style={{
+        fontFamily: MONO,
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        padding: '1px 6px',
+        borderRadius: 4,
+        color: 'var(--paper-0, #FAF7F1)',
+        background: 'var(--seal, #1A5E6B)',
+        alignSelf: 'center',
+      }}
+    >
+      {NEW_TO_YOU}
+    </span>
+  );
+}
+
 function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen: () => void }) {
   const unsent = unsentWords(p.unsentStatus ?? null);
   return (
@@ -108,6 +137,7 @@ function PersonRow({ p, on, onOpen }: { p: MailPersonRow; on: WaitingOn; onOpen:
       >
         <span className="flex flex-wrap items-baseline gap-2">
           {p.waiting && <WaitingDot on={on} />}
+          <NewChip on={p.newToYou} />
           <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
             {p.name ?? 'A vendor with no name on file'}
           </span>
@@ -201,6 +231,7 @@ function PersonThreads({
                 >
                   <span className="flex flex-wrap items-baseline gap-2">
                     {t.waiting && <WaitingDot on={on} />}
+                    <NewChip on={t.newToYou} />
                     <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
                       {t.subject ?? 'No subject'}
                     </span>
