@@ -9,6 +9,20 @@ import { render, screen } from '@testing-library/react';
 import { DropZone } from './DropZone';
 
 const css = readFileSync(join(__dirname, 'drop-zone.css'), 'utf8');
+
+/** The body of every `@media (prefers-reduced-motion: reduce)` block, comments removed. */
+function reducedBlocks(source: string): string {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out: string[] = [];
+  const at = /@media \(prefers-reduced-motion: reduce\)\s*\{/g;
+  for (let m = at.exec(code); m; m = at.exec(code)) {
+    let depth = 1;
+    let i = at.lastIndex;
+    while (i < code.length && depth > 0) depth += code[i] === '{' ? 1 : code[i] === '}' ? -1 : 0, i++;
+    out.push(code.slice(at.lastIndex, i - 1));
+  }
+  return out.join('\n');
+}
 const pdf = new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' });
 const mount = (over: Partial<React.ComponentProps<typeof DropZone>>) =>
   render(<DropZone files={[pdf]} onFiles={() => {}} reading accept="application/pdf" inputLabel="Menu to read" {...over} />);
@@ -46,6 +60,10 @@ describe('DropZone — the read has stages (r102 menu-motion-2)', () => {
 });
 
 describe('DropZone — the height eases (r102 menu-motion-1)', () => {
+  it('under reduced motion the zone does not ease: .mdv-drop { transition: none } sits inside the reduce block', () => {
+    expect(reducedBlocks(css)).toMatch(/\.mdv-drop\s*\{\s*transition: none;?\s*\}/);
+  });
+
   it('min-height is in the transition list, 240 ms', () => {
     expect(css).toMatch(/\.mdv-drop\s*\{[^}]*min-height 240ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
   });
