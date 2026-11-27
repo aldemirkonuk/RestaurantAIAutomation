@@ -851,14 +851,16 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const hiddenWords = lg.hidden.length > 0 ? `, ${lg.hidden.map((k) => names[k]).join(' and ')} hidden` : '';
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
-  }${hasPrior ? `, ${priorName} dashed beside it` : ''}${hiddenWords}${readingOf(
+  }${hasPrior ? `, ${priorName} dashed beside it` : ''}${
+    thinned ? `, ${data.length} of ${all.length} drawn, the highest of each stretch; the table has every one` : ''
+  }${hiddenWords}${readingOf(
     all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
     format,
     unit,
   )}`;
-  const caption = `${titled(yLabel, unit)} · by ${xLabel}${
-    thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''
-  }`;
+  // One line on a 375 px card: a third line, landing after the read, grew the till card (r109 CLS 0.088).
+  // The longer sentence ("the table has every one") rides the drawing's label for a screen reader.
+  const caption = `${titled(yLabel, unit)} · by ${xLabel}${thinned ? ` · ${data.length} of ${all.length}, highest per stretch` : ''}`;
   const gutter = gutterFor(
     tickLabels(
       [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
