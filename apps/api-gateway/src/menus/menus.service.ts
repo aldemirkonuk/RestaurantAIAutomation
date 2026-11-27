@@ -19,6 +19,7 @@ import {
 } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { pagesToOneFile } from "./parsers/pages-to-pdf";
+import { fetchMenuLink, htmlToMenuText, MenuLinkRefused, type FetchedMenuLink } from "./menu-url-fetch";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -43,6 +44,16 @@ function versionName(method: string, menuDate: { date: string; precision: "day" 
   const how = method === "scan" ? "a photo or PDF" : method === "csv" ? "a spreadsheet" : "typed lines";
   const when = menuDate ? (menuDate.precision === "month" ? menuDate.date.slice(0, 7) : menuDate.date) : null;
   return when ? `Menu from ${how}, ${when}` : `Menu from ${how}`;
+}
+/** A web page's visible text, kept as the read's source (DD-r108-66). */
+const PAGE_TEXT_SOURCE = { mime: "text/plain", ext: "txt" };
+/** Below this many characters a page shows no menu a reader can see. */
+const MIN_PAGE_TEXT = 20;
+export const THIN_PAGE_REFUSAL = "That page shows no menu text a reader can see; try the PDF or a photo of the menu.";
+/** A link read (DD-r108-66): where the bytes came from, and the page's text when it was a web page. */
+interface LinkRead {
+  url: string;
+  text?: string;
 }
 /** The private bucket the gateway already keeps original bytes in (document intake). */
 const SOURCE_BUCKET = "vendor-attachments";
@@ -888,6 +899,38 @@ export class MenusService {
     };
   }
 
+  /** The fenced fetch (menu-url-fetch.ts); a seam so a test never touches the network. */
+  linkFetcher: (url: string) => Promise<FetchedMenuLink> = (url) => fetchMenuLink(url);
+
+  /**
+   * Read a menu from a web link (DD-r108-66). The caller has already checked
+   * the role and takes the house from the session. The gateway fetches the
+   * link through the SSRF fence (#2285); a refusal is a 422 in the fence's
+   * words. A PDF or a photo is read exactly as an upload of it; a web page is
+   * read as its visible text. Either way it is a scan read in the background
+   * (`reading: true`), kept as its own draft version that remembers the link
+   * it came from (`source_url`, after redirects).
+   */
+  async importMenuFromUrl(restaurantId: string, userId: string, url: string): Promise<MenuImportReply> {
+    let fetched: FetchedMenuLink;
+    try {
+      fetched = await this.linkFetcher(url);
+    } catch (err) {
+      if (err instanceof MenuLinkRefused) throw new UnprocessableEntityException(err.message);
+      throw err;
+    }
+    const dto = { method: "scan", restaurantId, data: {} } as ImportMenuDto;
+    // The column holds 2048 characters (as the route takes); a longer redirect keeps the link as pasted.
+    const keptUrl = fetched.finalUrl.length <= 2048 ? fetched.finalUrl : url;
+    if (fetched.kind !== "html") {
+      dto.data.imageBase64 = fetched.bytes.toString("base64");
+      return this.beginScan(dto, userId, null, { url: keptUrl });
+    }
+    const text = htmlToMenuText(fetched.bytes.toString("utf8"));
+    if (text.length < MIN_PAGE_TEXT) throw new UnprocessableEntityException(THIN_PAGE_REFUSAL);
+    return this.beginScan(dto, userId, null, { url: keptUrl, text });
+  }
+
   /** Background reads this process is running, by menu id (the sweep spares them). */
   private readonly reading = new Map<string, Promise<void>>();
 
@@ -915,19 +958,25 @@ export class MenusService {
     dto: ImportMenuDto,
     userId: string,
     menuDate: { date: string; precision: "day" | "month" } | null,
+    link: LinkRead | null = null,
   ): Promise<MenuImportReply> {
     const { restaurantId } = dto;
-    const pages = Array.isArray(dto.data?.images)
-      ? dto.data.images
-      : typeof dto.data?.imageBase64 === "string"
-        ? [dto.data.imageBase64]
-        : null;
+    const text = link?.text;
+    const pages =
+      text != null
+        ? [Buffer.from(text, "utf8").toString("base64")]
+        : Array.isArray(dto.data?.images)
+          ? dto.data.images
+          : typeof dto.data?.imageBase64 === "string"
+            ? [dto.data.imageBase64]
+            : null;
     if (!pages) {
       throw new BadRequestException(
         "A scan sends the photo or PDF it reads (data.imageBase64, or data.images for several pages). Nothing was kept.",
       );
     }
-    const file = await pagesToOneFile(pages);
+    // A page's text is its own source; never joined as photos into a PDF.
+    const file = text != null ? pages[0] : await pagesToOneFile(pages);
     const bytes = Buffer.from(file, "base64");
     const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
 
@@ -937,10 +986,11 @@ export class MenusService {
       if (earlier) return earlier;
     }
 
-    const kept = await this.keepSource(restaurantId, bytes, sniffMime(bytes));
+    const kept = await this.keepSource(restaurantId, bytes, text != null ? PAGE_TEXT_SOURCE : sniffMime(bytes));
+    const sourceUrl = link?.url ?? null;
     let menu: { id: string };
     try {
-      menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+      menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading", sourceUrl);
     } catch (err) {
       if (!(err instanceof SameFileReading)) throw err;
       // Another request with these bytes and labels began its read first:
@@ -952,7 +1002,7 @@ export class MenusService {
       // The read in the way is one nobody is reading any more: end it, then begin.
       await this.sweepStaleReads(restaurantId);
       try {
-        menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+        menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading", sourceUrl);
       } catch (again) {
         if (!(again instanceof SameFileReading)) throw again;
         throw new ConflictException(
@@ -961,7 +1011,7 @@ export class MenusService {
       }
     }
     // Detached; must never reject (an unhandled rejection ends the process).
-    const run = this.finishScan(menu.id, restaurantId, file, dto, userId, kept)
+    const run = this.finishScan(menu.id, restaurantId, file, dto, userId, kept, text)
       .catch((err) => this.logger.error(`Menu read ${menu.id} could not record how it ended: ${(err as Error)?.message ?? err}`))
       .finally(() => this.reading.delete(menu.id));
     this.reading.set(menu.id, run);
@@ -1122,10 +1172,14 @@ export class MenusService {
     dto: ImportMenuDto,
     userId: string,
     kept: { path: string | null; failure: string | null } | null,
+    pageText?: string,
   ): Promise<void> {
     const sb = this.dbService.supabase;
     try {
-      const { items, warnings } = await this.scanParser.parseWithWarnings(file, restaurantId);
+      const { items, warnings } =
+        pageText != null
+          ? await this.scanParser.parseTextWithWarnings(pageText, restaurantId)
+          : await this.scanParser.parseWithWarnings(file, restaurantId);
       if (items.length === 0) {
         await this.endRead(menuId, { read_state: "failed", read_failure: EMPTY_SCAN_FAILED, read_warnings: warnings });
         return;
@@ -1392,13 +1446,17 @@ export class MenusService {
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
     readState: MenuReadState = "done",
+    sourceUrl: string | null = null,
   ): Promise<{ id: string }> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
       .insert({
         read_state: readState,
         restaurant_id: restaurantId,
-        name: versionName(dto.method, menuDate),
+        name: sourceUrl ? `Menu from ${new URL(sourceUrl).hostname}` : versionName(dto.method, menuDate),
+        // Only a link read names the column, so a database a step behind the
+        // migration still takes every other read.
+        ...(sourceUrl ? { source_url: sourceUrl } : {}),
         menu_type: "beverage",
         status: "draft",
         cadence: dto.cadence ?? null,
