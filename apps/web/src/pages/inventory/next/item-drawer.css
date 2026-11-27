@@ -283,3 +283,12 @@ button.ivd-card:active {
     animation: none;
   }
 }
+
+/* Link an unlinked menu line (r109 g2): a 44 px target, the sentence above its acts. */
+.ivd-link-btn {
+  min-height: 44px;
+  margin-top: 6px;
+}
+.ivd-link-confirm {
+  margin-top: 6px;
+}

@@ -5,8 +5,11 @@
  * is: menu lines linked to the item, the house's cocktails that name it, and
  * menu lines that only carry its name. The last group is never counted in
  * usage. A group whose read failed says so; it is never drawn as empty (ADR
- * 0067). No menu page links a line to an item yet, so the unlinked group says
- * what it is and offers no "Link this".
+ * 0067). An owner or manager links an unlinked line from here (r109 g2,
+ * POST …/used-in/link): "Link to this good", then a sentence naming the line,
+ * its menu and what the link changes, then "Link it". The line then moves into
+ * "Sold as", and the groups hold their height for one frame so nothing under
+ * them jumps.
  *
  * An empty group is said as "None" under the server's own sentence for it,
  * which names the state (no current menu, not a catalogue drink); the drawer
@@ -27,6 +30,7 @@
  * read answers, or when it fails, the drink is the used-in read's one line,
  * and a failed read says its cards could not be read, with Read again.
  */
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import HeldReading from './HeldReading';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
@@ -283,6 +287,7 @@ function Group<T>({
   testid,
   hideWhenEmpty,
   unread,
+  act,
 }: {
   title: string;
   group: ItemUsedInGroup<T>;
@@ -293,6 +298,8 @@ function Group<T>({
   hideWhenEmpty?: boolean;
   /** Replaces the generic unread sentence with one that names the group. */
   unread?: string;
+  /** What a person may do with one line, drawn under it (the unlinked group's Link). */
+  act?: (l: T) => ReactNode;
 }) {
   if (!group.readable || group.lines === null) {
     return (
@@ -325,11 +332,62 @@ function Group<T>({
             <li key={v.key}>
               {v.to ? <LineLink to={v.to}>{v.text}</LineLink> : <span>{v.text}</span>}
               {v.side ? <span className="ivd-dim">{v.side}</span> : null}
+              {act ? act(l) : null}
             </li>
           );
         })}
       </ul>
     </section>
+  );
+}
+
+/**
+ * Link one unlinked line (r109 g2): the button, then the sentence that says
+ * what linking changes, then the act. A refusal (another name, already linked
+ * by another good, no longer current) is said under it and links nothing.
+ */
+function LinkLine({ line, good, onLink }: { line: ItemMenuLine; good: string; onLink: (menuItemId: string) => Promise<void> }) {
+  const [phase, setPhase] = useState<'idle' | 'confirm' | 'busy'>('idle');
+  const [refused, setRefused] = useState<string | null>(null);
+  if (phase === 'idle') {
+    return (
+      <button type="button" className="iv-btn iv-focus ivd-link-btn" onClick={() => setPhase('confirm')}>
+        Link to this good
+      </button>
+    );
+  }
+  const menu = line.menuName ? `the menu “${line.menuName}”` : 'the current menu';
+  return (
+    <div className="ivd-link-confirm" role="group" aria-label={`Link ${line.name} to ${good}`}>
+      <p className="iv-said" data-testid="ivd-link-sentence">
+        Link “{line.name}” on {menu} to {good}? It then counts as {good} on the current menu, and a later price or name
+        correction on that line sets {good}’s menu price or name. A menu made current later does not carry this link.
+      </p>
+      {refused ? (
+        <p className="iv-note" role="alert">
+          {refused}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        className="iv-btn iv-focus ivd-link-btn"
+        data-seal="true"
+        disabled={phase === 'busy'}
+        onClick={() => {
+          setPhase('busy');
+          setRefused(null);
+          onLink(line.menuItemId).catch((e: unknown) => {
+            setRefused(e instanceof Error && e.message ? e.message : 'The line could not be linked. Nothing was linked.');
+            setPhase('confirm');
+          });
+        }}
+      >
+        {phase === 'busy' ? 'Linking…' : 'Link it'}
+      </button>{' '}
+      <button type="button" className="iv-btn iv-focus ivd-link-btn" disabled={phase === 'busy'} onClick={() => setPhase('idle')}>
+        Not now
+      </button>
+    </div>
   );
 }
 
@@ -368,6 +426,7 @@ export default function ItemUsedIn({
   onRetry,
   onRetryDishes,
   onRetryDrinks,
+  onLink,
 }: {
   load: UsedInLoad;
   dishes: DishesLoad;
@@ -378,7 +437,36 @@ export default function ItemUsedIn({
   onRetry: () => void;
   onRetryDishes: () => void;
   onRetryDrinks?: () => void;
+  /** Link an unlinked line to this good (owner/manager); resolves once the fresh Used in is in place, rejects with words. */
+  onLink?: (menuItemId: string) => Promise<void>;
 }) {
+  // A link moves a line from the unlinked group into Sold as. The groups hold
+  // the height they had for the one frame the move is drawn in, so the dish
+  // recipes under them are not pulled up under the reader, then let go (#2284).
+  const holdRef = useRef<HTMLDivElement | null>(null);
+  const data = load.status === 'ready' ? load.data : null;
+  useEffect(() => {
+    const el = holdRef.current;
+    if (!el || el.style.minHeight === '') return;
+    const f = window.requestAnimationFrame(() => {
+      el.style.minHeight = '';
+    });
+    return () => window.cancelAnimationFrame(f);
+  }, [data]);
+  const link =
+    canManage && onLink
+      ? async (menuItemId: string) => {
+          const el = holdRef.current;
+          if (el) el.style.minHeight = `${el.offsetHeight}px`;
+          try {
+            await onLink(menuItemId);
+          } catch (e) {
+            if (el) el.style.minHeight = '';
+            throw e;
+          }
+        }
+      : null;
+
   // Menu prices are money: owners and managers only, as on every card above.
   const menu = (l: ItemMenuLine) => ({
     key: l.menuItemId,
@@ -479,6 +567,7 @@ export default function ItemUsedIn({
           note="These lines carry this item’s name but no link to it, so they are not counted in usage."
           line={menu}
           hideWhenEmpty
+          act={link ? (l) => <LinkLine line={l} good={load.data.item.displayName ?? 'this good'} onLink={link} /> : undefined}
         />
       </>
     );
@@ -489,7 +578,9 @@ export default function ItemUsedIn({
       <h3 id="ivd-used-title" className="iv-sec">
         Used in
       </h3>
-      {body}
+      <div ref={holdRef} data-testid="ivd-used-hold">
+        {body}
+      </div>
       <section className="ivd-used-g" data-testid="ivd-used-recipes">
         <h4 className="ivd-used-h">In dish recipes</h4>
         {dishes.status === 'reading' ? (
