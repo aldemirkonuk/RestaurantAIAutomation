@@ -14,29 +14,35 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: '
 import HouseContents from '../HouseContents'
 import { HOURS_UNSAVED_KEY, writeHoursUnsaved } from '../../lib/houseHoursNote'
 
-const page = () => render(<MemoryRouter><HouseContents /></MemoryRouter>)
+// The page holds its rows until the setup read lands (#2354), so a test starts
+// from the settled page: wait for the closing link, which shows with the rows.
+const page = async () => {
+  const view = render(<MemoryRouter><HouseContents /></MemoryRouter>)
+  await screen.findAllByRole('link', { name: 'Go to the desk' })
+  return view
+}
 
 beforeEach(() => sessionStorage.clear())
 
 describe('HouseContents: hours not saved', () => {
-  it('says so, with a Settings link to the hours tab', () => {
+  it('says so, with a Settings link to the hours tab', async () => {
     writeHoursUnsaved('h1')
-    page()
+    await page()
     expect(screen.getByTestId('house-hours-unsaved')).toHaveTextContent('Your opening hours from Google were not saved.')
     expect(screen.getByRole('link', { name: 'Set them in Settings' })).toHaveAttribute('href', '/settings?tab=hours')
   })
 
-  it('says nothing for another house in the same tab', () => {
+  it('says nothing for another house in the same tab', async () => {
     writeHoursUnsaved('h2')
-    page()
+    await page()
     expect(screen.queryByTestId('house-hours-unsaved')).not.toBeInTheDocument()
   })
 
-  it('says nothing when no note was left, or the note does not parse', () => {
-    page()
+  it('says nothing when no note was left, or the note does not parse', async () => {
+    await page()
     expect(screen.queryByTestId('house-hours-unsaved')).not.toBeInTheDocument()
     sessionStorage.setItem(HOURS_UNSAVED_KEY, '{not json')
-    page()
+    await page()
     expect(screen.queryByTestId('house-hours-unsaved')).not.toBeInTheDocument()
   })
 })
