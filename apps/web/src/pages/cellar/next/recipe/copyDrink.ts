@@ -72,6 +72,8 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
         unit: l.unitCode,
       };
       if (l.role === 'made') line.componentId = l.componentId as string;
+      // A usable share is part of what the line costs; dropping it would copy the line at 100% and cost less (ADR 0051).
+      if (l.role === 'stocked' && l.usablePct != null) line.usablePct = l.usablePct;
       return line;
     }),
   };
