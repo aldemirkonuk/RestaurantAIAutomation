@@ -602,14 +602,19 @@ export class MailService {
     const rows = (threadsRes.data ?? []) as any[];
     const page = rows.slice(0, limit);
     const last = page[page.length - 1];
-    const seen = await this.seenByThread(
-      houseId,
-      opts.userId,
-      providerId,
-      page
-        .filter((t) => direction(t.last_direction) === "inbound")
-        .map((t) => String(t.thread_key)),
-    );
+    // The seen marks are kept per vendor (mail_thread_seen.provider_id); a team
+    // or guest person has none, so their threads say nothing new rather than
+    // asking the table for provider_id = undefined.
+    const seen = other
+      ? { known: false, through: new Map<string, string>() }
+      : await this.seenByThread(
+          houseId,
+          opts.userId,
+          providerId!,
+          page
+            .filter((t) => direction(t.last_direction) === "inbound")
+            .map((t) => String(t.thread_key)),
+        );
     return {
       person: other
         ? otherPersonRef(
