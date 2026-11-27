@@ -51,7 +51,7 @@ describe("DocumentsController.exportVerified (r106 g5)", () => {
   const ctrl = () =>
     new DocumentsController(
       {} as any, { getClient: () => chain } as any, {} as any, {} as any, {} as any,
-      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+      {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
     );
   beforeEach(() => { calls.length = 0; result = { data: [], error: null }; });
 

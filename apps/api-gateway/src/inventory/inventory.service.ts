@@ -578,7 +578,7 @@ export class InventoryService {
         ? this.fetchSettledMoves(restaurantId)
         : { map: new Map<string, SettledMove>(), ok: true, capped: false },
     ]);
-    return (data || []).map((row) => {
+    return (data || []).map((row): Record<string, any> => {
       const mapped = this.mapInventoryItem(
         opts.lean ? this.withoutUnreadColumns(row) : row,
         rollup.data.get(row.id),

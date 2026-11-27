@@ -266,29 +266,6 @@ const TableRow = memo(function TableRow(p: TableRowProps) {
                     )}
                   </td>
  ) : null}
-{!hidden.has('Used in') ? (
-                  <td data-label="Used in" className="iv-r iv-num" data-testid={`inv-usedin-${row.id}`}>
-                    {row.usedIn === null ? (
-                      <span className="iv-dim" title="Which recipes use this could not be read">unread</span>
-                    ) : row.usedIn === undefined ? (
-                      EM
-                    ) : row.usedIn > 0 && fns.current.onUsedIn ? (
-                      <button
-                        type="button"
-                        className="iv-linkish iv-focus"
-                        aria-label={`Used in ${row.usedIn} ${row.usedIn === 1 ? 'recipe' : 'recipes'}: open where it is used`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fns.current.onUsedIn?.(row.id);
-                        }}
-                      >
-                        {row.usedIn}
-                      </button>
-                    ) : (
-                      row.usedIn
-                    )}
-                  </td>
- ) : null}
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>
                     <span className="iv-dot" aria-hidden />
                     {statusWord(row)}

@@ -18,7 +18,6 @@ describe("a sale priced by an agreed lot WAC keeps that basis", () => {
       cost_unit_at_sale: 20,
       cost_source_lot_id: "lot-1",
       cost_source_order_id: null,
-      cost_unit_at_sale: 20,
     });
   });
 

@@ -109,7 +109,7 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
   });
 
   it("also drops beverage_id and identity_provenance, which no reader touches", async () => {
-    const out: any[] = await make().getRestaurantInventory("r1", { lean: true });
+    const out: any[] = await make().getRestaurantInventory("r1", undefined, { lean: true });
     for (const c of ["beverage_id", "identity_provenance"]) {
       expect(InventoryService.LIST_UNREAD_COLUMNS).toContain(c);
       expect(out[0]).not.toHaveProperty(c);
@@ -181,7 +181,7 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
     });
 
     it("drops the four dead keys and null-valued audited keys, keeps filled ones", async () => {
-      const out: any[] = await makeWith(populated).getRestaurantInventory("r1", {
+      const out: any[] = await makeWith(populated).getRestaurantInventory("r1", undefined, {
         lean: true,
       });
       for (const r of out) {
@@ -213,7 +213,7 @@ describe("InventoryService.getRestaurantInventory lean list", () => {
     });
 
     it("changes no derived figure and shrinks the reply on a populated fixture", async () => {
-      const lean: any[] = await makeWith(populated).getRestaurantInventory("r1", {
+      const lean: any[] = await makeWith(populated).getRestaurantInventory("r1", undefined, {
         lean: true,
       });
       const full: any[] = await makeWith(populated).getRestaurantInventory("r1");

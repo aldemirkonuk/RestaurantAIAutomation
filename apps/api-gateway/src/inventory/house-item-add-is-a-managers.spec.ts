@@ -12,7 +12,7 @@ function controller(role: string | null) {
   const organizations = new OrganizationsService({} as never);
   jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
   const carry = jest.fn(async () => ({ id: "inv-9" }));
-  const c = new ItemDetailController({} as any, {} as any, { carry } as any, organizations);
+  const c = new ItemDetailController({} as any, {} as any, { carry } as any, organizations, {} as any);
   return { c, carry };
 }
 
