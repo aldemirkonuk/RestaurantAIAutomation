@@ -96,7 +96,7 @@ export function VerifyEmail() {
   const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user, loading, logout, signInWithSession } = useAuth()
+  const { user, loading, logout, signInWithSession, refreshUser } = useAuth()
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
@@ -150,6 +150,24 @@ export function VerifyEmail() {
   // without the password, the sign-in page's emailed code proves the address
   // and (ADR 0229 fork 6) removes a password they never set.
   const mustSignIn = Boolean(token) && ((!loading && !user) || refusal === 'sign-in')
+  // A session is stored but its first /auth/me read failed (a 429 right after
+  // sign-up): read it again, a few times and slower each time, so the code box,
+  // Resend and the poll below come back instead of "Sign in to resend".
+  useEffect(() => {
+    if (token || loading || user || !localStorage.getItem('accessToken')) return
+    let cancelled = false
+    let timer: number | undefined
+    const waits = [1000, 3000, 8000, 20000]
+    const attempt = async (i: number) => {
+      if (cancelled || (await refreshUser()) || i >= waits.length) return
+      timer = window.setTimeout(() => void attempt(i + 1), waits[i])
+    }
+    timer = window.setTimeout(() => void attempt(0), waits[0])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [token, loading, user, refreshUser])
   const alreadyVerified = Boolean(token) && user?.emailVerified === true && !verified
 
   /**

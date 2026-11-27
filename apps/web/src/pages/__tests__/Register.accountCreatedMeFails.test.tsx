@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 /**
@@ -46,6 +46,7 @@ vi.mock('framer-motion', async () => {
 
 import { AuthProvider } from '../../contexts/AuthContext'
 import { Register } from '../Register'
+import { VerifyEmail } from '../VerifyEmail'
 
 const tooMany = Object.assign(new Error('Request failed with status code 429'), {
   isAxiosError: true,
@@ -78,7 +79,7 @@ describe('Register: account created, /auth/me fails', () => {
   })
   afterEach(cleanup)
 
-  it('moves on to /verify-email, says nothing is registered twice, and probes no more', async () => {
+  it('moves on to /verify-email, says nothing is registered twice, and probes once, at the press', async () => {
     render(
       <MemoryRouter initialEntries={['/register?type=new']}>
         <AuthProvider>
@@ -96,8 +97,9 @@ describe('Register: account created, /auth/me fails', () => {
     change('Email *', 'deniz@house.test')
     change('Password *', 'long-enough-1')
     change('Confirm Password *', 'long-enough-1')
-    await screen.findByText('Email is available', undefined, { timeout: 4000 })
-    const probesBefore = calls(h.instance.get, '/auth/check-email')
+    // Pressed inside the 400 ms debounce: the press probes at once, and the
+    // typing's own timer is still pending when the page is left.
+    expect(calls(h.instance.get, '/auth/check-email')).toBe(0)
 
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
 
@@ -105,6 +107,35 @@ describe('Register: account created, /auth/me fails', () => {
     expect(calls(h.instance.post, '/auth/register/account')).toBe(1)
     expect(calls(h.instance.get, '/auth/me')).toBe(1)
     expect(screen.queryByText(/already registered/i)).toBeNull()
-    await waitFor(() => expect(calls(h.instance.get, '/auth/check-email')).toBe(probesBefore))
+    // Past the debounce, a count taken once: a late timer would add a second probe.
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    expect(calls(h.instance.get, '/auth/check-email')).toBe(1)
+  })
+
+  // r105 review: with /auth/me failing once, nothing read it again, so
+  // /verify-email showed "Sign in to resend" with a valid session in storage.
+  it('/verify-email reads /auth/me again, and the Resend button comes back', async () => {
+    localStorage.setItem('accessToken', jwt({ sub: 'u1', restaurantId: null }))
+    localStorage.setItem('refreshToken', 'r')
+    let meCalls = 0
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url === '/api/v1/auth/me') {
+        meCalls += 1
+        if (meCalls === 1) throw tooMany
+        return { data: { user: { userId: 'u1', email: 'deniz@house.test', name: 'Deniz', role: 'owner', emailVerified: false, restaurantId: null } } }
+      }
+      return { data: [] }
+    })
+    render(
+      <MemoryRouter initialEntries={['/verify-email']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/verify-email" element={<VerifyEmail />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('button', { name: /resend verification email/i }, { timeout: 4000 })).toBeInTheDocument()
+    expect(meCalls).toBe(2)
   })
 })
