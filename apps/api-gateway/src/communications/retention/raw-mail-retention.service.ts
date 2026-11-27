@@ -653,7 +653,7 @@ export class RawMailRetentionService {
   }): Promise<SweepRun> {
     const { data: rows, error: rowsError } = await this.db.supabase
       .from("procurement_conversations")
-      .select("id, restaurant_id, message_id")
+      .select("id, restaurant_id, message_id, kind")
       .eq("mirrored_by_grant_id", params.connectionId)
       .is("raw_deleted_at", null);
     if (rowsError) {
@@ -694,10 +694,15 @@ export class RawMailRetentionService {
     // A second live wide grant does not save a reply to a letter this grant read.
     let repliesError: string | null = null;
     let repliesKept = 0;
-    if (params.integrationId === "gmail_read_all" && restaurantId && found.length > 0) {
+    // Only a TEAM or GUEST letter is a key. A vendor letter the wide grant also
+    // read keeps its thread: the house's reply to it is a vendor-kind row that
+    // revoking the wide reading never touched (DD-r108-5: a vendor-filed row is
+    // never deleted here), and joining `ids` would restamp or tombstone it.
+    const keyLetters = found.filter((r) => r.kind === "team" || r.kind === "guest");
+    if (params.integrationId === "gmail_read_all" && restaurantId && keyLetters.length > 0) {
       const own = await this.repliesToLettersRead(
         restaurantId,
-        found.map((r) => ({ id: String(r.id), messageId: (r.message_id as string | null) ?? null })),
+        keyLetters.map((r) => ({ id: String(r.id), messageId: (r.message_id as string | null) ?? null })),
       );
       repliesError = own.error;
       repliesKept = own.kept;
