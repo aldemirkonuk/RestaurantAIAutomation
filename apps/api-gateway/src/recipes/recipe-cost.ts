@@ -267,8 +267,9 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
       if (perBase == null || !Number.isFinite(perBase)) return unknown;
       // A rate per millilitre is not a rate per milligram: when the component's
       // yield changed kind after this line was saved (an old version), the line
-      // is not priced, never read at the wrong unit.
-      if (line.made?.baseUnit !== undefined && line.made.baseUnit !== line.baseUnit) return unknown;
+      // is not priced, never read at the wrong unit. It says so as unit_mismatch, the
+      // word #2113 gives the same refusal, so either PR reads one label for one cause.
+      if (line.made?.baseUnit !== undefined && line.made.baseUnit !== line.baseUnit) return { ...unknown, costBasis: "unit_mismatch" };
       const cost = (Number(line.qtyBase) * perBase) / serves;
       if (!Number.isFinite(cost)) return unknown;
       exact[exact.length - 1] = cost;
