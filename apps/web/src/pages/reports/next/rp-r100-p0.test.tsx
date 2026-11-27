@@ -78,13 +78,20 @@ const FLAT = '/reports?flat=till';
 const css = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 
 describe('M1: bars and a line are offered only when the till can draw them', () => {
-  it('[REVERT-FAILS] a gateway that sends no checks per day does not offer bars and a line, while arranging', () => {
-    render(sheet(reg(TILL_OLD), 30, 'bars', true));
+  // At 7 days there is no 7-day average to draw either (r109 g2), so a gateway
+  // with no counts has nothing to put beside the takings.
+  it('[REVERT-FAILS] a gateway that sends no checks per day does not offer bars and a line at 7 days, while arranging', () => {
+    render(sheet(reg(TILL_OLD), 7, 'bars', true));
     expect(optionsOf(screen.getByRole('combobox', { name: 'Draw Through the till as' }))).not.toContain('combo');
   });
 
+  it('[REVERT-FAILS] at 30 days it offers bars and a line of the takings and their 7-day average (r109 g2)', () => {
+    render(sheet(reg(TILL_OLD), 30, 'bars', true));
+    expect(optionsOf(screen.getByRole('combobox', { name: 'Draw Through the till as' }))).toContain('combo');
+  });
+
   it('[REVERT-FAILS] nor in full screen, and nothing there tells the reader to arrange the sheet', () => {
-    render(sheet(reg(TILL_OLD), 30, 'combo', false, FLAT));
+    render(sheet(reg(TILL_OLD), 7, 'combo', false, FLAT));
     const dialog = screen.getByRole('dialog');
     const pick = within(dialog).getByRole('combobox', { name: 'Draw Through the till as' });
     expect(optionsOf(pick)).not.toContain('combo');

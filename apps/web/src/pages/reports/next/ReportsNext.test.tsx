@@ -591,8 +591,10 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
       'Area',
       'Line',
       'Bars',
-      // No "Bars and a line": this fixture's days carry no count of checks, so
-      // the till cannot draw it and does not offer it (r100 M1).
+      // This fixture's days carry no count of checks, so there are no Checks
+      // or Average check to draw (r100 M1); at 30 days the 7-day average of a
+      // trading day needs only the takings, so bars and a line are offered (r109 g2).
+      'Bars and a line',
       'Heat map',
       'Table',
       'One figure',
