@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { MapPin, PenLine } from 'lucide-react'
 import { AuthSpread } from '../components/brand/AuthSpread'
-import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
+import { PlacesAutocomplete, warmPlaces, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
@@ -245,6 +245,12 @@ export default function GetStarted() {
   // A pick made for an earlier place or country is not this one's.
   const pickStands = zone.source === 'pick' && zone.choices.includes(pickedZone)
   const timezone = zone.source === 'pick' ? (pickStands ? pickedZone : undefined) : zone.zone
+
+  // Warm the Maps library once the person is on the restaurant step, so its
+  // first suggestion does not wait on the script (r105 onboarding g3).
+  useEffect(() => {
+    if (step === 'restaurant') warmPlaces()
+  }, [step])
 
   const changeCountry = (next: string) => {
     setCountry(next)
