@@ -23,10 +23,20 @@ export const RESTATED_BASIS = "invoice_restated";
 export interface SaleCostSource {
   unitCost: number;
   basis: SaleCostBasis;
-  /** The oldest live costed lot: the one a pour draws from first. */
+  /**
+   * The lot FIFO draws from first, named only when that lot carries a cost.
+   * FIFO draws every live lot, costed or not, so when the oldest live lot has
+   * no cost the line is drawn from it and names nothing (r102 F2).
+   */
   lotId: string | null;
   /** The order (invoice) that lot arrived on, when it names one. */
   orderId: string | null;
+  /**
+   * Bottles still in the named lot for the lines of THIS check not yet costed.
+   * `snapshotLineCost` takes from it line by line, so it belongs to one check:
+   * `loadSaleCosts` builds a fresh source per check.
+   */
+  lotQtyLeft: number;
 }
 
 /** The four columns a consumption row keeps for its cost. */
@@ -74,28 +84,26 @@ export function pickSaleCostSource(
   if (unitCost === null || costBasis === "unknown") return null;
   let lotId: string | null = null;
   let orderId: string | null = null;
+  let lotQtyLeft = 0;
   {
-    // The oldest live costed lot is named whatever the basis: a line costed at
-    // the last price paid still came off a delivery, and the invoice that
-    // verifies that delivery restates the line (r102).
+    // The lot FIFO draws first, whatever the basis: a line costed at the last
+    // price paid still came off a delivery, and the invoice that verifies that
+    // delivery restates the line (r102). FIFO draws every live lot, costed or
+    // not, so the first one is picked over all of them and named only when it
+    // carries a cost: a line drawn from an uncosted lot names no delivery.
     const live = (lots ?? [])
-      .filter(
-        (l) =>
-          (l.stock_state ?? "live") === "live" &&
-          Number(l.qty) > 0 &&
-          l.unit_cost != null &&
-          l.cost_provenance !== "sample",
-      )
+      .filter((l) => (l.stock_state ?? "live") === "live" && Number(l.qty) > 0)
       .sort((a, b) =>
         String(a.received_at ?? "").localeCompare(String(b.received_at ?? "")),
       );
     const first = live[0];
-    if (first) {
+    if (first && first.unit_cost != null && first.cost_provenance !== "sample") {
       lotId = first.id ? String(first.id) : null;
       orderId = first.source_order_id ? String(first.source_order_id) : null;
+      lotQtyLeft = Number(first.qty);
     }
   }
-  return { unitCost, basis: costBasis, lotId, orderId };
+  return { unitCost, basis: costBasis, lotId, orderId, lotQtyLeft };
 }
 
 /**
@@ -120,12 +128,29 @@ export function snapshotLineCost(
         : null
       : glassCostFrom(source.unitCost, volumeMl, bottleMl);
   if (cost === null || !Number.isFinite(cost)) return NO_COST_SNAPSHOT;
+  // A line names its delivery only when every bottle it drew came from that
+  // lot: the whole line fits in what the lot has left for this check. A line
+  // that does not fit was split across lots by FIFO, so it names none, and the
+  // lot is spent for the lines after it (r102 F2).
+  const bottles =
+    mode === "whole_bottle"
+      ? qty
+      : bottleMl && bottleMl > 0
+        ? volumeMl / bottleMl
+        : NaN;
+  let named = false;
+  if (source.lotId && Number.isFinite(bottles) && bottles <= source.lotQtyLeft) {
+    source.lotQtyLeft -= bottles;
+    named = true;
+  } else {
+    source.lotQtyLeft = 0;
+  }
   return {
     cost_at_sale: round4(cost),
     cost_basis: source.basis,
     cost_unit_at_sale: source.unitCost,
-    cost_source_lot_id: source.lotId,
-    cost_source_order_id: source.orderId,
+    cost_source_lot_id: named ? source.lotId : null,
+    cost_source_order_id: named ? source.orderId : null,
   };
 }
 
@@ -140,6 +165,8 @@ export interface ConsumptionCostRow {
   total_revenue?: number | string | null;
   cost_at_sale?: number | string | null;
   cost_basis?: string | null;
+  /** Null when no single delivery is named for the line (r102 F2). */
+  cost_source_order_id?: string | null;
   notes?: string | null;
 }
 
@@ -191,6 +218,7 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
   let cost = 0;
   let linesWithoutCost = 0;
   let restatedLines = 0;
+  let unnamedLines = 0;
   for (const r of rows) {
     if (Number(r.quantity) === 0 && Number(r.volume_ml) === 0) {
       voidedLines++;
@@ -209,6 +237,9 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
       costNote = "price not kept";
     } else if (restated) {
       costNote = "cost restated to the invoice";
+    } else if (r.cost_source_order_id === null) {
+      unnamedLines++;
+      costNote = "no single delivery named, so a later invoice will not restate it";
     }
     if (costKept && rev !== null) {
       revenue += rev;
@@ -237,10 +268,14 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
       : unknown === 0
         ? "Every line's cost was kept when it sold."
         : `Cost or price was not kept for ${unknown} of ${lines.length} line${lines.length === 1 ? "" : "s"}; the margin covers only the other ${counted}.`;
-  const sentence =
+  const restatedSentence =
     restatedLines > 0
       ? `${base} ${restatedLines} line${restatedLines === 1 ? "" : "s"} ${restatedLines === 1 ? "was" : "were"} restated to the invoice cost once the invoice was checked.`
       : base;
+  const sentence =
+    unnamedLines > 0
+      ? `${restatedSentence} ${unnamedLines} line${unnamedLines === 1 ? " has" : "s have"} no single delivery named, so a later invoice will not restate ${unnamedLines === 1 ? "it" : "them"}.`
+      : restatedSentence;
   return {
     lines,
     voidedLines,
