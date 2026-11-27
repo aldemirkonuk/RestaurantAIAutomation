@@ -6,10 +6,13 @@
  * Allergens come first (inventory proposal S3, the legal floor), then the
  * figures per serve, then pure alcohol from each line's stated strength.
  *
- * Allergens: a line that states nothing is named, so the card never reads as
- * allergen-free because nothing was recorded (the round-20 rule).
+ * Allergens: the rule the list, the card and the spec book say (allergenRule).
+ * A line that states nothing is named; "free" only when all 14 are stated free;
+ * nothing recorded says not known; a failed read says so. Never free or blank
+ * by default (the round-20 rule, r110 drinks-3, DD-r109-36).
  */
 import type { CocktailRecipe, ServeFigure, ServeFigureKey } from '../../../../services/api/recipes';
+import { ALLERGENS_UNREAD, allergenVerdict } from './allergenRule';
 
 const ROWS: Array<[ServeFigureKey, string, string]> = [
   ['energyKcal', 'Energy', 'kcal'],
@@ -67,25 +70,27 @@ function alcoholWords(f: ServeFigure): string {
 }
 
 function Allergens({ w }: { w: Extract<NonNullable<CocktailRecipe['whatIsIn']>, { readable: true }> }) {
-  const stated = Object.entries(w.allergens).filter(([, s]) => s === 'contains' || s === 'may_contain');
-  const unstatedBy = w.allergensUnstatedBy ?? [];
+  const v = allergenVerdict({ readable: true, status: w.allergens, unstatedBy: w.allergensUnstatedBy });
+  if (v.kind === 'free')
+    return <p className="cl-note" data-testid="recipe-whatisin-allergens-free">Every ingredient states it is free of the 14 allergens.</p>;
+  if (v.kind !== 'stated')
+    return (
+      <p className="cl-note cl-rcp-note-warn" data-testid="recipe-whatisin-allergens-unknown">
+        Allergens not known: nothing is recorded.
+      </p>
+    );
   return (
     <>
-      {stated.length > 0 ? (
+      {v.stated.length > 0 ? (
         <p className="cl-note" data-testid="recipe-whatisin-allergens">
-          {stated
-            .map(([a, s]) => `${s === 'contains' ? 'Contains' : 'May contain'} ${a.replace('_', ' ')}`)
-            .join('. ')}
-          .
+          {v.stated.map(([a, s]) => `${s === 'contains' ? 'Contains' : 'May contain'} ${a.replace('_', ' ')}`).join('. ')}.
         </p>
       ) : null}
-      {unstatedBy.length > 0 ? (
+      {v.unstatedBy.length > 0 ? (
         <p className="cl-note cl-rcp-note-warn" data-testid="recipe-whatisin-allergens-unstated">
-          No allergen can be ruled out: {names(unstatedBy)} {unstatedBy.length === 1 ? 'does' : 'do'} not say what{' '}
-          {unstatedBy.length === 1 ? 'it contains' : 'they contain'}.
+          No allergen can be ruled out: {names(v.unstatedBy)} {v.unstatedBy.length === 1 ? 'does' : 'do'} not say what{' '}
+          {v.unstatedBy.length === 1 ? 'it contains' : 'they contain'}.
         </p>
-      ) : w.allergensUnstatedBy && stated.length === 0 ? (
-        <p className="cl-note" data-testid="recipe-whatisin-allergens-free">Every ingredient states it is free of the 14 allergens.</p>
       ) : null}
     </>
   );
@@ -107,7 +112,9 @@ export default function WhatIsInAServe({ data, unsaved, id }: { data: CocktailRe
   if (w === undefined || w === null || !w.readable) {
     return (
       <p className={id ? 'cl-note cl-rcp-target' : 'cl-note'} role="status" data-testid="recipe-whatisin-unread" id={id} tabIndex={id ? -1 : undefined}>
-        {w && !w.readable ? w.sentence : `${title} was not read here, so nothing about it is shown as known.`}
+        {/* Allergens first even here: a failed read is never free and never blank (DD-r109-36). */}
+        <span data-testid="recipe-whatisin-allergens-unread">{ALLERGENS_UNREAD}</span>{' '}
+        {w && !w.readable && w.sentence ? w.sentence : `${title} was not read here, so nothing about it is shown as known.`}
       </p>
     );
   }
