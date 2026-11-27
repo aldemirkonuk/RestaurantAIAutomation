@@ -350,3 +350,28 @@ describe("the per-good views are paged by a total order (DD-r103-17)", () => {
     expect(orderLog.inventory_analytics[0]).toEqual(["inventory_id"]);
   });
 });
+
+describe("a good with two rollup groups reads as one (r104 finding)", () => {
+  // The research-link trigger sets master_wine_id on a house item after its
+  // first lots were booked: old lots keep NULL, new lots carry the new id, so
+  // inventory_lot_rollup holds two rows for the one good.
+  const rollup = [
+    { inventory_id: "g1", master_wine_id: null, live_qty: 6, shadow_qty: 0, wac: 10, wac_qty: 6, has_invoice_cost: false, live_location_count: 1, open_ml: 0 },
+    { inventory_id: "g1", master_wine_id: "mw-1", live_qty: 4, shadow_qty: 1, wac: 15, wac_qty: 4, has_invoice_cost: true, live_location_count: 1, open_ml: 0 },
+  ];
+
+  it("sums the bottles and weights the WAC by what it averages", async () => {
+    const { client } = fakePostgrest({
+      restaurant_inventory: [{ id: "g1", restaurant_id: "r1", master_wine_id: "mw-1", is_active: true }],
+      inventory_lot_rollup: rollup,
+      inventory_location_breakdown: [],
+      inventory_analytics: [],
+    });
+    const db = new DatabaseService({} as any);
+    db.supabase = client as any;
+    const [g] = await new InventoryService(db).getRestaurantInventory("r1");
+    expect(g.lotLiveQty).toBe(10);
+    expect(g.wac).toBe(12);
+    expect(g.costProvenance).toBe("invoice");
+  });
+});

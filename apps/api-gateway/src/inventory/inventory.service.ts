@@ -50,6 +50,52 @@ function roundOz(ml: number): number {
 // a different pour answer alike, so the reply never says which.
 const POUR_KEY_ALREADY_USED =
   "This request's key was already used, so nothing new was poured. Read the item again before pouring.";
+/**
+ * One rollup row per good. A good whose lots carry two master-wine ids (the
+ * research link set one after the first lots were booked) has two rows in
+ * `inventory_lot_rollup`; quantities add, the WAC is weighted by the bottles it
+ * averages (`wac_qty`), and a good is invoiced if any group is.
+ */
+export function foldRollupByGood(
+  rows: Array<Record<string, any>>,
+): Map<string, Record<string, any>> {
+  const groups = new Map<string, Array<Record<string, any>>>();
+  for (const r of rows) {
+    const g = groups.get(r.inventory_id);
+    if (g) g.push(r);
+    else groups.set(r.inventory_id, [r]);
+  }
+  const out = new Map<string, Record<string, any>>();
+  for (const [id, g] of groups) {
+    if (g.length === 1) {
+      out.set(id, g[0]);
+      continue;
+    }
+    const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    const sum = (k: string) => g.reduce((t, r) => t + num(r[k]), 0);
+    let costed = 0;
+    let weighted = 0;
+    for (const r of g) {
+      if (r.wac == null) continue;
+      const q = r.wac_qty != null ? num(r.wac_qty) : num(r.live_qty);
+      costed += q;
+      weighted += q * num(r.wac);
+    }
+    out.set(id, {
+      ...g[0],
+      live_qty: sum("live_qty"),
+      shadow_qty: sum("shadow_qty"),
+      open_ml: sum("open_ml"),
+      wac_qty: sum("wac_qty"),
+      wac: costed > 0 ? Math.round((weighted / costed) * 100) / 100 : null,
+      has_invoice_cost: g.some((r) => r.has_invoice_cost === true),
+      // Groups can share a place; the largest count is the honest floor.
+      live_location_count: Math.max(...g.map((r) => num(r.live_location_count))),
+    });
+  }
+  return out;
+}
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -227,13 +273,16 @@ export class InventoryService {
           client
             .from("inventory_lot_rollup")
             .select(
-              "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
+              "inventory_id, live_qty, shadow_qty, wac, wac_qty, has_invoice_cost, live_location_count, open_ml",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId),
         ["inventory_id", "master_wine_id"],
       );
-      for (const r of data) map.set(r.inventory_id, r);
+      // The view has one row per (good, master wine): a good linked to the
+      // library after it already held lots has two. Fold them to one row per
+      // good, or the last one read stands for all of them.
+      for (const [id, r] of foldRollupByGood(data)) map.set(id, r);
       return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
