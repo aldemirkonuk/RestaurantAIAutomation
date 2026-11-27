@@ -34,7 +34,7 @@ import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-for
 import { IntakeHealthSheet } from './IntakeHealthSheet';
 import { FadeAway, MailMotionStyles, enterDelay, useArriveFocus, useEnteringKeys, useViewPlace } from './mail-motion';
 import type { LetterFacts } from './MailThread';
-import { CODE_HOLD_PANEL_PX, CodeHold, loaders, warmMailSetup, warmMailThread } from './mail-code';
+import { CODE_HOLD_PANEL_PX, CodeHold, loaders, warmMailSetup, warmMailThread, whoSlotPx } from './mail-code';
 
 // The letters are read only once a thread is opened, so their code is fetched then;
 // the tab says it is opening them while it arrives.
@@ -1280,7 +1280,13 @@ export function MailTab({
             onStoredKinds={setStoredKinds}
           />
           </div>
-          {whoOn ? whoIsWriting : null}
+          {whoIsWriting && (
+            // r109 mail-6: the strip's place is kept from the first frame on a wide page, so it
+            // arriving (and its code's hold) moves nothing below the Mail column. No motion.
+            <div data-testid="who-is-writing-slot" style={{ minHeight: whoSlotPx() }}>
+              {whoOn ? whoIsWriting : null}
+            </div>
+          )}
         </>
       )}
       </div>
