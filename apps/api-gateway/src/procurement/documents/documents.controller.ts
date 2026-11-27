@@ -1386,7 +1386,9 @@ export class DocumentsController {
     let query = this.db
       .getClient()
       .from("procurement_documents")
-      .select("*")
+      // `procurement_document_lines(count)`: how many lines each paper has, on
+      // this same read, so the page can hold room for them before they arrive.
+      .select("*, procurement_document_lines(count)")
       .eq("restaurant_id", user.restaurantId)
       .order("created_at", { ascending: false })
       .limit(n + 1);
@@ -1456,14 +1458,24 @@ export class DocumentsController {
       this.tieOutsAsRuledNow((data ?? []) as Record<string, unknown>[]),
       this.vendorNamesFor((data ?? []) as Record<string, unknown>[]),
     ]);
-    const items = (data ?? []).map((row) => ({
-      ...(row as Record<string, unknown>),
-      ...(verdicts.get((row as { id: string }).id) ?? {}),
-      vendorName: vendorNames.get((row as { id: string }).id) ?? null,
-      moneyState: documentMoneyState(
-        row as { currency?: string | null; extracted?: unknown },
-      ),
-    }));
+    const items = (data ?? []).map((raw) => {
+      // The embed is read into `line_count` and not passed on as itself. A
+      // count that did not come back is null: unknown, not zero lines.
+      const { procurement_document_lines: counted, ...row } = raw as Record<string, unknown> & {
+        procurement_document_lines?: Array<{ count?: number | string | null }> | null;
+      };
+      const rawCount = counted?.[0]?.count;
+      const lineCount = rawCount == null ? NaN : Number(rawCount);
+      return {
+        ...(row as Record<string, unknown>),
+        line_count: Number.isFinite(lineCount) && lineCount >= 0 ? lineCount : null,
+        ...(verdicts.get((row as { id: string }).id) ?? {}),
+        vendorName: vendorNames.get((row as { id: string }).id) ?? null,
+        moneyState: documentMoneyState(
+          row as { currency?: string | null; extracted?: unknown },
+        ),
+      };
+    });
 
     if (!orderId) return { items, hasMore, nextBefore };
 

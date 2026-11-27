@@ -938,6 +938,50 @@ function CardPart({ label, first = false, children }: { label: string; first?: b
   );
 }
 
+/**
+ * ROOM FOR THE LINES BEFORE THEY ARRIVE (r109 g6). The card used to be one
+ * sentence tall and grew to its lines when they came, pushing the seal and the
+ * money down under the reader (CLS 0.095 / 0.114 at 375, r108 walk finding 2).
+ * The list read now carries `line_count`, so the card holds min(count, 8)
+ * static rows in the paper tone until the real table replaces them in the same
+ * geometry. No sheen, no pulse, no fade, in any mode (ADR 0112): the rows are
+ * simply there. A count of 0 or null (unknown) holds one row. The words stay
+ * for a screen reader, and the container says it is busy.
+ *
+ * The row heights are measured, not guessed: the real table's rows at 1440 and
+ * at 375 (where a row is the phone grid block), read in a real browser by
+ * e2e/receipts-lines-reserve.spec.ts, which also fails if they drift.
+ */
+// Measured: 1440 wide -> 21.5 px header + 36.25 px a row; 375 -> 118.25 px a row, no header.
+export const LINES_WAIT_ROW_PX = { wide: 36.25, phone: 118.25 } as const;
+export const LINES_WAIT_HEAD_PX = 21.5;
+export const LINES_WAIT_MAX_ROWS = 8;
+
+export function LinesWait({ count }: { count: number | null | undefined }) {
+  const rows = count && count > 0 ? Math.min(count, LINES_WAIT_MAX_ROWS) : 1;
+  return (
+    <div className="rc-lines-wait" aria-busy="true">
+      <p
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          margin: -1,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Reading the lines…
+      </p>
+      <div className="rc-lines-wait-head" aria-hidden="true" />
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="rc-lines-wait-row" data-testid="lines-wait-row" aria-hidden="true" />
+      ))}
+    </div>
+  );
+}
+
 function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (viaKeyboard: boolean) => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
@@ -1447,7 +1491,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
               </button>
             </div>
           ) : lines === undefined ? (
-            <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)' }}>Reading the lines…</p>
+            <LinesWait count={doc.line_count} />
           ) : lines.length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
               No lines were extracted from this document.
@@ -1890,10 +1934,16 @@ export default function ReceiptsNext() {
         .rc-skip:not(:focus) { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap }
         .rc-row:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: -2px }
         @media (prefers-reduced-motion: reduce) { .rc-row, [style*="rc-settle"] { animation: none !important; transition: none !important } }
+        /* r109 g6: the lines' room, static in every mode (see LinesWait). */
+        .rc-lines-wait { position: relative }
+        .rc-lines-wait-head { height: ${LINES_WAIT_HEAD_PX}px }
+        .rc-lines-wait-row { height: ${LINES_WAIT_ROW_PX.wide}px; background: var(--paper-2, #EAE4D8); box-shadow: inset 0 1px 0 var(--paper-0, #FAF7F1) }
         /* W35: on a phone each line of THE LINES is a short block: the name, then
            Qty, Unit and Total side by side under their own words, then the order
            line, so the total is never past the edge. Screen only. */
         @media screen and (max-width: 639px) {
+          .rc-lines-wait-head { display: none }
+          .rc-lines-wait-row { height: ${LINES_WAIT_ROW_PX.phone}px }
           .rc-lines, .rc-lines tbody { display: block; width: 100% }
           .rc-lines thead { display: none }
           .rc-lines tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px; padding: 8px 0 }

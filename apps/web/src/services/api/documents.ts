@@ -71,6 +71,12 @@ export interface ProcurementDocument {
   imageUrl?: string | null
   provider_id?: string | null
   order_id?: string | null
+  /**
+   * How many lines the paper has, from the list read. Null when the count did
+   * not come back (unknown, not zero). Lets the page hold room for the lines
+   * before they arrive.
+   */
+  line_count?: number | null
   filename?: string | null
 }
 
