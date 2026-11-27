@@ -56,6 +56,7 @@ import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
 import { compareOffered, tillAnswersCompare } from './rp-registers-trade';
+import { GRAIN_PARAM, grainOf, type Grain } from './rp-grain';
 import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange, projectCuttings } from './rp-arrange';
@@ -179,6 +180,23 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           const next = new URLSearchParams(prev);
           if (on) next.set(COMPARE_PARAM, COMPARE_PRIOR);
           else next.delete(COMPARE_PARAM);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+  // Day, week or month bars for the till (`?grain=week`, r109 g3): in the
+  // link like the window, page state, never written to the sheet. A grain the
+  // window does not offer reads as Day; Day leaves the link clean.
+  const tillGrain = grainOf(params.get(GRAIN_PARAM), tillDays);
+  const setTillGrain = useCallback(
+    (g: Grain) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (g === 'day') next.delete(GRAIN_PARAM);
+          else next.set(GRAIN_PARAM, g);
           return next;
         },
         { replace: true },
@@ -674,6 +692,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       >,
     [onGraph, onSwap, onRemove, onComboPick],
   );
+  // The grain is the till card's alone: the sparklines and strips keep their days.
+  // Built on windowCtx, so a goals or currency change does not redraw the till (perf-p4-5).
+  const tillCtx = useMemo(() => ({ ...windowCtx, grain: tillGrain }), [windowCtx, tillGrain]);
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =
     data.currency?.state === 'unstated'
@@ -743,7 +764,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onControls={onControls}
         graph={c.graph}
         register={data.registers[c.id]}
-        ctx={ctxFor(c.id)}
+        ctx={c.id === 'till' ? tillCtx : ctxFor(c.id)}
         arranging={editing}
         swapOptions={swapOptions}
         arrange={arrange}
@@ -755,6 +776,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onDays={setTillDays}
         onCompare={data.salesKept ? undefined : setTillCompare}
         onWarmDays={data.warmTillWindow}
+        onGrain={setTillGrain}
       />
     ),
     };

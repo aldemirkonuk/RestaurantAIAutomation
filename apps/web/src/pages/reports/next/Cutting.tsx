@@ -58,6 +58,7 @@ import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';
 import { compareOffered } from './rp-registers-trade';
+import { grainOf, grainsOffered, type Grain } from './rp-grain';
 import { cannotDraw, drawnRegister, type LastRead } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
@@ -125,6 +126,8 @@ export function TillWindowPicker({
   compare = false,
   onCompare,
   onWarm,
+  grain,
+  onGrain,
 }: {
   days: number;
   onChange: (d: number) => void;
@@ -132,6 +135,9 @@ export function TillWindowPicker({
   onCompare?: (on: boolean) => void;
   /** Called when a chip is hovered, focused or touched, before any click. */
   onWarm?: (d: number) => void;
+  /** Day, week or month bars (r109 g3); the pill shows only where the window offers more than days. */
+  grain?: Grain;
+  onGrain?: (g: Grain) => void;
 }) {
   // A year is the window an owner reads a season against (audit G19); the
   // gateway already allows 1–365 house days (`analytics.controller.ts`).
@@ -164,6 +170,7 @@ export function TillWindowPicker({
         </button>
       ))}
     </div>
+    {onGrain && <TillGrainPicker days={days} grain={grain} onGrain={onGrain} />}
     {onCompare && !compareOffered(days) && (
       <span className="rp-note rp-no-drag" role="note">
         A year has no year before it to read against, so no compare is offered at {days} days.
@@ -180,6 +187,41 @@ export function TillWindowPicker({
       </button>
     )}
     </>
+  );
+}
+
+const GRAIN_WORDS: Record<Grain, string> = { day: 'Day', week: 'Week', month: 'Month' };
+
+/**
+ * Day / Week / Month for the till (r109 g3): the same one-thumb pill as the
+ * window (the thumb settles in 260 ms, and not at all under reduced motion,
+ * `reports-next.css`). Week from 30 days, Month from 90; no pill at 7, where
+ * every day is drawn anyway.
+ */
+export function TillGrainPicker({ days, grain, onGrain }: { days: number; grain?: Grain; onGrain: (g: Grain) => void }) {
+  const options = grainsOffered(days);
+  if (options.length === 0) return null;
+  const held = grainOf(grain, days);
+  return (
+    <div
+      role="group"
+      aria-label="Till bars by"
+      className="rp-seg rp-no-drag"
+      style={{ ['--rp-n' as string]: options.length, ['--rp-i' as string]: Math.max(options.indexOf(held), 0) }}
+    >
+      <span className="rp-seg__thumb" aria-hidden />
+      {options.map((g) => (
+        <button
+          key={g}
+          type="button"
+          className="rp-seg__btn rp-ink rp-focus rp-no-drag"
+          aria-pressed={held === g}
+          onClick={() => onGrain(g)}
+        >
+          {GRAIN_WORDS[g]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -348,6 +390,8 @@ export interface CuttingProps {
   flatOnly?: boolean;
   /** Lays the till beside the same-length window just before it; absent where the page does not offer it. */
   onCompare?: (on: boolean) => void;
+  /** Day, week or month bars for the till (`ctx.grain`); absent where the page does not offer it. */
+  onGrain?: (g: Grain) => void;
   /** Reports the height this card's content needs (`rp-fit.ts`), so the sheet can draw its slot to fit. */
   onFit?: (id: AnalysisId, px: number | null) => void;
   /** While arranging, the height of the controls row, so the sheet adds it to the card (r101). */
@@ -387,6 +431,7 @@ function CuttingBody({
   onDays,
   flatOnly = false,
   onCompare,
+  onGrain,
   strip = false,
   onFit,
   onControls,
@@ -487,6 +532,8 @@ function CuttingBody({
   // A till kept from this reader's role has nothing to lay beside a prior.
   const compareHeld = spec.takesWindow && readsRegister(spec) && answer !== undefined && !!spec.view(answer, shownCtx).withheld;
   const compareOn = compareHeld ? undefined : compareFor;
+  // A withheld till draws nothing, so it offers no grain either.
+  const grainOn = compareHeld ? undefined : onGrain;
   const body = bodyFor(drawn);
 
   const held = arrange.picked === id;
@@ -555,7 +602,15 @@ function CuttingBody({
       renderBody={(g, combo) => bodyFor(g, true, combo)}
       windowControl={
         spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} onWarm={onWarmDays} />
+          <TillWindowPicker
+            days={ctx.days}
+            onChange={onDays}
+            compare={ctx.compare}
+            onCompare={compareOn}
+            onWarm={onWarmDays}
+            grain={ctx.grain}
+            onGrain={grainOn}
+          />
         ) : undefined
       }
       anchorRef={openerRef}
@@ -603,7 +658,15 @@ function CuttingBody({
         ) : spec.takesWindow || canLayFlat ? (
           <div className="rp-row" style={{ gap: 6 }}>
             {spec.takesWindow && (
-              <TillWindowPicker days={ctx.days} onChange={onDays} compare={ctx.compare} onCompare={compareOn} onWarm={onWarmDays} />
+              <TillWindowPicker
+                days={ctx.days}
+                onChange={onDays}
+                compare={ctx.compare}
+                onCompare={compareOn}
+                onWarm={onWarmDays}
+                grain={ctx.grain}
+                onGrain={grainOn}
+              />
             )}
             {canLayFlat && (
               <button
