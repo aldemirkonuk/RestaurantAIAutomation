@@ -2,8 +2,8 @@
  * The spec book (r108 drinks-g7): one print of every drink's recipe card, safe to hand to staff. The cards come
  * from ONE read (GET drinks/cards), the same for every role and with no money at all: a book is handed round, so
  * the owner's cost, price and margin are not in it either (the single card's "Include cost" is not offered).
- * A cover (house name, the day in the house's own date form, the count), then the drinks by section and then name,
- * one card per page. Drawn in a portal and shown only on paper while `html[data-print-book]` is set
+ * The title block (house name, the day in the house's own date form, the count) sits on the FIRST drink's page, so
+ * no sheet is spent on a cover; the drinks go by section and then name, one card per page. Drawn in a portal and shown only on paper while `html[data-print-book]` is set
  * (cellar-next.css); a failed read says so and prints nothing, never a shorter book (ADR 0020). No animation.
  */
 import { useEffect, useState } from 'react';
@@ -92,16 +92,19 @@ export default function RecipeBook() {
       {book
         ? createPortal(
             <div className="cl-print-book" data-testid="recipe-book" aria-hidden="true">
-              <section className="cl-book-page" data-testid="book-cover">
-                <h1>{houseName ? `${houseName}: spec book` : 'Spec book'}</h1>
-                <p>
-                  {today ? `${today} · ` : ''}
-                  {book.length} {book.length === 1 ? 'drink' : 'drinks'}
-                </p>
-              </section>
-              {bookOrder(book).flatMap((s) =>
-                s.cards.map((c) => (
+              {bookOrder(book)
+                .flatMap((s) => s.cards.map((c) => ({ s, c })))
+                .map(({ s, c }, n) => (
                   <section key={c.cocktailId} className="cl-book-page" data-testid="book-card" data-section={s.section}>
+                    {n === 0 ? (
+                      <header data-testid="book-title">
+                        <h1>{houseName ? `${houseName}: spec book` : 'Spec book'}</h1>
+                        <p>
+                          {today ? `${today} · ` : ''}
+                          {book.length} {book.length === 1 ? 'drink' : 'drinks'}
+                        </p>
+                      </header>
+                    ) : null}
                     <p>{s.section}</p>
                     <h2>{c.name}</h2>
                     <p>
@@ -120,8 +123,7 @@ export default function RecipeBook() {
                     {c.garnish ? <p>Garnish: {c.garnish}</p> : null}
                     <p>{allergenWords(c.allergens)}</p>
                   </section>
-                )),
-              )}
+                ))}
             </div>,
             document.body,
           )

@@ -1176,7 +1176,7 @@ textarea.cl-field {
 }
 
 /* The spec book (r108 drinks-g7): every drink's card in one print, hidden on screen; drawn alone on paper while
-   the button has set html[data-print-book]. A cover, then one card per page. No animation, no transition. */
+   the button has set html[data-print-book]. One card per page; the title block rides on the first. No animation, no transition. */
 .cl-print-book { display: none; }
 @media print {
   html[data-print-book] body > *:not(.cl-print-book) { display: none !important; }
