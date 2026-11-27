@@ -668,6 +668,30 @@ export async function makeMenuCurrent(menuId: string, fingerprint: string): Prom
   return response.data
 }
 
+/** What `POST /menu-versions/:menuId/reprice` answers (r108 menu-g9). */
+export interface RepriceResult {
+  /** The NEW draft: the current menu is not touched. */
+  menuId: string
+  name: string
+  changed: number
+  unchanged: number
+  /** Lines whose price the menu holds in another money, copied as they are. */
+  heldOtherMoney: number
+}
+
+/**
+ * Move the current menu's prices by a percent into a new draft (r108 menu-g9).
+ * Owner or manager; the house's prices move only when that draft is made
+ * current through its plan. `sections` omitted moves every section.
+ */
+export async function repriceMenu(
+  menuId: string,
+  body: { percent: number; roundTo: number; sections?: string[] },
+): Promise<RepriceResult> {
+  const response = await apiClient.post<RepriceResult>(`/menu-versions/${menuId}/reprice`, body)
+  return response.data
+}
+
 /**
  * Take a failed read off the kept list (r105 menu-6). Owner or manager; the
  * gateway retires the read (the file is kept), refuses anyone else (403) and
