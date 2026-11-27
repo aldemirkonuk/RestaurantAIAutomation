@@ -453,8 +453,8 @@ describe('chips', () => {
   it('Price signals lists the goods whose last settled delivery moved past the house default, and only those (r104 g3)', () => {
     mock.data = data({
       rows: [
-        row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true }),
-        row({ id: 'flat', lastSettledCost: 10.5, previousSettledCost: 10, settledCostsReadable: true }),
+        row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: 'net' }),
+        row({ id: 'flat', lastSettledCost: 10.5, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: 'net' }),
         row({ id: 'one', lastSettledCost: null, previousSettledCost: null, settledCostsReadable: true }),
       ],
     });
@@ -463,10 +463,37 @@ describe('chips', () => {
     const price = within(chips).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
     expect(price.disabled).toBe(false);
     expect(price.title).toMatch(/more than 10 percent/);
+    expect(price.title).toMatch(/Compared here: both before tax\./);
     fireEvent.click(price);
     expect(screen.getByTestId('inv-row-up')).toBeTruthy();
     expect(screen.queryByTestId('inv-row-flat')).toBeNull();
     expect(screen.queryByTestId('inv-row-one')).toBeNull();
+  });
+
+  it('Price signals compares two costs only when both carry the same tax basis (r108/r109 inventory-1)', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'gross', lastSettledCost: 13, previousSettledCost: 11.8, settledCostsReadable: true, settledCostTaxBasis: 'gross_cost' }),
+        row({ id: 'mixed', lastSettledCost: 11.8, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: null }),
+      ],
+    });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
+    expect(price.title).toMatch(/Compared here: both with tax\./);
+    fireEvent.click(price);
+    expect(screen.getByTestId('inv-row-gross')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-mixed')).toBeNull();
+  });
+
+  it('two settled costs with no common tax basis say "basis not stated", never a move', () => {
+    mock.data = data({
+      rows: [row({ id: 'mixed', lastSettledCost: 11.8, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: null })],
+    });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /Price signals/ }) as HTMLButtonElement;
+    expect(price.disabled).toBe(true);
+    expect(price.textContent).toContain('—');
+    expect(price.title).toMatch(/^Basis not stated/);
   });
 
   it('Price signals says it could not be read, never zero, when the settled prices did not answer', () => {

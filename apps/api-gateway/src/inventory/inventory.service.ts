@@ -266,6 +266,9 @@ export class InventoryService {
       // Cost figures: they travel with `wac` and leave with it.
       lastSettledCost: settled?.last ?? undefined,
       previousSettledCost: settled?.previous ?? undefined,
+      // r108 inventory-1: whether both settled costs hold tax the same way
+      // (net | gross_cost). Absent = mixed or not stated: not compared.
+      settledCostTaxBasis: settled?.basis ?? undefined,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
       locations: locationsFailed ? undefined : (locations ?? []),
       ...(reads?.rollup !== undefined ? { rollupReadable: reads.rollup } : {}),
@@ -291,7 +294,7 @@ export class InventoryService {
       for (let page = 0; page < SETTLED_READ_PAGES; page += 1) {
         const { data, error } = await client
           .from("inventory_lot_revaluations")
-          .select("inventory_id, source_order_id, new_unit_cost, new_cost_provenance, created_at")
+          .select("inventory_id, source_order_id, new_unit_cost, new_cost_provenance, created_at, cost_tax_basis")
           .eq("restaurant_id", restaurantId)
           .in("new_cost_provenance", [...SETTLED_PRICES])
           .order("created_at", { ascending: false })

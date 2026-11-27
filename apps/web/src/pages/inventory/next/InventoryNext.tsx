@@ -66,7 +66,9 @@ import {
   CHIPS,
   PRICE_SIGNAL_WORDS,
   UNUSED_WORDS,
+  TAX_BASIS_WORDS,
   priceSignalsHaveBasis,
+  priceBasisUnstated,
   priceSignalsReadable,
   chipMatch,
   EM,
@@ -296,6 +298,14 @@ export default function InventoryNext() {
       : priceSignalsHaveBasis(rows ?? [])
         ? 'ready'
         : 'nothing';
+  // r108 inventory-1: the chip names the tax basis its moves are on.
+  const priceTitle = useMemo(() => {
+    const now = Date.now();
+    const on = [...new Set((rows ?? []).filter((r) => chipMatch(r, 'price', now)).map((r) => r.settledCostTaxBasis))]
+      .filter((b): b is 'net' | 'gross_cost' => b === 'net' || b === 'gross_cost')
+      .map((b) => TAX_BASIS_WORDS[b]);
+    return on.length ? `${PRICE_SIGNAL_WORDS}. Compared here: ${on.join('; ')}.` : PRICE_SIGNAL_WORDS;
+  }, [rows]);
   // DD-r108-36: which goods have their nutrition recorded, read whole by the
   // gateway. Ids only, so every reader of the list sees it. Pending or failed
   // is never "every good is missing": the chip is held, and says why.
@@ -727,7 +737,9 @@ export default function InventoryNext() {
             title={
               priceRead === 'unread'
                 ? 'What each delivery finally cost could not be read, so no price move can be named'
-                : 'No good has two settled deliveries yet, so no price has moved to compare'
+                : (rows ?? []).some(priceBasisUnstated)
+                  ? 'Basis not stated: goods with two settled deliveries are there, but their costs are not known to hold tax the same way, so no move is named'
+                  : 'No good has two settled deliveries yet, so no price has moved to compare'
             }
           >
             {c.label} <span className="iv-num">{EM}</span>
@@ -739,7 +751,7 @@ export default function InventoryNext() {
             className="iv-chip iv-focus"
             aria-pressed={activeChip === c.id}
             data-on={activeChip === c.id}
-            title={c.id === 'price' ? PRICE_SIGNAL_WORDS : c.id === 'unused' ? UNUSED_WORDS : undefined}
+            title={c.id === 'price' ? priceTitle : c.id === 'unused' ? UNUSED_WORDS : undefined}
             onClick={() => setV({ chip: c.id })}
           >
             {c.label} <span className="iv-num">{chipCount(c.id)}</span>

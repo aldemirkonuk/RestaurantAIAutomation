@@ -15,6 +15,46 @@ const rv = (inv: string, order: string | null, cost: number | null, at: string, 
   created_at: at,
 });
 
+const rb = (order: string, cost: number, at: string, basis: string | null): SettledRow => ({
+  ...rv("g1", order, cost, at),
+  cost_tax_basis: basis,
+});
+
+describe("settledMovesFrom: the tax basis two costs hold (r108 inventory-1)", () => {
+  it("two papers stating the same basis compare, and the move names it", () => {
+    const m = settledMovesFrom([rb("o1", 10, "2026-01-01T00:00:00Z", "net"), rb("o2", 11.8, "2026-02-01T00:00:00Z", "net")]);
+    expect(m.get("g1")).toEqual({ last: 11.8, previous: 10, basis: "net" });
+    const g = settledMovesFrom([rb("o1", 11.8, "2026-01-01T00:00:00Z", "gross_cost"), rb("o2", 13, "2026-02-01T00:00:00Z", "gross_cost")]);
+    expect(g.get("g1")?.basis).toBe("gross_cost");
+  });
+
+  it("a mixed pair names no basis: a net 10 and a gross 11.8 are the same price, not a move", () => {
+    const m = settledMovesFrom([rb("o1", 10, "2026-01-01T00:00:00Z", "net"), rb("o2", 11.8, "2026-02-01T00:00:00Z", "gross_cost")]);
+    expect(m.get("g1")?.basis).toBeUndefined();
+  });
+
+  it("an unstated basis on either side names none, and an unknown word is not a basis", () => {
+    for (const pair of [
+      ["net", null],
+      [null, null],
+      [null, "net"],
+      ["included", "included"],
+    ] as const) {
+      const m = settledMovesFrom([rb("o1", 10, "2026-01-01T00:00:00Z", pair[0]), rb("o2", 11, "2026-02-01T00:00:00Z", pair[1])]);
+      expect(m.get("g1")?.basis).toBeUndefined();
+    }
+  });
+
+  it("a delivery's basis is its newest settled row's", () => {
+    const m = settledMovesFrom([
+      rb("o1", 10, "2026-01-01T00:00:00Z", "net"),
+      rb("o2", 11, "2026-02-01T00:00:00Z", null),
+      rb("o2", 11.5, "2026-02-02T00:00:00Z", "net"),
+    ]);
+    expect(m.get("g1")).toEqual({ last: 11.5, previous: 10, basis: "net" });
+  });
+});
+
 describe("settledMovesFrom", () => {
   it("two settled deliveries give the newest and the one before", () => {
     const m = settledMovesFrom([rv("g1", "o1", 10, "2026-01-01T00:00:00Z"), rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z")]);
