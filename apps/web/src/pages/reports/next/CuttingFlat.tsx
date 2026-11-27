@@ -73,6 +73,10 @@ function wantsLandscapeLock(): boolean {
   }
 }
 
+/** `ScreenOrientation.lock` is not in the DOM lib the build types against. */
+const orientationOf = () =>
+  window.screen.orientation as unknown as { lock?: (o: string) => Promise<void>; unlock?: () => void };
+
 const TABBABLE =
   'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),' +
   'select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -194,7 +198,7 @@ export default function CuttingFlat({
       if (lockedRef.current) {
         lockedRef.current = false;
         try {
-          screen.orientation.unlock();
+          orientationOf().unlock?.();
         } catch {
           /* nothing was held */
         }
@@ -213,7 +217,7 @@ export default function CuttingFlat({
       .then(() => {
         if (!wantsLandscapeLock()) return;
         try {
-          void Promise.resolve(screen.orientation.lock('landscape'))
+          void Promise.resolve(orientationOf().lock?.('landscape'))
             .then(() => {
               lockedRef.current = true;
             })
