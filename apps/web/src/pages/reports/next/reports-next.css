@@ -235,6 +235,7 @@
    with its unit spelled out. A number with no unit is a number the reader has
    to guess at. */
 .rp-tip {
+  animation: rp-tip-in 120ms ease-out both;
   display: grid;
   gap: 1px;
   /* Bounded by the tooltip wrapper (rp-plot.tsx TIP_WRAPPER): a long name
@@ -243,10 +244,53 @@
   overflow-wrap: anywhere;
   white-space: normal;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--paper-2);
   background: var(--paper-0);
-  box-shadow: 0 10px 24px -18px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 14px 28px -18px rgba(33, 28, 22, 0.35);
+}
+/* On charcoal the warm ink shadow is lighter than the card it falls on and
+   cannot be seen; a black one at the same offset can. */
+html[data-mudavym-ground='charcoal'] .rp-tip {
+  box-shadow: 0 14px 28px -18px rgba(0, 0, 0, 0.6);
+}
+@keyframes rp-tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── a plot arrives (N-15) ─────────────────────────────────────────────────
+   Bars rise from the baseline over 480 ms on the settle curve, 40 ms apart,
+   ONCE, when 40% of the plot is in view (rp-draw.ts sets data-draw). Only
+   transform and opacity move. 'still' (reduced motion, or no way to tell what
+   is in view) draws them where they are with no animation at all. */
+@keyframes rp-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes rp-value-in {
+  from {
+    opacity: 0;
+  }
+}
+.rp-plot .recharts-bar-rectangle > path {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.rp-plot[data-draw='pending'] .recharts-bar-rectangle > path {
+  transform: scaleY(0);
+}
+.rp-plot[data-draw='pending'] .rp-bar-value {
+  opacity: 0;
+}
+.rp-plot[data-draw='drawn'] .recharts-bar-rectangle > path {
+  animation: rp-grow 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--rp-i, 0) * 40ms);
+}
+.rp-plot[data-draw='drawn'] .rp-bar-value {
+  animation: rp-value-in 160ms ease-out 360ms both;
 }
 .rp-tip__head {
   font-family: var(--rp-mono);
@@ -453,6 +497,13 @@
   }
   .rp-skel::after {
     animation: none !important;
+  }
+  .rp-tip,
+  .rp-plot .recharts-bar-rectangle > path,
+  .rp-plot .rp-bar-value {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
   }
 }
 
