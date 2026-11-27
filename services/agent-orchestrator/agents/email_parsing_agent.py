@@ -36,6 +36,94 @@ except ImportError:
     logger.warning("google-generativeai not installed — LLM summarization disabled")
 
 
+# ── Sender attribution (QA round 22, N-1, 2026-11-07) ──────────────────
+#
+# The same rule as the gateway's ``apps/api-gateway/src/communications/
+# inbound-headers.ts parseSender``: a message is attributed by the addr-spec
+# of exactly one From mailbox, and a From that is not shaped like exactly one
+# mailbox is attributed to NOBODY. This used to take the first ``<...>`` in
+# the header, so ``"Sales <sales@bigdist.com>" <attacker@evil.example>`` was
+# filed against the vendor's provider and orders.
+#
+# WHAT THIS TRUSTS: the syntax of the From header and nothing else. SPF, DKIM,
+# DMARC and ARC are not consulted, so a plain ``From: sales@bigdist.com``
+# sent from any server is read as sales@bigdist.com. The gap is recorded in
+# ``.planning/tech-debt.d/2026-11-07-fix-mail-sender-fail-closed.md``.
+
+# RFC 5322 folding: CRLF (or a bare LF) followed by white space.
+_FOLD = re.compile(r"\r?\n(?=[ \t])")
+# Any C0 control except TAB, and DEL — left after unfolding, it is injection.
+_CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
+_ADDR_SPEC = re.compile(r'^[^\s@<>()",;]+@[^\s@<>()",;]+$')
+
+
+def _scan(value: str) -> Tuple[str, bool]:
+    """The header with each quoted string reduced to ``"`` and each comment to
+    a space, and whether it is
+    simple enough to believe: every quote and comment closed and no comment
+    nested in another (the gateway's parser does not nest them, so a nested
+    comment is a shape the two services could read differently)."""
+    out: List[str] = []
+    quoted = False
+    depth = 0
+    nested = False
+    i = 0
+    while i < len(value):
+        ch = value[i]
+        if ch == "\\" and (quoted or depth > 0):
+            i += 2
+            continue
+        if quoted:
+            if ch == '"':
+                quoted = False
+        elif ch == "(":
+            if depth == 0:
+                out.append(" ")  # a comment reads as one space
+            depth += 1
+            nested = nested or depth > 1
+        elif ch == ")" and depth > 0:
+            depth -= 1
+        elif depth == 0:
+            if ch == '"':
+                quoted = True
+            out.append(ch)  # a quoted string leaves one '"' behind
+        i += 1
+    return "".join(out), (not quoted and depth == 0 and not nested)
+
+
+def sender_address(from_header: Optional[str]) -> Optional[str]:
+    """The addr-spec of the single mailbox a From header names, lower-cased,
+    or None — attribute to nobody.
+
+    None when, after unfolding, a control character remains (CR/LF or NUL
+    injection); a quote or comment is unclosed or a comment nested; the syntax outside quotes and
+    comments holds ``:`` ``;`` or ``,`` (group syntax, a source route, an
+    injected header name, a list); there is more than one ``<`` or ``>``; an
+    ``@`` precedes the ``<`` (an address used as a display name); anything
+    follows the ``>`` (an angle then a bare address); a bare form holds white
+    space; or what is left is not one addr-spec (a quoted local part is not).
+    """
+    value = _FOLD.sub("", str(from_header or "")).strip()
+    if not value or _CONTROL.search(value):
+        return None
+    syntax, simple = _scan(value)
+    if not simple or re.search(r"[:;,]", syntax):
+        return None
+    lt, gt = syntax.count("<"), syntax.count(">")
+    if lt == 0 and gt == 0:
+        address = syntax.strip()
+    elif lt == 1 and gt == 1:
+        start, end = syntax.index("<"), syntax.index(">")
+        if end < start or "@" in syntax[:start] or syntax[end + 1 :].strip():
+            return None
+        address = syntax[start + 1 : end].strip()
+    else:
+        return None
+    if not _ADDR_SPEC.match(address):
+        return None
+    return address.lower()
+
+
 class EmailParsingAgent(BaseAgent):
     """
     Subscribes to email.events / email.inbound.received
@@ -118,12 +206,18 @@ class EmailParsingAgent(BaseAgent):
         received_at = payload.get("received_at", datetime.utcnow().isoformat())
         payload.get("headers", {})
 
-        self.logger.info(f"Processing inbound email: from={sender}, subject={subject}")
+        self.logger.info(
+            f"Processing inbound email: from={sender!r}, subject={subject!r}"
+        )
 
-        # Extract sender email address from "Name <email>" format
+        # The parsed sender, never "the first <...>" (QA round 22, N-1). A From
+        # that names no single unambiguous mailbox is attributed to nobody:
+        # nothing is filed against a provider or an order on its strength.
         sender_email = self._extract_email(sender)
         if not sender_email:
-            self.logger.warning(f"Could not extract email from sender: {sender}")
+            self.logger.warning(
+                f"From names no single unambiguous address; not attributed: {sender!r}"
+            )
             return
 
         # Step 1: Try thread matching (gmail_thread_id first, then headers)
@@ -648,13 +742,11 @@ Respond with ONLY valid JSON:
     # ── Helper Methods ───────────────────────────────────────────────
 
     def _extract_email(self, from_header: str) -> Optional[str]:
-        """Extract email address from 'Name <email>' format"""
-        match = re.search(r"<([^>]+)>", from_header)
-        if match:
-            return match.group(1).lower()
-        if "@" in from_header:
-            return from_header.strip().lower()
-        return None
+        """The sender's address, or None when the From names no single one.
+
+        See ``sender_address`` (module level) for the rule and what it trusts.
+        """
+        return sender_address(from_header)
 
     async def _find_provider_by_email(self, email: str) -> Optional[str]:
         """
