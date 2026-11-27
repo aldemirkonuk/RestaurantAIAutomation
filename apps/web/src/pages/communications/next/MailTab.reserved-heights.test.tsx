@@ -21,7 +21,7 @@ vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth.current })
 vi.mock('./QueuedPullBack', () => ({ QueuedPullBack: () => null }));
 
 import { MailTab, readLastHeaderHeight, rememberHeaderHeight } from './MailTab';
-import { MAIL_HEADER_RESERVE, MAIL_HEADLINE_HOLD, READ_SCOPE_HOLD } from './mail-format';
+import { MAIL_HEADER_RESERVE, MAIL_HEADER_RESERVE_HELD, MAIL_HEADLINE_HOLD, READ_SCOPE_HOLD } from './mail-format';
 
 const SUMMARY = {
   waitingPeople: 0,
@@ -88,14 +88,24 @@ describe('the header holds the height it settled at (r108 mail-r108-6)', () => {
     try {
       mount();
       await vi.waitFor(() => expect(readLastHeaderHeight('r1')).toBe(163));
-      expect(screen.getByTestId('mail-header-block').style.minHeight).toBe('');
+      expect(screen.getByTestId('mail-header-block').style.getPropertyValue('--mail-held')).toBe('');
       cleanup();
       mount();
-      expect((await screen.findByTestId('mail-header-block')).style.minHeight).toBe('163px');
+      const held = await screen.findByTestId('mail-header-block');
+      expect(held.style.getPropertyValue('--mail-held')).toBe('163px');
+      // A floor on top of the reserve, never an inline height that replaces it: a short visit's
+      // 163 px must not let the next load reserve less than the 176 px a wrapped sentence needs.
+      expect(held.style.minHeight).toBe('');
+      expect(held.className).toContain(MAIL_HEADER_RESERVE_HELD);
+      expect(held.className).not.toContain(MAIL_HEADER_RESERVE);
     } finally {
       rect.mockRestore();
       window.sessionStorage.clear();
     }
+  });
+
+  it('holds the reserve at both widths, with the remembered height only as a floor over it', () => {
+    expect(MAIL_HEADER_RESERVE_HELD).toBe('min-h-[max(176px,var(--mail-held,0px))] md:min-h-[max(112px,var(--mail-held,0px))]');
   });
 
   it('keeps nothing when the height is nonsense', () => {

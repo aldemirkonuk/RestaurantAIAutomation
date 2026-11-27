@@ -26,7 +26,7 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -62,6 +62,7 @@ import {
   houseMailboxStatus,
   MAIL_SEARCH_MAX,
   MAIL_HEADER_RESERVE,
+  MAIL_HEADER_RESERVE_HELD,
   MAIL_HEADLINE_HOLD,
   READ_SCOPE_HOLD,
   mailSearchTerm,
@@ -955,8 +956,8 @@ export function MailTab({
       <MailMotionStyles />
       <header
         ref={headerRef}
-        className={`grid gap-1 content-start ${MAIL_HEADER_RESERVE}`}
-        style={headerHeld ? { minHeight: headerHeld } : undefined}
+        className={`grid gap-1 content-start ${headerHeld ? MAIL_HEADER_RESERVE_HELD : MAIL_HEADER_RESERVE}`}
+        style={headerHeld ? ({ '--mail-held': `${headerHeld}px` } as CSSProperties) : undefined}
         data-testid="mail-header-block"
       >
         <p data-testid="mail-header" className={MAIL_HEADLINE_HOLD} style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
