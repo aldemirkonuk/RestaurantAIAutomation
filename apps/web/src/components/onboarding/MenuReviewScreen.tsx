@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Loader2, Plus, Sparkles } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useAuth } from '../../contexts/AuthContext'
@@ -63,6 +63,22 @@ interface EditableCellProps {
   value: string | null
   placeholder: string
   onSave: (value: string) => Promise<void>
+}
+
+/** Is the primary pointer a mouse or a trackpad? A hint about keys is only for one. */
+function useFinePointer(): boolean {
+  const read = () =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: fine)').matches : false
+  const [fine, setFine] = useState(read)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia('(pointer: fine)')
+    const on = () => setFine(mql.matches)
+    on()
+    mql.addEventListener?.('change', on)
+    return () => mql.removeEventListener?.('change', on)
+  }, [])
+  return fine
 }
 
 /** Click-to-edit cell. Saves on blur/Enter; reverts on Escape. */
@@ -163,6 +179,50 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   const flagged = items.filter((i) => i.needsReview)
   const clean = items.filter((i) => !i.needsReview)
 
+  // j / k walk the lines that need a look first, then the clean ones when that fold is open.
+  // The focus ring moves instantly; the row scrolls into view smoothly only when motion is allowed.
+  const [cur, setCur] = useState<string | null>(null)
+  const [said, setSaid] = useState('')
+  const walking = useRef(false)
+  const fine = useFinePointer()
+  const walkIds = [...flagged, ...(showClean ? clean : [])].map((i) => i.menuItemId)
+  const stop = cur && walkIds.includes(cur) ? cur : (walkIds[0] ?? null)
+  const goTo = (id: string) => {
+    walking.current = true
+    setCur(id)
+    const at = flagged.findIndex((i) => i.menuItemId === id)
+    setSaid(
+      at >= 0
+        ? `Line ${at + 1} of ${flagged.length} to look at`
+        : `Line ${clean.findIndex((i) => i.menuItemId === id) + 1} of ${clean.length} that read cleanly`,
+    )
+    const el = document.getElementById(`review-line-${id}`)
+    el?.focus({ preventScroll: true })
+    el?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (planning || e.defaultPrevented || e.ctrlKey || e.metaKey) return
+      if ((e.target as HTMLElement | null)?.closest?.('input,textarea,select,[contenteditable="true"]')) return
+      const down = e.altKey ? e.key === 'ArrowDown' : e.key === 'j'
+      const up = e.altKey ? e.key === 'ArrowUp' : e.key === 'k'
+      if ((!down && !up) || walkIds.length === 0) return
+      const at = cur ? walkIds.indexOf(cur) : -1
+      e.preventDefault()
+      goTo(walkIds[down ? Math.min(walkIds.length - 1, at + 1) : Math.max(0, at - 1)])
+    }
+    const onPointer = () => {
+      walking.current = false
+      setCur(null)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onPointer)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onPointer)
+    }
+  })
+
   const updateField = async (
     menuItemId: string,
     fieldName: 'name' | 'producer' | 'vintage' | 'region' | 'grape_variety',
@@ -183,6 +243,12 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
           : item,
       ),
     )
+    // A save made while walking by key moves on to the next line.
+    if (walking.current) {
+      const at = walkIds.indexOf(menuItemId)
+      const next = walkIds[at + 1] ?? walkIds[at]
+      if (next) window.setTimeout(() => goTo(next), 0)
+    }
   }
 
   const handleAddWine = async () => {
@@ -220,8 +286,27 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
       <div
         key={item.menuItemId}
         id={`review-line-${item.menuItemId}`}
-        tabIndex={-1}
-        className="px-3 py-2 rounded-xl border border-paper-2 bg-paper-0"
+        tabIndex={stop === item.menuItemId ? 0 : -1}
+        aria-current={cur === item.menuItemId ? 'true' : undefined}
+        onKeyDown={(e) => {
+          const el = e.currentTarget
+          if (e.target === el) {
+            const first = e.key === 'Enter' ? el.querySelector('button') : null
+            if (first) {
+              e.preventDefault()
+              walking.current = true
+              first.click()
+            }
+            return
+          }
+          // Escape (or a save) closes the cell; the focus goes back to its row, not to the page.
+          if ((e.key === 'Escape' || e.key === 'Enter') && walking.current && (e.target as HTMLElement).tagName === 'INPUT') {
+            window.setTimeout(() => {
+              if (!el.contains(document.activeElement)) el.focus({ preventScroll: true })
+            }, 0)
+          }
+        }}
+        className="px-3 py-2 rounded-xl border border-paper-2 bg-paper-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-seal-ring"
       >
         <div
           className={
@@ -292,6 +377,15 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
             </p>
           )}
         </div>
+
+        {fine && walkIds.length > 0 ? (
+          <p className="text-xs text-inkm-4 mb-2" data-testid="review-keys-hint">
+            j / k to move, Enter to correct
+          </p>
+        ) : null}
+        <span className="sr-only" role="status" aria-live="polite">
+          {said}
+        </span>
 
         <MenuReadChecks
           lines={checkLinesFromReview(items)}
