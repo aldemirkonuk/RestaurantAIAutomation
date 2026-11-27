@@ -55,6 +55,8 @@ export function copyRecipeBody(src: CocktailRecipe): SaveRecipeBody | null | 'ca
       label: l.label,
       qty: l.qtyEntered,
       unit: l.unitCode,
+      // A missing share saves as null (all of it), so the copy would cost less than its source.
+      ...(l.role === 'stocked' ? { usablePct: l.usablePct ?? null } : {}),
     })),
   };
   if (cur.method) body.method = cur.method;

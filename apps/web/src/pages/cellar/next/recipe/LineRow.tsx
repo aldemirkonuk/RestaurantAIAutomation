@@ -41,6 +41,15 @@ export interface DraftRow {
    */
   storedQty?: number | null;
   unit: RecipeUnit | '';
+  /**
+   * A stocked line's usable share, 1 to 100, as saved: 45 means the amount is
+   * 45% of what is bought (lime juice from whole limes). null is all of it.
+   * Undefined only on a draft kept before lines carried it; the sheet fills
+   * it from the saved line (withSavedUsable).
+   */
+  usablePct?: number | null;
+  /** What is typed in the Usable % box, once it is touched. */
+  usableText?: string;
   /** What the server last said about this line; dropped once it is edited. */
   saved: {
     status: RecipeLineStatus;
@@ -85,6 +94,38 @@ export function weighedWords(w: WeighedBy, item: string, sayGrams: SayGrams = pl
 export function rowQty(row: DraftRow): number | null {
   if (row.storedQty != null && row.storedQty > 0 && row.qtyText === qtyText(row.storedQty)) return row.storedQty;
   return readQty(row.qtyText, row.unit);
+}
+
+export const USABLE_BAD = 'Usable share is a percent from 1 to 100.';
+
+/**
+ * A usable share as typed, in either decimal mark ("45", "45,5", "45.5"):
+ * empty is null (all of it), a number from 1 to 100 with at most two
+ * decimals is itself (the gateway keeps two), anything else is 'bad'.
+ */
+export function readUsable(text: string): number | null | 'bad' {
+  const s = text.trim();
+  if (!s) return null;
+  if (!/^\d{1,3}(?:[.,]\d{1,2})?$/.test(s)) return 'bad';
+  const n = Number(s.replace(',', '.'));
+  return n >= 1 && n <= 100 ? n : 'bad';
+}
+
+/** The line's usable share: what is typed once touched, else what was saved. Only a stocked line has one. */
+export function rowUsable(row: DraftRow): number | null | 'bad' {
+  if (row.role !== 'stocked') return null;
+  if (row.usableText !== undefined) return readUsable(row.usableText);
+  return row.usablePct ?? null;
+}
+
+/** The box's text for a saved share: "45", "45.5"; empty for all of it. */
+const usableBox = (n: number | null | undefined) => (n == null ? '' : String(n));
+
+/** "45% usable" in the house's percent form; null when the line takes all of what is bought. */
+export function usableWords(row: DraftRow, sayPct?: (points: number) => string): string | null {
+  const u = rowUsable(row);
+  if (typeof u !== 'number' || u >= 100) return null;
+  return `${sayPct ? sayPct(u) : `${u}%`} usable`;
 }
 
 export function rowName(row: DraftRow): string {
@@ -254,7 +295,8 @@ export function GoodLink({ row }: { row: DraftRow }) {
 }
 
 /** A line as a staff member reads it: no inputs, no money, and no warning that is not theirs to act on. */
-export function LineRowRead({ row }: { row: DraftRow }) {
+export function LineRowRead({ row, sayPct }: { row: DraftRow; sayPct?: (points: number) => string }) {
+  const usable = usableWords(row, sayPct);
   return (
     <li className="cl-rcp-line" data-role={row.role} data-testid="recipe-line">
       <div className="cl-rcp-read">
@@ -266,6 +308,7 @@ export function LineRowRead({ row }: { row: DraftRow }) {
           ) : null}
           {row.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
           {row.role === 'made' ? <span className="cl-dim"> · made in the house</span> : null}
+          {usable ? <span className="cl-dim" data-testid="recipe-line-usable"> · {usable}</span> : null}
         </span>
         <GoodLink row={row} />
       </div>
@@ -374,6 +417,7 @@ export default function LineRow({
   // A made line draws a house-made mix: its amount and unit are edited here, what it is made from is not.
   const made = row.role === 'made';
   const qty = rowQty(row);
+  const usableBad = stocked && rowUsable(row) === 'bad';
 
   const [added, setAdded] = useState<string | null>(null);
   const pick = (item: ShelfItem, said?: string) => {
@@ -494,6 +538,25 @@ export default function LineRow({
           <Trash2 size={13} aria-hidden />
         </button>
       </div>
+      {stocked ? (
+        <div className="cl-rcp-usable" data-testid="recipe-line-usable-box">
+          <label htmlFor={`${id}-usable`}>Usable %</label>
+          <input
+            id={`${id}-usable`}
+            className="cl-field cl-focus cl-num cl-rcp-usable-in"
+            inputMode="decimal"
+            value={row.usableText ?? usableBox(row.usablePct)}
+            placeholder="all"
+            aria-invalid={usableBad}
+            aria-describedby={`${id}-usable-said`}
+            onChange={(e) => edit({ usableText: e.target.value, saved: null })}
+          />
+          {/* One slot for the hint and the refusal, so a bad keystroke moves nothing below it. */}
+          <span id={`${id}-usable-said`} aria-live="polite" className={usableBad ? 'cl-rcp-usable-bad' : 'cl-dim'}>
+            {usableBad ? USABLE_BAD : 'Empty is all of it.'}
+          </span>
+        </div>
+      ) : null}
       {picking ? (
         <ShelfPicker
           initial={row.inventoryId ? '' : row.label}

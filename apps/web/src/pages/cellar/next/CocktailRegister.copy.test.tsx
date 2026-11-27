@@ -89,8 +89,8 @@ describe('Copy a drink', () => {
     expect(putUrl).toContain(`/cocktails/${NEW}`);
     expect(put.expectedVersionId).toBeNull();
     expect(put.lines).toEqual([
-      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml' },
-      { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 25, unit: 'ml' },
+      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml', usablePct: null },
+      { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 25, unit: 'ml', usablePct: null },
       { role: 'untracked', inventoryId: null, label: 'Bitters', qty: 2, unit: 'dash' },
     ]);
     expect(await screen.findByText(/was copied\. Give the copy its name/)).toBeTruthy();

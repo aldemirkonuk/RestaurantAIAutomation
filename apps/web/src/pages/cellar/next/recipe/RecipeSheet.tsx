@@ -78,7 +78,7 @@ import {
   type SaveRecipeBody,
   type ShelfItem,
 } from '../../../../services/api/recipes';
-import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
+import LineRow, { LineRowRead, rowName, rowQty, rowUsable, USABLE_BAD, type DraftRow } from './LineRow';
 import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
@@ -142,6 +142,7 @@ function fromServer(l: RecipeLine): DraftRow {
     qtyText: qtyText(l.qtyEntered),
     storedQty: l.qtyEntered,
     unit: (l.unitCode as DraftRow['unit']) ?? '',
+    usablePct: l.role === 'stocked' ? (l.usablePct ?? null) : null,
     saved: {
       status: l.status,
       costPerServe: l.costPerServe,
@@ -183,8 +184,26 @@ export function fromProposal(p: ProposedRow): DraftRow {
     label: p.label,
     qtyText: qtyText(p.qty),
     unit: p.unit ?? '',
+    usablePct: null,
     saved: null,
   };
+}
+
+/**
+ * A draft kept before lines carried their usable share has none (undefined),
+ * and a save would send none, which the gateway stores as all of it. Each
+ * such line takes the share of the saved line at the same place when that
+ * line pours from the same good, else null: a share is never carried onto a
+ * different good.
+ */
+export function withSavedUsable(rows: DraftRow[], saved: RecipeLine[]): DraftRow[] {
+  if (!rows.some((r) => r.usablePct === undefined)) return rows;
+  return rows.map((r, i) => {
+    if (r.usablePct !== undefined) return r;
+    const s = saved[i];
+    const same = r.role === 'stocked' && r.inventoryId && s && s.role === 'stocked' && s.inventoryId === r.inventoryId;
+    return { ...r, usablePct: same ? (s.usablePct ?? null) : null };
+  });
 }
 
 /** Serves, glass, garnish and method of a saved version, as a draft holds them. */
@@ -281,6 +300,7 @@ function PastVersion({
   say: ((n: number) => string) | null;
 }) {
   const v = useRecipeVersion(cocktailId, versionId, true);
+  const sayPct = useHousePercent();
   if (v.loading) return <p className="cl-note" role="status">Reading this version…</p>;
   if (v.error || !v.data) {
     return (
@@ -294,7 +314,7 @@ function PastVersion({
     <div className="cl-rcp-past" data-testid="recipe-past-version">
       <ol className="cl-rcp-lines">
         {version.lines.map((l) => (
-          <LineRowRead key={l.id} row={fromServer(l)} />
+          <LineRowRead key={l.id} row={fromServer(l)} sayPct={sayPct} />
         ))}
       </ol>
       {say && cost?.complete && cost.perServe != null ? (
@@ -403,8 +423,9 @@ export function costPreviewBody(rows: DraftRow[], serves: number): { body: Previ
     const q = rowQty(r);
     const whole = q !== null && q <= MAX_LINE_QTY && r.unit !== '';
     if (r.role === 'stocked') {
-      if (!whole || !r.inventoryId) return null;
-      lines.push({ role: 'stocked', inventoryId: r.inventoryId, qtyEntered: q, unitCode: r.unit });
+      const usable = rowUsable(r);
+      if (!whole || !r.inventoryId || usable === 'bad') return null;
+      lines.push({ role: 'stocked', inventoryId: r.inventoryId, qtyEntered: q, unitCode: r.unit, usablePct: usable });
       labels.push(rowName(r));
     } else if (whole) {
       lines.push({ role: 'untracked', inventoryId: null, qtyEntered: q, unitCode: r.unit });
@@ -437,6 +458,7 @@ export function whyBlocked(rows: DraftRow[], serves: number = 1, words: RecipeWo
       return `${named(i)} is more than one line can hold. The most is ${MAX_LINE_QTY.toLocaleString('en-US')} ${r.unit || 'of its unit'}.`;
     }
     if (r.unit === '') return `${named(i)} needs a unit.`;
+    if (rowUsable(r) === 'bad') return `${named(i)}: ${USABLE_BAD}`;
     if (r.role === 'stocked' && r.inventoryId && r.itemGone) {
       return `${named(i)} is linked to something ${r.itemGone} from your shelf. Link it again, or mark it not counted.`;
     }
@@ -559,6 +581,16 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
     if (seededFrom.current !== undefined && dirty) return;
     seed(data);
   }, [data, versionId, dirty, seed]);
+
+  // A kept draft whose lines predate the usable share takes the saved share,
+  // read from the version the draft was opened on only.
+  const savedLines = data?.current && data.current.versionId === openedFrom ? data.current.lines : null;
+  useEffect(() => {
+    if (!data) return;
+    const from = savedLines ?? [];
+    setRows((rs) => (rs ? withSavedUsable(rs, from) : rs));
+    setSetAside((rs) => (rs ? withSavedUsable(rs, from) : rs));
+  }, [data, savedLines]);
 
   const dirtyNow = useRef(dirty);
   dirtyNow.current = dirty;
@@ -687,6 +719,8 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
         label: rowName(r),
         qty: rowQty(r) as number,
         unit: r.unit as string,
+        // Always sent: a line without it is saved as all of it, which wiped a share set elsewhere.
+        ...(r.role === 'stocked' ? { usablePct: rowUsable(r) as number | null } : {}),
       })),
     };
     if (m.method.trim()) body.method = m.method.trim();
@@ -797,7 +831,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
                 sayGrams={sayGrams}
               />
             ) : (
-              <LineRowRead key={r.key} row={r} />
+              <LineRowRead key={r.key} row={r} sayPct={sayPct} />
             ),
           )}
         </ol>
@@ -975,7 +1009,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
             onClick={() =>
               edit((rs) => [
                 ...rs,
-                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: words.newLineUnit, saved: null },
+                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: words.newLineUnit, usablePct: null, saved: null },
               ])
             }
           >
