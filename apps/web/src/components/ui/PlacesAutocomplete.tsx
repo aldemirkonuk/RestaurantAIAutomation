@@ -1,6 +1,7 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { countryCodeFor } from '../../lib/countries';
 import { placesSuggestionRequest } from '../../lib/placesRequest';
+import type { PlaceHoursPeriod } from '../../lib/placeHours';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Building2, Loader2, MapPin, Search } from 'lucide-react';
 
@@ -47,6 +48,12 @@ export interface PlaceResult {
    */
   phone?: string | null;
   utcOffsetMinutes?: number | null;
+  /**
+   * The place's regular opening periods, as plain data (r109 onboarding g1).
+   * Asked with the phone: both are Place Details Enterprise fields, so the
+   * call's tier does not change. Null when Google has no hours for the place.
+   */
+  openingPeriods?: PlaceHoursPeriod[] | null;
 }
 
 interface SuggestionRow {
@@ -285,7 +292,7 @@ export function PlacesAutocomplete({
       const place = row.prediction.toPlace();
       await place.fetchFields({
         fields: withContact
-          ? ['addressComponents', 'formattedAddress', 'location', 'internationalPhoneNumber', 'utcOffsetMinutes']
+          ? ['addressComponents', 'formattedAddress', 'location', 'internationalPhoneNumber', 'utcOffsetMinutes', 'regularOpeningHours']
           : ['addressComponents', 'formattedAddress', 'location'],
       });
 
@@ -304,6 +311,10 @@ export function PlacesAutocomplete({
       if (withContact) {
         result.phone = place.internationalPhoneNumber ?? null;
         result.utcOffsetMinutes = typeof place.utcOffsetMinutes === 'number' ? place.utcOffsetMinutes : null;
+        result.openingPeriods = place.regularOpeningHours?.periods?.map((period) => ({
+          open: { day: period.open.day, hour: period.open.hour, minute: period.open.minute },
+          close: period.close ? { day: period.close.day, hour: period.close.hour, minute: period.close.minute } : null,
+        })) ?? null;
       }
       onPlaceSelect(result);
     } catch (err) {

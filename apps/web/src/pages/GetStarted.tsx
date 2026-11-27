@@ -24,6 +24,9 @@ import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuS
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 import { clearGetStartedDraft, readGetStartedDraft, writeGetStartedDraft } from '../lib/getStartedDraft'
+import { hoursFromPlace, summarizeHours } from '../lib/placeHours'
+import { writeHoursUnsaved } from '../lib/houseHoursNote'
+import { restaurantsApi, type OperatingHours } from '../services/api/restaurants'
 
 /**
  * Two steps (OB-7, proposal F6, the session's call under the 2026-11-07
@@ -249,6 +252,9 @@ export default function GetStarted() {
   // follows the country the page shows, never the earlier place's.
   const [placeCountryCode, setPlaceCountryCode] = useState<string | null>(null)
   const [placeOffset, setPlaceOffset] = useState<number | null>(null)
+  // The picked place's hours (r109 g1). Not kept in the draft: a reload re-picks.
+  const [placeHours, setPlaceHours] = useState<OperatingHours | null>(null)
+  const [useHours, setUseHours] = useState(true)
   const [pickedZone, setPickedZone] = useState('')
   const [placePoint, setPlacePoint] = useState<{
     latitude: number
@@ -435,6 +441,8 @@ export default function GetStarted() {
     if (place.phone) setRestaurantPhone(place.phone)
     setPlaceCountryCode(place.countryCode ?? null)
     setPlaceOffset(place.utcOffsetMinutes ?? null)
+    setPlaceHours(hoursFromPlace(place.openingPeriods))
+    setUseHours(true)
     setPickedZone('')
     if (place.latitude != null && place.longitude != null) {
       setPlacePoint({
@@ -496,6 +504,13 @@ export default function GetStarted() {
         longitude: placePoint?.longitude,
         googlePlaceId: placePoint?.googlePlaceId,
       })
+      // The picked place's hours, when the person kept the box ticked. Written
+      // only once the house exists; a failure never holds the next step, and
+      // /house says it (r109 g1).
+      if (placeHours && useHours) {
+        const houseId = opened.restaurantId
+        void restaurantsApi.putOperatingHours(houseId, placeHours).catch(() => writeHoursUnsaved(houseId))
+      }
       openedHere.current = true
       draftDone.current = true
       clearGetStartedDraft()
@@ -685,6 +700,7 @@ export default function GetStarted() {
                 setPlacePoint(null)
                 setPlaceOffset(null)
                 setPlaceCountryCode(null)
+                setPlaceHours(null)
               }}
               onPlaceSelect={selectPlace}
               locationBias={locationBias}
@@ -697,6 +713,20 @@ export default function GetStarted() {
             <MapPin className="h-4 w-4" /> Use my location
           </button>
           {locationStatus && <p role="status">{locationStatus}</p>}
+          {placeHours && (
+            <div className="mdv-spread-facts-line">
+              <p>{summarizeHours(placeHours)}, from Google</p>
+              <label className="inline-flex min-h-11 items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5"
+                  checked={useHours}
+                  onChange={(e) => setUseHours(e.target.checked)}
+                />
+                <span>Use these hours</span>
+              </label>
+            </div>
+          )}
           </>
           )}
           <div className="mdv-spread-stack">
