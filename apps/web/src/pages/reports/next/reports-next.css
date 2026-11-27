@@ -52,6 +52,22 @@
   opacity: 1;
 }
 
+/* ── the sheet before it is known: plain paper ─────────────────────────────
+   Outlines in the cutting's own ground while the reader's arrangement is read,
+   so the house sheet is never drawn first and then swapped out. Still, on
+   purpose: nothing here is loading in a way the reader can act on. */
+.rp-outlines {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+}
+.rp-outline {
+  height: 322px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-1);
+}
+
 /* ── a cutting ─────────────────────────────────────────────────────────────
    `--rp-tuck` is set on .rp-sheet from the `tuck` token in lib/mudavym/
    motion.ts, so the curve that runs here IS the token's sampled spring rather

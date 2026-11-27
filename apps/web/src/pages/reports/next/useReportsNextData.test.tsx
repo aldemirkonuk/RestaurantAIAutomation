@@ -21,14 +21,35 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: auth.role }),
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
+/**
+ * The preferences hook as the real one behaves: `placeholderData: {}` puts the
+ * query in `success` at once, so `isLoading` is false BEFORE the gateway has
+ * answered — only `isPlaceholderData` says the sheet is not the reader's yet.
+ */
+const prefs = vi.hoisted(() => ({
+  isPlaceholderData: false,
+  error: null as Error | null,
+  userId: 'u1' as string | null,
+  write: vi.fn(),
+}));
 vi.mock('@/hooks/useUserPreferences', () => ({
-  useUserPreferences: () => ({ preferences: {}, updatePreferences: vi.fn(), isLoading: false }),
+  useUserPreferences: () => ({
+    preferences: {},
+    updatePreferences: prefs.write,
+    isLoading: false,
+    isPlaceholderData: prefs.isPlaceholderData,
+    error: prefs.error,
+  }),
+}));
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: (pick: (s: { user: { userId: string } | null }) => unknown) =>
+    pick({ user: prefs.userId ? { userId: prefs.userId } : null }),
 }));
 // The two desks are their own seams with their own tests; held still here.
 vi.mock('./useGoalsDesk', () => ({ useGoalsDesk: () => ({}) }));
 vi.mock('./useReportExports', () => ({ useReportExports: () => ({}) }));
 
-import { useReportsNextData } from './useReportsNextData';
+import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import type { AnalysisId } from './rp-sheet';
 
 const SEATS = '/analytics/table-performance/r1?sinceDays=90';
@@ -56,6 +77,9 @@ function mount() {
 describe('useReportsNextData — registers a role is not sent (ADR 0348)', () => {
   beforeEach(() => {
     auth.rid = 'r1';
+    prefs.isPlaceholderData = false;
+    prefs.error = null;
+    prefs.userId = 'u1';
     api.get.mockReset();
     api.get.mockImplementation(async (path: string) => {
       if (path === READING) return { data: { insights: [] } };
@@ -216,5 +240,88 @@ describe('useReportsNextData — the bench reads what the sheet already reads (a
     const bench = result.current.registers.bench!;
     expect(bench.failure).toBeNull();
     expect(bench.data).toMatchObject({ seasonalityMissing: true, cashflowMissing: false, goalsMissing: false });
+  });
+});
+
+/**
+ * The cold-load window. Until the account's preferences answer, the sheet on
+ * screen is the HOUSE sheet, not the reader's — and a save made from it would
+ * write the house sheet over the reader's own. So the sheet is not "known"
+ * until `isPlaceholderData` is false, and a save is refused until it is.
+ */
+describe('useReportsNextData — whose sheet this is', () => {
+  beforeEach(() => {
+    auth.rid = 'r1';
+    auth.role = 'owner';
+    prefs.isPlaceholderData = false;
+    prefs.error = null;
+    prefs.userId = 'u1';
+    prefs.write.mockReset();
+    api.get.mockReset();
+    api.get.mockResolvedValue({ data: {} });
+  });
+
+  it('is not known while the preferences are still the placeholder — and a read still starts', async () => {
+    prefs.isPlaceholderData = true;
+    const { result } = mount();
+    expect(result.current.sheetKnown).toBe(false);
+    expect(result.current.sheetUnread).toBeNull();
+    // Nothing waits on the preferences round trip: the reads go out now.
+    await waitFor(() => expect(paths()).toContain(READING));
+  });
+
+  it('is known once the account has answered', () => {
+    const { result } = mount();
+    expect(result.current.sheetKnown).toBe(true);
+    expect(result.current.sheetUnread).toBeNull();
+  });
+
+  it('refuses to save a sheet that is not known, and writes nothing', () => {
+    prefs.isPlaceholderData = true;
+    const { result } = mount();
+    result.current.saveSheet(defaultSheet());
+    expect(prefs.write).not.toHaveBeenCalled();
+  });
+
+  it('saves the one preference key once the sheet is known', () => {
+    const { result } = mount();
+    result.current.saveSheet(defaultSheet());
+    expect(prefs.write).toHaveBeenCalledTimes(1);
+    expect(Object.keys(prefs.write.mock.calls[0][0])).toEqual(['reportsSheet']);
+  });
+
+  it('says so when the preferences could not be read, instead of passing the house sheet off as the reader’s', () => {
+    prefs.error = new Error('Request failed with status code 500');
+    const { result } = mount();
+    expect(result.current.sheetKnown).toBe(false);
+    expect(result.current.sheetUnread).toMatch(/could not be read \(Request failed with status code 500\)/);
+  });
+
+  it('keeps the last good sheet, stays arrangeable and says the refresh failed when a refetch fails after a good load', () => {
+    const { result, rerender } = mount();
+    expect(result.current.sheetKnown).toBe(true);
+    // A background refetch rejects: React Query keeps the data and sets `error`.
+    prefs.error = new Error('Network Error');
+    rerender();
+    expect(result.current.sheetKnown).toBe(true);
+    expect(result.current.sheetUnread).toBeNull();
+    expect(result.current.sheetStale).toMatch(/could not be refreshed/);
+    result.current.saveSheet(defaultSheet());
+    expect(prefs.write).toHaveBeenCalledTimes(1);
+    // It heals when a later read answers.
+    prefs.error = null;
+    rerender();
+    expect(result.current.sheetStale).toBeNull();
+  });
+
+  it('never waits forever: with no account to read from, it says so', () => {
+    // The preferences query is disabled without a user id, and a disabled
+    // query keeps its placeholder forever — so placeholder alone cannot be
+    // what the page waits on.
+    prefs.userId = null;
+    prefs.isPlaceholderData = true;
+    const { result } = mount();
+    expect(result.current.sheetKnown).toBe(false);
+    expect(result.current.sheetUnread).toMatch(/signed in/);
   });
 });
