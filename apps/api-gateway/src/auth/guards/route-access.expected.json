@@ -50,6 +50,11 @@
   "POST /analytics/goal-scenarios/requests/:restaurantId (AnalyticsController.requestGoalScenario)": "open",
   "GET /analytics/goal-scenarios/requests (AnalyticsController.listGoalScenarioRequests)": "open",
   "GET /analytics/goals/:restaurantId (AnalyticsController.listGoals)": "open",
+  "GET /recipes/:restaurantId/items/:itemId/dishes (DishesController.dishesUsingItem)": "open",
+  "POST /recipes/:restaurantId/shelf/match (DishesController.matchShelf)": [
+    "owner",
+    "manager"
+  ],
   "POST /analytics/goals/:restaurantId (AnalyticsController.createGoal)": "open",
   "GET /analytics/goals/:restaurantId/progress (AnalyticsController.listGoalsWithProgress)": "open",
   "PATCH /analytics/goals/:restaurantId/:goalId (AnalyticsController.updateGoal)": "open",

@@ -171,3 +171,14 @@ export class UpdateDishDto {
   @MaxLength(4000)
   description?: string | null;
 }
+
+/** The pasted labels to look up on the shelf by exact folded name (ADR 0366 item 7). */
+export class ShelfMatchDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(60)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  labels!: string[];
+}
