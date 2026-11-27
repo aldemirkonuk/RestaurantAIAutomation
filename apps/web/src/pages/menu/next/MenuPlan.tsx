@@ -238,6 +238,7 @@ function setWords(k: PlanKind, zone?: string | null): string {
   if (!k.lastSet) return '';
   const who = k.lastSet.by.name ?? (k.lastSet.by.userId ? 'someone whose name is not on record' : 'no person named');
   const how = k.lastSet.source === 'import' ? 'from a menu' : k.lastSet.source === 'agent_accepted' ? 'accepting advice' : 'by hand';
+  if (k.lastSet.cleared) return `cleared by ${who} on ${day(k.lastSet.at, zone)}${k.setAfterRead ? ', after this menu was read' : ''}`;
   return `set ${how} by ${who} on ${day(k.lastSet.at, zone)}${k.setAfterRead ? ', after this menu was read' : ''}`;
 }
 
@@ -490,7 +491,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
                         ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
-                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
+                        : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : r.k.housePrice === null ? '; no price has been set yet' : ''}`}
                     </td>
                     <td>
                       <KeepSwitch

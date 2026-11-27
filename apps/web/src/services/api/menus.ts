@@ -560,7 +560,8 @@ export interface PlanKind {
   menuPrice: number | null
   housePrice: number | null
   result: PlanResult
-  lastSet: { by: PlanPerson; at: string | null; source: string | null } | null
+  /** `cleared`: that change took the price away. Absent on an older gateway. */
+  lastSet: { by: PlanPerson; at: string | null; source: string | null; cleared?: boolean } | null
   /**
    * A person set this wine's price (by hand, or by accepting advice) after
    * this menu was read. The founder, 2026-09-21: "The menu sets it, locks
