@@ -27,6 +27,7 @@ import {
   extractEmailContent as extractGmailContent,
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_B64_LEN,
+  inboundHeaderMap,
 } from "./gmail-mime";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { DatabaseService } from "../database/database.service";
@@ -1380,11 +1381,7 @@ export class CommunicationsController {
               in_reply_to: inReplyTo,
               references,
               received_at: new Date().toISOString(),
-              headers: Object.fromEntries(
-                headers
-                  .filter((h) => h.name && h.value)
-                  .map((h) => [h.name!.toLowerCase(), h.value]),
-              ),
+              headers: inboundHeaderMap(headers),
             },
           );
         } catch (pubErr) {
@@ -1520,11 +1517,7 @@ export class CommunicationsController {
               in_reply_to: inReplyTo,
               references,
               received_at: new Date().toISOString(),
-              headers: Object.fromEntries(
-                headers
-                  .filter((h) => h.name && h.value)
-                  .map((h) => [h.name!.toLowerCase(), h.value]),
-              ),
+              headers: inboundHeaderMap(headers),
             },
           );
           processed++;

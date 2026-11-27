@@ -4,6 +4,7 @@ import {
   looksPromotional,
   transportImpliesNoReply,
   replySkipReason,
+  senderAuthOf,
 } from "./email-triage";
 
 describe("email-triage", () => {
@@ -226,5 +227,31 @@ describe("email-triage", () => {
         }),
       ).toMatch(/bulk/i);
     });
+  });
+});
+
+describe("senderAuthOf — the sender check kept on a letter (r108 mail-gap g8)", () => {
+  it("names the signing domain when DKIM passed, from header.d or else header.i", () => {
+    expect(
+      senderAuthOf({
+        "Authentication-Results":
+          "mx.google.com; dkim=pass header.i=@V.Example header.s=s1; spf=pass smtp.mailfrom=v.example; dmarc=pass (p=NONE) header.from=v.example",
+      }),
+    ).toEqual({ spf: true, dkim: true, dmarc: true, signedBy: "v.example" });
+    expect(
+      senderAuthOf({ "authentication-results": "mx; dkim=pass header.d=mail.v.example. header.i=@other.example" }).signedBy,
+    ).toBe("mail.v.example");
+  });
+
+  it("says a failed check failed and names no signer", () => {
+    expect(
+      senderAuthOf({ "authentication-results": "mx; dkim=fail header.d=v.example; spf=softfail; dmarc=fail" }),
+    ).toEqual({ spf: false, dkim: false, dmarc: false, signedBy: null });
+  });
+
+  it("leaves a check that never came as unknown, never as a failure", () => {
+    expect(senderAuthOf({})).toEqual({ spf: null, dkim: null, dmarc: null, signedBy: null });
+    expect(senderAuthOf(null)).toEqual({ spf: null, dkim: null, dmarc: null, signedBy: null });
+    expect(senderAuthOf({ "authentication-results": "mx; dkim=pass" }).signedBy).toBeNull();
   });
 });

@@ -122,6 +122,41 @@ function readAuthMethod(
 }
 
 /**
+ * The sender check a letter came with (r108 mail-gap g8), kept on the row as
+ * `email_headers.auth`: SPF, DKIM and DMARC as pass (true), another verdict
+ * (false) or absent (null), and the domain that signed it when DKIM passed.
+ */
+export interface SenderAuth {
+  spf: boolean | null;
+  dkim: boolean | null;
+  dmarc: boolean | null;
+  signedBy: string | null;
+}
+
+/** The `header.d=` (else the domain of `header.i=`) of the first passing DKIM verdict. */
+function dkimSigner(value: string): string | null {
+  const clause = /\bdkim=pass\b([^;]*)/.exec(value.toLowerCase());
+  if (!clause) return null;
+  const d =
+    /\bheader\.d=([a-z0-9.-]+)/.exec(clause[1]) ??
+    /\bheader\.i=[^\s;@]*@([a-z0-9.-]+)/.exec(clause[1]);
+  return d ? d[1].replace(/\.+$/, "") || null : null;
+}
+
+export function senderAuthOf(headers: HeaderMap | null | undefined): SenderAuth {
+  const h = normalizeHeaders(headers);
+  const auth =
+    `${h["authentication-results"] || ""} ${h["arc-authentication-results"] || ""}`.trim();
+  const dkim = readAuthMethod(auth, "dkim");
+  return {
+    spf: readAuthMethod(auth, "spf"),
+    dkim,
+    dmarc: readAuthMethod(auth, "dmarc"),
+    signedBy: dkim === true ? dkimSigner(auth) : null,
+  };
+}
+
+/**
  * Derive transport/auth signals from a header map (as published by the inbound pipeline)
  * plus an optional explicit `From` value. Never throws.
  */
