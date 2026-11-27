@@ -38,6 +38,17 @@ export class RecipesController {
     return this.recipes.listVersions(restaurantId, cocktailId);
   }
 
+  @Get(":restaurantId/cocktails/:cocktailId/versions/:versionId")
+  @ApiOperation({ summary: "One earlier version of a drink's recipe, its lines and its cost at today's prices" })
+  readVersion(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("cocktailId", ParseUUIDPipe) cocktailId: string,
+    @Param("versionId", ParseUUIDPipe) versionId: string,
+    @CurrentUser() user: { role?: string } | undefined,
+  ) {
+    return this.recipes.readVersion(restaurantId, cocktailId, versionId, user?.role);
+  }
+
   @Put(":restaurantId/cocktails/:cocktailId")
   @UseGuards(RolesGuard)
   @Roles("owner", "manager")
