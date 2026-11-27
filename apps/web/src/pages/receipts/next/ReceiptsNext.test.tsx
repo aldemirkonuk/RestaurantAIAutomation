@@ -47,6 +47,7 @@ const api = vi.hoisted(() => ({
   /** The caller's role at this house, for rule 3's control. */
   role: 'manager' as 'owner' | 'manager' | 'staff' | null,
   restateCurrency: vi.fn(),
+  sealedChanges: vi.fn(),
   /**
    * The three mints (founder, 2026-09-06, batch 64: "Decide as a module: seal
    * all three"). Each returns a token the write then has to carry back; the
@@ -99,6 +100,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       match: vi.fn(),
       linkLine: api.linkLine,
       restateCurrency: api.restateCurrency,
+      sealedChanges: api.sealedChanges,
       mintVerifySeal: api.mintVerifySeal,
       mintLineEditSeal: api.mintLineEditSeal,
       mintCurrencySeal: api.mintCurrencySeal,
@@ -225,6 +227,7 @@ function wrapperAt(entry: string) {
 }
 
 beforeEach(() => {
+  api.sealedChanges.mockReset();
   api.queue = [doc({})];
   api.verified = [];
   api.clean = [];
@@ -311,6 +314,29 @@ describe('ReceiptsNext', () => {
     expect(screen.getByText(/record a dispute leans on/)).toBeInTheDocument();
     // no ceremony on a verified document
     expect(screen.queryByText('Swipe up to confirm')).not.toBeInTheDocument();
+  });
+
+  it('shows a verified paper its seal changes to an owner or manager, and asks the gateway', async () => {
+    api.sealedChanges.mockResolvedValue({
+      status: 'verified', currency: 'EUR', orders: ['o1'], otherPapers: 0, stockValueDelta: '2', bottles: 1, salesCostDelta: '0', sales: 0, notKnown: 0, events: [],
+    });
+    api.queue = [doc({ status: 'verified' as ProcurementDocument['status'] })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() => expect(api.sealedChanges).toHaveBeenCalledWith('d1'));
+    expect(screen.getByText('What sealing changed')).toBeInTheDocument();
+  });
+
+  it('never asks for, or shows, what sealing changed to staff: no part, no refused request', async () => {
+    api.role = 'staff';
+    api.queue = [doc({ status: 'verified' as ProcurementDocument['status'] })];
+    api.detail = { document: api.queue[0], lines: [line], links: [] };
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(api.sealedChanges).not.toHaveBeenCalled();
+    expect(screen.queryByText('What sealing changed')).toBeNull();
+    expect(screen.queryByTestId('sealed-changes')).toBeNull();
   });
 
   it('the ceremony fires verify via the keyboard hold and says what it asserts', async () => {
