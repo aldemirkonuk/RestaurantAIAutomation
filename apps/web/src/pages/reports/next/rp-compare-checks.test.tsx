@@ -186,16 +186,19 @@ describe('warm start keeps only a whole read (r108 g8)', () => {
   });
 });
 
-describe('a staff till kept from the reader reads once, whatever the window (r109 reports-8)', () => {
+// Staff never ask the till since #2466 (the till carries readers), so the hold is pinned for the case it
+// still covers: a reader the page takes for a manager whom the gateway now answers withheld (a role that
+// moved since the session was read).
+describe('a till the gateway kept from the reader reads once, whatever the window (r109 reports-8)', () => {
   const WITHHELD = {
     restaurantId: 'r1', from: null, to: null, days: 30, timezone: null, zoneUnset: false,
     posConnected: true, salesWithheld: true, revenue: null, checkCount: null, dailySeries: null,
   };
-  const mount = (role: string) => {
+  const mount = (role: string, gatewayWithholds = false) => {
     auth.role = role;
     api.get.mockReset();
     api.get.mockImplementation(async (path: string) => {
-      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: role === 'staff' ? WITHHELD : N_READ };
+      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: gatewayWithholds ? WITHHELD : N_READ };
       return { data: { insights: [] } };
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -214,13 +217,13 @@ describe('a staff till kept from the reader reads once, whatever the window (r10
   });
 
   it('[REVERT-FAILS] 30 to 90 to 7 days fires no read, and the card is never a loading stand-in', async () => {
-    const { result, rerender } = mount('staff');
+    const { result, rerender } = mount('manager', true);
     // The integrated hook hands a gateway-withheld lens over as a written-for-someone-else failure (#1436).
     await waitFor(() => expect(result.current.registers.till?.failure).toBeTruthy());
     expect(tillReads()).toEqual(['/analytics/pos-revenue/r1?days=30']);
     const held = result.current.registers.till;
     for (const days of [90, 7, 365]) {
-      rerender({ days, r: 'staff' });
+      rerender({ days, r: 'manager' });
       expect(result.current.registers.till?.loading).toBe(false);
       expect(result.current.registers.till?.failure).toBeTruthy();
       expect(result.current.registers.till?.data).toBeUndefined();
@@ -238,14 +241,14 @@ describe('a staff till kept from the reader reads once, whatever the window (r10
   });
 
   it('a role that moves is asked again, at the window on screen', async () => {
-    const { result, rerender } = mount('staff');
+    const { result, rerender } = mount('manager', true);
     // The integrated hook hands a gateway-withheld lens over as a written-for-someone-else failure (#1436).
     await waitFor(() => expect(result.current.registers.till?.failure).toBeTruthy());
-    rerender({ days: 90, r: 'staff' });
+    rerender({ days: 90, r: 'manager' });
     api.get.mockImplementation(async (path: string) =>
       path.startsWith('/analytics/pos-revenue/r1') ? { data: N_READ } : { data: { insights: [] } },
     );
-    rerender({ days: 90, r: 'manager' });
+    rerender({ days: 90, r: 'owner' });
     await waitFor(() => expect(tillReads()).toContain('/analytics/pos-revenue/r1?days=90'));
     await waitFor(() => expect(result.current.registers.till?.data).toMatchObject({ salesWithheld: false }));
   });

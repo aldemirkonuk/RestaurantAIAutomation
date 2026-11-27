@@ -123,7 +123,8 @@ describe('till: compare to the previous period', () => {
     expect(fig(payload(), true, 'Checks').value).toBe('90');
   });
 
-  it('[REVERT-FAILS] a staff reader whose till is withheld gets no window, no prior and no money from the larger read', () => {
+  // Shape only: the gateway's gate is pinned in pos-revenue.spec.ts and the page's hold-back in useReportsNextData.test.tsx.
+  it('a withheld till payload gives no window, no prior and no money from the larger read', () => {
     const withheld = { posConnected: true, salesWithheld: true, revenue: null, checkCount: null, from: P_FROM, to: TO, days: 60, dailySeries: null };
     const v = view(withheld, true);
     expect(v.cats?.data.some((d) => d.prior != null || d.value != null) ?? false).toBe(false);

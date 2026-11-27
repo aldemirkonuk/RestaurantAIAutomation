@@ -1455,6 +1455,34 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
     ).toBeFalsy();
   });
 
+  it("[REVERT-FAILS] a reader without sales gets every figure withheld and nothing of the house is read", async () => {
+    for (const user of [{ role: "staff" }, { role: null }, undefined]) {
+      for (const compare of [undefined, "prior"]) {
+        const body: any = await controller.getPosRevenue("r1", "60", compare, user);
+        expect(body).toMatchObject({
+          salesWithheld: true,
+          days: 60,
+          revenue: null,
+          checkCount: null,
+          dailySeries: null,
+          consumption: null,
+          posConnected: null,
+        });
+      }
+    }
+    expect(goals.getPosRevenueWindow).not.toHaveBeenCalled();
+    expect(analytics.getPosConsumptionBreakdown).not.toHaveBeenCalled();
+    goals.getPosRevenueWindow.mockResolvedValue({
+      from: "2026-07-28", to: "2026-08-26", days: 30, timezone: LA, zoneUnset: false,
+      posConnected: true, revenue: 4200, checkCount: 9, dailySeries: [],
+    });
+    for (const role of ["owner", "manager"]) {
+      const body: any = await controller.getPosRevenue("r1", "30", undefined, { role });
+      expect(body.salesWithheld).toBeUndefined();
+      expect(body.revenue).toBe(4200);
+    }
+  });
+
   it("skips the consumption query entirely when no POS is connected", async () => {
     goals.getPosRevenueWindow.mockResolvedValue({
       from: "2026-07-28",

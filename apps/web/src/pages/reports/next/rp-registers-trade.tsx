@@ -409,6 +409,9 @@ const till = analysis<TillWindow>({
     return { ...w, shownChecks: same ? shown.checkCount : null };
   },
   takesWindow: true,
+  // The till's takings are a sales figure (ADR 0298 decision 9): the gateway
+  // answers a reader without sales withheld, and the page does not ask.
+  readers: ['owner', 'manager'],
   select: (raw) => {
     const d = obj(raw);
     return {
