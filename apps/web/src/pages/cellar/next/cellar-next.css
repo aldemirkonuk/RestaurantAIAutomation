@@ -962,3 +962,8 @@ textarea.cl-field {
 .cl-rcp-said { margin: 8px 0 0; font-size: 12.5px; color: var(--seal-deep); }
 .cl-rcp-said-alarm { color: var(--alarm-deep); }
 .cl-rcp-versions { margin: 6px 0 0 18px; padding: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); }
+.cl-rcp-proposed,
+.cl-rcp-paste { margin-top: 10px; padding: 10px; border: 1px dashed var(--warn); border-radius: 8px; background: var(--paper-0); }
+.cl-rcp-paste { border-color: var(--paper-2); }
+.cl-rcp-proposed .cl-rcp-line { background: var(--warn-tint); border-color: transparent; }
+.cl-rcp-proposed .cl-rcp-lines { margin-bottom: 8px; }
