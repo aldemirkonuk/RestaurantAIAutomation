@@ -32,6 +32,7 @@ async function mock(page: Page, nLines: number, role: string) {
     if (path === '/procurement/documents') {
       return json({ items: url.searchParams.get('status') === 'needs_review' ? queue : [] })
     }
+    if (path.endsWith('/sale-cost-coverage')) return json({ days: 7, currency: 'EUR', food: '0.00', total: '0.00', checked: '0.00', partial: '0.00', estimate: '0.00', other: '0.00', sales: 0, notKept: 0, voided: 0, estimateDeliveries: [] })
     const one = path.match(/^\/procurement\/documents\/([^/]+)$/)
     if (one) {
       // The lines arrive after the card has painted: that is the shift under test.
@@ -41,6 +42,7 @@ async function mock(page: Page, nLines: number, role: string) {
     // The notes under the money: the shapes the page reads, answering nothing to say.
     if (path.endsWith('/held-costs')) return json({ taxBasisKnown: true, held: [] })
     if (path.endsWith('/price-moves')) return json({ thresholdPct: 10, paperCurrency: 'EUR', houseCurrency: 'EUR', lines: [] })
+    if (path.endsWith('/vendor-prices')) return json({ paperCurrency: 'EUR', providerId: null, notCompared: 'vendor_unknown', lines: [] })
     // The formatted sheet is not under test and a refusal paints a note that moves the card:
     // leave its read pending, so the sheet holds its reading state for the whole test.
     if (path.endsWith('/canonical')) return new Promise<void>(() => {})
