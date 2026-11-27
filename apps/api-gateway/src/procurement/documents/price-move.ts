@@ -38,20 +38,14 @@ const money = (v: number) => {
   return `${i}.${f.padEnd(2, "0")}`;
 };
 
-/**
- * Whole percent, but one decimal near the threshold so "up 10 percent" never
- * names a moved 10.4. A moved percent is never spoken AS the threshold: 10.04
- * rounds to "10.0", which under a 10 percent rule reads as not over the line,
- * so it is spoken to two places, and if even that rounds onto the threshold it
- * is "just over".
- */
-const speakPct = (pct: number, thresholdPct: number, moved: boolean) => {
+/** Whole percent, but one decimal near the threshold so "up 10 percent" never names a moved 10.4. */
+const speakPct = (pct: number, thresholdPct: number) => {
   const a = Math.abs(pct);
   if (Math.abs(a - thresholdPct) >= 1) return String(Math.round(a));
-  const one = a.toFixed(1);
-  if (!moved || Number(one) !== thresholdPct) return one;
-  const two = a.toFixed(2);
-  return Number(two) !== thresholdPct ? two : `just over ${thresholdPct}`;
+  // A flagged move must never be spoken as the threshold itself: add decimals
+  // until the figure no longer rounds onto it (10.04 says 10.04, not 10.0).
+  for (let d = 1; d < 6; d++) if (Number(a.toFixed(d)) !== thresholdPct) return a.toFixed(d);
+  return a.toFixed(6);
 };
 
 const MICRO = 1e6;
@@ -81,7 +75,7 @@ export function priceMove(
     pct,
     moved,
     sentence: moved
-      ? `was ${money(prev.cost)}, now ${money(next.cost)}, ${pct > 0 ? "up" : "down"} ${speakPct(pct, thresholdPct, moved)} percent`
+      ? `was ${money(prev.cost)}, now ${money(next.cost)}, ${pct > 0 ? "up" : "down"} ${speakPct(pct, thresholdPct)} percent`
       : null,
   };
 }

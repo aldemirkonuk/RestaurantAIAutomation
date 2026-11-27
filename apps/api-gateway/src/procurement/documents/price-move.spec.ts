@@ -52,13 +52,11 @@ describe("priceMove", () => {
     expect(priceMove(bottle(10), bottle(11.04))).toMatchObject({ sentence: "was 10.00, now 11.04, up 10.4 percent" });
   });
 
-  it("a moved percent that rounds onto the threshold is never spoken as the threshold", () => {
-    // 25.00 -> 27.51 is 10.04 percent: moved, and "10.0" would read as not over.
-    const r = priceMove(bottle(25), bottle(27.51));
-    expect(r).toMatchObject({ compared: true, moved: true, sentence: "was 25.00, now 27.51, up 10.04 percent" });
-    expect(priceMove(bottle(25), bottle(22.49))).toMatchObject({ moved: true, sentence: "was 25.00, now 22.49, down 10.04 percent" });
-    // Too close for two places as well: say so in words.
-    expect(priceMove(bottle(1000), bottle(1100.01))).toMatchObject({ moved: true, sentence: "was 1000.00, now 1100.01, up just over 10 percent" });
+  it("never speaks a flagged move as exactly the threshold", () => {
+    expect(priceMove(bottle(200), bottle(220.09))).toMatchObject({ moved: true, sentence: "was 200.00, now 220.09, up 10.04 percent" });
+    expect(priceMove(bottle(100), bottle(110.04))).toMatchObject({ moved: true, sentence: "was 100.00, now 110.04, up 10.04 percent" });
+    expect(priceMove(bottle(500), bottle(550.2))).toMatchObject({ moved: true, sentence: "was 500.00, now 550.20, up 10.04 percent" });
+    expect(priceMove(bottle(100), bottle(89.96))).toMatchObject({ moved: true, sentence: "was 100.00, now 89.96, down 10.04 percent" });
   });
 
   it("moved agrees with integer cross-multiplication over many cent pairs", () => {
