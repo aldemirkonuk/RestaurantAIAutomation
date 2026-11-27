@@ -44,8 +44,12 @@ export interface PhoneRowsProps {
 /** The first few cards rise in one after another (18 ms apart, 200 ms each, the last done by 308 ms); card 7 on is just there. */
 const STAGGER_CARDS = 6;
 
-/** A card's least height (inventory-next.css .ivc-card) with room for its price control; a group head's. */
-const CARD_PX = 72;
+/**
+ * A card's height as drawn (inventory-next.css): the main row's 64 px, the Used in row's 44 px and the 1 px rule
+ * under it. Every card has that second row, so a list that starts from a lesser guess is re-measured the moment
+ * it is drawn, and a link to a late good then loses its window (r107 review F3). A group head's.
+ */
+const CARD_PX = 109;
 const GROUP_HEAD_PX = 40;
 
 /**

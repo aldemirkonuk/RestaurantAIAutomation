@@ -95,6 +95,19 @@ afterEach(() => {
 describe('/inventory on a phone', () => {
   beforeEach(() => setPhone(true));
 
+  it('a link to a late good keeps its card drawn once the first cards are measured at their real height', () => {
+    // A card with the Used in row is 109 px (64 + 44 + the rule). The window is sized for that from the first
+    // paint, so measuring the drawn cards does not move it off the good a link named.
+    const was = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 109 });
+    try {
+      draw(Array.from({ length: 1200 }, (_, n) => row({ id: `i${n}`, name: `Good ${n}` })), { openId: 'i1100' });
+      expect(screen.getByTestId('inv-row-i1100')).toBeTruthy();
+    } finally {
+      if (was) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', was);
+    }
+  });
+
   it('draws a good as two lines in a card, not a table row', () => {
     draw([row()]);
     expect(screen.queryByTestId('inventory-table')).toBeNull();
