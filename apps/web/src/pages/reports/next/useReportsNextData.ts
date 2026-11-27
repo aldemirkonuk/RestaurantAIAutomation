@@ -37,7 +37,7 @@ import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { useAuthStore } from '@/stores/authStore';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
-import { readsRegister } from './rp-spec';
+import { readsRegister, type HouseRole } from './rp-spec';
 import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
@@ -72,6 +72,24 @@ export interface Register<T> {
 
 /** Exported so a write elsewhere (`useGoalsDesk`) can invalidate this read. */
 export const ROOT = 'reports-next';
+
+/** A lens the gateway answered as withheld for the reader's role. */
+const WITHHELD = Symbol('withheld for this role');
+
+/** Who a lens the gateway withheld is written for (ADR 0348, ADR 0145). */
+const GATEWAY_READERS: readonly HouseRole[] = ['owner', 'manager'];
+
+/**
+ * Did the gateway withhold this lens from the reader's role? Its money lenses
+ * answer `withheldForRole: [classes]` and the till `salesWithheld: true`
+ * (ADR 0348 decision 3); either is a register written for someone else, not
+ * an empty one.
+ */
+export function withheldByGateway(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const d = raw as { withheldForRole?: unknown; salesWithheld?: unknown };
+  return (Array.isArray(d.withheldForRole) && d.withheldForRole.length > 0) || d.salesWithheld === true;
+}
 
 /* ────────────────────────────────────────────────── the sheet itself ───── */
 
@@ -393,14 +411,20 @@ export function useReportsNextData(
         retry: 1,
         queryFn: async () => {
           const ctx = { days: tillDays };
+          // The gateway withheld a lens for this reader's role, though the
+          // page thought it could read it (a role changed since the session's
+          // was read): never handed to `select`, which would read it as empty.
           if (spec.sources) {
             // A composed register (the bench): each source read once per
             // minute however many cuttings share it; a failed source is null,
-            // which the register says, never a zero.
+            // which the register says, never a zero. One withheld source
+            // withholds the register (integ 2026-11-27: #1436 on #1051).
             const keys = Object.keys(spec.sources);
             const settled = await Promise.allSettled(
               keys.map((k) => readRaw(spec.sources![k](rid as string, ctx))),
             );
+            if (settled.some((r) => r.status === 'fulfilled' && withheldByGateway(r.value)))
+              return WITHHELD;
             return spec.select(
               Object.fromEntries(
                 keys.map((k, i) => {
@@ -410,7 +434,9 @@ export function useReportsNextData(
               ),
             );
           }
-          return spec.select(await readRaw(spec.path!(rid as string, ctx)));
+          const data = await readRaw(spec.path!(rid as string, ctx));
+          if (withheldByGateway(data)) return WITHHELD;
+          return spec.select(data);
         },
       };
     }),
@@ -429,6 +455,15 @@ export function useReportsNextData(
           loading: false,
           failure: heldBackFailure(readers, activeRole),
           refetch: () => {},
+        };
+        return;
+      }
+      if (q.data === WITHHELD) {
+        map[id] = {
+          data: undefined,
+          loading: false,
+          failure: heldBackFailure(readers ?? GATEWAY_READERS, activeRole ?? 'staff'),
+          refetch: () => void q.refetch(),
         };
         return;
       }
