@@ -651,6 +651,15 @@ export async function getItemUsedIn(itemId: string, restaurantId?: string): Prom
   return response.data;
 }
 
+/** GET /inventory/:rid/use-counts: how many current recipes use each good. A good no recipe uses is absent. */
+export const inventoryUseCountsKey = (restaurantId: string) => ['inventory', 'use-counts', restaurantId] as const;
+export async function getUseCounts(restaurantId?: string): Promise<{ counts: Record<string, number> }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<{ counts: Record<string, number> }>(`${INVENTORY_PATH}/${id}/use-counts`);
+  return response.data;
+}
+
 export async function getItemFigures(itemId: string, restaurantId?: string): Promise<ItemFigures> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
