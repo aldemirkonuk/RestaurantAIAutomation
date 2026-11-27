@@ -23,6 +23,7 @@ import { ahead, projectedBottles, till, type TillWindow } from './rp-registers-t
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
+import { CATALOGUE } from './rp-catalogue';
 
 const ctx = { days: 30 };
 
@@ -371,5 +372,24 @@ describe('the money registers and the feed for staff (ADR 0348 decision 3)', () 
     expect(withheldByGateway({ insights: [], withheldForRole: 3 })).toBe(false);
     expect(withheldByGateway([])).toBe(false);
     expect(withheldByGateway(null)).toBe(false);
+  });
+});
+
+describe('a sentence with no category (r28 gap 20)', () => {
+  it('[REVERT-FAILS] is counted as not filed, never as sales', () => {
+    const rows = CATALOGUE.reading.select!({
+      insights: [
+        { candidate_key: 'overall.bottles.vs_prev_period_7d', sentence: 'Bottles are up 4.', score: 2 },
+        { candidate_key: 'overall.revenue.vs_prev_period_7d', sentence: 'Sales are up.', category: 'sales', score: 1 },
+      ],
+    }) as Array<{ category: string }>;
+    expect(rows.map((r) => r.category)).toEqual(['unfiled', 'sales']);
+    const view = CATALOGUE.reading.view!(rows as never, {} as never) as {
+      cats: { data: Array<{ label: string; value: number }> };
+    };
+    expect(view.cats.data.map((d) => [d.label, d.value]).sort()).toEqual([
+      ['Not filed', 1],
+      ['Sales', 1],
+    ]);
   });
 });
