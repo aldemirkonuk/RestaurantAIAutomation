@@ -671,13 +671,19 @@ export function ComboPlot({
     if (onPick) onPick(next);
     else setOwn(next);
   };
-  const { bars, line, split, rows } = plan;
+  const { bars, line, split, rows: all } = plan;
+  // The same cap as the single-measure drawings (r102 M7): the highest bar of each stretch, a real day each, and
+  // the table has every one. The reading below and the tooltip still speak from `all`.
+  const rows = thinCats(all.map((r) => ({ ...r, value: r.bar })));
+  const thinned = rows.length < all.length;
   const shared = split ? null : bars.unit;
   const barGutter = gutterFor(tickLabels(rows.map((r) => r.bar), bars.format));
   const lineGutter = split ? gutterFor(tickLabels(rows.map((r) => r.line), line.format)) : 0;
-  const caption = split
-    ? `${titled(bars.label, bars.unit)} (bars, left) · ${titled(line.label, line.unit)} (line, right) · by ${series.xLabel}`
-    : `${titled(bars.label, shared ?? undefined)} · by ${series.xLabel}`;
+  const caption =
+    (split
+      ? `${titled(bars.label, bars.unit)} (bars, left) · ${titled(line.label, line.unit)} (line, right) · by ${series.xLabel}`
+      : `${titled(bars.label, shared ?? undefined)} · by ${series.xLabel}`) +
+    (thinned ? ` · ${rows.length} of ${all.length}, the highest of each stretch; the table has every one` : '');
   const words = split
     ? `Bars: ${named(bars)}, on the left scale. Line: ${named(line)}, on the right scale.`
     : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
@@ -719,7 +725,7 @@ export function ComboPlot({
       )}
       <Plot
         label={`Bars of ${bars.label} and a line of ${line.label} by ${series.xLabel}${readingOf(
-          rows.map((r) => ({ label: r.full ?? r.label, v: r.bar })),
+          all.map((r) => ({ label: r.full ?? r.label, v: r.bar })),
           bars.format,
           bars.unit,
         )}`}
