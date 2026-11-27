@@ -288,7 +288,21 @@ export class ItemUsedInService {
       if (rows.length < PAGE) break;
       after = String(rows[rows.length - 1].id);
     }
-    const houseIds = [...byId.keys()];
+    // A cocktail with a current recipe version counts only through it (the recipe sheet hides its
+    // old rows, ADR 0366): drop those before reading ingredients. Keyset-paged like the cocktails.
+    const superseded = new Set<string>();
+    let cur: string | null = null;
+    for (;;) {
+      let q = client.from("recipe_current").select("cocktail_id").eq("restaurant_id", restaurantId);
+      if (cur) q = q.gt("cocktail_id", cur);
+      const { data, error } = await q.order("cocktail_id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const r of rows) superseded.add(String(r.cocktail_id));
+      if (rows.length < PAGE) break;
+      cur = String(rows[rows.length - 1].cocktail_id);
+    }
+    const houseIds = [...byId.keys()].filter((id) => !superseded.has(id));
     const lines: CocktailLine[] = [];
     for (let i = 0; i < houseIds.length; i += INGREDIENT_CHUNK) {
       const chunk = houseIds.slice(i, i + INGREDIENT_CHUNK);
