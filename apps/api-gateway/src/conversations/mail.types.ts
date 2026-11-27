@@ -176,17 +176,6 @@ export interface MailMessage {
    * the page's `heldMarksRead` is false.
    */
   filedFromHeld: MailFiledFromHeld | null;
-}
-
-/** Who vouched for a held letter, when, and why it had been held. */
-export interface MailFiledFromHeld {
-  /** Why it was held, as stored: today only "sender_unconfirmed". */
-  heldReason: string | null;
-  /** The person's name; null when the account has no name or is gone. */
-  byName: string | null;
-  /** True when a person was recorded at all (a name may still be missing). */
-  byRecorded: boolean;
-  at: string | null;
   /**
    * Details (r108 mail-gap g8): the house mailbox a mirrored letter arrived
    * in. The connected account's address for an owner or manager; for staff,
@@ -208,6 +197,17 @@ export interface MailFiledFromHeld {
    * receiving side is still trying (4.x.x). Null on every other letter.
    */
   delivery: MailDelivery | null;
+}
+
+/** Who vouched for a held letter, when, and why it had been held. */
+export interface MailFiledFromHeld {
+  /** Why it was held, as stored: today only "sender_unconfirmed". */
+  heldReason: string | null;
+  /** The person's name; null when the account has no name or is gone. */
+  byName: string | null;
+  /** True when a person was recorded at all (a name may still be missing). */
+  byRecorded: boolean;
+  at: string | null;
 }
 
 export interface MailDelivery {
