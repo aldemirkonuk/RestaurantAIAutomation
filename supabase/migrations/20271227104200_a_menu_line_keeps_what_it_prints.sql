@@ -4,8 +4,10 @@
 -- printed_marks holds only what the menu PRINTS (a legend symbol or words:
 -- V, VG, GF, a chilli, "contains nuts"), never a mark worked out from the
 -- dish's name: a wrong "no nuts" is a safety harm. The gateway keeps a mark
--- only when its token appears in the line's own raw text, so this column is
--- never an inference. NULL = the line prints no mark (or the read could not
+-- only when its token appears in the line's own raw text. For a scan that
+-- text comes from the same model read as the mark, so the check shows the mark
+-- agrees with the read, not that the menu prints it; a CSV mark comes only
+-- from an explicitly named marks column. NULL = the line prints no mark (or the read could not
 -- show one); it never means "free of".
 ALTER TABLE public.menu_items
   ADD COLUMN IF NOT EXISTS description TEXT,
@@ -48,4 +50,4 @@ $$;
 COMMENT ON COLUMN public.menu_items.description IS
   'The line''s description as the menu prints it (r108 menu-g10), at most 1000 characters. NULL = none printed.';
 COMMENT ON COLUMN public.menu_items.printed_marks IS
-  'Dietary or allergen marks the menu PRINTS beside the line, as printed (r108 menu-g10): kept only when the mark appears in the line''s raw text, never inferred from the name. NULL = no printed mark; never "free of".';
+  'Dietary or allergen marks the menu PRINTS beside the line, as printed (r108 menu-g10): kept only when the mark appears in the line''s raw text (for a scan, the same read that listed it: as read, not independently verified). NULL = no printed mark; never "free of".';

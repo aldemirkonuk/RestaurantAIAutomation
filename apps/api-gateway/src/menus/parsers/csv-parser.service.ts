@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
 import { MenuPriceReason, readMenuPrice } from "./menu-price";
-import { splitMarks } from "./printed-marks";
+import { looksLikeLegendMark, splitMarks } from "./printed-marks";
 
 // Aliases by field, against `headerKey`: "Şişe Fiyatı (TL)" is `sise_fiyati`.
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
@@ -20,10 +20,11 @@ const ALIASES: Array<[keyof WineExtractItem, string]> = [
   ],
   // No bare "price"/"fiyat": which price it is is not decided.
   ["bottle_price", "bottle bottle_price sise sise_fiyati"],
-  // r108 menu-g10: the printed description, and a Notes column read as the
-  // line's printed marks (split on , ; | /; kept only as they appear on the row).
+  // r108 menu-g10: the printed description, and an explicitly named marks column
+  // read as the line's printed marks (split on , ; | /). A Notes/Not column is
+  // NOT a marks column: it holds cost and supplier notes the member view withholds.
   ["description", "description desc aciklama tanim"],
-  ["printed_marks", "notes note notlar not marks"],
+  ["printed_marks", "marks printed_marks dietary allergens allergen isaretler"],
 ];
 const HEADER_MAP = new Map(
   ALIASES.flatMap(([field, keys]) =>
@@ -323,7 +324,7 @@ export class CsvParserService {
         else if (price.reason && price.reason !== "empty")
           found.push({ row, reason: price.reason, field, raw });
       } else if (field === "printed_marks") {
-        item.printed_marks = splitMarks(raw);
+        item.printed_marks = splitMarks(raw).filter(looksLikeLegendMark);
       } else {
         (item as any)[field] = raw;
       }

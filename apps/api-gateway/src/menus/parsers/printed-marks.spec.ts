@@ -56,8 +56,18 @@ describe("the CSV reader reads Description and Notes", () => {
   const csv = new CsvParserService();
   it.each(["Description", "Açıklama"])("a %s column is the line's description", (h) =>
     expect(csv.parse(`name,${h}\nSoave,Crisp and dry\n`)[0].description).toBe("Crisp and dry"));
-  it("a Notes column is read as the line's marks, split", () =>
-    expect(csv.parse("name,Notes\nSoave,\"V, GF\"\n")[0].printed_marks).toEqual(["V", "GF"]));
+  it.each(["Dietary", "Allergens", "Marks"])("a %s column is read as the line's marks, split", (h) =>
+    expect(csv.parse(`name,${h}\nSoave,"V, GF"\n`)[0].printed_marks).toEqual(["V", "GF"]));
+  it.each(["Notes", "Note", "Notlar", "Not"])(
+    "a %s column is never read as marks: it holds cost and supplier notes",
+    (h) =>
+      expect(
+        csv.parse(`name,${h}\nSoave,"Supplier Kavaklidere; cost 210 TL / reorder at 6"\n`)[0].printed_marks,
+      ).toBeUndefined());
+  it("a marks cell keeps only legend-shaped tokens (no digit, three words at most)", () =>
+    expect(
+      csv.parse('name,Dietary\nSoave,"GF, cost 210 TL, contains nuts, a very long sentence about the cellar"\n')[0].printed_marks,
+    ).toEqual(["GF", "contains nuts"]));
 });
 
 describe("PATCH items/:id", () => {

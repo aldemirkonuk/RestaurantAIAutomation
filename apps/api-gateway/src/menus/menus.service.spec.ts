@@ -851,10 +851,19 @@ describe("MenusService -- a line keeps what the menu prints (r108 menu-g10)", ()
     expect(by("Köfte").printed_marks).toBeNull();
   });
 
-  it("a CSV's Description and Notes columns are read, the notes as the row prints them", async () => {
+  it("a CSV Notes cell with cost and supplier text is not stored as printed marks", async () => {
     const t = tables();
     await makeService(t, { wineSubmissions, csvParser: new CsvParserService() }).importMenu(
-      { method: "csv", data: { csvContent: "Ad,Açıklama,Notes,bottle_price\nSoave,Crisp and dry,VG; GF,40\n" }, restaurantId: "rest-1" } as any,
+      { method: "csv", data: { csvContent: "Ad,Notes,bottle_price\nSoave,\"Supplier Kavaklidere; cost 210 TL / reorder at 6\",40\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(t.menu_items[0].printed_marks ?? null).toBeNull();
+  });
+
+  it("a CSV's Description and Dietary columns are read, the marks as the row prints them", async () => {
+    const t = tables();
+    await makeService(t, { wineSubmissions, csvParser: new CsvParserService() }).importMenu(
+      { method: "csv", data: { csvContent: "Ad,Açıklama,Dietary,bottle_price\nSoave,Crisp and dry,VG; GF,40\n" }, restaurantId: "rest-1" } as any,
       "user-1",
     );
     expect(t.menu_items[0]).toMatchObject({ name: "Soave", description: "Crisp and dry", printed_marks: ["VG", "GF"] });

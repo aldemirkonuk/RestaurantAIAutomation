@@ -921,6 +921,14 @@ describe('MenuNext — a line shows what the menu prints beside it (r108 menu-g1
     expect(within(marks).getByText('as printed on the menu')).toBeInTheDocument();
   });
 
+  it('a scanned line says its marks were read from the scan, not that the menu printed them', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ source: 'scan', printed_marks: ['GF'] })] }));
+    mount();
+    const marks = await screen.findByTestId('menu-line-marks');
+    expect(marks).toHaveAttribute('aria-label', 'Marks as read from the scan, check them on the menu: GF');
+    expect(within(marks).queryByText('as printed on the menu')).toBeNull();
+  });
+
   it('a line with no description and no marks shows neither, and claims nothing', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ description: null, printed_marks: null })] }));
     mount();
