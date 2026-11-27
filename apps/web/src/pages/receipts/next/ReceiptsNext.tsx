@@ -71,6 +71,7 @@ import {
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import { SealedChangesPart } from './ReceiptsSealedChanges';
+import { ReceiptsCoverage } from './ReceiptsCoverage';
 import { readLaneRows, writeLaneRows } from './laneMemory';
 import {
   RECEIPTS_SERVER_WINDOWS,
@@ -2064,6 +2065,9 @@ export default function ReceiptsNext() {
             </div>
           </div>
         )}
+
+        {/* r109 g2: how much of the till's drinks cost is exact; owners and managers only. */}
+        {creditsOffered && <ReceiptsCoverage onOpen={select} />}
 
         {/*
           AN OPEN DOCUMENT TAKES THE WIDTH (walk-through W3, 2026-10-01). Beside
