@@ -1176,14 +1176,27 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * rather than "no POS connected".
    */
   private async hasPosHistory(restaurantId: string): Promise<boolean> {
+    return (await this.firstPosCheck(restaurantId)) !== null;
+  }
+
+  /**
+   * The restaurant's earliest POS check (by when it opened), or null when it
+   * has never had one. The same unwindowed, unfiltered read `hasPosHistory`
+   * always made, ordered so its one row also says when the till began: a
+   * prior window that starts before that day is not a whole window.
+   */
+  private async firstPosCheck(
+    restaurantId: string,
+  ): Promise<{ opened_at?: string | null; closed_at?: string | null } | null> {
     const { data, error } = await this.dbService
       .getClient()
       .from("pos_checks")
-      .select("id")
+      .select("id, opened_at, closed_at")
       .eq("restaurant_id", restaurantId)
+      .order("opened_at", { ascending: true })
       .limit(1);
     if (error) throw new Error(error.message);
-    return (data || []).length > 0;
+    return (data || [])[0] ?? null;
   }
 
   /**
@@ -1202,13 +1215,15 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   async getPosRevenueWindow(
     restaurantId: string,
     days = 30,
+    compare?: "prior",
   ): Promise<PosRevenueWindow> {
     const span = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
     // Both reads are by key and independent; neither error is swallowed.
-    const [connected, house] = await Promise.all([
-      this.hasPosHistory(restaurantId),
+    const [first, house] = await Promise.all([
+      this.firstPosCheck(restaurantId),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
+    const connected = first !== null;
     const zone = house.zone;
     const to = zone ? houseToday(zone) : null;
     const from = to ? shiftHouseDay(to, -(span - 1)) : null;
@@ -1236,7 +1251,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         zone,
       );
 
-    return {
+    const window: PosRevenueWindow = {
       restaurantId,
       from,
       to,
@@ -1250,6 +1265,40 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         date,
         revenue: dailySeries[i] ?? 0,
       })),
+    };
+    if (compare !== "prior") return window;
+
+    // The same-length window just before: it ends the day before this one
+    // starts and is filed on the same house clock. Sparse like the main
+    // series, so a day with no check stays absent (never a zero).
+    const priorTo = shiftHouseDay(from, -1);
+    const priorFrom = shiftHouseDay(priorTo, -(span - 1));
+    const before = await this.computeMetricWithSeries(
+      restaurantId,
+      "pos_revenue",
+      priorFrom,
+      priorTo,
+      zone,
+    );
+    // The till's first check says where its history begins. A prior window
+    // that starts before that day was never wholly rung, so its sum is a
+    // partial one dressed as the window's: it is withheld (revenue and count
+    // null, `since` set) and the days that do exist stay in the series.
+    const since = houseDayOf(first, zone);
+    const partial = since !== null && since > priorFrom;
+    return {
+      ...window,
+      prior: {
+        from: priorFrom,
+        to: priorTo,
+        revenue: partial ? null : before.current,
+        checkCount: partial ? null : before.rowCount,
+        ...(partial ? { since } : {}),
+        dailySeries: before.dailyDates.map((date, i) => ({
+          date,
+          revenue: before.dailySeries[i] ?? 0,
+        })),
+      },
     };
   }
 }
@@ -1286,4 +1335,19 @@ export interface PosRevenueWindow {
   checkCount: number | null;
   /** Sparse — only days that actually had revenue appear. */
   dailySeries: Array<{ date: string; revenue: number }>;
+  /**
+   * Only with `compare=prior`: the same-length window just before this one.
+   * Absent when not asked for, and when no window could be filed
+   * (`posConnected: false`, `zoneUnset`).
+   */
+  prior?: {
+    from: string;
+    to: string;
+    /** `null` when the till began inside this window (`since`): a partial sum is not the window's. */
+    revenue: number | null;
+    checkCount: number | null;
+    /** The house day of the till's first check, set only when it falls after `from`. */
+    since?: string;
+    dailySeries: Array<{ date: string; revenue: number }>;
+  };
 }
