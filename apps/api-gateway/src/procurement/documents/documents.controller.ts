@@ -1835,24 +1835,40 @@ export class DocumentsController {
     // since slice 2 and this one had not (ADR 0067).
     const { imageUrl, reason: imageUrlReason } = signedOriginal;
 
-    // The rate a manager filed this paper at, from the newest audit row that
-    // carries one, so the card still says "filed at ..." after a reload. A
-    // failed read says so; it is never read as "filed at no rate" (ADR 0020).
+    // The rate a manager filed this paper at, so the card still says "filed at
+    // ..." after a reload. It is read from the NEWEST restatement only: a rate
+    // from an older conversion, with a relabel after it, is a conversion into a
+    // money the paper is no longer filed in (r105). A failed read says so; it is
+    // never read as "filed at no rate" (ADR 0020).
     const { data: fxRows, error: fxError } = await this.db
       .getClient()
       .from("procurement_document_currency_changes")
       .select("paper_currency, new_currency, exchange_rate, rate_date")
       .eq("document_id", id)
       .eq("restaurant_id", user.restaurantId)
-      .not("exchange_rate", "is", null)
+      .eq("change_kind", "restated")
       .limit(1)
       .order("changed_at", { ascending: false });
-    const fxFiled = ((fxRows ?? []) as {
-      paper_currency: string;
+    const newest = ((fxRows ?? []) as {
+      paper_currency: string | null;
       new_currency: string;
-      exchange_rate: number | string;
-      rate_date: string;
+      exchange_rate: number | string | null;
+      rate_date: string | null;
     }[])[0] ?? null;
+    const fxFiled =
+      newest &&
+      newest.exchange_rate != null &&
+      newest.paper_currency &&
+      newest.rate_date &&
+      (newest.new_currency ?? "").trim().toUpperCase() ===
+        ((doc as { currency?: string | null }).currency ?? "").trim().toUpperCase()
+        ? (newest as {
+            paper_currency: string;
+            new_currency: string;
+            exchange_rate: number | string;
+            rate_date: string;
+          })
+        : null;
     const filedAt = fxFiled
       ? {
           from: fxFiled.paper_currency,
@@ -2480,12 +2496,50 @@ export class DocumentsController {
      * is nothing there to agree with — that is a restatement from nothing, and
      * it is what the `previous === null` branch below produces.
      */
+    /*
+     * ONE CONVERSION PER PAPER (r105). A conversion rewrites every figure, so a
+     * paper that already holds a rate row is in the house's money; converting it
+     * again converts money that is already converted, and the card would say
+     * "costed at 1 TRY = 0.0310 USD" over a 9.30 that should be 310. Refused in
+     * words before anything is written. A failed read says it failed.
+     */
+    if (fx) {
+      const { data: prior, error: priorError } = await this.db
+        .getClient()
+        .from("procurement_document_currency_changes")
+        .select("paper_currency, new_currency, exchange_rate, rate_date")
+        .eq("document_id", id)
+        .eq("restaurant_id", user.restaurantId)
+        .not("exchange_rate", "is", null)
+        .limit(1);
+      if (priorError)
+        throw new HttpException(
+          `Whether this paper was already converted could not be read, so nothing was changed: ${priorError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const was = ((prior ?? []) as {
+        paper_currency: string | null;
+        new_currency: string;
+        exchange_rate: number | string;
+        rate_date: string | null;
+      }[])[0];
+      if (was)
+        throw new HttpException(
+          `This paper was already converted${
+            was.paper_currency && was.rate_date
+              ? ` (${filedAtSentence(was.paper_currency, was.new_currency, Number(was.exchange_rate), was.rate_date)})`
+              : ""
+          }. Converting it again would convert money that is already converted. Nothing was changed.`,
+          HttpStatus.CONFLICT,
+        );
+    }
+
     const kind: "restated" | "confirmed" =
       previous !== null && previous === next && !fx ? "confirmed" : "restated";
     // `pdcc_kind_matches_the_codes` refuses a 'restated' row with equal codes.
     if (fx && previous !== null && previous === next)
       throw new HttpException(
-        `This paper is already filed in ${next}, so there is nothing to convert it into. Nothing was changed.`,
+        `This paper is already filed in ${next}. If its figures are really in ${fx.from} and were never converted, restate it as ${fx.from} first (no rate), then convert. Nothing was changed.`,
         HttpStatus.CONFLICT,
       );
     // A CONVERSION MULTIPLIES WHATEVER FIGURES STAND ON THE ROWS (r104 reviewer).

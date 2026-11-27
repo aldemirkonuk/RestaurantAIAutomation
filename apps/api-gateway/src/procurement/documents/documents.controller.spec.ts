@@ -112,7 +112,7 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
   });
 
   it("a reload still says what rate the paper was filed at", async () => {
-    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-4", storage_path: null }, error: null });
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-4", storage_path: null, currency: "USD" }, error: null });
     mockOrder
       .mockResolvedValueOnce({ data: [] }) // the lines
       .mockResolvedValueOnce({
@@ -126,6 +126,32 @@ describe("DocumentsController.detail — signed image URL (decision E48)", () =>
       rate: 1.084,
       sentence: "filed at 1 EUR = 1.0840 USD on 20 Nov",
     });
+  });
+
+  it("a rate row followed by a relabel into another money says nothing was filed at a rate (r105)", async () => {
+    // The newest restatement is the relabel (no rate), so the paper is not "costed at"
+    // anything: the older conversion was into a money the paper no longer sits in.
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-6", storage_path: null, currency: "EUR" }, error: null });
+    mockOrder
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [{ paper_currency: null, new_currency: "EUR", exchange_rate: null, rate_date: null }],
+        error: null,
+      });
+    const result: any = await controller.detail("doc-6", user);
+    expect(result.document.filedAt).toBeNull();
+  });
+
+  it("a rate row into a money the paper is no longer filed in says nothing (r105)", async () => {
+    mockMaybeSingle.mockResolvedValueOnce({ data: { id: "doc-7", storage_path: null, currency: "EUR" }, error: null });
+    mockOrder
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [{ paper_currency: "TRY", new_currency: "USD", exchange_rate: "0.03", rate_date: "2026-11-19" }],
+        error: null,
+      });
+    const result: any = await controller.detail("doc-7", user);
+    expect(result.document.filedAt).toBeNull();
   });
 
   it("a paper never converted has no filedAt, and a failed read says it failed", async () => {
@@ -245,6 +271,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       /** The house's own currency; "USD" unless said. */
       house?: string | null;
       houseError?: any;
+      /** Rows of the audit table that already carry a rate (a prior conversion). */
+      priorRate?: any[];
+      priorRateError?: any;
     } = {},
   ) {
     const refileCalls: Array<[string, string, string]> = [];
@@ -259,7 +288,11 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
           select: () => q,
           eq: () => q,
           order: () => q,
+          not: () => q,
           limit: () => q,
+          // The read of earlier rate rows is awaited without a terminator.
+          then: (res: any, rej: any) =>
+            Promise.resolve({ data: opts.priorRate ?? [], error: opts.priorRateError ?? null }).then(res, rej),
           maybeSingle: async () =>
             table === "procurement_document_currency_changes"
               ? { data: opts.lastChange ?? null, error: opts.lastChangeError ?? null }
@@ -565,6 +598,32 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       const { controller } = harness({ doc: { ...DOC, currency: "TRY" } });
       await controller.restateCurrency("doc-9", { currency: "USD", fromCurrency: "TRY", rate: 0.03, rateDate: "2026-11-20" }, user);
     });
+  });
+
+  it("refuses a second conversion of a paper that already holds a rate, and writes nothing (r105)", async () => {
+    const prior = [{ paper_currency: "TRY", new_currency: "USD", exchange_rate: "0.03", rate_date: "2026-11-19" }];
+    // A TRY paper converted at 0.03, then relabelled USD -> TRY: the instructed path.
+    const { controller, inserts, updates } = harness({ doc: { ...DOC, currency: "TRY" }, priorRate: prior, house: "USD" });
+    const call = controller.restateCurrency("doc-9", { currency: "USD", fromCurrency: "TRY", rate: 0.031, rateDate: "2026-11-20" }, user);
+    await expect(call).rejects.toMatchObject({ status: 409 });
+    await expect(call).rejects.toThrow(/already converted.*filed at 1 TRY = 0\.0300 USD on 19 Nov.*Nothing was changed/);
+    expect(inserts).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("a failed read of earlier conversions refuses the conversion and says it failed (r105)", async () => {
+    const { controller, inserts } = harness({ priorRateError: { message: "boom" } });
+    await expect(
+      controller.restateCurrency("doc-9", { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" }, user),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("the 'already filed' refusal no longer tells anyone to relabel converted money (r105)", async () => {
+    const { controller } = harness({ doc: { ...DOC, currency: "USD" } });
+    await expect(
+      controller.restateCurrency("doc-9", { currency: "USD", fromCurrency: "TRY", rate: 0.03, rateDate: "2026-11-20" }, user),
+    ).rejects.toThrow(/really in TRY and were never converted/);
   });
 
   it("a plain relabel stores no rate", async () => {
