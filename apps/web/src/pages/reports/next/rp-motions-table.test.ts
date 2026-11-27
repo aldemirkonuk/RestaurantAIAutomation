@@ -146,6 +146,13 @@ describe('rp-flat-in: full screen arrives on the house settle', () => {
     expect(props.every((p) => p === 'opacity' || p === 'transform')).toBe(true);
   });
 
+  it('[REVERT-FAILS] a stepped opening is not animated: the neighbour is a new dialog and must not replay it', () => {
+    const stepped = rules.filter((r) => !r.reduced && r.selector === ".rp-flat[data-stepped='true']");
+    const anim = stepped.flatMap((r) => decls(r.body, { live: false })).filter((d) => d.kind === 'animation');
+    expect(anim.length).toBeGreaterThan(0);
+    expect(anim.every((d) => /^\s*none\b/.test(d.value))).toBe(true);
+  });
+
   it('is no animation at all under prefers-reduced-motion', () => {
     const off = reducedRules.filter((r) => r.selector === '.rp-flat');
     expect(off.flatMap((r) => decls(r.body, { live: false })).some((d) => d.kind === 'animation' && /^\s*none\b/.test(d.value))).toBe(true);
