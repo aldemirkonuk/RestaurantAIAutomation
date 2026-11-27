@@ -5,12 +5,11 @@
 -- with the fourth. Existing rows hold one of the first three, so every one
 -- passes.
 --
--- The list also keeps the words two other open PRs add to this same CHECK
--- (invoice_restated from #1984's 20271201300000; pour_lot_wac and
--- pour_lot_wac_partial from #2063's 20271220100000). This version sorts after
--- both, so a list of four would silently take their words back out and the
--- database would refuse a restated sale and every pour. A superset on main
--- today (no row holds them) and the right set after either lands.
+-- The list is the whole set of seven words. #1984 (invoice_restated) and #2063
+-- (pour_lot_wac, pour_lot_wac_partial) carry the same seven, so whichever of the
+-- three merges last leaves the full list in place. Guarded by
+-- pos-hub/cost-basis-check-lists-every-word.spec.ts, which fails when the newest
+-- migration to set this CHECK leaves a word out.
 
 ALTER TABLE public.wine_consumption_log
   DROP CONSTRAINT IF EXISTS wine_consumption_log_cost_basis_check;
