@@ -68,7 +68,7 @@ function session(): Storage | null {
   }
 }
 
-const sameOwner = (a: WarmOwner, b: WarmOwner) =>
+export const sameOwner = (a: WarmOwner, b: WarmOwner) =>
   a.userId === b.userId && a.restaurantId === b.restaurantId && a.role === b.role;
 
 function loaded(): Mirror | null {

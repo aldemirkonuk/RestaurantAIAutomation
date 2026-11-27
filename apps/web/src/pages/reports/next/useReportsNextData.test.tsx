@@ -394,4 +394,24 @@ describe('useReportsNextData — warm start (r108 g8)', () => {
     expect(result.current.registers.seats?.data).toBeUndefined();
     expect(result.current.warmAt).toBeNull();
   });
+
+  it('[REVERT-FAILS] a read that lands after a house switch is not kept under the new house', async () => {
+    let land: (v: unknown) => void = () => {};
+    seats = () => new Promise((r) => (land = r));
+    const { result, rerender } = mount();
+    await waitFor(() => expect(paths()).toContain(SEATS));
+    // The reader switches house while house r1's read is still out.
+    const NEXT = { userId: 'u1', restaurantId: 'r2', role: 'manager' };
+    api.get.mockImplementation(async (path: string) => {
+      if (path.includes('/r2')) return new Promise(() => {});
+      throw new Error(`unexpected GET ${path}`);
+    });
+    auth.rid = 'r2';
+    rerender();
+    await act(async () => land({ data: { tables: [{ takings: 'house r1' }] } }));
+    flushWarm();
+    expect(warmRead(NEXT, SEATS_KEY)).toBeUndefined();
+    expect(warmRead(MANAGER, SEATS_KEY)).toBeUndefined();
+    expect(result.current.registers.seats?.data).toBeUndefined();
+  });
 });
