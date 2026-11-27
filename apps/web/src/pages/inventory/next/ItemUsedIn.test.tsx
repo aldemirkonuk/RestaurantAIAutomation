@@ -58,11 +58,32 @@ describe('Used in', () => {
   it('a drink only the old recipe box holds is marked read only, with its quantity (r103 need 7)', () => {
     render(
       <MemoryRouter>
-        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load()} canManage currency={EUR} onRetry={vi.fn()} />
+        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load({ inDrinkRecipes: ok([]) })} canManage currency={EUR} onRetry={vi.fn()} />
       </MemoryRouter>,
     );
     expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(`40 ml · ${OLD_RECIPE_BOX}`);
     expect(OLD_RECIPE_BOX).toBe('old recipe box, read only');
+  });
+
+  it('a card is not called old when the recipe read failed, since it may have a current recipe', () => {
+    const failedRecipes = { readable: false, lines: null, source: 'The drink recipes could not be read (boom), so this is not shown.' };
+    render(
+      <MemoryRouter>
+        <ItemUsedIn
+          dishes={NO_DISHES}
+          onRetryDishes={vi.fn()}
+          load={load({ inDrinkRecipes: failedRecipes as unknown as UsedIn['inDrinkRecipes'] })}
+          drinks={{ status: 'failed', reason: 'boom' } as never}
+          canManage
+          currency={EUR}
+          onRetry={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const cards = screen.getByTestId('ivd-used-cocktails').textContent ?? '';
+    expect(cards).toContain('Rakı sour');
+    expect(cards).toContain('40 ml');
+    expect(cards).not.toContain(OLD_RECIPE_BOX);
   });
 
   it('a drink that uses the good opens that drink, in the app and outside it', () => {
@@ -185,6 +206,7 @@ describe('Used in', () => {
             { cocktailId: 'c1', name: 'Rakı sour', quantity: 0.1 + 0.2, unit: 'oz' },
             { cocktailId: 'c2', name: 'Lion milk', quantity: 29.5735295625, unit: 'ml' },
           ]),
+          inDrinkRecipes: ok([]),
         })}
         canManage
         currency={EUR}

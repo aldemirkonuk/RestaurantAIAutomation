@@ -361,6 +361,8 @@ export default function ItemUsedIn({
     // A figured drink stands in for a used-in line here only to be grouped; it is drawn by DrinkBlock.
     const groups = drinkGroups(load.data.inCocktails, recipeSource as UsedIn['inDrinkRecipes']);
     const inCocktails = groups.cards;
+    // Only a read recipe list can say a drink has no current recipe; an unread one cannot, so then no card is called old.
+    const oldBoxKnown = read(recipeSource as UsedIn['inDrinkRecipes']);
     const inDrinkRecipes = groups.recipes;
     const figuredRecipes = figured !== null && inDrinkRecipes !== null ? figured : null;
     const drinksFailed =
@@ -388,7 +390,7 @@ export default function ItemUsedIn({
             key: `${c.cocktailId}-${i}`,
             text: c.name,
             to: drinkHref(c.cocktailId),
-            side: `${c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''} · ` : ''}${OLD_RECIPE_BOX}`,
+            side: `${c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : ''}${c.quantity !== null && oldBoxKnown ? ' · ' : ''}${oldBoxKnown ? OLD_RECIPE_BOX : ''}` || undefined,
           })}
         />
         ) : null}

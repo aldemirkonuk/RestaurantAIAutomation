@@ -112,7 +112,7 @@ export const REGISTER_SOURCE: Record<RegisterId, RegisterSource> = {
     stockable: false,
     writable: true,
     missing:
-      'A cocktail cannot yet deplete its base spirit: that needs a stock row for the spirit, which is the same OD-113 gate. Recipes themselves are no longer missing — cocktail_ingredients has a writer as of this pass.',
+      'A cocktail cannot yet deplete its base spirit: that needs a stock row for the spirit, which is the same OD-113 gate. Old recipes are only read; a recipe is saved from the drink’s recipe sheet.',
   },
   non_alcoholic: {
     wired: true,

@@ -14,6 +14,7 @@ import CellarRegistersControl from './CellarRegistersControl';
 import CellarRegistersStep from './CellarRegistersStep';
 import RegisterNotice from './NeedsItemsNotice';
 import type { RegisterId } from './cellar-format';
+import { REGISTER_SOURCE } from './registerShapes';
 import type { CellarRegistersVM, RegisterReadoutVM } from './useCellarNextData';
 
 const ALL: RegisterId[] = [
@@ -378,5 +379,14 @@ describe('the register notices — the backtest amendments', () => {
     unmount();
     render(<RegisterNotice kind="stranded" registers={['whiskey']} counts={{ whiskey: 12 }} />);
     expect(screen.getByTestId('stranded-whiskey')).toBeInTheDocument();
+  });
+});
+
+describe('the cocktails register says old recipes are read only', () => {
+  it('names no table and no writer, and points to the recipe sheet', () => {
+    const said = REGISTER_SOURCE.cocktails.missing;
+    expect(said).not.toMatch(/cocktail_ingredients|has a writer/);
+    expect(said).toMatch(/only read/);
+    expect(said).toMatch(/recipe sheet/);
   });
 });
