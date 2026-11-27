@@ -111,29 +111,35 @@ export interface SheetState {
  * any of them on.
  */
 export const DEFAULT_SLOTS: Record<AnalysisId, Slot> = {
-  reading: { x: 0, y: 0, w: 7, h: 9 },
-  till: { x: 7, y: 0, w: 5, h: 9 },
-  goals: { x: 0, y: 9, w: 7, h: 11 },
-  bench: { x: 7, y: 9, w: 5, h: 11 },
-  pacing: { x: 0, y: 20, w: 4, h: 7 },
-  week: { x: 4, y: 20, w: 4, h: 7 },
-  ahead: { x: 8, y: 20, w: 4, h: 7 },
-  quadrants: { x: 0, y: 27, w: 7, h: 8 },
-  ledger: { x: 7, y: 27, w: 5, h: 8 },
-  seats: { x: 0, y: 35, w: 6, h: 8 },
-  service: { x: 6, y: 35, w: 6, h: 8 },
-  restock: { x: 0, y: 43, w: 12, h: 8 },
-  writing: { x: 0, y: 51, w: 12, h: 3 },
+  // A bento: the reading is one column (1 x 1) beside the till (2 x 1), both
+  // 8 rows tall so the till's Taken / Checks rows show whole and the reading
+  // carries no empty tail; pacing and the week then share one row beneath.
+  reading: { x: 0, y: 0, w: 4, h: 8 },
+  till: { x: 4, y: 0, w: 8, h: 8 },
+  // Pacing needs 374 px at the house width (three figures, a note and the
+  // chart): 9 rows, so its body does not scroll. The week beside it takes the
+  // same 9 so the row tiles; its chart flexes to the room.
+  pacing: { x: 0, y: 8, w: 6, h: 9 },
+  week: { x: 6, y: 8, w: 6, h: 9 },
+  goals: { x: 0, y: 17, w: 7, h: 11 },
+  bench: { x: 7, y: 17, w: 5, h: 11 },
+  ahead: { x: 0, y: 28, w: 4, h: 8 },
+  quadrants: { x: 4, y: 28, w: 8, h: 8 },
+  ledger: { x: 0, y: 36, w: 4, h: 8 },
+  seats: { x: 4, y: 36, w: 4, h: 8 },
+  service: { x: 8, y: 36, w: 4, h: 8 },
+  restock: { x: 0, y: 44, w: 12, h: 8 },
+  writing: { x: 0, y: 52, w: 12, h: 3 },
 };
 
 /** Which analyses lie on a sheet nobody has arranged yet. */
 export const DEFAULT_ON: AnalysisId[] = [
   'reading',
   'till',
-  'goals',
-  'bench',
   'pacing',
   'week',
+  'goals',
+  'bench',
   'ahead',
   'quadrants',
   'ledger',

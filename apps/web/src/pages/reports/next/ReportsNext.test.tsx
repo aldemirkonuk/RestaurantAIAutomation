@@ -26,12 +26,14 @@
  * case below names a string or a role the scaffold does not have.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
-import { DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
+import { DEFAULT_ON, DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
 
 /**
@@ -2774,5 +2776,194 @@ describe('the opening line leads somewhere on day 1 (r36 reports gap 5)', () => 
       expect(screen.queryByTestId('rp-opening-step')).toBeNull();
       page.unmount();
     }
+  });
+});
+
+/* ── r61 c2: the hero, the strips, the window pill, the bento ──────────────── */
+
+describe('r61 c2 — the opening, the strips and the till window', () => {
+  const zeroWeek = () =>
+    ok({
+      weekdayProfile: [
+        { day: 'Monday', mean: 0, stdev: 0, n: 12 },
+        { day: 'Friday', mean: 0, stdev: 0, n: 12 },
+      ],
+      bestDay: null,
+      worstDay: null,
+      tie: false,
+      trendPerDayPct: 0,
+      basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
+    });
+
+  it('[REVERT-FAILS] draws two sparklines of real series under the opening sentence, 160 x 48', () => {
+    paint();
+    const till = screen.getByTestId('rp-spark-till');
+    const week = screen.getByTestId('rp-spark-week');
+    expect(till.querySelector('svg')).toHaveAttribute('width', '160');
+    expect(till.querySelector('svg')).toHaveAttribute('height', '48');
+    expect(week.querySelector('svg')).toHaveAttribute('height', '48');
+    expect(till.querySelector('svg')).toHaveAttribute('aria-label', expect.stringContaining('2 readings'));
+    expect(screen.getByRole('banner')).toContainElement(till);
+  });
+
+  it('draws no sparkline from a register that is loading, or has one point', () => {
+    const regs = base().registers as Record<string, { data: object }>;
+    hook.current = {
+      ...base(),
+      registers: {
+        ...regs,
+        till: pending,
+        week: ok({ ...regs.week.data, weekdayProfile: [{ day: 'Monday', mean: 2, stdev: 1, n: 12 }] }),
+      },
+    };
+    paint();
+    expect(screen.queryByTestId('rp-spark-till')).toBeNull();
+    expect(screen.queryByTestId('rp-spark-week')).toBeNull();
+  });
+
+  const zeroPacing = () =>
+    ok({
+      zoneUnset: false,
+      spendLast30d: 0,
+      spendPrev30d: 0,
+      paceDeltaPct: null,
+      projectedNext4Weeks: null,
+      committedOpenOrders: 0,
+      openOrderCount: 0,
+    });
+  /** The height react-grid-layout gave a cutting's slot, in px. */
+  const slotPx = (name: string) =>
+    Number.parseFloat(
+      (screen.getByRole('region', { name }).closest('.react-grid-item') as HTMLElement).style.height,
+    );
+  const rowsPx = (h: number) => h * 34 + (h - 1) * 14;
+
+  it('[REVERT-FAILS] folds a cutting whose answer is a sentence to a strip, and gives it back while arranging', () => {
+    hook.current = { ...base(), registers: { ...(base().registers as object), pacing: zeroPacing() } };
+    paint();
+    const pacing = () => screen.getByRole('region', { name: 'Spend pacing' });
+    expect(pacing()).toHaveAttribute('data-strip', 'true');
+    expect(screen.getByRole('region', { name: 'The week’s shape' })).not.toHaveAttribute('data-strip');
+    arrange();
+    expect(pacing()).not.toHaveAttribute('data-strip');
+  });
+
+  it('[REVERT-FAILS] a week that reads zero keeps its slot and says "No pours read this week" instead of collapsing', () => {
+    hook.current = { ...base(), registers: { ...(base().registers as object), week: zeroWeek() } };
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(week).not.toHaveAttribute('data-strip');
+    expect(within(week).getByText('No pours read this week')).toBeInTheDocument();
+    expect(slotPx('The week’s shape')).toBe(slotPx('Spend pacing'));
+    expect(slotPx('The week’s shape')).toBeGreaterThanOrEqual(rowsPx(6));
+  });
+
+  it('[REVERT-FAILS] pacing is tall enough for its rows: no inner scroll at the house width', () => {
+    paint();
+    // 1440 px measured: the body needed 309 px under a 65 px head (374 px).
+    expect(slotPx('Spend pacing')).toBeGreaterThanOrEqual(374);
+    expect(DEFAULT_SLOTS.pacing.h).toBe(DEFAULT_SLOTS.week.h);
+  });
+
+  describe('the reading follows its content', () => {
+    // jsdom has no layout: give the card a head, a body and two blocks a size.
+    let spy: { mockRestore: () => void } | null = null;
+    const fake = (blocks: number[]) => {
+      spy?.mockRestore();
+      spy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+        const content = blocks.reduce((a, b) => a + b, 0) + 12;
+        if (this.classList.contains('rp-cut')) return 68 + content;
+        if (this.classList.contains('rp-cut__body')) return content;
+        if (this.parentElement?.classList.contains('rp-cut__body')) {
+          return blocks[[...this.parentElement.children].indexOf(this)] ?? 0;
+        }
+        return 0;
+      });
+    };
+    afterEach(() => {
+      spy?.mockRestore();
+      spy = null;
+    });
+
+    it('[REVERT-FAILS] shrinks to the rows its content needs, never under six', () => {
+      fake([30, 100]); // 68 head + 130 of blocks = 198 px -> 5 rows -> held at 6
+      paint();
+      expect(slotPx('The reading')).toBe(rowsPx(6));
+    });
+
+    it('[REVERT-FAILS] a fuller reading takes the rows it needs, up to its slot', () => {
+      fake([30, 230]); // 68 + 260 = 328 px -> 8 rows
+      paint();
+      expect(slotPx('The reading')).toBe(rowsPx(8));
+      cleanup();
+      fake([30, 90, 90, 90, 90, 90]); // far more than 8 rows: the slot is the cap, the card scrolls
+      paint();
+      expect(slotPx('The reading')).toBe(rowsPx(8));
+    });
+
+    it('keeps its whole slot while the sheet is being arranged', () => {
+      fake([30, 100]);
+      paint();
+      arrange();
+      expect(slotPx('The reading')).toBe(rowsPx(8));
+    });
+  });
+
+  it('keeps the till full while it is empty, so its window picker stays in reach', () => {
+    hook.current = {
+      ...base(),
+      registers: { ...(base().registers as object), till: ok({ ...TILL, checkCount: 0, dailySeries: [], revenue: 0 }) },
+    };
+    paint();
+    expect(screen.getByRole('region', { name: 'Through the till' })).not.toHaveAttribute('data-strip');
+  });
+
+  it('[REVERT-FAILS] the window is one pill: four equal segments under a sliding thumb', () => {
+    paint('/reports?days=90');
+    const group = screen.getByRole('group', { name: 'Till window' });
+    expect(group).toHaveClass('rp-seg');
+    expect(group.style.getPropertyValue('--rp-i')).toBe('2');
+    expect(group.style.getPropertyValue('--rp-n')).toBe('4');
+    expect(group.querySelectorAll('.rp-seg__thumb')).toHaveLength(1);
+    fireEvent.click(within(group).getByRole('button', { name: '7 days' }));
+    expect(screen.getByRole('group', { name: 'Till window' }).style.getPropertyValue('--rp-i')).toBe('0');
+  });
+
+  it('[REVERT-FAILS] the stylesheet gives the pill 44 px targets, moves it by transform and clip-path only, and stills it for reduced motion', () => {
+    const css = readFileSync(resolve(__dirname, 'reports-next.css'), 'utf8');
+    const block = css.slice(css.indexOf('r61 c2'));
+    expect(block).toMatch(/\.rp-seg__btn\s*{[^}]*min-height:\s*44px/);
+    expect(block).toMatch(/\.rp-seg__thumb\s*{[^}]*transition:\s*transform 260ms/);
+    expect(block).toMatch(/@keyframes rp-spark-draw[\s\S]*clip-path/);
+    expect(block).not.toMatch(/transition:\s*all/);
+    expect(block).toMatch(/prefers-reduced-motion: reduce\)\s*{[\s\S]*\.rp-seg__thumb[\s\S]*transition:\s*none/);
+    expect(block).toMatch(/\.rp-cut\[data-strip\]\s*{[^}]*height:\s*72px/);
+  });
+
+  it('[REVERT-FAILS] the house sheet is a bento: reading and till share 8 rows, pacing and week fill the row below', () => {
+    expect(DEFAULT_SLOTS.reading).toMatchObject({ x: 0, y: 0, w: 4, h: 8 });
+    expect(DEFAULT_SLOTS.till).toMatchObject({ x: 4, y: 0, w: 8, h: 8 });
+    expect(DEFAULT_SLOTS.pacing).toMatchObject({ x: 0, y: 8, w: 6, h: 9 });
+    expect(DEFAULT_SLOTS.week).toMatchObject({ x: 6, y: 8, w: 6, h: 9 });
+    // nothing beneath the head rows starts above the row they end on
+    expect(DEFAULT_SLOTS.goals.y).toBe(17);
+    expect(DEFAULT_SLOTS.bench.y).toBe(17);
+    const wide = ['reading', 'till', 'pacing', 'week', 'ahead', 'quadrants'] as const;
+    expect(new Set(wide.map((k) => DEFAULT_SLOTS[k].w)).size).toBeGreaterThan(1);
+  });
+
+  it('[REVERT-FAILS] the first 36 rows of the default sheet tile with no hole and no overlap', () => {
+    const on = DEFAULT_ON.map((k) => DEFAULT_SLOTS[k]);
+    const cells = new Set<string>();
+    for (const s of on) {
+      for (let y = s.y; y < s.y + s.h; y++) for (let x = s.x; x < s.x + s.w; x++) {
+        expect(cells.has(`${x},${y}`)).toBe(false);
+        cells.add(`${x},${y}`);
+      }
+    }
+    // seats / service / restock are held off by default, so only the rows above
+    // the ledger are a full ruling
+    const full = [...cells].filter((c) => Number(c.split(',')[1]) < 36).length;
+    expect(full).toBe(36 * 12);
   });
 });

@@ -81,6 +81,9 @@ import { flatAsked, flatVisit, refusedFlatSentence } from './rp-flat-visit';
 import { FLAT_PARAM } from './CuttingFlat';
 import { NextStep } from './rp-next-step';
 import { readingAge } from './rp-registers-trade';
+import { FIT_IDS, fittedRows } from './rp-fit';
+import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
+import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
@@ -150,6 +153,17 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // for this visit, never written (a write then could put the house sheet
   // over theirs). Once the sheet is known the pick lives on the sheet itself.
   const [comboHeld, setComboHeld] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
+  /** What a fitted card's content needs, by cutting (`rp-fit.ts`). Display only: never saved. */
+  const [needPx, setNeedPx] = useState<Partial<Record<AnalysisId, number>>>({});
+  const onFit = useCallback((id: AnalysisId, px: number | null) => {
+    setNeedPx((cur) => {
+      if ((cur[id] ?? null) === px) return cur;
+      const next = { ...cur };
+      if (px === null) delete next[id];
+      else next[id] = px;
+      return next;
+    });
+  }, []);
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -488,12 +502,27 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ? 'The house’s currency could not be read, so money is printed as plain numbers.'
         : null;
 
-  const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
+  const sparks = SPARK_IDS.map((id) => sparkOf(id, data.registers[id], ctx)).filter(
+    (s): s is SparkSeries => s !== null,
+  );
+
+  const cuttings: SheetCutting[] = view.cuttings.map((c) => {
+    const fit = !editing && FIT_IDS.includes(c.id);
+    // A cutting whose honest answer is a sentence folds to a strip while the
+    // sheet is being READ; arranging gives every cutting its full paper back.
+    const strip = !editing && isStrip(c.id, data.registers[c.id], ctx);
+    return {
     id: c.id,
-    slot: c.slot,
+    slot: strip
+      ? { ...c.slot, h: STRIP_ROWS }
+      : fit
+        ? { ...c.slot, h: fittedRows(c.slot.h, needPx[c.id]) }
+        : c.slot,
     body: (
       <Cutting
         id={c.id}
+        strip={strip}
+        onFit={FIT_IDS.includes(c.id) ? onFit : undefined}
         graph={c.graph}
         register={data.registers[c.id]}
         ctx={ctx}
@@ -508,7 +537,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onDays={setTillDays}
       />
     ),
-  }));
+    };
+  });
 
   const offSheet = ANALYSIS_IDS.filter((id) => !onSheet.has(id));
 
@@ -540,7 +570,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     <div className="mudavym rp-page" data-ground={ground}>
       <div className="rp-page__inner">
         <header ref={headRef} className="rp-head">
-          <div style={{ maxWidth: 660 }}>
+          <div className="rp-head__lead">
             <Wordmark size={13} />
             <p className="rp-eyebrow" style={{ display: 'block', margin: '6px 0 0' }}>
               Reports · {today}
@@ -560,6 +590,14 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
               <p className="rp-cap" data-testid="rp-opening-age">
                 Written by the engine {openingAge}. The registers below are read live.
               </p>
+            )}
+
+            {sparks.length > 0 && (
+              <div className="rp-sparks">
+                {sparks.map((s) => (
+                  <Spark key={s.id} series={s} />
+                ))}
+              </div>
             )}
             {moneyLine && (
               <p className="rp-cap" data-testid="rp-money-line">

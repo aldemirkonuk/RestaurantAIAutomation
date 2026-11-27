@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -58,6 +58,7 @@ import {
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { readsRegister } from './rp-spec';
+import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
 import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
@@ -122,13 +123,23 @@ export function TillWindowPicker({
   // A year is the window an owner reads a season against (audit G19); the
   // gateway already allows 1–365 house days (`analytics.controller.ts`).
   const options = TILL_WINDOWS;
+  const at = options.findIndex((d) => d === days);
+  // One thumb slides under the pressed window (transform only), so the window
+  // changes with a movement the reader can follow instead of a hard swap. The
+  // segments are equal-width so the thumb needs no measuring.
   return (
-    <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
+    <div
+      role="group"
+      aria-label="Till window"
+      className="rp-seg rp-no-drag"
+      style={{ ['--rp-n' as string]: options.length, ['--rp-i' as string]: Math.max(at, 0) }}
+    >
+      {at >= 0 && <span className="rp-seg__thumb" aria-hidden />}
       {options.map((d) => (
         <button
           key={d}
           type="button"
-          className="rp-chip rp-ink rp-focus rp-no-drag"
+          className="rp-seg__btn rp-ink rp-focus rp-no-drag"
           aria-pressed={days === d}
           onClick={() => onChange(d)}
         >
@@ -178,7 +189,13 @@ function Drawing({
   windowLine: string;
   combo?: ComboControl;
 }) {
-  if (view.say) return <Nothing>{view.say}</Nothing>;
+  if (view.say)
+    return (
+      <>
+        {view.empty && <p className="rp-empty-strip">{view.empty}</p>}
+        <Nothing>{view.say}</Nothing>
+      </>
+    );
   if (cannotDraw(view, graph)) return <Undrawable graph={graph} why={view.undrawn} />;
   switch (graph) {
     case 'line':
@@ -300,6 +317,10 @@ export interface CuttingProps {
    * view's window line says it is not on their sheet.
    */
   flatOnly?: boolean;
+  /** Reports the height this card's content needs (`rp-fit.ts`), so the sheet can draw its slot to fit. */
+  onFit?: (id: AnalysisId, px: number | null) => void;
+  /** Folded to a 72 px strip: the register's honest answer is a sentence (`rp-strip.ts`). */
+  strip?: boolean;
 }
 
 export default function Cutting({
@@ -317,6 +338,8 @@ export default function Cutting({
   onRemove,
   onDays,
   flatOnly = false,
+  strip = false,
+  onFit,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
@@ -393,6 +416,28 @@ export default function Cutting({
     setParams(next, { replace: true });
   };
 
+  // A fitted card tells the sheet what its content needs, now and whenever a
+  // block inside it changes size. Only while it is read as a table: a chart
+  // stretches to whatever room it is given, so it has no natural height.
+  const rootRef = useRef<HTMLElement>(null);
+  const fits = onFit !== undefined && !arranging && !strip && drawn === 'table';
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!fits || !root) {
+      onFit?.(id, null);
+      return;
+    }
+    const report = () => onFit(id, naturalPx(root));
+    report();
+    if (typeof ResizeObserver === 'undefined') return;
+    const body = root.querySelector('.rp-cut__body');
+    const ro = new ResizeObserver(report);
+    if (body) Array.from(body.children).forEach((k) => ro.observe(k));
+    return () => ro.disconnect();
+    // `onFit` is stable (a state setter wrapper); the register's arrival is what changes the blocks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fits, id, register?.data]);
+
   // Focus goes back to the control that opened the view, however it closed.
   const wasFlat = useRef(flat);
   useEffect(() => {
@@ -422,7 +467,13 @@ export default function Cutting({
   if (flatOnly) return <>{flatView}</>;
 
   return (
-    <section className="rp-cut" aria-label={spec.title} data-held={held || undefined}>
+    <section
+      ref={rootRef}
+      className="rp-cut"
+      aria-label={spec.title}
+      data-held={held || undefined}
+      data-strip={strip || undefined}
+    >
       {/* Not a <header>: the section's heading is the h2 below it, and a nested
           banner landmark per cutting would drown the page's own. */}
       <div className="rp-cut__head">
