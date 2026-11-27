@@ -512,6 +512,21 @@ export function useReportsNextData(
               ),
             );
           }
+          const shownUrl = spec.shownPath?.(rid as string, ctx) ?? null;
+          if (shownUrl && spec.withShown) {
+            // The window the card shows, beside the doubled read it is split from:
+            // only the doubled read failing fails the register; a failed shown read
+            // is null, which the register says as a dash, never a guess.
+            const [whole, shown] = await Promise.allSettled([
+              readRaw(spec.path!(rid as string, ctx)),
+              readRaw(shownUrl),
+            ]);
+            if (whole.status === 'rejected') throw whole.reason;
+            if (withheldByGateway(whole.value)) return WITHHELD;
+            const shownRead =
+              shown.status === 'fulfilled' && !withheldByGateway(shown.value) ? spec.select(shown.value) : null;
+            return spec.withShown(spec.select(whole.value), shownRead);
+          }
           const data = await readRaw(spec.path!(rid as string, ctx));
           if (withheldByGateway(data)) return WITHHELD;
           return spec.select(data);
