@@ -14,6 +14,7 @@ import {
 } from "@nestjs/common";
 import { MailSetupService, mailtoFor, mayChangeHouseMail } from "./mail-setup.service";
 import { HouseSenderService } from "../letters/house-sender.service";
+import { INTEGRATION_DEFINITIONS } from "../../integrations/integrations-oauth.constants";
 import {
   CHEF,
   G_CHEF,
@@ -333,3 +334,43 @@ describe("MailSetupService.startTestLetter and makeAddress", () => {
   });
 });
 
+
+describe("reading grants sealed before the delivery-notice words (r110 item 4)", () => {
+  const R_NEW = "c0000000-0000-4000-8000-0000000000a1";
+  const R_OLD = "c0000000-0000-4000-8000-0000000000a2";
+  const R_CHEF = "c0000000-0000-4000-8000-0000000000a3";
+  const reader = (id: string, user: string, receipt: string | null, integration_id = "gmail_read") => ({
+    id, user_id: user, restaurant_id: HOUSE, provider: "google", integration_id, scopes: [], revoked_at: null, consent_receipt_id: receipt,
+  });
+  const sealed = (seal_id: string, user: string, named: boolean) => ({
+    seal_id, user_id: user, restaurant_id: HOUSE, integration_id: "gmail_read",
+    disclosure_snapshot: { version: 1, integration: named
+      ? { ...INTEGRATION_DEFINITIONS.gmail_read }
+      : { ...INTEGRATION_DEFINITIONS.gmail_read, dataHandling: { ...INTEGRATION_DEFINITIONS.gmail_read.dataHandling, notices: undefined } } },
+  });
+
+  it("lists the grants whose receipt does not name notices, marking which is mine", async () => {
+    const { service } = build({
+      integration_oauth_connections: { rows: [...grants(), reader(R_NEW, ME, "s-new"), reader(R_OLD, ME, "s-old"), reader(R_CHEF, CHEF, null)] },
+      integration_consent_receipts: { rows: [sealed("s-new", ME, true), sealed("s-old", ME, false)] },
+    });
+    const view = await service.read(HOUSE, ME, "owner");
+    expect(view.notices).toEqual({
+      failed: null,
+      old: [
+        { connectionId: R_OLD, integrationId: "gmail_read", mine: true },
+        { connectionId: R_CHEF, integrationId: "gmail_read", mine: false },
+      ],
+    });
+  });
+
+  it("a receipt that cannot be read says so, never 'all named'", async () => {
+    const { service } = build({
+      integration_oauth_connections: { rows: [reader(R_NEW, ME, "s-new")] },
+      integration_consent_receipts: { error: { message: "timeout" } },
+    });
+    const view = await service.read(HOUSE, ME, "owner");
+    expect(view.notices.failed).toMatch(/could not be read/);
+    expect(view.notices.old).toEqual([]);
+  });
+});

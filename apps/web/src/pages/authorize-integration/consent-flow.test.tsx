@@ -214,3 +214,27 @@ describe('AuthorizeIntegrationNext through PageGate, design flag ON (round-5 reg
     expect(links.some((link) => link.getAttribute('href') === '/profile')).toBe(true)
   })
 })
+
+describe('the delivery-notice words on the consent page (r110 item 4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); vi.stubGlobal('crypto', webcrypto); sessionStorage.clear()
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('shows the notices sentence the person seals, and no such row when the definition has none', async () => {
+    const words = 'Mudavym asks Gmail for those notices too, by that sender alone.'
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(consentFixture({
+      id: 'gmail_read', label: 'Gmail — reading vendor replies only', provider: 'google', providerLabel: 'Google',
+      description: 'Reading vendor replies.', available: true, unavailableReason: null,
+      scopes: [{ scope: 'gmail.readonly', label: 'Read', reason: 'Vendor replies.' }], notRequested: [], mirrorsMail: false,
+      dataHandling: { reads: 'r', doesNotRead: 'd', landsIn: 'l', visibleTo: 'v', notices: words },
+    }))
+    const first = render(consentPage())
+    expect((await screen.findByTestId('consent-notices')).textContent).toBe(`Delivery notices${words}`)
+    first.unmount()
+    vi.mocked(integrationsApi.getConsent).mockResolvedValue(disclosure)
+    render(consentPage())
+    await screen.findByText('Send a letter')
+    expect(screen.queryByTestId('consent-notices')).toBeNull()
+  })
+})
