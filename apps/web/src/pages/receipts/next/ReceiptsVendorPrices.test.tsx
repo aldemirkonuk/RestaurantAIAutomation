@@ -147,7 +147,9 @@ describe('the check card, another vendor\'s price', () => {
     api.role.current = 'staff';
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    await vi.waitFor(() => expect(api.moves).toHaveBeenCalled());
+    // #2356: staff ask neither read. The card is open (line 1 is on screen),
+    // so a read that was going to be asked has been asked by now.
+    expect(api.moves).not.toHaveBeenCalled();
     expect(api.vendor).not.toHaveBeenCalled();
     expect(screen.queryByTestId('vendor-prices')).toBeNull();
   });
