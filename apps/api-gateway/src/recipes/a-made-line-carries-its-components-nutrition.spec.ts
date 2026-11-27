@@ -1,10 +1,6 @@
 /**
- * r110 inventory g2: a recipe's nutrition card and its allergens count a made
- * line through its component. A drink with house orgeat contains nuts; its
- * energy is `qtyBase / yield` of the batch's, never "unknown for House
- * orgeat" when the batch says what it holds. Through the real services over
- * the fake that filters by house and caps at 1,000 rows; the list's allergen
- * column and the sheet use one helper and must say the same.
+ * r110 inventory g2: a made line counts through its component: house orgeat
+ * says nuts; its energy is `qtyBase / yield` of the batch's.
  */
 import { ALLERGENS } from "./recipe-nutrition";
 import { DishesService } from "./dishes.service";
@@ -19,6 +15,7 @@ const ORGEAT = "d0000000-0000-4000-8000-0000000000c3";
 const V_SYRUP = "e0000000-0000-4000-8000-0000000000c1";
 const V_BATCH = "e0000000-0000-4000-8000-0000000000c2";
 const V_ORGEAT = "e0000000-0000-4000-8000-0000000000c3";
+const THEIRS = "d0000000-0000-4000-8000-0000000000b9";
 
 const states = (item: string, house: string, named: Record<string, string> = {}): Row[] =>
   ALLERGENS.map((a, i) => ({ id: `${item.slice(-4)}-${house.slice(0, 2)}-${String(i).padStart(3, "0")}`, restaurant_id: house, inventory_id: item, allergen: a, status: named[a] ?? "free" }));
@@ -29,7 +26,7 @@ const per100g = (item: string, f: Record<string, number | null>) => ({
 const madeLine = (id: string, version: string, component: string, label: string, qtyBase: number, baseUnit = "ml10") =>
   line(id, version, HOUSE_A, 1, label, null, { role: "made", component_dish_id: component, qty_entered: qtyBase / 10, unit_code: "ml", qty_base: qtyBase, base_unit: baseUnit });
 
-/** The tart (one serve) takes 40 ml of syrup; the syrup is 500 g of sugar made to 700 ml. */
+/** The tart takes 40 ml of a syrup of 500 g sugar made to 700 ml. */
 function house(): Record<string, Row[]> {
   const rows = twoHouses();
   rows.restaurant_inventory.push({ id: ALMOND, restaurant_id: HOUSE_A, display_name: "Almonds", kind: "food", uom: "g", is_active: true, deleted_at: null });
@@ -74,8 +71,14 @@ const takes = (rows: Record<string, Row[]>, over: Row) => {
   return rows;
 };
 
+const noMilkSaid = () => {
+  const rows = house();
+  rows.item_allergens = rows.item_allergens.filter((a) => !(a.restaurant_id === HOUSE_A && a.inventory_id === SUGAR && a.allergen === "milk"));
+  return rows;
+};
+
 describe("a made line carries its component's nutrition (r110 inventory g2)", () => {
-  it("40 ml of a 700 ml syrup made from 500 g of sugar gives 28.57 g of sugar and 114.29 kcal, through Simple syrup", async () => {
+  it("40 ml of the syrup is 28.57 g of sugar and 114.29 kcal, through Simple syrup", async () => {
     const w = await sheet(house());
     expect(w.readable).toBe(true);
     expect(w.figures.sugarsG).toEqual({ value: 28.57, atLeast: false, missing: [] });
@@ -85,7 +88,7 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
     expect(w.counted).toBe(1);
   });
 
-  it("house orgeat with no yield set still says it contains nuts; its figures are named not counted", async () => {
+  it("orgeat with no yield still says nuts; its figures are not counted", async () => {
     const w = await sheet(takes(house(), { component_dish_id: ORGEAT, label: "House orgeat" }));
     expect(w.allergens.tree_nuts).toBe("contains");
     expect(w.allergens.milk).toBe("free");
@@ -94,25 +97,24 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
     expect(w.figures.energyKcal).toMatchObject({ value: null, missing: ["House orgeat"] });
   });
 
-  it("a made line in another unit than its batch is made in counts no figure, and still its allergens", async () => {
+  it("a made line in another unit counts no figure, still its allergens", async () => {
     const w = await sheet(takes(house(), { qty_base: 40_000, base_unit: "mg" }));
     expect(w.notCounted[0].why).toBe("it is measured in another unit than Simple syrup is made in, so its figures are not counted; its allergens are");
     expect(w.figures.sugarsG.value).toBeNull();
     expect(w.allergens.gluten).toBe("free");
   });
 
-  it("a two-level chain: 100 ml of a 1 l batch holding 350 ml of the syrup is 25 g of sugar", async () => {
+  it("two levels: 100 ml of a 1 l batch holding 350 ml of syrup is 25 g of sugar", async () => {
     const w = await sheet(takes(house(), { component_dish_id: BATCH, label: "Sour batch", qty_base: 1000 }));
     expect(w.figures.sugarsG).toEqual({ value: 25, atLeast: false, missing: [] });
     expect(w.through).toEqual([{ label: "Sour batch", componentName: "Sour batch" }]);
   });
 
-  it("a component whose own sum is partial makes the line 'at least', and names the lines inside it", async () => {
+  it("a partial component makes the line 'at least' and names its lines", async () => {
     const rows = house();
     rows.recipe_lines.push(line("s2", V_SYRUP, HOUSE_A, 2, "Lemon juice", null, { role: "untracked", qty_base: 1000, base_unit: "ml10" }));
     const w = await sheet(rows);
     expect(w.figures.sugarsG).toEqual({ value: 28.57, atLeast: true, missing: ["Lemon juice in Simple syrup"] });
-    // The untracked line leaves its allergens unstated, so the drink cannot be said free of any.
     expect(w.allergensUnstatedBy).toEqual(["House syrup"]);
     expect(w.allergens.gluten).toBe("not_stated");
   });
@@ -127,12 +129,21 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
   });
 
   it("another house's allergen rows for the same good never count", async () => {
-    // House B says the sugar contains milk; house A's sugar is free of it.
-    expect((await sheet(house())).allergens.milk).toBe("free");
-    expect((await listRow(house())).status.milk).toBe("free");
+    expect((await sheet(noMilkSaid())).allergens.milk).toBe("not_stated");
+    expect((await listRow(noMilkSaid())).status.milk).toBe("not_stated");
   });
 
-  it("a loop ends: the line inside it is not counted, and nothing is said free", async () => {
+  it("another house's component is not counted and nothing reads free", async () => {
+    const rows = takes(house(), { component_dish_id: THEIRS, label: "Their syrup" });
+    rows.dishes.push({ id: THEIRS, restaurant_id: HOUSE_B, name: "Their syrup", yield_qty_base: 7000, yield_base_unit: "ml10", deleted_at: null });
+    rows.recipe_current_dish.push({ dish_id: THEIRS, version_id: V_SYRUP, restaurant_id: HOUSE_B });
+    const w = await sheet(rows);
+    expect(w.through).toEqual([]);
+    expect(w.notCounted).toEqual([{ label: "Their syrup", why: "it is made in the house, and what it is made from is not read here" }]);
+    expect(w.allergens.gluten).toBe("not_stated");
+  });
+
+  it("a loop ends, and nothing is said free", async () => {
     const rows = house();
     rows.dishes.find((d) => d.id === ORGEAT)!.yield_qty_base = 1000;
     rows.dishes.find((d) => d.id === ORGEAT)!.yield_base_unit = "ml10";
@@ -143,7 +154,7 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
     expect(w.allergensUnstatedBy).toEqual(["House syrup"]);
   });
 
-  it("a failed component read makes the sheet unread and the list row unread, never free", async () => {
+  it("a failed component read makes the sheet and the list row unread, never free", async () => {
     const failing = (rows: Record<string, Row[]>) => {
       const fake = fakeDb(rows);
       const client: any = fake.db.getClient();
