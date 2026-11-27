@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN, houseZoneOf, parseMenuPrice } from "./menus.service";
+import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN, houseZoneOf } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { menuSheet } from "./menu-sheet";
 import { DatabaseService } from "../database/database.service";
@@ -805,10 +805,57 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
       newValue: "1.250",
     } as any);
     await expect(write).rejects.toBeInstanceOf(BadRequestException);
+    await expect(write).rejects.toThrow(/reads two ways/);
     await expect(write).rejects.toThrow(/could be 1250 or 1\.25/);
     expect(tables.menu_items[0].bottle_price).toBe(60);
     expect(tables.menu_items[0].status).toBe("approved");
     expect(calls).toHaveLength(0);
+  });
+
+  describe("the edit route reads a typed price with the one reader (menu r21 moved onto readMenuPrice, r107)", () => {
+    const typeIt = async (raw: string) => {
+      const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+      const service = makeService(tables, { rpc: changed });
+      try {
+        await service.reviewMenuItem("mi-1", "user-1", "rest-1", { fieldName: "bottle_price", newValue: raw } as any);
+        return { value: tables.menu_items[0].bottle_price as number | null, error: "" };
+      } catch (e: any) {
+        expect(tables.menu_items[0].bottle_price).toBe(60);
+        return { value: null, error: String(e.getResponse().message) };
+      }
+    };
+    it("reads a dot or a comma decimal, thousands groups and a currency mark", async () => {
+      const want: Array<[string, number]> = [
+        ["70", 70], ["45.50", 45.5], ["45,5", 45.5], ["$70", 70], ["45 TL", 45], ["62,50", 62.5],
+        ["1.250,00", 1250], ["1,250.00", 1250], ["45,50", 45.5], ["1,250.75", 1250.75], ["1.250.000", 1250000], ["0", 0],
+      ];
+      for (const [raw, value] of want) expect((await typeIt(raw)).value).toBe(value);
+    });
+    it("refuses a minus, letters, two decimals and a tail it cannot place, and says so", async () => {
+      for (const raw of ["-5", "45.505", "abc", "", "12.5.1", "1,2.50", "1.250,505", ".5", "12 / 45", "₺ 1 250"]) {
+        const r = await typeIt(raw);
+        expect(r.value).toBeNull();
+        expect(r.error).toMatch(/Nothing was changed/);
+      }
+    });
+    it("refuses a space inside a price with a sentence that says so, never as 'two readings'", async () => {
+      for (const raw of ["₺ 1 250", "1 250", "1 250,50", "12 450"]) {
+        const r = await typeIt(raw);
+        expect(r.value).toBeNull();
+        expect(r.error).toContain("a space inside a price is not read; write 1250 or 1,250.00");
+        expect(r.error).not.toMatch(/two ways/);
+        expect(r.error).toMatch(/Nothing was changed/);
+      }
+      // a space beside the currency mark is still fine; '1.250' stays refused, '62,50' reads 62.5
+      expect((await typeIt("45 TL")).value).toBe(45);
+      expect((await typeIt("62,50")).value).toBe(62.5);
+      expect((await typeIt("1.250")).error).toMatch(/could be 1250 or 1\.25/);
+    });
+    it("names both readings of a three-digit tail, and never guesses one", async () => {
+      expect((await typeIt("1,250")).error).toMatch(/reads two ways: it could be 1250 or 1\.25/);
+      expect((await typeIt("1.250")).error).toMatch(/could be 1250 or 1\.25/);
+      expect((await typeIt("1.000")).error).toMatch(/could be 1000 or 1;/);
+    });
   });
 });
 
@@ -2851,32 +2898,6 @@ describe("MenusService — a failed read of the kept menus is said in plain word
     (tables as any).__noColumn = [{ restaurant_menus: "id" }];
     const err: any = await makeService(tables).listVersions("rest-1").catch((e) => e);
     expect(err.getResponse().message).toBe("The menus could not be read just now. Try again.");
-  });
-});
-
-describe("parseMenuPrice -- a typed price is read, never guessed (menu r21)", () => {
-  const value = (raw: string) => {
-    const r = parseMenuPrice(raw);
-    return "value" in r ? r.value : null;
-  };
-  it("reads a dot or a comma decimal, thousands groups and a currency mark", () => {
-    expect(value("70")).toBe(70);
-    expect(value("45.50")).toBe(45.5);
-    expect(value("45,5")).toBe(45.5);
-    expect(value("$70")).toBe(70);
-    expect(value("45 TL")).toBe(45);
-    expect(value("₺ 1 250")).toBe(1250);
-    expect(value("1.250,00")).toBe(1250);
-    expect(value("1,250.75")).toBe(1250.75);
-    expect(value("1.250.000")).toBe(1250000);
-    expect(value("0")).toBe(0);
-  });
-  it("refuses a minus, letters, two decimals and a three-digit tail it cannot place", () => {
-    for (const raw of ["-5", "abc", "", "12.5.1", "1,2.50", "1.250,505", ".5"]) expect(value(raw)).toBeNull();
-    const r = parseMenuPrice("1,250");
-    expect("refused" in r && r.refused).toMatch(/could be 1250 or 1\.25/);
-    const k = parseMenuPrice("1.000");
-    expect("refused" in k && k.refused).toMatch(/could be 1000 or 1;/);
   });
 });
 
