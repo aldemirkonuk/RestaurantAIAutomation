@@ -236,7 +236,7 @@ class BufferManagerAgent(BaseAgent):
         inventory_id = payload.get("inventory_id")
         new_stock_live = payload.get("new_stock_live")
         old_stock_live = payload.get("old_stock_live", 0)
-        threshold_min = payload.get("threshold_min", 6)
+        threshold_min = payload.get("threshold_min")
         restaurant_id = payload.get("restaurant_id")
         wine_id = payload.get("wine_id")
 
@@ -245,6 +245,28 @@ class BufferManagerAgent(BaseAgent):
                 "Manual override event missing inventory_id or new_stock_live"
             )
             return
+
+        if threshold_min is None:
+            # The gateway sends null when it could not read the old row (r104,
+            # ADR 0372). `.get(key, 6)` returns None for a present null, and
+            # `stock < None` raised TypeError, so the message retried and went
+            # to the DLQ. Ask the row for its own par; with none, say so and
+            # skip -- never invent one.
+            try:
+                row = await self.database.get_inventory_item(
+                    inventory_id, use_cache=False
+                )
+                threshold_min = (row or {}).get("threshold_min")
+            except Exception as exc:
+                self.logger.warning(
+                    f"Manual override: could not read par for {inventory_id}: {exc}"
+                )
+            if threshold_min is None:
+                self.logger.warning(
+                    f"Manual override: no par known for {inventory_id}; "
+                    "threshold not evaluated"
+                )
+                return
 
         self.logger.info(
             f"Manual override: inventory={inventory_id}, "

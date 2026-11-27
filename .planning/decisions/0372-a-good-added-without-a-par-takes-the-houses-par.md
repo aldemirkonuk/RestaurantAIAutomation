@@ -27,3 +27,4 @@ One house-wide low-stock par was written five ways: the `restaurant_inventory.th
 - Unstated houses still read as 3 rather than "not set" (needs the nullable column).
 - `import_restaurant_data` still defaults 5.
 - ThresholdStep is still not mounted; with no screen writing the value, most houses are unstated and read 3.
+- `seed_sim_restaurant` seeds a par of 5; that is a simulator default, not a house's stated par, and is left alone (r104). The `stock.manual_override` event no longer invents a 6 when the old row is unread; it sends null.
