@@ -12,7 +12,7 @@
  * SAME cut logic that already worked for plain-text mail works here too.]
  */
 
-import { extractEmailContent, GmailPayloadPart, htmlToText } from "./gmail-mime";
+import { extractEmailContent, GmailPayloadPart, htmlToText, inboundHeaderMap } from "./gmail-mime";
 import { latestPart } from "../vendor-tone/tone-scale";
 
 function b64(s: string): string {
@@ -197,5 +197,27 @@ describe("extractEmailContent — HTML-only message (no text/plain part)", () =>
       ],
     });
     expect(text).toBe("Plain wins.");
+  });
+});
+
+describe("inboundHeaderMap — the receiving server's sender check is the one kept (r108 mail-gap g8)", () => {
+  it("keeps the first Authentication-Results, so one the sender wrote lower down is never read", () => {
+    const map = inboundHeaderMap([
+      { name: "Authentication-Results", value: "mx.google.com; dkim=fail header.i=@v.example" },
+      { name: "Received", value: "by mx.google.com" },
+      { name: "ARC-Authentication-Results", value: "i=1; mx.google.com; dmarc=fail" },
+      { name: "authentication-results", value: "evil.example; dkim=pass header.d=bigvendor.example" },
+      { name: "ARC-Authentication-Results", value: "i=0; dmarc=pass" },
+      { name: "Received", value: "by evil.example" },
+      { name: "Subject", value: "Prices" },
+      { name: "", value: "nameless" },
+      { name: "X-Empty", value: "" },
+    ]);
+    expect(map["authentication-results"]).toBe("mx.google.com; dkim=fail header.i=@v.example");
+    expect(map["arc-authentication-results"]).toBe("i=1; mx.google.com; dmarc=fail");
+    // Every other repeated header keeps its last value, as the events always carried.
+    expect(map["received"]).toBe("by evil.example");
+    expect(map["subject"]).toBe("Prices");
+    expect(Object.keys(map)).toHaveLength(4);
   });
 });
