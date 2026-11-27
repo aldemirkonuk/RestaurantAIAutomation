@@ -3498,15 +3498,8 @@ export class MenusService {
     // The menu read and the threshold read need only the row's restaurant_id,
     // so they start together: two waits after the row, not three.
     let menuUploaded = !!data.menu_uploaded;
-    const [menuRead, { data: restaurant }] = await Promise.all([
-      menuUploaded
-        ? Promise.resolve(null)
-        : this.dbService.supabase
-            .from("restaurant_menus")
-            .select("id")
-            .eq("restaurant_id", data.restaurant_id)
-            .eq("status", "active")
-            .maybeSingle(),
+    const [hasReadMenu, { data: restaurant }] = await Promise.all([
+      menuUploaded ? Promise.resolve(false) : this.houseHasAReadMenu(data.restaurant_id),
       this.dbService.supabase
         .from("restaurants")
         .select("threshold_configured")
@@ -3514,7 +3507,7 @@ export class MenusService {
         .maybeSingle(),
     ]);
 
-    if (menuRead?.data) {
+    if (hasReadMenu) {
       menuUploaded = true;
       const { error: healErr } = await this.dbService.supabase
         .from("user_onboarding_progress")
@@ -3537,6 +3530,34 @@ export class MenusService {
       // working inventory and a low-stock signal. Vendor/team are optional.
       activated: menuUploaded && thresholdConfigured,
     };
+  }
+
+  /**
+   * The onboarding self-heal's test: does the house hold a menu version that
+   * is not archived and has at least one live line (a `menu_items` row that
+   * is not discarded)? The lines are counted where they live, whatever put
+   * them there -- a read, a CSV, or lines typed in during review -- never
+   * from `lines_extracted`, which is written once when a version is read and
+   * is not moved by `addMenuItem` or `discardMenuItem`.
+   *
+   * One read, `.limit(1)`, never `.maybeSingle()`: no unique index stops a
+   * house holding two active rows, and maybeSingle answers more than one row
+   * with an error. A failed read throws; it is never taken for "no menu".
+   */
+  private async houseHasAReadMenu(restaurantId: string): Promise<boolean> {
+    const { data: lines, error } = await this.dbService.supabase
+      .from("menu_items")
+      .select("id, restaurant_menus!inner(status)")
+      .eq("restaurant_id", restaurantId)
+      .neq("status", "discarded")
+      .neq("restaurant_menus.status", "archived")
+      .limit(1);
+    if (error) {
+      throw new InternalServerErrorException(
+        `Could not read this house's menus for onboarding: ${error.message}`,
+      );
+    }
+    return (lines ?? []).length > 0;
   }
 
   async setDefaultThreshold(
