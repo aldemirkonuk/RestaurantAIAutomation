@@ -385,10 +385,15 @@ export function Register() {
       </div>
 
       {/* r103: the card that arrives after the preview read pushed Continue from
-          451 to 593 px (CLS 0.02 at 375). While the read is out, its room is held. */}
-      {inviteCode.length === 8 && invitePreview === null && (
-        <div aria-hidden data-testid="invite-card-room" style={{ minHeight: INVITE_CARD_ROOM_PX }} />
-      )}
+          451 to 593 px (CLS 0.02 at 375). The card and the invalid note share
+          one slot that holds the card's room from the eighth character until
+          the next keystroke, so a used or unknown code (a note of about 48 px)
+          does not pull Continue up with no input. */}
+      <div
+        aria-hidden={invitePreview === null ? true : undefined}
+        data-testid="invite-card-room"
+        style={inviteCode.length === 8 ? { minHeight: INVITE_CARD_ROOM_PX } : undefined}
+      >
       {/* Trust card (valid) */}
       <AnimatePresence>
         {invitePreview?.valid === true && (
@@ -457,6 +462,7 @@ export function Register() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       <Button
         className={on ? `w-full h-12 motion-reduce:transition-none ${HOUSE_BUTTON}` : 'w-full h-12 motion-reduce:transition-none'}
