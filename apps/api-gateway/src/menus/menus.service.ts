@@ -424,7 +424,7 @@ const READ_STALE_MS = 30 * 60 * 1000;
 /** What `POST /menus/import` says when a read finds no line (422, nothing kept). */
 const EMPTY_READ_REFUSAL: Record<string, string> = {
   scan: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
-  csv: "No line could be read from this file, so no menu was kept. Check that each row names a wine.",
+  csv: "No line could be read from this file, so no menu was kept. Check that one column names each dish or drink (Name, Dish, Wine, Ad, Yemek).",
   manual: "No line was given, so no menu was kept.",
 };
 
