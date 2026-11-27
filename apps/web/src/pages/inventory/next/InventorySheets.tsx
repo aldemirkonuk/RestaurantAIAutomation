@@ -681,7 +681,14 @@ export function OrderSheet({
   providersError,
   restaurantId,
   uom,
-}: SheetProps & { providers: Provider[] | null; providersError: string | null; restaurantId: string | null }) {
+  alreadyOpen = null,
+}: SheetProps & {
+  providers: Provider[] | null;
+  providersError: string | null;
+  restaurantId: string | null;
+  /** Orders for this good already open on Orders (r109 g1), said above the hold; null when not read. */
+  alreadyOpen?: number | null;
+}) {
   const queryClient = useQueryClient();
   // The order's unit is the book's own; a good the order vocabulary cannot
   // state one-to-one (kg, l, a case of unknown size) is not ordered from here.
@@ -810,6 +817,15 @@ export function OrderSheet({
               </Link>
             </>
           ) : null}
+        </p>
+      ) : null}
+      {alreadyOpen !== null && alreadyOpen > 0 ? (
+        <p className="iv-note" data-testid="iv-order-already-open">
+          {fmtCount(alreadyOpen)} already open for it. An open order with the same vendor is changed by this hold, not
+          placed again.{' '}
+          <Link to="/orders" className="iv-linkish iv-focus">
+            See them on Orders
+          </Link>
         </p>
       ) : null}
       <div style={{ marginTop: 14 }}>

@@ -127,10 +127,10 @@ describe('the item drawer', () => {
   });
 
 
-  it('(a) shows the eight cards, in order, from the row and the figures read', async () => {
+  it('(a) shows the nine cards (On order since r109 g1), in order, from the row and the figures read', async () => {
     open(row());
     const ids = [...screen.getByTestId('ivd-cards').querySelectorAll('[data-testid^="ivd-card-"]')].map((c) => c.getAttribute('data-testid'));
-    expect(ids).toEqual(['onhand', 'value', 'usage', 'cover', 'cost', 'waste', 'gap', 'inside'].map((k) => `ivd-card-${k}`));
+    expect(ids).toEqual(['onhand', 'value', 'usage', 'cover', 'onorder', 'cost', 'waste', 'gap', 'inside'].map((k) => `ivd-card-${k}`));
     expect(api.figures).toHaveBeenCalledWith('i1', 'r1');
     await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain('Up 8% since August'));
     expect(screen.getByTestId('ivd-card-onhand').textContent).toContain('12 bottles');
@@ -331,7 +331,7 @@ describe('the item drawer', () => {
   });
   it('opens the item detail card, with the NutritionCard slot, from every KPI card', () => {
     open(row());
-    for (const id of ['onhand', 'value', 'usage', 'cover', 'cost', 'waste', 'gap', 'inside']) {
+    for (const id of ['onhand', 'value', 'usage', 'cover', 'onorder', 'cost', 'waste', 'gap', 'inside']) {
       const card = screen.getByTestId(`ivd-card-${id}`);
       expect(card.tagName).toBe('BUTTON');
       fireEvent.click(card);
