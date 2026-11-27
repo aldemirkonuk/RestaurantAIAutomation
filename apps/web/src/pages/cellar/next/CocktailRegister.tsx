@@ -41,6 +41,7 @@ import {
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
 import RecipeBook from './recipe/RecipeBook';
+import PlanPrep from './recipe/PlanPrep';
 import { COPY_CANNOT_CARRY, COPY_RECIPE_FAILED, copyFields } from './recipe/copyDrink';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
@@ -619,6 +620,7 @@ export default function CocktailRegister({
               </p>
               <ExportMenu variant="soft" size="sm" label="Export" count={rows.length} onExport={exportList} title="Export the drinks shown, in the order shown" />
               <RecipeBook />
+              <PlanPrep />
             </div>
             <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
               <table className="cl-table cl-table--drinks">

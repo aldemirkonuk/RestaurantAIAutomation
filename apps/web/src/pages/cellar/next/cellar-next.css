@@ -1188,6 +1188,23 @@ textarea.cl-field {
   .cl-print-book .cl-print-method { white-space: pre-wrap; }
 }
 
+/* Plan prep (r109 drinks-g3): the house Sheet carries the motion; nothing here animates.
+   On paper it prints alone while html[data-print-prep] is set, the card's pattern. */
+.cl-prep { display: grid; gap: 10px; }
+.cl-prep-drinks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cl-prep-drinks li { display: grid; grid-template-columns: minmax(0, 1fr) 72px auto; align-items: center; gap: 8px; font-size: 13px; }
+.cl-prep-in { width: 72px; text-align: right; }
+.cl-prep-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-prep .cl-field { min-height: 44px; font-size: 16px; }
+  .cl-prep .cl-linkish { display: inline-flex; align-items: center; min-height: 44px; }
+}
+.cl-print-prep { display: none; }
+@media print {
+  html[data-print-prep] body > *:not(.cl-print-prep) { display: none !important; }
+  html[data-print-prep] .cl-print-prep { display: block; padding: 24px; color: #000; background: #fff; font-size: 14px; line-height: 1.5; }
+}
+
 /* The recipe card (r104 drinks need 4): hidden on screen; drawn alone on paper
    while the button has set html[data-print-card]. No animation, no overlay. */
 .cl-rcp-print { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 8px; }
@@ -1202,3 +1219,4 @@ textarea.cl-field {
   .cl-print-card ol { padding-left: 18px; margin: 12px 0; }
   .cl-print-card .cl-print-method { white-space: pre-wrap; }
 }
+
