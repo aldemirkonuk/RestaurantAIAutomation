@@ -18,6 +18,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { GroundFirstChoice } from './GroundFirstChoice';
 import { Sheet } from './Sheet';
+import { DEEP_LINK_GIVES_UP_MS, resetDeepLinkAtLoad } from './useOwnTurn';
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate';
 import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
@@ -296,6 +297,69 @@ describe('never on top of the data terms', () => {
     // 3. The drawer closes: theme asks last.
     rerender(page(false));
     await waitFor(() => expect(ask()).toBeInTheDocument());
+  });
+});
+
+describe('a deep link whose drawer has not mounted yet (r109 inventory-5)', () => {
+  const link = (search: string) => {
+    window.history.replaceState(null, '', `/inventory${search}`);
+    resetDeepLinkAtLoad();
+  };
+  afterEach(() => {
+    vi.useRealTimers();
+    link('');
+  });
+  const page = (drawer: boolean) => {
+    const c = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={c}>
+        <MemoryRouter>
+          {drawer ? (
+            <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+              <p>the drawer</p>
+            </Sheet>
+          ) : null}
+          <DataTermsSignInGate />
+          <GroundFirstChoice />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
+
+  it('the choice waits for the drawer a ?open= on first paint is bringing, and is asked once it closes', () => {
+    link('?open=item-1');
+    setGroundOwner(ALICE);
+    const { rerender } = render(page(false));
+    act(() => applyAccountGround(undefined));
+    // The account answered first and no drawer is up yet: it is not asked on top of one that is coming.
+    expect(ask()).toBeNull();
+    rerender(page(true));
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(ask()).toBeNull();
+    window.history.replaceState(null, '', '/inventory');
+    rerender(page(false));
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('gives up waiting when the link opens nothing, so a sheet that is owed still shows', () => {
+    vi.useFakeTimers();
+    link('?open=item-1');
+    setGroundOwner(ALICE);
+    render(page(false));
+    act(() => applyAccountGround(undefined));
+    expect(ask()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(DEEP_LINK_GIVES_UP_MS + 1);
+    });
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('a page loaded without ?open= is asked at once, as before', () => {
+    link('');
+    setGroundOwner(ALICE);
+    render(page(false));
+    act(() => applyAccountGround(undefined));
+    expect(ask()).toBeInTheDocument();
   });
 });
 
