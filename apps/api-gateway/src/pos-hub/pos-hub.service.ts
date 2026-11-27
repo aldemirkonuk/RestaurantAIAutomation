@@ -1642,6 +1642,7 @@ export class PosHubService {
               costRead.costs.get(it.inventory_id as string) ?? null,
               () => tally.costNotKept++,
               when.at,
+              part,
             );
             if (consumption === "already") {
               // The consumption row under this key exists, so an earlier
@@ -1865,6 +1866,7 @@ export class PosHubService {
     costSource: SaleCostSource | null,
     onCostNotKept: () => void,
     occurredAt: string,
+    part: "whole" | "fraction" = "whole",
   ): Promise<"logged" | "already" | "failed"> {
     if (!item.inventory_id) return "failed";
     try {
@@ -1926,7 +1928,7 @@ export class PosHubService {
       // on the recorded WAC. A failed read says so and falls back to the WAC
       // the line was costed at before; it is never silently a different cost.
       let ledgerRow: SaleLedgerRow | null = null;
-      if (resolved.mode === "whole_bottle" && costSource) {
+      if (resolved.mode === "whole_bottle" && part === "whole" && costSource) {
         const { data, error: ledgerError } = await db
           .from("inventory_transactions")
           .select("quantity_change, unit_cost, cost_total, unpriced_qty")
@@ -1948,6 +1950,7 @@ export class PosHubService {
         inv?.bottleMl ?? null,
         qty,
         ledgerRow,
+        part,
       );
       const { error } = await db.from("wine_consumption_log").insert({
         restaurant_id: restaurantId,

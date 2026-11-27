@@ -108,3 +108,53 @@ describe("a pour keeps WAC under its own basis word", () => {
     ).toBe("last_purchase_price");
   });
 });
+
+describe("the basis word says how the line was costed (r105)", () => {
+  const wac = (basis: any) => ({ unitCost: 13, basis, lotId: "l", orderId: "o" });
+  const row = { quantity_change: -3, unit_cost: 10.333333, cost_total: 31, unpriced_qty: 0 };
+
+  it("words a line costed from its drawn lots apart from one costed at the recorded WAC", () => {
+    expect(snapshotLineCost(wac("invoice_lot_wac"), "whole_bottle", 2250, 750, 3, row).cost_basis).toBe(
+      "ledger_lot_draw",
+    );
+    expect(snapshotLineCost(wac("invoice_lot_wac_partial"), "whole_bottle", 2250, 750, 3, row).cost_basis).toBe(
+      "ledger_lot_draw",
+    );
+    // The same line with no usable row fell back to WAC, and says so.
+    expect(snapshotLineCost(wac("invoice_lot_wac"), "whole_bottle", 2250, 750, 3, null).cost_basis).toBe(
+      "invoice_lot_wac",
+    );
+    expect(
+      snapshotLineCost(wac("invoice_lot_wac"), "whole_bottle", 2250, 750, 3, { ...row, unpriced_qty: 1 }).cost_basis,
+    ).toBe("invoice_lot_wac");
+  });
+
+  it("a last-price line keeps its word even when drawn, so a verified invoice can still restate it", () => {
+    expect(snapshotLineCost(wac("last_purchase_price"), "whole_bottle", 2250, 750, 3, row).cost_basis).toBe(
+      "last_purchase_price",
+    );
+  });
+
+  it("words the fractional share of a bottle-mode line as a pour, and never reads a ledger row for it", () => {
+    const snap = snapshotLineCost(wac("invoice_lot_wac"), "whole_bottle", 375, 750, 0.5, row, "fraction");
+    expect(snap.cost_basis).toBe("pour_lot_wac");
+    expect(snap.cost_at_sale).toBe(6.5);
+    expect(
+      snapshotLineCost(wac("invoice_lot_wac_partial"), "whole_bottle", 375, 750, 0.5, null, "fraction").cost_basis,
+    ).toBe("pour_lot_wac_partial");
+  });
+
+  it("keeps the unit cost to six places: 31.00 over 3 bottles is 10.333333, not 10.3333", () => {
+    const snap = snapshotLineCost(wac("invoice_lot_wac"), "whole_bottle", 2250, 750, 3, {
+      quantity_change: -3,
+      cost_total: 31,
+      unpriced_qty: 0,
+    });
+    expect(snap.cost_unit_at_sale).toBe(10.333333);
+    // The ledger's own unit cost is used when it agrees with the total.
+    expect(snapshotLineCost(wac("invoice_lot_wac"), "whole_bottle", 2250, 750, 3, row).cost_unit_at_sale).toBe(
+      10.333333,
+    );
+  });
+});
+
