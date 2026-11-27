@@ -172,6 +172,10 @@ export const documentsApi = {
     status?: string
     docType?: string
     limit?: number
+    /** Part of a vendor's name or a document number (r104 g2). */
+    q?: string
+    /** Only papers created before this time: the older page (r104 g2). */
+    before?: string
   } = {}): Promise<ProcurementDocument[]> {
     const { data } = await apiClient.get('/procurement/documents', {
       params: {
@@ -179,6 +183,8 @@ export const documentsApi = {
         docType: opts.docType,
         limit: opts.limit ?? 100,
         view: 'summary',
+        q: opts.q || undefined,
+        before: opts.before,
       },
     })
     return data.items ?? []

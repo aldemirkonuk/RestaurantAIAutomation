@@ -19,7 +19,7 @@
  *    new gateway route and the recomputed tie-out lands in the same response.
  */
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
@@ -104,6 +104,15 @@ export interface ReceiptsNextData {
   verifiedReading: boolean;
   verifiedCount: number | null;
   verifiedCapped: boolean;
+  /** The search applied to the verified lane ('' = none). */
+  verifiedTerm: string;
+  setVerifiedTerm: (term: string) => void;
+  /** More, older verified papers exist that are not on the page yet. */
+  verifiedHasOlder: boolean;
+  loadOlderVerified: () => void;
+  olderBusy: boolean;
+  /** The reason the last Older read failed, in words; null when it did not. */
+  olderError: string | null;
   /** null until the uncounted list answers — `[]` would read as "all clear". */
   deliveriesWithoutPaper: UnverifiedDelivery[] | null;
   deliveriesKnown: boolean;
@@ -161,10 +170,27 @@ export function useReceiptsNextData(): ReceiptsNextData {
     enabled,
     staleTime: 30_000,
   });
+  // The verified lane can be searched and walked back past its first window
+  // (r104 g2): a house with a year of deliveries must be able to reach, and
+  // check for, a paper older than the newest 100.
+  const [verifiedTerm, setVerifiedTerm] = useState('');
+  const [older, setOlder] = useState<{
+    rows: ProcurementDocument[];
+    lastLen: number | null;
+    busy: boolean;
+    error: string | null;
+  }>({ rows: [], lastLen: null, busy: false, error: null });
+  useEffect(() => {
+    setOlder({ rows: [], lastLen: null, busy: false, error: null });
+  }, [rid, verifiedTerm]);
   const verifiedQ = useQuery<ProcurementDocument[]>({
-    queryKey: ['receipts-next', 'verified', rid],
+    queryKey: ['receipts-next', 'verified', rid, verifiedTerm || null],
     queryFn: () =>
-      documentsApi.list({ status: 'verified', limit: RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS }),
+      documentsApi.list({
+        status: 'verified',
+        limit: RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
+        q: verifiedTerm || undefined,
+      }),
     enabled,
     staleTime: 60_000,
   });
@@ -221,7 +247,26 @@ export function useReceiptsNextData(): ReceiptsNextData {
   const unread = failed.filter((f) => !f.read);
 
   const queue = queueQ.data ?? [];
-  const verified = verifiedQ.data ?? [];
+  const firstWindow = verifiedQ.data ?? [];
+  const verified = useMemo(() => [...firstWindow, ...older.rows], [firstWindow, older.rows]);
+  const lastPageLen = older.lastLen ?? firstWindow.length;
+  const verifiedHasOlder = lastPageLen >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS;
+  const loadOlderVerified = useCallback(() => {
+    const last = verified[verified.length - 1];
+    if (!last?.created_at) return;
+    setOlder((o) => ({ ...o, busy: true, error: null }));
+    documentsApi
+      .list({
+        status: 'verified',
+        limit: RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
+        q: verifiedTerm || undefined,
+        before: last.created_at,
+      })
+      .then((rows) =>
+        setOlder((o) => ({ rows: [...o.rows, ...rows], lastLen: rows.length, busy: false, error: null })),
+      )
+      .catch((e) => setOlder((o) => ({ ...o, busy: false, error: msg(e) })));
+  }, [verified, verifiedTerm]);
   // `direction` comes back from the list's `select("*")` but is not on the
   // shared client type, so it is read here rather than widened there (W44).
   const cleanRows = cleanQ.data ?? [];
@@ -242,8 +287,14 @@ export function useReceiptsNextData(): ReceiptsNextData {
     queueReading: enabled && queueQ.data === undefined && !queueQ.isError,
     cleanReading: enabled && cleanQ.data === undefined && !cleanQ.isError,
     verifiedReading: enabled && verifiedQ.data === undefined && !verifiedQ.isError,
-    verifiedCount: verifiedQ.data === undefined ? null : verifiedQ.data.length,
-    verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
+    verifiedCount: verifiedQ.data === undefined ? null : verified.length,
+    verifiedCapped: verifiedHasOlder,
+    verifiedTerm,
+    setVerifiedTerm,
+    verifiedHasOlder,
+    loadOlderVerified,
+    olderBusy: older.busy,
+    olderError: older.error,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
     deliveriesKnown: unverifiedQ.data !== undefined,
     isError: failures.length > 0,
