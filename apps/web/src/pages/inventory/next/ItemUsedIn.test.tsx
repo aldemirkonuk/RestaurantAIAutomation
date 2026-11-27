@@ -552,3 +552,49 @@ describe('foodCostShare for a drink', () => {
     expect(foodCostShare(null, null, 'drink')).toEqual({ missing: ['the cost is not complete', 'the drink has no price'] });
   });
 });
+
+describe('Link to this good (r109 g2)', () => {
+  const linked = () =>
+    load({
+      item: { id: 'i1', kind: 'spirit', displayName: 'Rakı' },
+      namedNotLinked: ok([{ ...line('m2', 'RAKI'), menuName: 'Bar list' }]),
+    });
+
+  it('links a named line: names the line and its menu, says what it changes, then links it', async () => {
+    const onLink = vi.fn(async () => undefined);
+    const { rerender } = render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={linked()} canManage currency={EUR} onRetry={vi.fn()} onLink={onLink} />);
+    const named = screen.getByTestId('ivd-used-named');
+    fireEvent.click(within(named).getByRole('button', { name: 'Link to this good' }));
+    // Nothing is written by the first press: it asks first.
+    expect(onLink).not.toHaveBeenCalled();
+    const said = screen.getByTestId('ivd-link-sentence').textContent ?? '';
+    expect(said).toContain('Link “RAKI” on the menu “Bar list” to Rakı?');
+    expect(said).toContain('A menu made current later does not carry this link.');
+    fireEvent.click(within(named).getByRole('button', { name: 'Link it' }));
+    expect(onLink).toHaveBeenCalledWith('m2');
+    // The groups hold their height while the link is answered.
+    expect(screen.getByTestId('ivd-used-hold').style.minHeight).not.toBe('');
+    // The fresh Used in lands: the line is in Sold as, and the hold is let go one frame later.
+    const moved = load({ item: { id: 'i1', kind: 'spirit', displayName: 'Rakı' }, soldAs: ok([line('m1', 'Rakı, single'), line('m2', 'RAKI')]), namedNotLinked: ok([]) });
+    rerender(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={moved} canManage currency={EUR} onRetry={vi.fn()} onLink={onLink} />);
+    expect(screen.getByTestId('ivd-used-sold').textContent).toContain('RAKI');
+    await new Promise((r) => window.requestAnimationFrame(() => r(null)));
+    expect(screen.getByTestId('ivd-used-hold').style.minHeight).toBe('');
+  });
+
+  it('says a refusal under the line and links nothing; the height is let go', async () => {
+    const onLink = vi.fn(async () => {
+      throw new Error('"RAKI" is already linked to Raki yeni, so it was not linked again.');
+    });
+    render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={linked()} canManage currency={EUR} onRetry={vi.fn()} onLink={onLink} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Link to this good' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Link it' }));
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '"RAKI" is already linked to Raki yeni, so it was not linked again.');
+    expect(screen.getByTestId('ivd-used-hold').style.minHeight).toBe('');
+  });
+
+  it('offers no Link to staff', () => {
+    render(<ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={linked()} canManage={false} currency={EUR} onRetry={vi.fn()} onLink={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Link to this good' })).toBeNull();
+  });
+});

@@ -625,6 +625,8 @@ export interface ItemMenuLine {
   byGlassPrice: number | null;
   bottlePrice: number | null;
   linkedBy?: 'inventory_item_id' | 'wine_library_id';
+  /** The current menu the line is on (r109 g2); absent from an older gateway. */
+  menuName?: string | null;
 }
 
 /** GET /inventory/:rid/item/:id/used-in */
@@ -648,6 +650,21 @@ export async function getItemUsedIn(itemId: string, restaurantId?: string): Prom
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
   const response = await apiClient.get<ItemUsedIn>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in`);
+  return response.data;
+}
+
+/**
+ * POST /inventory/:rid/item/:id/used-in/link (r109 g2): link one same-named
+ * current-menu line to this good. Owner/manager only; answers the fresh Used
+ * in, or 409 (not current, another name, already linked by another good).
+ */
+export async function linkUsedInLine(itemId: string, menuItemId: string, restaurantId?: string): Promise<ItemUsedIn> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.post<ItemUsedIn>(
+    `${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in/link`,
+    { menuItemId },
+  );
   return response.data;
 }
 
