@@ -642,6 +642,7 @@ export const inventoryItemKeys = {
   figures: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'figures'] as const,
   usedIn: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'used-in'] as const,
   nutrition: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'nutrition'] as const,
+  nutritionCoverage: (restaurantId: string) => ['inventory', restaurantId, 'nutrition', 'coverage'] as const,
 };
 
 export async function getItemUsedIn(itemId: string, restaurantId?: string): Promise<ItemUsedIn> {
@@ -759,6 +760,16 @@ const nutritionPath = (restaurantId: string | undefined, itemId: string) => {
   if (!id) throw new Error('No restaurant ID available');
   return `${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/nutrition`;
 };
+
+/** DD-r108-36: which of the house's items have their nutrition recorded (ids only, read whole). */
+export interface NutritionCoverage {
+  recordedItemIds: string[];
+  houseItems: number;
+}
+
+export async function getNutritionCoverage(restaurantId: string): Promise<NutritionCoverage> {
+  return (await apiClient.get<NutritionCoverage>(`${INVENTORY_PATH}/${restaurantId}/nutrition/coverage`)).data;
+}
 
 export async function getItemNutrition(itemId: string, restaurantId?: string): Promise<ItemNutrition> {
   return (await apiClient.get<ItemNutrition>(nutritionPath(restaurantId, itemId))).data;

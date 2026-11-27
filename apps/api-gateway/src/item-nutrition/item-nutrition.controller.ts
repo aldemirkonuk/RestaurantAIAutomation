@@ -3,7 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { OrganizationsService } from "../organizations/organizations.service";
-import { ItemNutritionService, type ItemNutrition } from "./item-nutrition.service";
+import { ItemNutritionService, type ItemNutrition, type NutritionCoverage } from "./item-nutrition.service";
 import { SaveItemNutritionDto } from "./dto/item-nutrition.dto";
 import { LookupItemNutritionDto } from "./dto/nutrition-lookup.dto";
 import { NutritionLookupService, type LookupAnswer } from "./nutrition-lookup.service";
@@ -36,6 +36,18 @@ export class ItemNutritionController {
     }
     await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "state what is in an item");
     return user.userId;
+  }
+
+  /**
+   * DD-r108-36: which of the house's items have their nutrition recorded, for
+   * the list's chip. Ids only, readable by anyone who may read the list (it
+   * holds no money). Declared before the per-item route; the paths differ.
+   */
+  @Get(":restaurantId/nutrition/coverage")
+  @ApiOperation({ summary: "The ids of the house's items whose nutrition is recorded, and how many items it has" })
+  @ApiResponse({ status: 503, description: "Could not be read whole; never answered as none recorded" })
+  coverage(@Param("restaurantId") restaurantId: string): Promise<NutritionCoverage> {
+    return this.nutrition.coverage(restaurantId);
   }
 
   @Get(":restaurantId/item/:itemId/nutrition")

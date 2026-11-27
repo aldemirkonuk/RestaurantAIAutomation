@@ -492,7 +492,7 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
 
 /* ── chips ───────────────────────────────────────────────────────────────── */
 
-export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price' | 'unused';
+export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price' | 'unused' | 'nutrition';
 
 export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -503,6 +503,7 @@ export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'dead', label: 'Dead stock' },
   { id: 'price', label: 'Price signals' },
   { id: 'unused', label: 'Unused' },
+  { id: 'nutrition', label: 'Nutrition not recorded' },
 ];
 
 export function countDue(row: InvRow, now = Date.now()): boolean {
@@ -542,12 +543,30 @@ export function priceSignalsHaveBasis(rows: InvRow[]): boolean {
 }
 
 /**
+ * Whether a good has contents to state (nutrition, allergens). A supply
+ * (napkins, foil, bleach) is not eaten or drunk, so it has none; every other
+ * kind, and a kind not yet read, does. One rule for the drawer, the list chip,
+ * the nutrition lane and the gateway lookup.
+ */
+export function holdsContents(kind: string | null | undefined): boolean {
+  return kind !== 'supply';
+}
+
+/**
  * Whether a row belongs under a chip. `price` matches a good whose last
  * settled delivery cost moved by more than PRICE_SIGNAL_PCT from the one
  * before; a good with one delivery, or none settled, never matches (and is
- * never read as a 0 % move).
+ * never read as a 0 % move). `nutrition` matches a good the coverage read
+ * says has no nutrition recorded and that holds contents (never a supply); with no coverage read (`recorded` null) it
+ * matches nothing, so an unread answer never lists every good as missing.
  */
-export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean {
+export function chipMatch(
+  row: InvRow,
+  chip: ChipId,
+  now = Date.now(),
+  recorded: ReadonlySet<string> | null = null,
+  goodKind: string | null = null,
+): boolean {
   switch (chip) {
     case 'all':
       return true;
@@ -568,6 +587,8 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
       const pct = priceMovePct(row);
       return pct !== null && Math.abs(pct) > PRICE_SIGNAL_PCT;
     }
+    case 'nutrition':
+      return recorded !== null && holdsContents(goodKind) && !recorded.has(row.id);
   }
 }
 
