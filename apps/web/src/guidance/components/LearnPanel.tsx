@@ -136,6 +136,30 @@ export function LearnPanel({
     navigate(path)
     onClose()
   }
+  // The count step (r36 onboarding gap 1). Making the first menu current
+  // puts every drink on the list at stock 0 with nobody having counted it,
+  // so "on the list" is not "counted": the step ticks on goods_counted. An
+  // older gateway sends no goods_counted; then the step names what it can
+  // read (on the list), never "counted".
+  const counted = next?.goods_counted
+  const goodsStep =
+    counted === undefined
+      ? {
+          label: 'Put your first goods on the list',
+          why: 'Stock, and what runs low, are read from it.',
+          fact: next?.goods_listed ?? null,
+        }
+      : next?.goods_listed === true && counted !== true
+        ? {
+            label: 'Count the goods on your list',
+            why: 'Your menu put them on the list. Until one is counted, its stock is not known.',
+            fact: counted,
+          }
+        : {
+            label: 'Count your first goods',
+            why: 'Stock, and what runs low, are read from the count.',
+            fact: counted,
+          }
   const nextSteps: Array<{
     id: string
     label: string
@@ -147,10 +171,10 @@ export function LearnPanel({
     ? [
         {
           id: 'goods',
-          label: 'Put your first goods on the list',
-          why: 'Stock, and what runs low, are read from it.',
-          done: next.goods_listed === true,
-          unread: next.goods_listed === null,
+          label: goodsStep.label,
+          why: goodsStep.why,
+          done: goodsStep.fact === true,
+          unread: goodsStep.fact === null,
           cta: { label: 'Count the first goods', onClick: go('/inventory') },
         },
         {

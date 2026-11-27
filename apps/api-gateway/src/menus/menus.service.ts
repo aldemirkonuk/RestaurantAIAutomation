@@ -3587,6 +3587,11 @@ export class MenusService {
    * and a failed read is not absence).
    *
    * - goods_listed: an active good on the house's list (the desk's count).
+   * - goods_counted: an active good someone has counted (`last_counted_at`
+   *   is stamped only by a count, a_count_is_a_record). Making the first
+   *   menu current puts every drink on the list at stock 0 with no count, so
+   *   "on the list" is not "counted": the count step waits for this one
+   *   (r36 onboarding gap 1).
    * - mailbox_connected: a live Gmail grant held for this house, to send or
    *   to read (the only mailbox a house can connect today).
    * - invoice: "checked" once an invoice is verified (its costs are applied),
@@ -3595,6 +3600,7 @@ export class MenusService {
    */
   private async readNextSteps(restaurantId: string): Promise<{
     goods_listed: boolean | null;
+    goods_counted: boolean | null;
     mailbox_connected: boolean | null;
     invoice: "none" | "waiting" | "checked" | null;
   }> {
@@ -3610,7 +3616,7 @@ export class MenusService {
         (read) => read,
         (error: unknown) => ({ data: null, error: error ?? "rejected" }),
       );
-    const [goods, mailbox, checked, waiting] = await Promise.all([
+    const [goods, counted, mailbox, checked, waiting] = await Promise.all([
       settle(() =>
         supabase
           .from("restaurant_inventory")
@@ -3618,6 +3624,16 @@ export class MenusService {
           .eq("restaurant_id", restaurantId)
           .is("deleted_at", null)
           .eq("is_active", true)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("restaurant_inventory")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .eq("is_active", true)
+          .not("last_counted_at", "is", null)
           .limit(1),
       ),
       settle(() =>
@@ -3659,6 +3675,7 @@ export class MenusService {
     else invoice = isWaiting ? "waiting" : "none";
     return {
       goods_listed: held(goods),
+      goods_counted: held(counted),
       mailbox_connected: held(mailbox),
       invoice,
     };

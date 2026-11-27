@@ -46,6 +46,12 @@ function fakeDb(
       neq: (c: string, v: any) => (preds.push((r) => col(r, c) !== undefined && col(r, c) !== v), api),
       is: (c: string, v: null) => (preds.push((r) => (r[c] ?? null) === v), api),
       in: (c: string, vs: any[]) => (preds.push((r) => vs.includes(col(r, c))), api),
+      // PostgREST `not(col, "is", null)`: the column holds a value.
+      not: (c: string, op: string, v: null) => {
+        if (op !== "is" || v !== null) throw new Error(`fake not(): unsupported ${op}`);
+        preds.push((r) => (r[c] ?? null) !== null);
+        return api;
+      },
       // PostgREST `or`: "col.not.is.null" and "col.gt.<value>" terms.
       or: (expr: string) => {
         const terms = expr.split(",").map((t) => {
@@ -323,7 +329,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
   function withValue(): Record<string, Row[]> {
     const tables = twoHouses();
     tables.restaurant_inventory = [
-      { id: "g-A", restaurant_id: houseA, deleted_at: null, is_active: true },
+      { id: "g-A", restaurant_id: houseA, deleted_at: null, is_active: true, last_counted_at: "2026-01-04T00:00:00+00:00" },
     ];
     tables.integration_oauth_connections = [
       { id: "c-A", restaurant_id: houseA, integration_id: "gmail_send", revoked_at: null },
@@ -336,16 +342,16 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
 
   it("a house with no goods, no mailbox and no invoice says so, and its setup still answers", async () => {
     const a = await serviceOn(twoHouses()).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: false, mailbox_connected: false, invoice: "none" });
+    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, invoice: "none" });
     expect(a.menu_current).toBe(true);
   });
 
   it("house A's good, grant and checked invoice count for A and never for B", async () => {
     const { service } = serviceOn(withValue());
     const a = await service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, mailbox_connected: true, invoice: "checked" });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, invoice: "checked" });
     const b = await service.getOnboardingProgress("u-1", houseB);
-    expect(b.next_steps).toEqual({ goods_listed: false, mailbox_connected: false, invoice: "none" });
+    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, invoice: "none" });
   });
 
   it("a good put away or deleted is not on the list", async () => {
@@ -355,6 +361,36 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     tables.restaurant_inventory[0].is_active = true;
     tables.restaurant_inventory[0].deleted_at = "2026-01-05T00:00:00+00:00";
     expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.goods_listed).toBe(false);
+  });
+
+  // r36 onboarding gap 1: making the first menu current puts every drink on
+  // the list at stock 0 with no count. On the list is not counted.
+  it("goods the menu put on the list, never counted, are listed and not counted", async () => {
+    const tables = withValue();
+    tables.restaurant_inventory = [
+      { id: "g-1", restaurant_id: houseA, deleted_at: null, is_active: true, last_counted_at: null },
+      { id: "g-2", restaurant_id: houseA, deleted_at: null, is_active: true },
+    ];
+    const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+    expect(a.next_steps.goods_listed).toBe(true);
+    expect(a.next_steps.goods_counted).toBe(false);
+  });
+
+  it("one counted good is counted; a count in another house, or on a good put away or deleted, is not", async () => {
+    const tables = withValue();
+    const counted = async () =>
+      (await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.goods_counted;
+    tables.restaurant_inventory = [
+      { id: "g-1", restaurant_id: houseA, deleted_at: null, is_active: true, last_counted_at: null },
+      { id: "g-B", restaurant_id: houseB, deleted_at: null, is_active: true, last_counted_at: "2026-01-04T00:00:00+00:00" },
+    ];
+    expect(await counted()).toBe(false);
+    tables.restaurant_inventory.push({ id: "g-2", restaurant_id: houseA, deleted_at: null, is_active: false, last_counted_at: "2026-01-04T00:00:00+00:00" });
+    expect(await counted()).toBe(false);
+    tables.restaurant_inventory[2] = { id: "g-2", restaurant_id: houseA, deleted_at: "2026-01-05T00:00:00+00:00", is_active: true, last_counted_at: "2026-01-04T00:00:00+00:00" };
+    expect(await counted()).toBe(false);
+    tables.restaurant_inventory[2] = { id: "g-2", restaurant_id: houseA, deleted_at: null, is_active: true, last_counted_at: "2026-01-04T00:00:00+00:00" };
+    expect(await counted()).toBe(true);
   });
 
   it("only a live Gmail grant held for this house is its mailbox; reading counts as well as sending", async () => {
@@ -391,16 +427,16 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
   });
 
   it("a failed read is null for that step only, never false, and the setup still answers", async () => {
-    for (const [table, key] of [
-      ["restaurant_inventory", "goods_listed"],
-      ["integration_oauth_connections", "mailbox_connected"],
-      ["procurement_documents", "invoice"],
+    for (const [table, keys] of [
+      ["restaurant_inventory", ["goods_listed", "goods_counted"]],
+      ["integration_oauth_connections", ["mailbox_connected"]],
+      ["procurement_documents", ["invoice"]],
     ] as const) {
       const a = await serviceOn(withValue(), { [table]: "statement timeout" }).service.getOnboardingProgress("u-1", houseA);
-      expect(a.next_steps[key]).toBeNull();
+      for (const key of keys) expect(a.next_steps[key]).toBeNull();
       expect(a.menu_current).toBe(true);
       expect(a.completed_at).not.toBeNull();
-      const others = Object.entries(a.next_steps).filter(([k]) => k !== key);
+      const others = Object.entries(a.next_steps).filter(([k]) => !(keys as readonly string[]).includes(k));
       expect(others.every(([, v]) => v !== null)).toBe(true);
     }
   });
@@ -460,7 +496,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     const tables = withValue();
     tables.providers = [];
     const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, mailbox_connected: true, invoice: "checked" });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, invoice: "checked" });
     expect(a.completed_at).toBeNull();
     tables.menu_items = [];
     const b = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
