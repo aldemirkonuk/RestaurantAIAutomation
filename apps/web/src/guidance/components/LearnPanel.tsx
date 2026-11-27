@@ -119,6 +119,57 @@ export function LearnPanel({
   ]
 
   const completedCount = tasks.filter((t) => t.done).length
+
+  // After the menu (r28 onboarding gap 3): the steps that lead to the
+  // house's costs. Read from the house (next_steps); none of them is part of
+  // setup, so they are not in the count above. `null` = that read failed: the
+  // step is said as not read, never ticked and never called not done.
+  const next = progress?.next_steps
+  const go = (path: string) => () => {
+    navigate(path)
+    onClose()
+  }
+  const nextSteps: Array<{
+    id: string
+    label: string
+    why: string
+    done: boolean
+    unread: boolean
+    cta: { label: string; onClick: () => void }
+  }> = next
+    ? [
+        {
+          id: 'goods',
+          label: 'Put your first goods on the list',
+          why: 'Stock, and what runs low, are read from it.',
+          done: next.goods_listed === true,
+          unread: next.goods_listed === null,
+          cta: { label: 'Count the first goods', onClick: go('/inventory') },
+        },
+        {
+          id: 'mailbox',
+          label: "Connect the house's Gmail",
+          why: "Orders to vendors leave from the house's own address.",
+          done: next.mailbox_connected === true,
+          unread: next.mailbox_connected === null,
+          cta: {
+            label: 'Connect it',
+            onClick: go(`/authorize/gmail_send?returnPath=${encodeURIComponent('/communications')}`),
+          },
+        },
+        {
+          id: 'invoice',
+          label: next.invoice === 'waiting' ? 'Check the invoice that came in' : 'Check your first invoice',
+          why: 'Costs come from the invoices you check.',
+          done: next.invoice === 'checked',
+          unread: next.invoice === null,
+          cta: {
+            label: next.invoice === 'waiting' ? 'Check it' : 'Open Receipts',
+            onClick: go('/receipts'),
+          },
+        },
+      ]
+    : []
   const rect = anchorRef.current?.getBoundingClientRect()
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
   const top = rect ? Math.min(rect.top, window.innerHeight - 420) : 80
@@ -150,7 +201,7 @@ export function LearnPanel({
           </h3>
           <p className="text-xs text-gray-400">
             {mode === 'get-started'
-              ? `${completedCount}/4 complete`
+              ? `${completedCount}/${tasks.length} complete`
               : 'Replay tours & recover tips'}
           </p>
         </div>
@@ -192,6 +243,50 @@ export function LearnPanel({
                     >
                       {task.cta.label} →
                     </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {mode === 'get-started' && nextSteps.length > 0 && (
+          <div className="space-y-1" data-testid="setup-next-steps">
+            <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Then, to see your costs
+            </p>
+            {nextSteps.map((step) => (
+              <div
+                key={step.id}
+                data-step={step.id}
+                className="flex items-start gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                {step.done ? (
+                  <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" aria-label="Done" />
+                ) : (
+                  <Circle className="w-5 h-5 text-gray-300 flex-shrink-0 mt-0.5" aria-hidden />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      'text-sm font-medium',
+                      step.done ? 'text-gray-400 line-through' : 'text-gray-700',
+                    )}
+                  >
+                    {step.label}
+                  </p>
+                  {!step.done && (
+                    <>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {step.unread ? 'Not read just now, so not shown as done or not done.' : step.why}
+                      </p>
+                      <button
+                        onClick={step.cta.onClick}
+                        className="text-xs text-[#1A5E6B] hover:text-[#14515C] font-medium mt-0.5"
+                      >
+                        {step.cta.label} →
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
