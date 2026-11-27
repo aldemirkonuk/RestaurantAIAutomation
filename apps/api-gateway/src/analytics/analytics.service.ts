@@ -89,6 +89,29 @@ function positiveOrNull(v: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Said for an inventory row that carries no name anywhere. Never its id. */
+export const UNNAMED_ITEM = "An item with no name";
+
+/**
+ * What the house calls an inventory row: its own `wine_name`, then its
+ * `display_name` (a good that is not a wine), then the library's name. Blank
+ * strings are not names.
+ */
+export function houseItemName(row: {
+  wine_name?: unknown;
+  display_name?: unknown;
+  master_wine_library?: { name?: unknown } | null;
+}): string {
+  for (const v of [
+    row.wine_name,
+    row.display_name,
+    row.master_wine_library?.name,
+  ]) {
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return UNNAMED_ITEM;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -156,7 +179,7 @@ export class AnalyticsService {
       client
         .from("restaurant_inventory")
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, display_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type, name)",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
@@ -191,7 +214,12 @@ export class AnalyticsService {
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
-        name: i.wine_name || i.master_wine_id || i.id,
+        // The house's own name, then the library's (`inventory.service.ts`
+        // names a row the same way). It fell back to `master_wine_id`, then
+        // the row id, so the dead-stock card read "top: 10ca1c4e-…" for a
+        // bottle whose name lives only on its library row (r9 browser check,
+        // 2026-11-12). An id is never a name: a row with none says so.
+        name: houseItemName(i),
         type: i.master_wine_library?.primary_type || "unknown",
         qty,
         unitCost,
