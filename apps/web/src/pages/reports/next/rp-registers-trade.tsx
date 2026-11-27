@@ -470,6 +470,8 @@ const till = analysis<TillWindow>({
         unit: 'taken',
         format: (v) => money(v, 'compact'),
         measureLabel: 'Taken',
+        // Bucket sums only. The 7-day average (tillMeasures) is a daily trail and
+        // is never offered at Week or Month (r110 reports-r110-2).
         measures: counted
           ? [
               { key: 'checks', label: 'Checks', unit: 'checks', format: (v) => figure(v), values: b.map((x) => x.checks) },
