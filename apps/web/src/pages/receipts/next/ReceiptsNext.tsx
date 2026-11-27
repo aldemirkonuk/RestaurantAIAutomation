@@ -167,14 +167,35 @@ function HeldCostNote({ docId }: { docId: string }) {
         Whether this paper&rsquo;s cost is held could not be read.
       </p>
     );
-  if (!q.data || q.data.held.length === 0 || q.data.taxBasisKnown) return null;
+  if (!q.data || q.data.held.length === 0) return null;
+  // The tax sentence is for a hold that IS the tax basis (r108): a paper held
+  // for a missing exchange rate or an unreadable line says the server's own reason.
+  const taxHolds = q.data.held.filter((h) => h.cause === 'tax_basis');
+  const others = q.data.held.filter((h) => h.cause !== 'tax_basis');
+  const sentences: string[] = [];
+  // The gateway marks a hold `tax_basis` only once the house HAS answered (the
+  // hold is then the paper's: it shows tax and does not say if prices include
+  // it), so this is never gated on `taxBasisKnown`, which is true on every one.
+  if (taxHolds.length > 0)
+    sentences.push(
+      `Tax basis unknown \u2014 ${
+        taxHolds.length === 1
+          ? 'one item on this paper keeps a provisional cost'
+          : `${taxHolds.length} items on this paper keep a provisional cost`
+      }: the paper shows tax but does not say whether its prices include it.`,
+    );
+  if (others.length > 0) {
+    const why = others[0].why.replace(/\s*The lot stays provisional\.?$/, '').trim();
+    sentences.push(
+      `${why.charAt(0).toUpperCase()}${why.slice(1)}${/[.!?]$/.test(why) ? '' : '.'}${
+        others.length > 1 ? ` ${others.length - 1} more ${others.length - 1 === 1 ? 'item is' : 'items are'} held too.` : ''
+      }`,
+    );
+  }
+  if (sentences.length === 0) return null;
   return (
     <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-      Tax basis unknown &mdash;{' '}
-      {q.data.held.length === 1
-        ? 'one item on this paper keeps a provisional cost'
-        : `${q.data.held.length} items on this paper keep a provisional cost`}{' '}
-      until the house says how it treats the tax it pays.
+      {sentences.join(' ')}
     </p>
   );
 }

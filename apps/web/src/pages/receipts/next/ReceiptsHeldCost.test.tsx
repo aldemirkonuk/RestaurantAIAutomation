@@ -194,19 +194,49 @@ beforeEach(() => {
 });
 
 describe('the held-cost sentence', () => {
-  it('says "Tax basis unknown" with an em dash when items are held and the basis is unset', async () => {
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+  it('says "Tax basis unknown" with an em dash when the paper shows tax but not whether prices include it', async () => {
+    // The gateway's real shape: the house has answered (taxBasisKnown true) and the hold is the paper's.
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/Tax basis unknown — one item on this paper keeps a provisional cost/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Tax basis unknown — one item on this paper keeps a provisional cost: the paper shows tax but does not say whether its prices include it\./),
+    ).toBeTruthy();
     expect(api.heldCosts).toHaveBeenCalledWith('d1');
   });
 
-  it('says nothing when nothing is held, or the basis is known', async () => {
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+  it('says nothing when nothing is held', async () => {
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: true, held: [] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     await waitFor(() => expect(api.heldCosts).toHaveBeenCalled());
+    expect(screen.queryByText(/Tax basis unknown/)).toBeNull();
+  });
+
+  it('speaks the tax hold and the other cause together, when a paper has both', async () => {
+    api.heldCosts.mockResolvedValue({
+      taxBasisKnown: true,
+      held: [
+        { deliveryId: 'x', inventoryId: 'i', why: 'w', cause: 'tax_basis' },
+        { deliveryId: 'x', inventoryId: 'j', why: 'line 2 has no exchange rate. The lot stays provisional.', cause: 'currency' },
+      ],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/the paper shows tax but does not say whether its prices include it/)).toBeTruthy();
+    expect(screen.getByText(/Line 2 has no exchange rate/)).toBeTruthy();
+  });
+
+  it('a paper held for a missing exchange rate says that, not the tax basis', async () => {
+    const why =
+      'its invoice is in TRY and this house keeps its costs in USD; no exchange rate is recorded, so a cost in TRY is not booked as USD. The lot stays provisional.';
+    api.heldCosts.mockResolvedValue({
+      taxBasisKnown: false,
+      held: [{ deliveryId: 'x', inventoryId: 'i', why, cause: 'currency' }],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/no exchange rate is recorded/)).toBeTruthy();
     expect(screen.queryByText(/Tax basis unknown/)).toBeNull();
   });
 
@@ -220,7 +250,7 @@ describe('the held-cost sentence', () => {
 
   it('is not asked of, or shown to, staff', async () => {
     api.role = 'staff';
-    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w' }] });
+    api.heldCosts.mockResolvedValue({ taxBasisKnown: false, held: [{ deliveryId: 'x', inventoryId: 'i', why: 'w', cause: 'tax_basis' }] });
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(api.heldCosts).not.toHaveBeenCalled();
