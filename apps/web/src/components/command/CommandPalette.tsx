@@ -36,6 +36,7 @@ import { ASK_AI_OPEN_EVENT } from "../askai/events";
 import { Panel } from "../mudavym/Sheet";
 import { useMudavymShell } from "../../lib/mudavym/shellGround";
 import { useShellPalette } from "../mudavym/shellPalette";
+import { usePaletteGoods } from "./paletteGoods";
 
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
@@ -46,6 +47,7 @@ const MAX_RECENTS = 5;
 const SECTION_ORDER: CommandSection[] = [
   "On the counter",
   "Recent",
+  "Goods",
   "Rooms",
   "Insights",
   "Create",
@@ -78,7 +80,7 @@ export function CommandPalette({
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, activeRestaurantId } = useAuth();
   const shell = useMudavymShell();
   const shellPalette = useShellPalette();
   const restaurantId = user?.restaurantId;
@@ -128,6 +130,8 @@ export function CommandPalette({
   }, [open]);
 
   const recentIds = useMemo(() => (open ? loadRecents() : []), [open]);
+  // The house's goods, from the list /inventory reads (one cache), ranked locally.
+  const goods = usePaletteGoods(open, activeRestaurantId, query);
 
   const allCommands = useMemo(() => {
     // Under the app shell the rooms come from the ONE rooms table the rail
@@ -233,8 +237,9 @@ export function CommandPalette({
     } else {
       for (const { cmd } of ranked) (g[cmd.section] ||= []).push(cmd);
     }
+    if (goods.length) g.Goods = goods;
     return g;
-  }, [allCommands, query, recentIds]);
+  }, [allCommands, query, recentIds, goods]);
 
   // Flatten in display order for keyboard navigation.
   const flat = useMemo(() => {
@@ -254,7 +259,8 @@ export function CommandPalette({
       if (!cmd) return;
       // An act on the counter is not a place to return to: its id names one
       // record that is gone once it is sealed, so it is never a "recent".
-      if (cmd.section !== "On the counter") pushRecent(cmd.id);
+      // A good is found again by its name, so it is not kept among the recents either.
+      if (cmd.section !== "On the counter" && cmd.section !== "Goods") pushRecent(cmd.id);
       onClose();
       if (cmd.action) cmd.action();
       else if (cmd.href) navigate(cmd.href);
@@ -327,11 +333,11 @@ export function CommandPalette({
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Search pages, actions, insights…"
+            placeholder="Search pages, goods, actions, insights…"
             role="combobox"
             aria-expanded="true"
             aria-controls="command-list"
-            aria-label="Search pages, actions, insights"
+            aria-label="Search pages, goods, actions, insights"
             aria-activedescendant={flat[active] ? `cmd-${flat[active].id}` : undefined}
             autoComplete="off"
             spellCheck={false}
@@ -427,7 +433,7 @@ export function CommandPalette({
               setActive(0);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Search pages, actions, insights…"
+            placeholder="Search pages, goods, actions, insights…"
             className="flex-1 py-3.5 text-sm bg-transparent outline-none placeholder:text-gray-400"
             role="combobox"
             aria-expanded="true"
