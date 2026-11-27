@@ -79,6 +79,7 @@ import {
   threadCountWords,
   todayLine,
   unsentWords,
+  unsentChipRefused,
   unsentChipText,
   type MailAnswer,
   type MailboxReader,
@@ -182,16 +183,19 @@ function NoAnswerChip({ p }: { p: MailPersonRow }) {
 function UnsentChip({ status }: { status: string | null | undefined }) {
   const words = unsentChipText(status);
   if (words === null) return null;
+  // Refused tone (the thread's letter-refused colour) for a letter that did not leave or did not arrive.
+  const refused = unsentChipRefused(status);
   return (
     <span
       data-testid="mail-unsent"
+      data-tone={refused ? 'refused' : 'pending'}
       style={{
         fontFamily: MONO,
         fontSize: 11,
         padding: '2px 7px',
         borderRadius: 4,
-        border: '1px dashed var(--ink-4, #665D50)',
-        color: 'var(--ink-2, #4F473C)',
+        border: refused ? '1px solid var(--alarm-deep, #8C3322)' : '1px dashed var(--ink-4, #665D50)',
+        color: refused ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-2, #4F473C)',
         alignSelf: 'center',
       }}
     >

@@ -35,6 +35,7 @@ import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './
 import {
   addressLine,
   answerFor,
+  deliveryLine,
   personWords,
   letterAt,
   filedFromHeldWords,
@@ -84,11 +85,14 @@ function Letter({
   takingBack,
   house,
   unfolded,
+  onWriteAgain,
 }: {
   m: MailMessage;
   /** Opened from a fold by the reader: it fades in once (opacity only, none under reduced motion). */
   unfolded?: boolean;
   vendor: string;
+  /** Set for an owner or manager who may write on this thread: a letter that did not arrive offers Write again. */
+  onWriteAgain?: () => void;
   /** The house's Mudavym address and time zone, for the letter's Details (r108 mail-gap g8). */
   house: { address?: string | null; zone?: string | null };
   facts: LetterFacts | undefined;
@@ -172,6 +176,35 @@ function Letter({
           </button>
         )}
       </div>
+      {!inbound && m.delivery && (
+        // r109 mail-gap g1: a checked delivery notice came back about this letter. A failure in the refused
+        // tone, with Write again; a delay in the letter's own ink, never refused. Static text, no motion.
+        <p
+          data-testid="letter-delivery"
+          data-state={m.delivery.state}
+          className="flex flex-wrap items-center gap-x-2"
+          style={{
+            fontSize: 12,
+            margin: 0,
+            overflowWrap: 'anywhere',
+            color: m.delivery.state === 'did_not_arrive' ? 'var(--alarm-deep, #8C3322)' : 'var(--ink-2, #4F473C)',
+          }}
+        >
+          <span>{deliveryLine(m.delivery, house.zone)}</span>
+          {m.delivery.state === 'did_not_arrive' && onWriteAgain && (
+            <button
+              type="button"
+              data-testid="letter-write-again"
+              onClick={onWriteAgain}
+              className="inline-flex items-center"
+              // A 44 px hit area that does not make the line 44 px tall.
+              style={{ minHeight: 44, margin: '-14px 0', background: 'none', border: 0, padding: '0 6px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+            >
+              Write again
+            </button>
+          )}
+        </p>
+      )}
       {inbound && open && (
         // In place, under the provenance line: one 160 ms opacity fade in, no exit, no height animation (ADR 0112).
         <ul id={detailsId} data-testid="letter-details" className="mail-fade-in grid gap-0.5" style={{ ...QUIET, margin: 0, padding: 0, listStyle: 'none', overflowWrap: 'anywhere' }}>
@@ -561,6 +594,7 @@ export function MailThread({
                   onTakeBack={r.m.id === undoId ? () => noReply.mutate({ id: r.m.id, marked: false }) : undefined}
                   takingBack={noReply.isPending && noReply.variables?.marked === false}
                   house={house}
+                  onWriteAgain={answer ? () => onAnswer?.(answer) : undefined}
                 />
               ) : r.kind === 'fold' ? (
                 <FoldedLetter key={r.m.id} m={r.m} vendor={vendor} onOpen={() => unfold([r.m.id])} />
