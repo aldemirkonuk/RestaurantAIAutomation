@@ -11,14 +11,28 @@
  * volume, g by weight, a piece) is never sent: converting across those would
  * invent a density, so that drink is listed as not swapped. An incomplete
  * cost says how many lines are priced, never a partial sum or 0 (ADR 0051).
- * Dishes that use the good are counted and left alone.
+ *
+ * Dishes too (r110 inventory g4): the drawer's Used in opens this sheet with
+ * its good chosen. Which dishes use it is GET /items/:id/dishes; each dish's
+ * current version is its own read (GET /dishes/:id), saved back through its
+ * own PUT the same way, priced by the dish cost-preview route.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '../../../../components/mudavym/Sheet';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { recipesApi, type CostPreview, type LooseDrink, type PreviewCostBody, type SaveRecipeBody, type ShelfItem } from '../../../../services/api/recipes';
-import { useHouseMoney, drinkFiguresKey, recipeKey } from './useRecipe';
+import {
+  recipesApi,
+  type CostPreview,
+  type LooseDrink,
+  type PreviewCostBody,
+  type RecipeOwner,
+  type RecipeVersion,
+  type SaveRecipeBody,
+  type ShelfItem,
+} from '../../../../services/api/recipes';
+import { getItemDishes } from '../../../../services/api/itemDishes';
+import { useHouseMoney, dishesKey, drinkFiguresKey, recipeKey } from './useRecipe';
 import ShelfPicker from './ShelfPicker';
 import { count, linkBody, looseLinesKey, saveEach, type LinkOutcome } from './linkLines';
 
@@ -62,7 +76,30 @@ export async function inFours<T>(jobs: Array<() => Promise<T>>, width = 4): Prom
   return out;
 }
 
+/** A dish's current version in the shape the loose-lines queue sends a drink: the save takes it back unchanged but for the swap. */
+export function dishAsRead(dishId: string, name: string, cur: RecipeVersion): LooseDrink {
+  return {
+    cocktailId: dishId,
+    name,
+    versionId: cur.versionId,
+    yieldServes: cur.yieldServes,
+    method: cur.method,
+    glass: cur.glass,
+    garnish: cur.garnish,
+    lines: cur.lines.map((l) => ({
+      role: l.role,
+      inventoryId: l.inventoryId,
+      label: l.label,
+      qty: l.qtyEntered,
+      unit: l.unitCode,
+      componentId: l.componentId ?? null,
+      usablePct: l.usablePct ?? null,
+    })),
+  };
+}
+
 interface Plan {
+  owner: RecipeOwner;
   drink: LooseDrink;
   body: SaveRecipeBody;
   refused: string | null;
@@ -70,12 +107,13 @@ interface Plan {
   keeps: number[];
 }
 
-function SwapSheet({ onClose }: { onClose: () => void }) {
+/** The sheet itself; `initialFrom` is the good the drawer opened it for. */
+export function SwapSheet({ onClose, initialFrom = null }: { onClose: () => void; initialFrom?: ShelfItem | null }) {
   const { activeRestaurantId } = useAuth();
   const rid = activeRestaurantId as string;
   const say = useHouseMoney();
   const qc = useQueryClient();
-  const [from, setFrom] = useState<ShelfItem | null>(null);
+  const [from, setFrom] = useState<ShelfItem | null>(initialFrom);
   const [to, setTo] = useState<ShelfItem | null>(null);
   const [same, setSame] = useState(false);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -87,20 +125,51 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
     enabled: Boolean(from && activeRestaurantId),
     retry: false,
   });
+  // The dishes that use it, then each one's current version, four reads at a time; one that fails is named, never swapped.
+  const dishUses = useQuery({
+    queryKey: [...dishesKey(activeRestaurantId), 'swap', from?.id ?? null],
+    queryFn: async () => {
+      const list = await getItemDishes(from!.id, rid);
+      return inFours(
+        list.dishes.map((d) => () =>
+          recipesApi.get(rid, { kind: 'dish', id: d.dishId }).then(
+            (r) => ({ dishId: d.dishId, name: d.name, cur: r.current }),
+            () => ({ dishId: d.dishId, name: d.name, cur: null }),
+          ),
+        ),
+      );
+    },
+    enabled: Boolean(from && activeRestaurantId),
+    retry: false,
+  });
+  const dishRead = (dishUses.data ?? []).flatMap((d) => {
+    const at = d.cur ? d.cur.lines.flatMap((l, i) => (l.inventoryId === from?.id ? [i] : [])) : [];
+    return d.cur && at.length ? [{ ...d, cur: d.cur, at }] : [];
+  });
+  const dishUnread = (dishUses.data ?? []).filter((d) => !d.cur).map((d) => d.name);
 
   const plans: Plan[] = useMemo(() => {
-    if (!uses.data || !to) return [];
+    if (!to) return [];
     const want = familyOf(to.uom);
+    const dishPlans: Plan[] = dishRead.map(({ dishId, name, cur, at }) => {
+      const drink = dishAsRead(dishId, name, cur);
+      const keeps = [...new Set(at.map((i) => drink.lines[i].usablePct).filter((u): u is number => u != null))];
+      const off = at.some((i) => cur.lines[i].baseUnit !== want);
+      return { owner: { kind: 'dish' as const, id: dishId }, drink, body: linkBody(drink, at, to.id), refused: off ? `not swapped: counted ${COUNTED[want]}` : null, keeps };
+    });
+    if (!uses.data) return dishPlans;
     const at = new Map<string, Array<{ index: number; baseUnit?: string }>>();
     for (const g of uses.data.groups) for (const l of g.lines) at.set(l.cocktailId, [...(at.get(l.cocktailId) ?? []), l]);
-    return uses.data.drinks.flatMap((drink) => {
+    return uses.data.drinks.flatMap((drink): Plan[] => {
       const lines = at.get(drink.cocktailId);
       if (!lines) return [];
       const off = lines.some((l) => l.baseUnit !== want);
       const keeps = [...new Set(lines.map((l) => drink.lines[l.index]?.usablePct).filter((u): u is number => u != null))];
-      return [{ drink, body: linkBody(drink, lines.map((l) => l.index), to.id), refused: off ? `not swapped: counted ${COUNTED[want]}` : null, keeps }];
-    });
-  }, [uses.data, to]);
+      const owner = { kind: 'cocktail' as const, id: drink.cocktailId };
+      return [{ owner, drink, body: linkBody(drink, lines.map((l) => l.index), to.id), refused: off ? `not swapped: counted ${COUNTED[want]}` : null, keeps }];
+    }).concat(dishPlans);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uses.data, dishUses.data, to, from]);
 
   // Each drink to be swapped: its cost a serve now and after, from the same preview route, four requests at a time.
   useEffect(() => {
@@ -110,7 +179,7 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
     let live = true;
     const jobs = go.flatMap((p) => {
       const ask = (b: PreviewCostBody | null) => () =>
-        b ? recipesApi.previewCost(rid, p.drink.cocktailId, b).catch(() => null) : Promise.resolve(null);
+        b ? recipesApi.previewCost(rid, p.owner, b).catch(() => null) : Promise.resolve(null);
       return [ask(previewBody({ ...p.body, lines: p.drink.lines })), ask(previewBody(p.body))];
     });
     void inFours(jobs).then((r) => {
@@ -134,30 +203,36 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
     setBusy(true);
     const out = await saveEach(
       rid,
-      go.map(({ drink, body }) => ({ drink, body })),
+      go.map(({ owner, drink, body }) => ({ owner, drink, body })),
       `${from.name} swapped for ${to.name}`,
       'swap this good',
     );
     setOutcomes(out);
     setBusy(false);
+    const ownerOf = new Map(go.map((p) => [p.drink.cocktailId, p.owner]));
     await Promise.all([
       qc.invalidateQueries({ queryKey: looseLinesKey(activeRestaurantId) }),
       qc.invalidateQueries({ queryKey: drinkFiguresKey(activeRestaurantId) }),
-      ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, o.cocktailId) })),
+      qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) }),
+      // The drawer's Used in, its dishes and drinks, and the item's figures.
+      qc.invalidateQueries({ queryKey: ['inventory', 'item', rid] }),
+      ...out.filter((o) => o.ok).map((o) => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, ownerOf.get(o.cocktailId) ?? o.cocktailId) })),
     ]);
   };
 
-  const dishes = uses.data?.dishCount ?? 0;
+  const goDrinks = go.filter((p) => p.owner.kind === 'cocktail').length;
+  const goDishes = go.length - goDrinks;
+  const swapIn = [goDrinks ? count(goDrinks, 'drink', 'drinks') : null, goDishes ? count(goDishes, 'dish', 'dishes') : null].filter(Boolean).join(' and ');
   return (
     <Sheet
       open
       onClose={onClose}
-      label="Swap one shelf good for another in every drink that uses it. Confirm saves a new version of each drink; closing saves nothing."
+      label="Swap one shelf good for another in every drink and dish that uses it. Confirm saves a new version of each; closing saves nothing."
       eyebrow="Recipes"
       title="Swap a good"
       closeLabel="Close"
     >
-      <p className="cl-note">Each drink keeps its earlier version.</p>
+      <p className="cl-note">Each drink and dish keeps its earlier version.</p>
       {!from ? (
         <>
           <p className="cl-said">The good your drinks pour from now</p>
@@ -179,14 +254,19 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
               ? `${count(uses.data.lineCount, 'line', 'lines')} in ${count(uses.data.drinkCount, 'drink', 'drinks')} pour from it.`
               : `No drink's current recipe uses ${from.name}.`}
           </p>
-          {dishes > 0 ? (
-            <p className="cl-note" data-testid="swap-dishes">
-              {count(dishes, 'dish uses', 'dishes use')} it too; {dishes === 1 ? 'it is' : 'they are'} not changed here.
-            </p>
-          ) : null}
         </>
       ) : null}
-      {from && uses.data?.lineCount && !to ? (
+      {from && dishUses.isError ? (
+        <p className="cl-note" role="alert" data-testid="swap-dishes">
+          Which dishes use {from.name} could not be read just now; none is changed here.
+        </p>
+      ) : from && dishUses.data ? (
+        <p className="cl-said" data-testid="swap-dishes">
+          {dishRead.length ? `${count(dishRead.length, 'dish uses', 'dishes use')} it.` : `No dish's current recipe uses ${from.name}.`}
+          {dishUnread.length ? ` ${dishUnread.join(', ')}: the recipe could not be read, so it is not changed.` : ''}
+        </p>
+      ) : null}
+      {from && (uses.data?.lineCount || dishRead.length) && !to ? (
         <>
           <p className="cl-said">The good to pour instead</p>
           {same ? <p className="cl-note" role="status">That is the good being swapped out; choose another.</p> : null}
@@ -217,7 +297,7 @@ function SwapSheet({ onClose }: { onClose: () => void }) {
             ))}
           </ul>
           <button type="button" className="cl-btn cl-focus" data-testid="swap-confirm" disabled={!go.length || busy} onClick={() => void confirm()}>
-            Swap in {count(go.length, 'drink', 'drinks')}
+            Swap in {swapIn || count(0, 'drink', 'drinks')}
           </button>
         </>
       ) : null}

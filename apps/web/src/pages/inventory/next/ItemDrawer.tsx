@@ -352,6 +352,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         onRetry={() => void usedInQ.refetch()}
         onRetryDishes={() => void dishesQ.refetch()}
         onRetryDrinks={() => void drinksQ.refetch()}
+        good={{ id, name, kind: house.kind ?? row.kind, uom: house.uom ?? null, bottleSizeMl: null }}
       />
     </Sheet>
   );

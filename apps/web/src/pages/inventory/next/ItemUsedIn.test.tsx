@@ -19,6 +19,17 @@ import type { ListTax } from '../../cellar/next/recipe/listTax';
 import type { ItemDish, ItemDrink } from '../../../services/api/itemDishes';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
+// The swap sheet is SwapGood.test's; here only that the drawer opens it with its own good.
+vi.mock('../../cellar/next/recipe/SwapGood', () => ({
+  SwapSheet: ({ initialFrom, onClose }: { initialFrom: { name: string }; onClose: () => void }) => (
+    <div data-testid="swap-sheet">
+      swapping {initialFrom.name}
+      <button type="button" onClick={onClose}>
+        close swap
+      </button>
+    </div>
+  ),
+}));
 const EUR = { state: 'recorded', code: 'EUR' } as const;
 const ok = <T,>(lines: T[]) => ({ readable: true, lines, source: 's' });
 const line = (id: string, name: string) => ({ menuItemId: id, menuId: 'menu', name, byGlassPrice: 18, bottlePrice: 92 });
@@ -541,5 +552,25 @@ describe('the drawer share follows the house tax basis (r103 need 2, DD-r102-32)
     withTax(include(null));
     expect(food().textContent).toContain('Not known');
     expect(food().textContent).toContain('no tax rate for them is recorded');
+  });
+
+  it('an owner or manager can replace the good in every recipe from here; staff are offered nothing (r110 g4)', () => {
+    const good = { id: 'i-gin', name: 'House gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: null };
+    const { rerender } = render(
+      <MemoryRouter>
+        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load()} canManage currency={EUR} onRetry={vi.fn()} good={good} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('swap-sheet')).toBeNull();
+    fireEvent.click(screen.getByTestId('ivd-used-replace'));
+    expect(screen.getByTestId('swap-sheet')).toHaveTextContent('swapping House gin');
+    fireEvent.click(screen.getByText('close swap'));
+    expect(screen.queryByTestId('swap-sheet')).toBeNull();
+    rerender(
+      <MemoryRouter>
+        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load()} canManage={false} currency={EUR} onRetry={vi.fn()} good={good} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId('ivd-used-replace')).toBeNull();
   });
 });
