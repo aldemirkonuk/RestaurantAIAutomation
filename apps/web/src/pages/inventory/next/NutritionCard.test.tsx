@@ -48,11 +48,11 @@ const answer = (figures: StoredNutrition | null, stated: Partial<Record<string, 
 
 const httpError = (status: number) => Object.assign(new Error(`status ${status}`), { response: { status, data: {} } });
 
-function show(canManage = true) {
+function show(canManage = true, sizeMl?: number | null, house?: { kind: string | null; uom: string | null }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <NutritionCard row={{ id: 'i1' }} restaurantId="r1" canManage={canManage} />
+      <NutritionCard row={{ id: 'i1', bottleSizeRecordedMl: sizeMl }} house={house} restaurantId="r1" canManage={canManage} />
     </QueryClientProvider>,
   );
 }
@@ -125,5 +125,38 @@ describe('what is in it', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Fill from the label lookup' })).toBeNull();
     expect(screen.getByText('Only an owner or manager can change what is recorded here.')).toBeTruthy();
+  });
+
+  it('says plainly that a bottle\'s energy from the ABV leaves its sugar out (r109 inventory-8)', async () => {
+    api.read.mockResolvedValue(
+      answer(stored({ basis: '100ml', energyKcal: 138.1, carbohydrateG: 20, sugarsG: 20, abvPct: 25, energyFromAbv: true })),
+    );
+    show(true, 700, { kind: 'spirit', uom: 'bottle' });
+    const line = (await screen.findByTestId('ivn-pack')).textContent ?? '';
+    expect(line).toContain('967 kcal (from the alcohol alone; the energy in any sugar is not added)');
+    expect(line).toContain('carbohydrate 140 g');
+    expect(line).toContain('sugar 140 g');
+    expect(line).not.toContain('at least)');
+  });
+
+  it('says what one recorded bottle holds under the per-100 table, and nothing for an unsized good', async () => {
+    api.read.mockResolvedValue(answer(stored({ basis: '100ml', energyKcal: 230, fatG: 0, proteinG: null, abvPct: 13.5, energyFromAbv: true })));
+    const { unmount } = show(true, 750, { kind: 'wine', uom: 'bottle' });
+    const line = await screen.findByTestId('ivn-pack');
+    expect(line.textContent).toBe(
+      'A 750 ml bottle: 1,725 kcal (from the alcohol alone; the energy in any sugar is not added), protein not known, fat 0 g, carbohydrate not known, sugar not known, salt not known.',
+    );
+    unmount();
+    show(true, null, { kind: 'wine', uom: 'bottle' });
+    await screen.findByTestId('ivn-figures');
+    expect(screen.queryByTestId('ivn-pack')).toBeNull();
+  });
+
+  it('a bottle whose figures are per 100 g says it needs a stated weight', async () => {
+    api.read.mockResolvedValue(answer(stored({ basis: '100g' })));
+    show(true, 700, { kind: 'spirit', uom: 'bottle' });
+    expect((await screen.findByTestId('ivn-pack')).textContent).toBe(
+      'A 700 ml bottle: these figures are per 100 g, so it needs a stated weight of one ml.',
+    );
   });
 });

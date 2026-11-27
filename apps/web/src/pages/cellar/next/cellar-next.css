@@ -982,6 +982,26 @@ textarea.cl-field {
   border-radius: 8px;
   background: var(--paper-0);
 }
+.cl-rcp-card-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  margin: -8px -10px;
+  padding: 8px 10px;
+  width: calc(100% + 20px);
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-card-btn:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 2px; }
+.cl-rcp-nutrition:focus { outline: none; }
+.cl-rcp-nutrition:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 2px; }
 .cl-rcp-card-label { font-size: 11px; color: var(--ink-4); }
 /* .cl-num is nowrap; a figure such as "at least 110.5 kcal" wraps inside its card, never out of it. */
 .cl-rcp-card-fig { font-size: 18px; line-height: 1.25; color: var(--ink-1); white-space: normal; overflow-wrap: break-word; }

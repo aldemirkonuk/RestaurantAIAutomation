@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
+import WhatIsInAServe from './WhatIsInAServe';
 import DrinkCards, { POUR_COST_BASIS, pourCostShare, type DraftCost } from './DrinkCards';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
@@ -280,5 +283,42 @@ describe('DrinkCards on a dish (ADR 0366)', () => {
     const card = screen.getByTestId('drink-card-pour-cost');
     expect(card).toHaveAttribute('data-known', 'false');
     expect(card.textContent).not.toMatch(/%/);
+  });
+});
+
+describe('DrinkCards: a KPI card opens its nutrition card (r106)', () => {
+  const mountBoth = () =>
+    render(
+      <>
+        <DrinkCards data={gAndT({}, readable(fig(20, ['Angostura'], true)))} sayMoney={say} unsaved={false} />
+        <WhatIsInAServe data={gAndT({}, readable(fig(20, ['Angostura'], true)))} unsaved={false} />
+      </>,
+    );
+
+  it('the energy and alcohol cards are real buttons, and cost, price and ingredients are not', () => {
+    mountBoth();
+    expect(screen.getByRole('button', { name: /Energy a serve/ })).toHaveAttribute('aria-controls', 'recipe-whatisin');
+    expect(screen.getByRole('button', { name: /Pure alcohol a serve/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cost a serve|Price|Ingredients/ })).toBeNull();
+  });
+
+  it('a click takes the reader to the nutrition card with no animation, focuses it, and allergens are what it shows', () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    mountBoth();
+    fireEvent.click(screen.getByRole('button', { name: /Energy a serve/ }));
+    const card = screen.getByTestId('recipe-whatisin');
+    // 'auto' would follow html { scroll-smooth } in globals.css and glide, reduced motion or not.
+    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' });
+    expect(document.activeElement).toBe(card);
+    expect(card.textContent).toMatch(/What is in a serveNo allergen can be/); // allergens are the card's first line, not folded away
+    expect(card.querySelector('details')).toBeNull();
+  });
+
+  it('a card stays 44 px to tap, and no motion is added for it to reduce', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/pages/cellar/next/cellar-next.css'), 'utf8');
+    const block = css.slice(css.indexOf('.cl-rcp-card-btn {'), css.indexOf('}', css.indexOf('.cl-rcp-card-btn {')));
+    expect(block).toMatch(/min-height: 44px/);
+    expect(block).not.toMatch(/transition|animation/);
   });
 });

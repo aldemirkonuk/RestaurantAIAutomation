@@ -23,8 +23,37 @@ import NutritionForm from './NutritionForm';
 import HeldReading from './HeldReading';
 import './nutrition-card.css';
 import { allergenLines, figureWords, PER, SOURCE_WORDS } from './nutrition-words';
+import { packNutrition, packSizeMl, type PackHouse, type PackSource } from './pack-nutrition';
 
-function Figures({ f }: { f: StoredNutrition }) {
+/** One whole container, under the per-100 table (DD-r108-37); nothing when no size is recorded. */
+function PackLine({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number | null; container: string }) {
+  const pack = packNutrition(f, sizeMl);
+  if (!pack) return null;
+  const head = `A ${pack.sizeMl.toLocaleString('en-GB')} ml ${container}`;
+  if (pack.kind === 'needs_weight') {
+    return (
+      <p className="iv-note" data-testid="ivn-pack">
+        {head}: these figures are per 100 g, so it needs a stated weight of one ml.
+      </p>
+    );
+  }
+  const p = pack.figures;
+  const parts = [
+    `${figureWords(p.energyKcal, 'kcal')}${pack.energyFromAbv && p.energyKcal !== null ? ' (from the alcohol alone; the energy in any sugar is not added)' : ''}`,
+    `protein ${figureWords(p.proteinG, 'g')}`,
+    `fat ${figureWords(p.fatG, 'g')}`,
+    `carbohydrate ${figureWords(p.carbohydrateG, 'g')}`,
+    `sugar ${figureWords(p.sugarsG, 'g')}`,
+    `salt ${figureWords(p.saltG, 'g')}`,
+  ];
+  return (
+    <p className="iv-note" data-testid="ivn-pack">
+      {head}: {parts.join(', ')}.
+    </p>
+  );
+}
+
+function Figures({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number | null; container: string }) {
   const rows: Array<[string, string, string?]> = [
     ['Energy', figureWords(f.energyKcal, 'kcal'), f.energyFromAbv ? 'from the alcohol alone, at least: any sugar is not counted' : undefined],
     ['Protein', figureWords(f.proteinG, 'g')],
@@ -48,6 +77,7 @@ function Figures({ f }: { f: StoredNutrition }) {
           </div>
         ))}
       </dl>
+      <PackLine f={f} sizeMl={sizeMl} container={container} />
       <p className="iv-note" data-testid="ivn-source">
         {SOURCE_WORDS[f.source](f.sourceRef)}, stated by {f.statedByName} {fmtWhen(f.statedAt)}.
       </p>
@@ -55,15 +85,18 @@ function Figures({ f }: { f: StoredNutrition }) {
   );
 }
 
-/** The drawer's slot hands it the row; only the id is read here. */
+/** The drawer's slot hands it the row; the id and the recorded size are read here. */
 export interface WhatIsInItProps {
-  row: { id: string };
+  row: { id: string } & PackSource;
+  house?: PackHouse;
   restaurantId: string | null;
   canManage: boolean;
 }
 
-export default function NutritionCard({ row, restaurantId, canManage }: WhatIsInItProps) {
+export default function NutritionCard({ row, house, restaurantId, canManage }: WhatIsInItProps) {
   const itemId = row.id;
+  const sizeMl = packSizeMl(row, house);
+  const container = house?.uom === 'keg' ? 'keg' : 'bottle';
   const [editing, setEditing] = useState<false | 'edit' | 'lookup'>(false);
   const q = useQuery({
     queryKey: inventoryItemKeys.nutrition(restaurantId ?? '', itemId),
@@ -107,7 +140,7 @@ export default function NutritionCard({ row, restaurantId, canManage }: WhatIsIn
   return (
     <div className="ivn" data-testid="ivn">
       {data.figures ? (
-        <Figures f={data.figures} />
+        <Figures f={data.figures} sizeMl={sizeMl} container={container} />
       ) : (
         <p className="iv-note" data-testid="ivn-none">
           Nothing is recorded yet about what is in this item.
