@@ -34,6 +34,7 @@
 import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../../contexts/AuthContext';
 import { settingsApi } from '../../services/api/settings';
+import { clearFlagSeeds, readSeed, writeSeed } from './flagSeed';
 
 /**
  * Pages enrolled in the Mudavym redesign. Page teams: append your page here
@@ -267,16 +268,29 @@ function fetchFlag(restaurantId: string, page: MudavymPage): Promise<boolean> {
   if (!cached) {
     cached = settingsApi
       .checkFeatureFlag(restaurantId, flagKeyFor(page))
-      .then((res) => res.active && res.enabled)
+      .then((res) => {
+        const enabled = res.active && res.enabled;
+        writeSeed(restaurantId, page, enabled); // only a real answer is kept, never the failure fallback
+        return enabled;
+      })
       .catch(() => false); // network/API failure → legacy, never a broken page
     flagCache.set(key, cached);
   }
   return cached;
 }
 
-/** Test/dev helper: forget cached flag results (e.g. after switching branch). */
+/** Test/dev helper, and the sign-out / house-switch wipe: forget cached flag results and seeds. */
 export function clearMudavymDesignCache(): void {
   flagCache.clear();
+  clearFlagSeeds();
+}
+
+function storedRestaurantId(): string | null {
+  try {
+    return window.localStorage.getItem(ACTIVE_RESTAURANT_KEY);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -294,13 +308,15 @@ export function useMudavymDesign(page: MudavymPage): boolean {
   // isolated mounts), never crash the page it wraps. Read unconditionally
   // (not only for held-back pages) so hook order never depends on `live`.
   const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
-  const [remote, setRemote] = useState(false);
+  const seedHouse = activeRestaurantId ?? storedRestaurantId();
+  const [remote, setRemote] = useState(() => (live ? false : readSeed(seedHouse, page) ?? false));
 
   useEffect(() => {
     if (override !== null) return; // overridden — don't spend the request
     if (live) return; // LIVE_PAGES resolves in code — no flag row to fetch
     let cancelled = false;
-    setRemote(false); // never carry one restaurant's verdict into another's
+    // never carry one restaurant's verdict into another's: start from THIS house's seed, or off
+    setRemote(readSeed(activeRestaurantId ?? storedRestaurantId(), page) ?? false);
     let restaurantId: string | null = activeRestaurantId ?? null;
     if (!restaurantId) {
       try {
@@ -361,5 +377,6 @@ export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
   if (override !== null) return override;
   if (live) return true;
   if (!asked) return false;
-  return answer && answer.asked === asked ? answer.enabled : null;
+  if (answer && answer.asked === asked) return answer.enabled;
+  return readSeed(restaurantId, page); // the last answer for this house, until the read lands
 }

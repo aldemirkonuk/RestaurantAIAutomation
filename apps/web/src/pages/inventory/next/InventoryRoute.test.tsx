@@ -4,7 +4,30 @@
  * the command page every house runs today.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AuthContext } from '../../../contexts/AuthContext';
+
+const getInventory = vi.fn();
+vi.mock('../../../services/api', () => ({
+  inventoryApi: { getInventory: (...a: unknown[]) => getInventory(...a) },
+}));
+vi.mock('../../../services/api/inventory', () => ({
+  normalizeInventoryItem: (x: unknown) => x,
+}));
+
+let qc: QueryClient;
+/** The route as the app mounts it: a query client, and the house the session names. */
+function render(ui: ReactElement) {
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const auth = { activeRestaurantId: window.localStorage.getItem('activeRestaurantId'), isAuthenticated: true } as never;
+  return rtlRender(
+    <QueryClientProvider client={qc}>
+      <AuthContext.Provider value={auth}>{ui}</AuthContext.Provider>
+    </QueryClientProvider>,
+  );
+}
 
 const checkFeatureFlag = vi.fn();
 vi.mock('../../../services/api/settings', () => ({
@@ -22,6 +45,8 @@ describe('InventoryRoute', () => {
   beforeEach(() => {
     clearMudavymDesignCache();
     checkFeatureFlag.mockReset();
+    getInventory.mockReset();
+    getInventory.mockResolvedValue([]);
     window.localStorage.clear();
     window.localStorage.setItem('activeRestaurantId', 'r1');
   });
@@ -77,5 +102,21 @@ describe('InventoryRoute', () => {
     render(<InventoryRoute />);
     expect(screen.getByTestId('command')).toBeTruthy();
     expect(checkFeatureFlag).not.toHaveBeenCalled();
+  });
+
+  it('starts the inventory list read while the flag is still being read, once', async () => {
+    checkFeatureFlag.mockReturnValue(new Promise(() => {}));
+    render(<InventoryRoute />);
+    await waitFor(() => expect(getInventory).toHaveBeenCalledWith('r1'));
+    expect(getInventory).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws InventoryNext at the first render from the last answer for this house, and corrects a stale one', async () => {
+    window.sessionStorage.setItem('mudavym.flagSeed:r1:mudavym_design_inventory_next', '1');
+    checkFeatureFlag.mockResolvedValue({ active: true, enabled: false });
+    render(<InventoryRoute />);
+    expect(screen.getByTestId('next')).toBeTruthy(); // no wait for the read
+    expect(await screen.findByTestId('command')).toBeTruthy(); // the answer that landed wins
+    expect(window.sessionStorage.getItem('mudavym.flagSeed:r1:mudavym_design_inventory_next')).toBe('0');
   });
 });
