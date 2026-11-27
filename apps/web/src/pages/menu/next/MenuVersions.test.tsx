@@ -323,15 +323,70 @@ describe('MenuVersions', () => {
     }
   });
 
-  it('the taken-off sentence is a plain status line: no animation or transition on .cl-said, in the markup or any stylesheet (ADR 0112)', () => {
+  it('the taken-off sentence is a plain status line: no animation or transition on .cl-said, in the markup or any stylesheet the menu page loads (ADR 0112)', () => {
     const src = readFileSync(resolve(__dirname, 'MenuVersions.tsx'), 'utf8');
     expect(src).toMatch(/className="cl-said" style=\{\{ marginTop: 10 \}\} data-testid="menu-removed-said"/);
-    for (const file of ['../../cellar/next/cellar-next.css', '../../inventory/next/inventory-next.css']) {
-      const css = readFileSync(resolve(__dirname, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    // The sheets are the ones the page imports, not a hand-kept list that can drift from it.
+    const sheets = new Set<string>();
+    for (const page of ['MenuVersions.tsx', 'MenuNext.tsx']) {
+      const text = readFileSync(resolve(__dirname, page), 'utf8');
+      for (const m of text.matchAll(/^import\s+'(\.[^']+\.css)'/gm)) sheets.add(resolve(__dirname, m[1]));
+    }
+    expect([...sheets].map((f) => f.split('/').pop()).sort()).toEqual(expect.arrayContaining(['cellar-next.css', 'menu-rows.css', 'menu-settle.css']));
+    let seen = 0;
+    for (const file of sheets) {
+      const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
       const rules = [...css.matchAll(/([^{}]*\.cl-said[^{}]*)\{([^}]*)\}/g)];
-      expect(rules.length).toBeGreaterThan(0);
+      seen += rules.length;
       for (const [, selector, body] of rules) expect(`${selector}{${body}}`).not.toMatch(/animation|transition/);
     }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('a second removal inside the window gets its own four seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const a = version({ menuId: 'm-a', readState: 'failed', readFailure: 'x' });
+      const b = version({ menuId: 'm-b', readState: 'failed', readFailure: 'y' });
+      const empty = { versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null };
+      mockList.mockResolvedValueOnce({ versions: [a, b], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValueOnce({ versions: [b], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValue(empty as never);
+      mockRemove.mockResolvedValue({ menuId: 'x', removed: true });
+      mount(true);
+      fireEvent.click((await screen.findAllByTestId('menu-version-remove'))[0]);
+      await screen.findByTestId('menu-removed-said');
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      fireEvent.click(await screen.findByTestId('menu-version-remove'));
+      await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
+      });
+      // 5 s after the first, 2 s after the second: still on screen.
+      expect(screen.getByTestId('menu-removed-said')).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(2200);
+      });
+      expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([404, 409])('a %i on removal reads the list again, so a read gone elsewhere does not stay on screen', async (status) => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+    mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockRejectedValue({ response: { status, data: { message: 'Not taken off.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('m-bad'));
+    await waitFor(() => expect(mockList.mock.calls.length).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+    // It was not taken off by this click, so no "Taken off the list." is claimed.
+    expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
   });
 
   it('staff are not offered it, and a read that did not fail is not either', async () => {

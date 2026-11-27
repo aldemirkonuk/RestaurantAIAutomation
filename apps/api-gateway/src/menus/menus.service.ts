@@ -2294,7 +2294,8 @@ export class MenusService {
    */
   async removeFailedRead(restaurantId: string, menuId: string, userId: string): Promise<{ menuId: string; removed: true }> {
     const row = await this.readVersionRow(restaurantId, menuId);
-    if (isRemovedFailedRead(row)) throw new NotFoundException("No menu of this restaurant by that id.");
+    // Already taken off (by another device a moment ago): the outcome the caller wanted is true, so say so.
+    if (isRemovedFailedRead(row)) return { menuId, removed: true };
     if ((row.read_state as string | undefined) !== "failed") {
       throw new ConflictException("Only a read that failed can be taken off the list. This menu is not a failed read; nothing was changed.");
     }
@@ -2308,6 +2309,9 @@ export class MenusService {
       .select("id");
     if (error) throw new InternalServerErrorException(`The failed read was not taken off the list: ${error.message}. Nothing was changed.`);
     if (!data || data.length === 0) {
+      // The update matched nothing: either another device took it off first (then it is gone, so say so)
+      // or the read changed state (then it was not taken off, and the 409 is true).
+      if (isRemovedFailedRead(await this.readVersionRow(restaurantId, menuId))) return { menuId, removed: true };
       throw new ConflictException("This read is no longer a failed draft, so it was not taken off the list. Nothing was changed.");
     }
     return { menuId, removed: true };

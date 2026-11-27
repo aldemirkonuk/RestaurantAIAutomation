@@ -578,7 +578,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   );
 }
 
-function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, zone }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, onStale, zone }: {
   v: MenuVersion
   zone: string | null
   /** Its name among the house's kept menus (versionLabels): no two alike. */
@@ -589,6 +589,8 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemov
   onPlan: (menuId: string) => void
   /** A failed read was taken off the list: read the list again. */
   onRemoved: () => void
+  /** The gateway said the read is gone (404) or no longer a failed read (409): the list on screen is stale, read it again. */
+  onStale: () => void
 }) {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -601,6 +603,8 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemov
       onRemoved();
     } catch (err) {
       setRemoveError(reasonOf(err));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404 || status === 409) onStale();
     } finally {
       setRemoving(false);
     }
@@ -877,10 +881,11 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   const [planFor, setPlanFor] = useState<string | null>(null);
   // A failed read taken off the list leaves no row to say so: this sentence stands in its
   // place for four seconds (a timer, no motion), then is gone. The file is kept.
-  const [taken, setTaken] = useState(false);
+  // Keyed by the removal, not a boolean: a second removal inside the window must restart the timer.
+  const [taken, setTaken] = useState<string | null>(null);
   useEffect(() => {
     if (!taken) return;
-    const t = window.setTimeout(() => setTaken(false), 4000);
+    const t = window.setTimeout(() => setTaken(null), 4000);
     return () => window.clearTimeout(t);
   }, [taken]);
   const { house, q } = useKeptMenus();
@@ -967,9 +972,10 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                       zone={zone}
                       planning={planFor === v.menuId}
                       onRemoved={() => {
-                        setTaken(true);
+                        setTaken(v.menuId);
                         refresh();
                       }}
+                      onStale={refresh}
                       onPlan={(id) => {
                         setSaid(null);
                         setPlanFor(id);

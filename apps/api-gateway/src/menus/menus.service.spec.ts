@@ -2123,10 +2123,39 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     expect(tables.restaurant_menus.find((m) => m.id === "m-other")!.status).toBe("draft");
   });
 
-  it("a read already taken off is a 404, not a second removal", async () => {
+  it("a read already taken off answers as done and is not retired a second time", async () => {
     const tables = house();
     const service = makeService(tables);
     await service.removeFailedRead("rest-1", "m-failed", "user-1");
-    await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
+    const first = { ...tables.restaurant_menus.find((m) => m.id === "m-failed")! };
+    await expect(service.removeFailedRead("rest-1", "m-failed", "user-2")).resolves.toEqual({ menuId: "m-failed", removed: true });
+    expect(tables.restaurant_menus.find((m) => m.id === "m-failed")).toMatchObject({ retired_by: "user-1", retired_at: first.retired_at });
+  });
+
+  it("two devices at once: the update that matches nothing reads the row again and answers done if it was taken off", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    // This call read the row as a failed draft; the other device retires it before this one's update runs.
+    const stale = { ...tables.restaurant_menus.find((m) => m.id === "m-failed")! };
+    const real = (service as any).readVersionRow.bind(service);
+    jest.spyOn(service as any, "readVersionRow").mockImplementationOnce(async () => {
+      Object.assign(tables.restaurant_menus.find((m) => m.id === "m-failed")!, { status: "archived", retired_by: "user-2", retired_at: "2026-11-27T10:00:00Z" });
+      return stale;
+    }).mockImplementation(real);
+    await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).resolves.toEqual({ menuId: "m-failed", removed: true });
+    expect(tables.restaurant_menus.find((m) => m.id === "m-failed")).toMatchObject({ retired_by: "user-2" });
+  });
+
+  it("the update that matches nothing because the read changed state is still a 409, nothing changed", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    const stale = { ...tables.restaurant_menus.find((m) => m.id === "m-failed")! };
+    const real = (service as any).readVersionRow.bind(service);
+    jest.spyOn(service as any, "readVersionRow").mockImplementationOnce(async () => {
+      Object.assign(tables.restaurant_menus.find((m) => m.id === "m-failed")!, { read_state: "done" });
+      return stale;
+    }).mockImplementation(real);
+    await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(ConflictException);
+    expect(tables.restaurant_menus.find((m) => m.id === "m-failed")).toMatchObject({ status: "draft" });
   });
 });
