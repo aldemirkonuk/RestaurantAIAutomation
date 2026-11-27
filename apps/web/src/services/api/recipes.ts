@@ -92,7 +92,11 @@ export interface ServeFigure {
 export type WhatIsIn =
   | {
       readable: true;
-      figures: Record<ServeFigureKey, ServeFigure>;
+      /**
+       * Per serve. `alcoholMl` is millilitres of pure alcohol from each line's
+       * stated ABV; absent from an older gateway, and then said as not read.
+       */
+      figures: Record<ServeFigureKey, ServeFigure> & { alcoholMl?: ServeFigure };
       notCounted: Array<{ label: string; why: string }>;
       allergens: Record<string, 'contains' | 'may_contain' | 'free' | 'not_stated'>;
       /** Lines that leave an allergen unstated; absent from an older gateway. */
