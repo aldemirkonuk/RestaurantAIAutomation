@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readPeople } from "../pricing/price-locks";
 import { readHouseItem } from "./item-used-in.service";
+import { readOnOrder } from "./item-on-order";
 
 /** Whether this caller sees money: owner/manager, anyone else, or a role read that failed. */
 export type MoneyView = "shown" | "staff" | "unread";
@@ -155,6 +156,9 @@ export class ItemFiguresService {
       countGap = { readable: true, last, source: parts.filter(Boolean).join(" ") };
     }
 
-    return { waste, countGap, costTrend: COST_TREND_NOT_KEPT };
+    // What is already on order and not yet received: quantities only, no price (r109 g1).
+    const onOrder = await readOnOrder(client, restaurantId, itemId);
+
+    return { waste, countGap, costTrend: COST_TREND_NOT_KEPT, onOrder };
   }
 }
