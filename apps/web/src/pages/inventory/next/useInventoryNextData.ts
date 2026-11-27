@@ -868,17 +868,24 @@ function lotsRead(restaurantId: string | null | undefined, inventoryId: string) 
  * from cache; a read still fresh is not made again. Keyed by the active house
  * like the reads themselves.
  */
-export function useWarmRow() {
+export function useWarmRow(canManage: boolean) {
   const { activeRestaurantId } = useAuth();
   const qc = useQueryClient();
   return useCallback(
-    (row: { id: string; name: string | null }) => {
+    (row: { id: string; name: string | null; kind?: string | null }) => {
       if (!activeRestaurantId || row.id === '') return;
-      void qc.prefetchQuery(purchasesRead(activeRestaurantId, row.id));
-      void qc.prefetchQuery(lotsRead(activeRestaurantId, row.id));
+      // Only what an open draws for this viewer (the rule RowDropdown's
+      // useRowDetail need follows): the purchase ledger is a manager's cost and
+      // paperwork, and the auction lots are a manager's drink cost panel. A
+      // staff reader is shown neither, so warming them would read a unit-cost
+      // ledger nobody draws.
+      if (canManage) {
+        void qc.prefetchQuery(purchasesRead(activeRestaurantId, row.id));
+        if (row.kind !== 'food' && row.kind !== 'supply') void qc.prefetchQuery(lotsRead(activeRestaurantId, row.id));
+      }
       if (row.name !== null) void qc.prefetchQuery(rowRecordRead(activeRestaurantId, row.name));
     },
-    [activeRestaurantId, qc],
+    [activeRestaurantId, qc, canManage],
   );
 }
 
