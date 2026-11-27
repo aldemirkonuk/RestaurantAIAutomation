@@ -695,7 +695,7 @@ export class RawMailRetentionService {
   }): Promise<SweepRun> {
     const { data: rows, error: rowsError } = await this.db.supabase
       .from("procurement_conversations")
-      .select("id, restaurant_id")
+      .select("id, restaurant_id, message_id")
       .eq("mirrored_by_grant_id", params.connectionId)
       .is("raw_deleted_at", null);
     if (rowsError) {
@@ -724,21 +724,25 @@ export class RawMailRetentionService {
       params.restaurantId ||
       ((found[0]?.restaurant_id as string | null) ?? null);
 
-    // THE HOUSE'S OWN SENT REPLIES TO A TEAM MEMBER OR A GUEST GO WITH THE
-    // WIDE READING (r106, DD-r105-7). A reply the house wrote is filed under
-    // the person it answered (kind team|guest) but was never mirrored, so it
-    // carries no `mirrored_by_grant_id` and the scope above never finds it:
-    // the consent page said "deletes every team and guest message this
-    // connection filed", and the half of a conversation the house wrote stayed.
-    // Chosen over stamping the reply with a grant at send time: a stamp would
-    // have to name one grant when a house holds two, and `mirrored_by_grant_id`
-    // would then say "this grant read it" of a letter nothing read. A vendor's
-    // reply is never touched here (kind vendor), and while another wide grant
-    // of the house is live the replies stay, as they belong to its reading.
+    // THE HOUSE'S OWN REPLIES TO A LETTER THIS GRANT READ GO WITH IT (r107,
+    // DD-r106-6 / DD-r107-9). A reply the house wrote is filed under the person
+    // it answered but was never mirrored, so no grant stamp finds it. It goes
+    // by provenance: its `email_headers.answers` (the id of the letter it
+    // answers) or its `email_headers.in_reply_to` (that letter's Message-ID)
+    // names a letter whose `mirrored_by_grant_id` is THIS grant. Read here,
+    // before those letters are cleared. Rejected: deleting by thread kind
+    // (kind is a derived label, so a mislabel would delete a vendor's mail) and
+    // writing the grant onto the reply (the column means "this grant read it").
+    // A second live wide grant does not save a reply to a letter this grant read.
     let repliesError: string | null = null;
-    if (params.integrationId === "gmail_read_all" && restaurantId) {
-      const own = await this.ownRepliesToPeople(restaurantId);
+    let repliesKept = 0;
+    if (params.integrationId === "gmail_read_all" && restaurantId && found.length > 0) {
+      const own = await this.repliesToLettersRead(
+        restaurantId,
+        found.map((r) => ({ id: String(r.id), messageId: (r.message_id as string | null) ?? null })),
+      );
       repliesError = own.error;
+      repliesKept = own.kept;
       ids = [...new Set([...ids, ...own.ids])];
     }
 
@@ -847,7 +851,7 @@ export class RawMailRetentionService {
       archiveMode,
       heldForExport: null,
       error: [outcome.error, restampError, repliesError].filter(Boolean).join(" ") || null,
-      says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately.${outcome.vendorKept ? ` ${outcome.vendorKept} vendor repl${outcome.vendorKept === 1 ? "y was" : "ies were"} kept, because this house still has the vendor-only reading connected and it would have stored them anyway.` : ""}${restampError ? ` ${restampError}` : ""}${archiveSays} Every order fact those replies produced stays on this restaurant's own record.`,
+      says: `The grant was disconnected. ${ids.length} mirrored repl${ids.length === 1 ? "y" : "ies"} still held raw mail; ${outcome.deleted} had their body, headers and attachment bytes deleted immediately.${outcome.vendorKept ? ` ${outcome.vendorKept} vendor repl${outcome.vendorKept === 1 ? "y was" : "ies were"} kept, because this house still has the vendor-only reading connected and it would have stored them anyway.` : ""}${restampError ? ` ${restampError}` : ""}${repliesKept ? ` ${repliesKept} sent repl${repliesKept === 1 ? "y" : "ies"} to a team member or a guest name no letter they answer, so ${repliesKept === 1 ? "it was" : "they were"} kept.` : ""}${archiveSays} Every order fact those replies produced stays on this restaurant's own record.`,
     });
   }
 
@@ -908,29 +912,63 @@ export class RawMailRetentionService {
   }
 
   /**
-   * The house's own replies to team members and guests, unless another wide
-   * grant is still live. EVERY state goes, not only SENT: a letter still
-   * queued or sending would be sent after the reading was withdrawn (the
-   * dispatcher never looks at the grant), and a failed or draft one still holds
-   * the guest's address and text. Deleting the row also cancels the send,
-   * because the dispatcher claims a row with status = QUEUED.
-   *
-   * A failed read of either is said, not skipped (ADR 0020); an unreadable
-   * standing errs toward deleting, like the vendor rows above.
+   * The house's own replies to the letters one grant read: every outbound row of
+   * the house whose `email_headers.answers` is one of those letters' ids, or whose
+   * `email_headers.in_reply_to` is one of their Message-IDs, with any status that
+   * holds a body. Paged past PostgREST's 1,000-row cap. A failed read is said,
+   * not skipped (ADR 0020), and deletes nothing it could not name. `kept` counts
+   * the house's team or guest replies that name no answered letter at all.
    */
-  private async ownRepliesToPeople(
+  private async repliesToLettersRead(
     restaurantId: string,
-  ): Promise<{ ids: string[]; error: string | null }> {
-    const standing = await this.houseHasLiveWideGrant(restaurantId);
-    if (standing.live) return { ids: [], error: null };
-    const read = await this.readOwnRepliesToPeople(restaurantId);
-    if (read.error) {
-      return {
-        ids: [],
-        error: `The house's replies to team members and guests could NOT be read (${read.error}), so they were not deleted. They are still in the book.`,
-      };
+    letters: Array<{ id: string; messageId: string | null }>,
+  ): Promise<{ ids: string[]; kept: number; error: string | null }> {
+    const out = new Set<string>();
+    const CHUNK = 100;
+    const PAGE = 1000;
+    const keys: Array<[string, string[]]> = [
+      ["email_headers->>answers", letters.map((l) => l.id)],
+      [
+        "email_headers->>in_reply_to",
+        [...new Set(letters.map((l) => l.messageId).filter((m): m is string => Boolean(m)))],
+      ],
+    ];
+    for (const [column, values] of keys) {
+      for (let i = 0; i < values.length; i += CHUNK) {
+        const chunk = values.slice(i, i + CHUNK);
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await this.db.supabase
+            .from("procurement_conversations")
+            .select("id")
+            .eq("restaurant_id", restaurantId)
+            .eq("direction", "outbound")
+            .is("raw_deleted_at", null)
+            .in(column, chunk)
+            .order("id", { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) {
+            return {
+              ids: [],
+              kept: 0,
+              error: `The house's replies to the letters this connection read could NOT be read (${error.message}), so they were not deleted. They are still in the book.`,
+            };
+          }
+          const page = data ?? [];
+          page.forEach((r) => out.add(String(r.id)));
+          if (page.length < PAGE) break;
+        }
+      }
     }
-    return { ids: read.rows.map((r) => r.id), error: null };
+    const { data: stray, error: strayError } = await this.db.supabase
+      .from("procurement_conversations")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("direction", "outbound")
+      .in("kind", ["team", "guest"])
+      .is("raw_deleted_at", null)
+      .is("email_headers->>answers", null)
+      .is("email_headers->>in_reply_to", null);
+    return { ids: [...out], kept: strayError ? 0 : (stray ?? []).length, error: null };
   }
 
   // =========================================================================
