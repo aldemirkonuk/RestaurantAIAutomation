@@ -53,7 +53,8 @@ import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode }
 import { Outlet, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../contexts/AuthContext';
 import { CommandProvider } from '../command/CommandProvider';
-import { AskPanel } from '../askai/AskPanel';
+import { LazyAskPanel as AskPanel } from '../askai/LazyAskPanel';
+import { preloadOnIntent } from './preloadOnIntent';
 import { openAskAi } from '../askai/events';
 import { useAskPanel, useOverlayScrollLock } from '../askai/useAskPanel';
 import { GuidanceProvider } from '../../guidance/GuidanceProvider';
@@ -138,6 +139,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
   const ask = useAskPanel();
   const askDocks = !phone && vw >= TUCK_BELOW_PX;
   useOverlayScrollLock(ask.open && !askDocks);
+  useEffect(() => preloadOnIntent(), []);
 
   // "The house said" is one person's sitting in one house: a sign-out and a
   // sign-in on a shared till, or a branch switch, starts it again.
@@ -210,6 +212,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
     <button
       type="button"
       className="mdv-hdr__counter mdv-hdr__ask"
+      data-preload="ask"
       onClick={() => openAskAi()}
       aria-pressed={ask.open}
       aria-label={`Ask Mudavym (${mod}⇧K)`}

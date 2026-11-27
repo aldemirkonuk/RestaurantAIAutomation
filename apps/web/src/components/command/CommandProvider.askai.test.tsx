@@ -71,10 +71,11 @@ describe('⌘⇧K', () => {
     expect(screen.queryByTestId('palette-open')).not.toBeInTheDocument()
   })
 
-  it('still lets plain ⌘K open the palette, and does not fire Ask AI', () => {
+  it('still lets plain ⌘K open the palette, and does not fire Ask AI', async () => {
     press('k')
 
-    expect(screen.getByTestId('palette-open')).toBeInTheDocument()
+    // The palette loads from its own chunk on first open (perf-p9-5).
+    expect(await screen.findByTestId('palette-open')).toBeInTheDocument()
     expect(askAiOpens).toBe(0)
   })
 

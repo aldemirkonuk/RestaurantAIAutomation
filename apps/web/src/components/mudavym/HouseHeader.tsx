@@ -231,6 +231,7 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
         <button
           type="button"
           className="mdv-hdr__search"
+          data-preload="palette"
           onClick={openPalette}
           aria-label="Search or act — open the command palette"
         >

@@ -114,6 +114,22 @@ describe('the entry chunk every page loads', () => {
   ])('does not carry %s (a page loaded on its own route)', (page) => {
     expect(files).not.toContain(page)
   })
+
+  // The Ask panel and the command palette draw nothing until opened, so they
+  // load on demand (perf-p9-5): HouseShell and CommandProvider reach them only
+  // through the Lazy* wrappers, which import them dynamically.
+  it.each([
+    'components/askai/AskPanel.tsx',
+    'components/askai/ProposalCard.tsx',
+    'components/command/CommandPalette.tsx',
+  ])('does not carry %s (an overlay loaded when first opened)', (overlay) => {
+    expect(files).not.toContain(overlay)
+  })
+
+  it('still reaches the wrappers that load them (the check is not vacuous)', () => {
+    expect(files).toContain('components/askai/LazyAskPanel.tsx')
+    expect(files).toContain('components/command/LazyCommandPalette.tsx')
+  })
 })
 
 /**
