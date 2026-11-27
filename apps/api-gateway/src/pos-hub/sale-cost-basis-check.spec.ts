@@ -20,6 +20,15 @@ function currentCheckList(): string[] {
   return list;
 }
 
+// Words other open PRs add to SaleCostBasis (#1984, #2063). This migration
+// sorts after theirs, so a list that omits them drops them once they land.
+const WORDS_OTHER_PRS_ADD = [
+  "invoice_restated",
+  "pour_lot_wac",
+  "pour_lot_wac_partial",
+  "ledger_lot_draw",
+];
+
 describe("wine_consumption_log.cost_basis accepts every SaleCostBasis", () => {
   const src = readFileSync(join(__dirname, "sale-cost.ts"), "utf8");
   const union = src.match(/export type SaleCostBasis =([^;]*);/);
@@ -33,5 +42,10 @@ describe("wine_consumption_log.cost_basis accepts every SaleCostBasis", () => {
     const allowed = currentCheckList();
     expect(allowed.length).toBeGreaterThan(0);
     for (const b of bases) expect(allowed).toContain(b);
+  });
+
+  it("the latest CHECK keeps the words the sibling PRs add", () => {
+    const allowed = currentCheckList();
+    for (const b of WORDS_OTHER_PRS_ADD) expect(allowed).toContain(b);
   });
 });
