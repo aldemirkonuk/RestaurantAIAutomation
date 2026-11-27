@@ -19,7 +19,12 @@ import * as amqplib from "amqplib";
 import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { DatabaseService } from "../../database/database.service";
 import { InboundResponderService } from "./inbound-responder.service";
-import { deriveTransportSignals, looksPromotional } from "./email-triage";
+import {
+  deriveTransportSignals,
+  looksPromotional,
+  senderAuthOf,
+  type SenderAuth,
+} from "./email-triage";
 import {
   decodeEncodedWords,
   displayLabel,
@@ -649,6 +654,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     references: string;
     receivedAt: string;
     toAddresses: unknown;
+    auth: SenderAuth | null;
   }): Promise<void> {
     if (!p.restaurantId || !p.mirroredByGrantId) {
       this.logger.warn(
@@ -688,6 +694,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             in_reply_to: p.inReplyTo,
             references: p.references,
             gmail_thread_id: p.gmailThreadId,
+            auth: p.auth,
           },
           mirrored_by_grant_id: p.mirroredByGrantId,
           kind: p.kind,
@@ -740,6 +747,11 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         ? payload.headers
         : {};
     const transportSignals = deriveTransportSignals(rawHeaders, from);
+    // The sender check, kept so a letter's Details can say whether it was signed (r108 mail-gap g8).
+    // Only Gmail's own verdict is believed: the address webhook carries no
+    // receiving-server stamp of ours, so its topmost header may be the sender's.
+    const senderAuth =
+      payload.source === "inbound-domain" ? null : senderAuthOf(rawHeaders);
 
     // The sender is the addr-spec a real RFC 5322 parser finds, never "the
     // first <...>" (QA round 6 N-1): `"Sales <sales@bigdist.com>"
@@ -799,6 +811,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         references,
         receivedAt,
         toAddresses: payload.to_addresses,
+        auth: senderAuth,
       });
       return;
     }
@@ -1065,6 +1078,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             message_id: messageIdHeader,
             in_reply_to: inReplyTo,
             references,
+            auth: senderAuth,
             gmail_thread_id: gmailThreadId,
             transport: transportSignals,
             ...(threadReadFailed ? { order_match: "thread_read_failed" } : {}),

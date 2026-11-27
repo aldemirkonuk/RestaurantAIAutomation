@@ -180,6 +180,12 @@ EXCUSED_HOSTS: dict[str, tuple[str, str]] = {
         "best.pt",
     ),
     **_group(
+        "nothost",
+        "the authserv-id Gmail stamps on Authentication-Results: a string the intake matches to "
+        "tell Gmail's own verdict from one the sender wrote; never connected to",
+        "mx.google.com",
+    ),
+    **_group(
         "reference",
         "a citation carried as data in the retention rules, shown to a person; never fetched",
         "developers.google.com",

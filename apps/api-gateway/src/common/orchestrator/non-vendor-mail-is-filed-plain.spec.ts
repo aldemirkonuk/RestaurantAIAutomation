@@ -72,6 +72,7 @@ const event = (over: Record<string, unknown> = {}) => ({
     house_mail_kind: "guest",
     from_address: "guest@diner.example",
     to_addresses: ["Owner@House.example", "owner@house.example", "not-an-address"],
+    headers: { "authentication-results": "mx.google.com; dkim=pass header.i=@diner.example; dmarc=pass" },
     ...over,
   },
 });
@@ -133,5 +134,25 @@ describe("team and guest mail from the wider reader", () => {
       to_addresses: ["owner@house.example"],
       mirrored_by_grant_id: GRANT,
     });
+  });
+
+  it("keeps the sender check on the row, on both the team-and-guest and the vendor path (r108 mail-gap g8)", async () => {
+    const guest = harness();
+    await (guest.bridge as any).handleInboundEmail(event());
+    expect(guest.inserts[0].body.email_headers.auth).toEqual({ spf: null, dkim: true, dmarc: true, signedBy: "diner.example" });
+    const vendor = harness();
+    await (vendor.bridge as any).handleInboundEmail(
+      event({ house_mail_kind: "vendor", from: "Fikri <fikri@fikritarim.com>", headers: { "authentication-results": "mx.google.com; dkim=fail" } }),
+    );
+    const row = vendor.inserts.find((i) => i.table === "procurement_conversations")!;
+    expect(row.body.email_headers.auth).toEqual({ spf: null, dkim: false, dmarc: null, signedBy: null });
+    // A letter with no check recorded says so as unknown, never as failed.
+    const none = harness();
+    await (none.bridge as any).handleInboundEmail(event({ headers: undefined }));
+    expect(none.inserts[0].body.email_headers.auth).toBeNull();
+    // The address webhook's headers carry no stamp of a server we trust: nothing is kept.
+    const hook = harness();
+    await (hook.bridge as any).handleInboundEmail(event({ source: "inbound-domain" }));
+    expect(hook.inserts[0].body.email_headers.auth).toBeNull();
   });
 });
