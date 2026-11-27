@@ -26,7 +26,7 @@ const FIN = { inventoryValue: 41200, cogs: 18800, grossMargin: 0.62 };
 const CASH = { spendLast30d: 9100, committedOpenOrders: 3300 };
 const GOALS = [
   { id: "g1", name: "Spend under 8,000", metric_key: "purchase_spend", target_value: 8000 },
-  { id: "g2", name: "Sell 40 bottles", metric_key: "bottles_sold", target_value: 40 },
+  { id: "g2", name: "Keep 20 days of stock", metric_key: "days_of_inventory", target_value: 20 },
   { id: "g3", name: "Mystery", metric_key: "something_new", target_value: 1 },
 ];
 
@@ -76,6 +76,18 @@ describe("report registers: role rule", () => {
     expect(goalMetricReadable("purchase_spend", staff)).toBe(false);
     expect(goalMetricReadable("purchase_spend", manager)).toBe(true);
   });
+
+  it.each(["wine_revenue", "avg_check", "checks", "bottles_sold", "wine_attach_rate"])(
+    "[REVERT-FAILS] a goal read off the till (%s) is withheld from staff and read by a manager",
+    (metric) => {
+      expect(goalMetricReadable(metric, readerSees({ role: "staff" }))).toBe(false);
+      expect(goalMetricReadable(metric, readerSees({ role: "manager" }))).toBe(true);
+    },
+  );
+
+  it("a days-of-stock goal is the cellar's, which staff read", () => {
+    expect(goalMetricReadable("days_of_inventory", readerSees({ role: "staff" }))).toBe(true);
+  });
 });
 
 describe("financial and cashflow routes", () => {
@@ -117,7 +129,7 @@ describe("goals", () => {
     const byId = Object.fromEntries(out.map((g) => [g.id, g]));
     expect(byId.g1).toEqual({ id: "g1", withheldForRole: true });
     expect(byId.g3).toEqual({ id: "g3", withheldForRole: true });
-    expect(byId.g2.name).toBe("Sell 40 bottles");
+    expect(byId.g2.name).toBe("Keep 20 days of stock");
     expect(JSON.stringify(out)).not.toMatch(/8000|8,000/);
   });
 

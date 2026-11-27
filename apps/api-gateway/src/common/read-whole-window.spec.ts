@@ -839,7 +839,7 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
       none,
     );
     for (const route of [
-      () => controller.getFinancial("r1"),
+      () => controller.getFinancial("r1", undefined, { role: "owner" }),
       () => controller.getInventoryScience("r1"),
       () => controller.getRisk("r1"),
       () => controller.getForecast("r1"),
