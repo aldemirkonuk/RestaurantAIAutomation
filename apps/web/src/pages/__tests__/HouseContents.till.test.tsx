@@ -17,7 +17,13 @@ import HouseContents from '../HouseContents'
 
 const CSV = 'Date,Item,Qty,Net Sales\n2026-11-20,Meze,3,30\n'
 const exportFile = (body = CSV) => new File([body], 'item-sales.csv', { type: 'text/csv' })
-const page = () => render(<MemoryRouter><HouseContents /></MemoryRouter>)
+// The page holds its rows until the setup read lands (#2354), so a test starts
+// from the settled page: wait for the closing link, which shows with the rows.
+const page = async () => {
+  const view = render(<MemoryRouter><HouseContents /></MemoryRouter>)
+  await screen.findAllByRole('link', { name: 'Go to the desk' })
+  return view
+}
 const drop = (file: File) => fireEvent.change(screen.getByLabelText("Your till's item sales export"), { target: { files: [file] } })
 const answer = (over: Record<string, unknown> = {}) => ({
   daysRead: 2,
@@ -41,7 +47,7 @@ beforeEach(() => {
 
 describe("/house: the till's last 90 days", () => {
   it('sends the export as text for the session house and says the days, and that stock was not moved', async () => {
-    page()
+    await page()
     drop(exportFile())
     expect(await screen.findByText('2 days read; stock was not moved.')).toBeInTheDocument()
     expect(h.importTillHistory).toHaveBeenCalledWith('h1', CSV)
@@ -51,7 +57,7 @@ describe("/house: the till's last 90 days", () => {
   it('names the refused rows, five at most, and counts the rest', async () => {
     const refused = Array.from({ length: 7 }, (_, i) => `2026-11-2${i} Meze: not read, the quantity is 0 or less (a refund or a void)`)
     h.importTillHistory.mockResolvedValue(answer({ refused, refusedCount: 9 }))
-    page()
+    await page()
     drop(exportFile())
     const list = await screen.findByTestId('house-till-refused')
     expect(list).toHaveTextContent('9 rows were not read:')
@@ -61,7 +67,7 @@ describe("/house: the till's last 90 days", () => {
 
   it('says the money was left out when the house has none', async () => {
     h.importTillHistory.mockResolvedValue(answer({ netDropped: true, daysRead: 1 }))
-    page()
+    await page()
     drop(exportFile())
     expect(await screen.findByText('1 day read; stock was not moved.')).toBeInTheDocument()
     expect(screen.getByText(/The money was left out/)).toBeInTheDocument()
@@ -69,14 +75,14 @@ describe("/house: the till's last 90 days", () => {
 
   it("a file the gateway refuses whole says the gateway's words and keeps the drop", async () => {
     h.importTillHistory.mockResolvedValue(answer({ fileRefused: 'The file is over 5 MB.' }))
-    page()
+    await page()
     drop(exportFile())
     expect(await screen.findByRole('alert')).toHaveTextContent('The file is over 5 MB.')
     expect(screen.getByLabelText("Your till's item sales export")).toBeInTheDocument()
   })
 
   it('over 5 MB is refused before anything is sent', async () => {
-    page()
+    await page()
     const big = exportFile()
     Object.defineProperty(big, 'size', { value: 5 * 1024 * 1024 + 1 })
     drop(big)
@@ -86,19 +92,19 @@ describe("/house: the till's last 90 days", () => {
 
   it('a 403 says who may do it', async () => {
     h.importTillHistory.mockRejectedValue(Object.assign(new Error('no'), { response: { status: 403 } }))
-    page()
+    await page()
     drop(exportFile())
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent("Only an owner or a manager can bring the till's sales in."))
   })
 
-  it('staff are not offered the row', () => {
+  it('staff are not offered the row', async () => {
     h.role = 'staff'
-    page()
+    await page()
     expect(screen.queryByTestId('house-till-history')).not.toBeInTheDocument()
   })
 
-  it('the drop control is at least 44 px', () => {
-    page()
+  it('the drop control is at least 44 px', async () => {
+    await page()
     expect(screen.getByLabelText("Your till's item sales export").closest('label')).toHaveClass('min-h-11')
   })
 })
