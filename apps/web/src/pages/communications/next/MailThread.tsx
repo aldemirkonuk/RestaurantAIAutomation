@@ -31,6 +31,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
 import {
+  addressLine,
   answerFor,
   letterAt,
   filedFromHeldWords,
@@ -75,6 +76,7 @@ function Letter({
   takingBack?: boolean;
 }) {
   const look = letterLook(m);
+  const addresses = addressLine(m);
   const inbound = m.direction === 'inbound';
   const held = facts?.constraintFlags?.hard ?? [];
   return (
@@ -114,6 +116,11 @@ function Letter({
           </span>
         )}
       </div>
+      {addresses && (
+        <p data-testid="letter-addresses" style={{ ...QUIET, margin: 0, overflowWrap: 'anywhere' }}>
+          {addresses}
+        </p>
+      )}
       {m.text ? (
         <LetterText text={m.text} />
       ) : (

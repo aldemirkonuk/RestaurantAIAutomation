@@ -16,9 +16,76 @@ import { EM, fmtWhen, sendState } from './cm-format';
 /** The shapes GET /mail/* answers with (apps/api-gateway/src/conversations/mail.types.ts). */
 export type MailDoor = 'house_mailbox' | 'whatsapp' | 'mudavym_mail' | 'from_house';
 
+/**
+ * Who a conversation is with. Only `vendor` was stored before the house said
+ * yes to reading every conversation; a gateway that predates `kind` sends
+ * none, and an absent or unknown one is read as `vendor` ({@link mailKindOf}).
+ */
+export type MailKind = 'vendor' | 'team' | 'guest';
+
+export function mailKindOf(x: { kind?: string | null } | null | undefined): MailKind {
+  return x?.kind === 'team' || x?.kind === 'guest' ? x.kind : 'vendor';
+}
+
+/** The Mail tab's kind filter: every kind, or one. */
+export type MailKindFilter = 'all' | MailKind;
+
+export const MAIL_KIND_FILTERS: ReadonlyArray<{ id: MailKindFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'vendor', label: 'Vendors' },
+  { id: 'team', label: 'Team' },
+  { id: 'guest', label: 'Guests' },
+];
+
+/** What the list says when the chosen kind has nobody in it. */
+export function kindEmptyWords(kind: MailKindFilter, readsAll: boolean): string {
+  const who = kind === 'team' ? 'team members' : kind === 'guest' ? 'guests' : 'vendors';
+  if (kind === 'all') return 'No one has written to this house yet.';
+  if (!readsAll && kind !== 'vendor') {
+    return `Mail with ${who} is not read yet: the house reads vendor mail only, until an owner or manager says otherwise below.`;
+  }
+  return `No conversation with ${who} yet.`;
+}
+
+/** The integration id of the grant that reads every conversation (gateway: integrations-oauth.constants.ts). */
+export const READ_ALL_ID = 'gmail_read_all' as const;
+
+/**
+ * Where the person agrees to it. The wider reading is a Gmail connection of
+ * its own, so the consent screen (the gateway's words, shown in full, with the
+ * retention figure) is the one place it is agreed; nothing is read until then.
+ */
+export function readAllConsentPath(): string {
+  return `/authorize/${READ_ALL_ID}?returnPath=${encodeURIComponent('/communications?tab=mail')}`;
+}
+
+/** What the tab says before sending a person to the consent screen. */
+export const READ_ALL_OFFER_WORDS =
+  'Reading every conversation is its own Gmail connection with its own consent screen. That screen says, in full, ' +
+  'what is read, who can see it and how long it is kept, and nothing is read until you agree there.';
+
+export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
+
+/** What the tab says about its own reach, so a quiet Team or Guests list is never mistaken for an empty one. */
+export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
+export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';
+
+/**
+ * Where one letter came from and went to, in one line. Null when the gateway
+ * sent neither (an older one): the letter then shows nothing rather than a
+ * guess.
+ */
+export function addressLine(m: Pick<MailMessage, 'fromAddress' | 'toAddresses'>): string | null {
+  const from = (m.fromAddress ?? '').trim();
+  const to = (m.toAddresses ?? []).map((a) => a.trim()).filter(Boolean);
+  if (!from && to.length === 0) return null;
+  if (from && to.length > 0) return `From ${from} to ${to.join(', ')}`;
+  return from ? `From ${from}` : `To ${to.join(', ')}`;
+}
+
 export interface MailPersonRow {
   key: string;
-  kind: 'vendor';
+  kind: MailKind;
   providerId: string;
   name: string | null;
   lastAt: string;
@@ -60,7 +127,7 @@ export interface MailPeoplePage {
 
 export interface MailPersonRef {
   key: string;
-  kind: 'vendor';
+  kind: MailKind;
   providerId: string;
   name: string | null;
 }
@@ -115,6 +182,12 @@ export interface MailMessage {
    * 4). Absent from a gateway that predates the mark: read as not marked.
    */
   noReplyMarkedAt?: string | null;
+  /** Who the conversation is with. Absent from a gateway that predates it: read as a vendor. */
+  kind?: MailKind;
+  /** The address the letter came from. Absent from a gateway that predates it. */
+  fromAddress?: string | null;
+  /** The addresses the letter went to. Absent from a gateway that predates it. */
+  toAddresses?: string[] | null;
   /**
    * The files the letter carried (r28 mail gap 13). Absent from a gateway
    * that predates them: read as none known, never as "carried none".
