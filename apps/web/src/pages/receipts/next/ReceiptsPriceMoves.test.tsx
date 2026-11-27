@@ -10,14 +10,18 @@ import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
+<<<<<<< HEAD
 const api = vi.hoisted(() => ({
   moves: vi.fn(),
   restate: vi.fn(),
   seal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
 }));
+=======
+const api = vi.hoisted(() => ({ moves: vi.fn(), role: 'manager' as 'manager' | 'staff' }));
+>>>>>>> 1e0a3ff4daea43b1f3dc2a88e847474d5e1cf47b
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null }),
+  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: api.role, user: null }),
   AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 vi.mock('../../../services/api/documents', async (importOriginal) => {
@@ -134,6 +138,7 @@ const moved = {
 
 beforeEach(() => {
   api.moves.mockReset();
+<<<<<<< HEAD
   api.restate.mockReset();
   api.restate.mockResolvedValue({
     currency: 'TRY',
@@ -143,6 +148,9 @@ beforeEach(() => {
     linesRefiled: 1,
     lineFailures: [],
   });
+=======
+  api.role = 'manager';
+>>>>>>> 1e0a3ff4daea43b1f3dc2a88e847474d5e1cf47b
 });
 
 describe('the check card on a cost that moved', () => {
@@ -219,5 +227,18 @@ describe('the check card on a cost that moved', () => {
     await waitFor(() => expect(api.restate).toHaveBeenCalled());
     expect(await screen.findByText(/was 10\.00, now 11\.80, up 18 percent, against its last invoiced cost/)).toBeTruthy();
     expect(screen.queryByText(/none were compared against earlier costs/)).toBeNull();
+  });
+});
+
+describe('who is shown a landed cost', () => {
+  it('a staff session is not asked for, and is not shown, what a cost moved from (r107)', async () => {
+    api.role = 'staff';
+    api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.moves).not.toHaveBeenCalled();
+    expect(screen.queryByText(/was 10\.00/)).toBeNull();
+    expect(screen.queryByText(/could not be read, so no price was compared/)).toBeNull();
   });
 });

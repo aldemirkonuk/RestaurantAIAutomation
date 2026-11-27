@@ -1704,6 +1704,13 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
     @Query("thresholdPct") thresholdPct?: string,
   ) {
+    // The previous cost is the house's landed cost per bottle: the owner's own
+    // number, the same kind of figure the held-costs route keeps from staff.
+    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
+      throw new HttpException(
+        "What a cost moved from is desk work, so it is an owner's or a manager's to read. Ask a manager or an owner of this house.",
+        HttpStatus.FORBIDDEN,
+      );
     const parsed = Number(thresholdPct);
     const threshold =
       thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
