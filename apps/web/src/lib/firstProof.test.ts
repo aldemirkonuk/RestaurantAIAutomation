@@ -30,3 +30,26 @@ describe('lineSourceCrop', () => {
     expect(lineSourceCrop({ bbox: box }, image)).toEqual({ image, box })
   })
 })
+
+describe('saveProofItems', () => {
+  it('rewrites the stored items and leaves the page image alone', async () => {
+    const { FIRST_PROOF_KEY, FIRST_PROOF_SOURCE_KEY, readProof, saveProofItems, writeProof } =
+      await import('./firstProof')
+    sessionStorage.clear()
+    writeProof(
+      { menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [] },
+      'data:image/png;base64,aaaa',
+    )
+    saveProofItems([{ menuItemId: 'a', name: 'Rioja', category: 'red' } as never])
+    expect(JSON.parse(sessionStorage.getItem(FIRST_PROOF_KEY)!).items).toHaveLength(1)
+    expect(sessionStorage.getItem(FIRST_PROOF_SOURCE_KEY)).toBe('data:image/png;base64,aaaa')
+    expect(readProof()?.menuId).toBe('m1')
+  })
+
+  it('writes nothing when there is no proof', async () => {
+    const { FIRST_PROOF_KEY, saveProofItems } = await import('./firstProof')
+    sessionStorage.clear()
+    saveProofItems([])
+    expect(sessionStorage.getItem(FIRST_PROOF_KEY)).toBeNull()
+  })
+})
