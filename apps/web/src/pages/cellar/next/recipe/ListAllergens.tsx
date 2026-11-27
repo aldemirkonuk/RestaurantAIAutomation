@@ -14,24 +14,10 @@ import { useId } from 'react';
 import type { RowAllergens } from '../../../../services/api/recipes';
 import { EM } from '../cellar-format';
 import { names } from './WhatIsInAServe';
+import { ALLERGEN_KEYS, allergenVerdict } from './allergenRule';
 
 /** EU 1169/2011 Annex II, in the gateway's order (recipe-nutrition.ts ALLERGENS). */
-export const ALLERGEN_KEYS = [
-  'gluten',
-  'crustaceans',
-  'eggs',
-  'fish',
-  'peanuts',
-  'soy',
-  'milk',
-  'tree_nuts',
-  'celery',
-  'mustard',
-  'sesame',
-  'sulphites',
-  'lupin',
-  'molluscs',
-] as const;
+export { ALLERGEN_KEYS };
 
 /** "tree nuts", as the sheet writes it. */
 export const allergenWord = (a: string) => a.replace('_', ' ');
@@ -39,17 +25,18 @@ export const allergenWord = (a: string) => a.replace('_', ' ');
 /** The cell's sentence, or null for no recipe (or an older gateway). */
 export function allergenSentence(a: RowAllergens | null | undefined): string | null {
   if (!a) return null;
-  if (!a.readable) return 'Could not be read';
-  const of = (s: string) => ALLERGEN_KEYS.filter((k) => a.status[k] === s).map(allergenWord);
+  const v = allergenVerdict(a);
+  if (v.kind === 'unread') return 'Could not be read';
+  if (v.kind === 'free') return 'Free of all 14';
+  if (v.kind === 'unknown') return 'Not known';
+  const of = (s: string) => v.stated.filter(([, st]) => st === s).map(([k]) => allergenWord(k));
   const parts: string[] = [];
   const contains = of('contains');
   const may = of('may_contain');
   if (contains.length) parts.push(`Contains ${contains.join(', ')}`);
   if (may.length) parts.push(`May contain ${may.join(', ')}`);
-  if (a.unstatedBy.length) {
-    parts.push(parts.length ? `not known for ${names(a.unstatedBy)}` : `Not known: ${names(a.unstatedBy)} say${a.unstatedBy.length === 1 ? 's' : ''} nothing`);
-  } else if (!parts.length) {
-    parts.push(ALLERGEN_KEYS.every((k) => a.status[k] === 'free') ? 'Free of all 14' : 'Not known');
+  if (v.unstatedBy.length) {
+    parts.push(parts.length ? `not known for ${names(v.unstatedBy)}` : `Not known: ${names(v.unstatedBy)} say${v.unstatedBy.length === 1 ? 's' : ''} nothing`);
   }
   return parts.join('; ');
 }

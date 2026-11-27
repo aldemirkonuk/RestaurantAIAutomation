@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CocktailRecipe, WhatIsIn } from '../../../../services/api/recipes';
 import WhatIsInAServe from './WhatIsInAServe';
+import { ALLERGEN_KEYS } from './allergenRule';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
 const readable = (over: Partial<Extract<WhatIsIn, { readable: true }>> = {}): WhatIsIn => ({
@@ -80,7 +81,7 @@ describe('WhatIsInAServe', () => {
 
   it('says a failed read in the gateway sentence, not as an empty card', () => {
     render(<WhatIsInAServe data={recipe({ readable: false, sentence: 'What is in a serve could not be read just now.' })} unsaved={false} />);
-    expect(screen.getByTestId('recipe-whatisin-unread').textContent).toBe('What is in a serve could not be read just now.');
+    expect(screen.getByTestId('recipe-whatisin-unread').textContent).toBe('Allergens could not be read. What is in a serve could not be read just now.');
     expect(screen.queryByTestId('recipe-whatisin')).toBeNull();
   });
 
@@ -97,7 +98,9 @@ describe('WhatIsInAServe', () => {
       'No allergen can be ruled out: Campari, Orange twist do not say what they contain.',
     );
     unmount();
-    render(<WhatIsInAServe data={recipe(readable({ allergens: { milk: 'free' }, allergensUnstatedBy: [] }))} unsaved={false} />);
+    // Free only with all 14 stated free (r110 drinks-3); WhatIsInAServe.allergen.test pins the rest.
+    const all14 = Object.fromEntries(ALLERGEN_KEYS.map((k) => [k, 'free' as const]));
+    render(<WhatIsInAServe data={recipe(readable({ allergens: all14, allergensUnstatedBy: [] }))} unsaved={false} />);
     expect(screen.getByTestId('recipe-whatisin-allergens-free')).toBeInTheDocument();
     expect(screen.queryByTestId('recipe-whatisin-allergens-unstated')).toBeNull();
   });
