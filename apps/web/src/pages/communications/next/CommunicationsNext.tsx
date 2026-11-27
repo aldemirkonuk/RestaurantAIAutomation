@@ -46,7 +46,6 @@ import {
 } from './cm-format';
 import { TemplateSheet, type HeldTemplate } from './TemplateSheet';
 import { changedLine, heldLine, useHeldWords } from './held-words';
-import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet, type HeldLetter } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
 import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPanel';
@@ -54,6 +53,7 @@ import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
+import WhoIsWriting from './WhoIsWriting';
 import { mailTabLabel } from './mail-format';
 import { useMailSummary } from './useMailData';
 
@@ -278,7 +278,13 @@ export default function CommunicationsNext() {
   const tab: 'mail' | 'letters' =
     tabParam === 'letters'
       ? 'letters'
-      : tabParam === 'mail' || params.has('with') || params.has('thread') || params.has('setup')
+      : tabParam === 'mail' ||
+          params.has('with') ||
+          params.has('thread') ||
+          params.has('setup') ||
+          // "Who is writing" lives in Mail (r21): a notice's
+          // `?senders=open` link lands on it, register open.
+          params.has('senders')
         ? 'mail'
         : 'letters';
   // The label's waiting count: read once on Letters, polled only on Mail.
@@ -287,7 +293,7 @@ export default function CommunicationsNext() {
     if (next === tab) return;
     const p = new URLSearchParams(params);
     if (next === 'mail') p.set('tab', 'mail');
-    else for (const k of ['tab', 'with', 'thread', 'setup']) p.delete(k);
+    else for (const k of ['tab', 'with', 'thread', 'setup', 'senders']) p.delete(k);
     setParams(p);
   };
   const draftedOrderIds = new Set(data.drafts.map((d) => d.orderId));
@@ -391,7 +397,15 @@ export default function CommunicationsNext() {
         </nav>
 
         {tab === 'mail' ? (
-          <MailTab draftedOrderIds={draftedOrderIds} onOpenReply={openReply} bookFacts={bookFacts} />
+          <MailTab
+            draftedOrderIds={draftedOrderIds}
+            onOpenReply={openReply}
+            bookFacts={bookFacts}
+            // ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
+            // strangers are mail, not money. Drawn in the Mail tab since r21
+            // (2026-11-13), so Mail reaches every person who writes.
+            whoIsWriting={<WhoIsWriting />}
+          />
         ) : (
         <>
 
@@ -762,10 +776,8 @@ export default function CommunicationsNext() {
           </aside>
         </div>
 
-        {/* ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
-            strangers are mail, not money — they moved here from /promotions,
-            with the hold-to-trust and add-vendor acts. */}
-        <WhoIsWriting />
+        {/* "Who is writing" moved into the Mail tab on 2026-11-13 (r21);
+            the page still mounts it, as MailTab's whoIsWriting. */}
         </>
         )}
       </div>
