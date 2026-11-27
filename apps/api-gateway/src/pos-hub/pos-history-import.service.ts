@@ -25,6 +25,16 @@ export interface HistoryImportAnswer {
   /** Rows whose net was written in another currency than the house's: the net was left out, the quantity kept. */
   netForeign: string[];
   netForeignCount: number;
+  /**
+   * Days the till itself already reported (a check on that house-day), so
+   * their history was not brought in: the house's own checks are that day's
+   * record, and history beside them would count its takings twice
+   * (DD-r109-22 (2), DD-r110-19). Sorted, at most 50.
+   */
+  daysHeldByChecks: string[];
+  daysHeldByChecksCount: number;
+  /** Those days in words, or null when there were none. */
+  daysHeldByChecksSaid: string | null;
   /** Always false: history is not a sale the shelf saw (ADR 0281, amended 2026-11-27). */
   stockMoved: false;
   /** A refusal of the whole file, in words, or null. */
@@ -51,7 +61,9 @@ export function houseDay(timeZone: string | null | undefined, now: Date): string
 
 /**
  * A till's last 90 days of item sales, brought in on day one (r109 onboarding
- * g3). Owner or manager only. The sales go to `pos_sales_history`, never to
+ * g3). Owner or manager only. The sales go to `pos_sales_history` through
+ * `import_pos_sales_history`, which refuses a day the till already holds
+ * (DD-r110-19); never to
  * `pos_checks`: an item-day is not a check, and the till's Checks and
  * Average, the recorded days and the record-day bell all count check rows.
  * Nothing here reaches `apply_stock_movement`, `record_glass_pour` or the
@@ -98,6 +110,9 @@ export class PosHistoryImportService {
       netDropped: false,
       netForeign: [] as string[],
       netForeignCount: 0,
+      daysHeldByChecks: [] as string[],
+      daysHeldByChecksCount: 0,
+      daysHeldByChecksSaid: null as string | null,
       stockMoved: false as const,
       errors: [] as string[],
     };
@@ -121,10 +136,10 @@ export class PosHistoryImportService {
 
     const savedDays = new Set<string>();
     const failedDays = new Set<string>();
+    const heldDays = new Set<string>();
     for (let i = 0; i < reading.sales.length; i += HISTORY_CHUNK) {
       const chunk = reading.sales.slice(i, i + HISTORY_CHUNK);
       const rows = chunk.map((s) => ({
-        restaurant_id: restaurantId,
         sale_date: s.saleDate,
         item_key: s.itemKey,
         item_name: s.itemName,
@@ -134,20 +149,34 @@ export class PosHistoryImportService {
         imported_by: userId,
         imported_at: now.toISOString(),
       }));
-      const { error: writeError } = await client
-        .from("pos_sales_history")
-        .upsert(rows, { onConflict: "restaurant_id,sale_date,item_key" });
+      // One transaction per chunk: each day takes the day lock a check takes,
+      // and a day that already holds a check is refused, not saved.
+      const { data: saved, error: writeError } = await client.rpc("import_pos_sales_history", {
+        p_restaurant_id: restaurantId,
+        p_rows: rows,
+      });
       if (writeError) {
         this.logger.warn(`history import r=${restaurantId}: a chunk of ${rows.length} was refused: ${writeError.message}`);
         for (const s of chunk) failedDays.add(s.saleDate);
         answer.errors.push(`${rows.length} item-days were not saved just now. Send the file again; saved days are not doubled.`);
         continue;
       }
-      answer.salesSaved += rows.length;
-      for (const s of chunk) savedDays.add(s.saleDate);
+      const refusedHere = new Set<string>(Array.isArray(saved?.refused_days) ? saved.refused_days : []);
+      answer.salesSaved += typeof saved?.saved === "number" ? saved.saved : 0;
+      for (const s of chunk) (refusedHere.has(s.saleDate) ? heldDays : savedDays).add(s.saleDate);
+    }
+    // A day held by checks in any chunk keeps no history: a check's trigger
+    // deleted what an earlier chunk of it saved, in the check's transaction.
+    const held = [...heldDays].sort();
+    answer.daysHeldByChecks = held.slice(0, 50);
+    answer.daysHeldByChecksCount = held.length;
+    if (held.length > 0) {
+      answer.daysHeldByChecksSaid = (
+        `${held.length === 1 ? "1 day already holds" : `${held.length} days already hold`} the till's own checks, so ${held.length === 1 ? "its" : "their"} history was not brought in and the checks stand: ${held.slice(0, 5).join(", ")}${held.length > 5 ? ` and ${held.length - 5} more` : ""}.`
+      );
     }
     // A day with any item in a failed chunk is not whole, so it is not counted as read.
-    answer.daysRead = [...savedDays].filter((d) => !failedDays.has(d)).length;
+    answer.daysRead = [...savedDays].filter((d) => !failedDays.has(d) && !heldDays.has(d)).length;
     if (failedDays.size > 0) {
       const days = [...failedDays].sort();
       answer.errors.push(

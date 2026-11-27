@@ -9,6 +9,7 @@ import { PosHubController } from "./pos-hub.controller";
 import { PosHubService } from "./pos-hub.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
 import { PosHistoryImportService } from "./pos-history-import.service";
+import { TillHistoryDays } from "./history-replaced";
 
 /**
  * POS Hub Module — the multiPOS foundation.
@@ -33,7 +34,7 @@ import { PosHistoryImportService } from "./pos-history-import.service";
     OrganizationsModule,
   ],
   controllers: [PosHubController],
-  providers: [PosHubService, CatalogMatcherService, PosMappingReviewService, PosHistoryImportService],
+  providers: [PosHubService, CatalogMatcherService, PosMappingReviewService, PosHistoryImportService, TillHistoryDays],
   exports: [PosHubService, CatalogMatcherService, PosMappingReviewService],
 })
 export class PosHubModule {}

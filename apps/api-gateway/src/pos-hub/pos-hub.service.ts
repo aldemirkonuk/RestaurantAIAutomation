@@ -23,6 +23,12 @@ import {
   type RefusedCheck,
   type RefusedChecksNote,
 } from "./refused-checks-note";
+import {
+  HistoryReplaced,
+  TillHistoryDays,
+  historyWindow,
+  sayHistoryReplaced,
+} from "./history-replaced";
 
 /**
  * `record_glass_pour` COALESCEs a missing `bottle_size_ml` to 750 before it
@@ -763,6 +769,10 @@ export class PosHubService {
     // ADR 0218: Away applies to that note. Database only, so no cycle.
     @Optional()
     private readonly areaRouting?: AreaRoutingService,
+    // DD-r110-19: names the days whose imported till history a check
+    // replaced. Optional: the trigger deletes that history either way.
+    @Optional()
+    private readonly tillHistory?: TillHistoryDays,
   ) {}
 
   getProviders() {
@@ -968,6 +978,13 @@ export class PosHubService {
      * otherwise whether it was filed, to how many bells, and why not.
      */
     bellNote: RefusedChecksNote | null;
+    /**
+     * Days whose imported till history these checks replaced (DD-r110-19):
+     * the trigger deleted it in each check's transaction, so the day is
+     * counted once. Null when nothing was replaced, or when the history
+     * counts could not be read (logged; the deletion does not depend on it).
+     */
+    historyReplaced: HistoryReplaced | null;
   }> {
     const provider = PROVIDER_BY_KEY[providerKey];
     if (!provider) throw new Error(`Unknown POS provider '${providerKey}'`);
@@ -991,6 +1008,7 @@ export class PosHubService {
         errors: ["No recognizable checks in payload"],
         stock: stock.tally,
         bellNote: null,
+        historyReplaced: null,
       };
 
     const [mappingLookup, tableLookup] = await Promise.all([
@@ -1016,6 +1034,8 @@ export class PosHubService {
     let refusedUnreadableDate = 0;
     const refusedChecks: RefusedCheck[] = [];
     const client = this.dbService.getClient();
+    const historyDays = this.tillHistory ? historyWindow(checks) : null;
+    const historyBefore = historyDays && this.tillHistory ? await this.tillHistory.read(restaurantId, historyDays) : null;
 
     for (const check of checks) {
       try {
@@ -1150,7 +1170,23 @@ export class PosHubService {
       errors,
       stock: t,
       bellNote,
+      historyReplaced: await this.historyReplacedBy(restaurantId, historyDays, historyBefore),
     };
+  }
+
+  private async historyReplacedBy(
+    restaurantId: string,
+    window: { from: string; to: string } | null,
+    before: Map<string, number> | null,
+  ): Promise<HistoryReplaced | null> {
+    if (!window || !this.tillHistory) return null;
+    const after = before && before.size > 0 ? await this.tillHistory.read(restaurantId, window) : before;
+    if (!before || !after) {
+      this.logger.warn(`POS ingest r=${restaurantId}: till-history day counts not read; replaced days not named`);
+      return null;
+    }
+    const replaced = sayHistoryReplaced(before, after);
+    return replaced.daysCount > 0 ? replaced : null;
   }
 
   // =========================================================================
