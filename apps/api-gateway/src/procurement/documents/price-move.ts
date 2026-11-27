@@ -75,3 +75,85 @@ export function priceMove(
       : null,
   };
 }
+
+/**
+ * A line's printed price per bottle (r108 g15): what the paper says one bottle
+ * cost, `line_total / bottles`, before any landed charge, tax basis, FX
+ * restatement or revaluation touches it. Two papers are compared on this and
+ * only this, so the comparison is like for like (a lot's `unit_cost` carries
+ * all four, a line's price none, so comparing them was not).
+ *
+ * Kept as integer cents over integer milli-bottles so a move is tested by
+ * cross-multiplication with no division (as r107's exact threshold does): a
+ * case of 12 at 100.00 is 10000 / 12000, never 8.333333333333334.
+ */
+export interface PerBottle {
+  cents: bigint;
+  milliBottles: bigint;
+  /** For speaking only, rounded to the line's own 4 places. Never compared. */
+  value: number;
+}
+
+export interface PrintedLine {
+  line_total: number | string | null;
+  qty_bottles: number | string | null;
+  qty?: number | string | null;
+  pack_size?: number | string | null;
+  uom?: string | null;
+}
+
+/** Units a bottle count can come from. A keg, a liter or an "each" cannot. */
+const BOTTLE_UNITS = /^(bottle|btl|bt|case|pack|split_case)$/i;
+
+export function perBottlePrinted(line: PrintedLine): PerBottle | "no_price" | "unit_differs" {
+  const total = line.line_total == null || line.line_total === "" ? NaN : Number(line.line_total);
+  if (!Number.isFinite(total) || total <= 0) return "no_price";
+  let bottles = line.qty_bottles == null || line.qty_bottles === "" ? NaN : Number(line.qty_bottles);
+  // The reader leaves qty_bottles at its 0 default on some papers; a bottle,
+  // case or pack line still counts its bottles as qty x pack size.
+  if (!(bottles > 0) && BOTTLE_UNITS.test((line.uom ?? "").trim())) {
+    const qty = Number(line.qty);
+    const pack = line.pack_size == null ? 1 : Number(line.pack_size);
+    bottles = Number.isFinite(qty) && Number.isFinite(pack) ? qty * pack : NaN;
+  }
+  if (!Number.isFinite(bottles) || bottles <= 0) return "unit_differs";
+  const cents = BigInt(Math.round(total * 100));
+  const milliBottles = BigInt(Math.round(bottles * 1000));
+  if (cents <= 0n || milliBottles <= 0n) return "no_price";
+  const value = Math.round((Number(cents) * 10 * 1e4) / Number(milliBottles)) / 1e4;
+  return { cents, milliBottles, value };
+}
+
+/** Sums two printed figures of the same good on one paper (two lines of it). */
+export function addPerBottle(a: PerBottle, b: PerBottle): PerBottle {
+  const cents = a.cents + b.cents;
+  const milliBottles = a.milliBottles + b.milliBottles;
+  return { cents, milliBottles, value: Math.round((Number(cents) * 10 * 1e4) / Number(milliBottles)) / 1e4 };
+}
+
+/**
+ * The same verdict as `priceMove`, on two printed per-bottle figures, exact:
+ * moved iff |n1*d0 - n0*d1| * 100 > threshold * n0 * d1, all in BigInt (the
+ * products of cents and milli-bottles pass 2^53 on a large paper).
+ */
+export function printedPriceMove(
+  prev: PerBottle | null | undefined,
+  next: PerBottle,
+  thresholdPct: number = DEFAULT_MOVE_THRESHOLD_PCT,
+): PriceMove {
+  if (!prev) return { compared: false, reason: "no_previous" };
+  if (prev.cents === 0n) return { compared: false, reason: "previous_is_zero" };
+  const diff = next.cents * prev.milliBottles - prev.cents * next.milliBottles;
+  const base = prev.cents * next.milliBottles;
+  const t = BigInt(Math.round(thresholdPct * MICRO));
+  const moved = (diff < 0n ? -diff : diff) * 100n * BigInt(MICRO) > t * base;
+  const pct = (Number(diff) / Number(base)) * 100;
+  return {
+    compared: true,
+    pct,
+    moved,
+    sentence: moved
+      ? `was ${money(prev.value)}, now ${money(next.value)}, ${pct > 0 ? "up" : "down"} ${speakPct(pct, thresholdPct)} percent`
+      : null,
+  };
+}
