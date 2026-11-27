@@ -211,6 +211,30 @@ describe("DocumentsController.canonicalDocument", () => {
     expect(res.failedRead.join(" ")).toContain("does not exist");
   });
 
+  it("carries the paper's and the house's money codes, role-free, from their own columns (r110 F2)", async () => {
+    let table = "";
+    mockChain.from.mockImplementation((t: string) => ((table = t), mockChain));
+    mockMaybeSingle.mockImplementation(() =>
+      Promise.resolve(
+        table === "restaurants"
+          ? { data: { currency: "usd " }, error: null }
+          : { data: { storage_path: null, currency: " try" }, error: null },
+      ),
+    );
+    const res: any = await controller.canonicalDocument("doc-1", user);
+    expect(res.money).toEqual({ paperCurrency: "TRY", houseCurrency: "USD" });
+    expect(mockChain.eq).toHaveBeenCalledWith("id", "rest-1");
+    mockMaybeSingle.mockImplementation(() =>
+      Promise.resolve(table === "restaurants" ? { data: null, error: { message: "boom" } } : { data: { currency: "TRY" }, error: null }),
+    );
+    const failed: any = await controller.canonicalDocument("doc-1", user);
+    // A failed house read is said, and never read as "the same money".
+    expect(failed.money).toEqual({ paperCurrency: "TRY", houseCurrency: null });
+    expect(failed.failedRead).toContain("the house's money: boom");
+    mockChain.from.mockReset();
+    mockChain.from.mockReturnThis();
+  });
+
   it("404s a document that is not this restaurant's", async () => {
     canonical.buildFromDocumentId.mockResolvedValue({
       ok: false,

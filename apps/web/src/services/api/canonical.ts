@@ -333,6 +333,11 @@ export interface CanonicalDocumentResponse {
    * would render a broken query as "this document has never been touched".
    */
   corrections: CorrectionLogEntry[] | null;
+  /**
+   * The paper's and the house's money codes, role-free (r110 F2). NULL is not
+   * known or not read; never read as a match.
+   */
+  money?: { paperCurrency: string | null; houseCurrency: string | null };
   /** True of the READ, not of the document (e.g. a schema lag). */
   notes?: string[];
   failedRead?: string[];

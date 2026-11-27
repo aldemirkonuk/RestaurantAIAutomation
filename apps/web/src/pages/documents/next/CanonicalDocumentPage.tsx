@@ -81,7 +81,6 @@ import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
 import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
-import { documentsApi } from '../../../services/api/documents'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -144,8 +143,6 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const auth = useContext(AuthContext)
   const rid = auth?.activeRestaurantId || auth?.user?.restaurantId || null
-  const role = (auth?.activeRole ?? auth?.user?.role ?? '').toLowerCase()
-  const mayReadCosts = role === 'owner' || role === 'manager'
 
   const q = useQuery({
     queryKey: ['canonical-document', rid, id],
@@ -171,25 +168,21 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    * A paper in another money than the house costs in is held back from the
    * price comparison, and that is the CAUSE of "not compared", so the verdict
    * says it instead of stacking a second negative on it (r106 walk, finding 3).
-   * Same key as the receipts page's own note, so it is one request. Read only
-   * where that note sits (embedded); a failed read leaves the verdict as it was.
+   * The two codes come with the sheet's own read, for every role (r110 F2): a
+   * code is not money, and /price-moves (which speaks landed cost) is never
+   * asked from here, so staff get the cause and no 403. That route holds every
+   * line back exactly when the two known codes differ, so this is its verdict.
+   * Said only where the receipts note sits (embedded). An unknown code says
+   * nothing; a failed read is in failedRead.
    */
-  const heldQ = useQuery({
-    queryKey: ['receipts-next', 'price-moves', id],
-    queryFn: () => documentsApi.priceMoves(id as string),
-    // The route speaks the house's landed cost, which it keeps from staff; an
-    // unknown role is treated as staff, as the server does.
-    enabled: !!id && embedded && mayReadCosts,
-    staleTime: 60_000,
-    retry: false,
-  })
-  const held = heldQ.data
+  const money = q.data?.money
   const foreignMoney =
-    held?.paperCurrency &&
-    held?.houseCurrency &&
-    held.lines.length > 0 &&
-    held.lines.every((l) => !l.compared && l.reason === 'currency_differs')
-      ? `Prices are in ${held.paperCurrency} and the house costs in ${held.houseCurrency}, so none were compared against earlier costs.`
+    embedded &&
+    money?.paperCurrency &&
+    money?.houseCurrency &&
+    money.paperCurrency !== money.houseCurrency &&
+    (q.data?.canonical.layer1.lines.length ?? 0) > 0
+      ? `Prices are in ${money.paperCurrency} and the house costs in ${money.houseCurrency}, so none were compared against earlier costs.`
       : null
 
   const itemsQ = useQuery({
