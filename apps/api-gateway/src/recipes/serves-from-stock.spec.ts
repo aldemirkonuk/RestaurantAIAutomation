@@ -72,15 +72,6 @@ describe("serves from stock: the pure count", () => {
   });
 });
 
-describe("serves from stock: a 0 that nobody counted", () => {
-  it("never counted and no lot is unknown, not 'not enough'; counted empty, or a lot once received, is still 0", () => {
-    const g = (over: Record<string, unknown>) => bottle({ stock_live: 0, ...over });
-    expect(servesFromStock(g({ last_counted_at: null, has_lots: false }), [pour(30)], 1)).toEqual({ servesFromStock: null, servesWhy: "never_counted" });
-    expect(servesFromStock(g({ last_counted_at: "2026-11-01T10:00:00Z", has_lots: false }), [pour(30)], 1)).toEqual({ servesFromStock: 0, servesWhy: null });
-    expect(servesFromStock(g({ last_counted_at: null, has_lots: true }), [pour(30)], 1)).toEqual({ servesFromStock: 0, servesWhy: null });
-  });
-});
-
 describe("serves from stock: through the service", () => {
   // Flour is kept in kg; the tart's current version takes 250 g + 50 g for a batch of 8.
   const rows = (stock: unknown): Record<string, Row[]> => {
@@ -99,21 +90,6 @@ describe("serves from stock: through the service", () => {
       const out = await svc(rows(3)).dishesUsingItem(HOUSE_A, FLOUR, role);
       expect(out.dishes[0]).toMatchObject({ name: "Lemon tart", servesFromStock: 80, servesWhy: null });
     }
-  });
-
-  it("a flour never counted and never received says never counted, not 'not enough'", async () => {
-    const r = rows(0);
-    r.restaurant_inventory = r.restaurant_inventory.map((i) => (i.id === FLOUR ? { ...i, last_counted_at: null } : i));
-    const out = await svc(r).dishesUsingItem(HOUSE_A, FLOUR, "owner");
-    expect(out.dishes[0]).toMatchObject({ servesFromStock: null, servesWhy: "never_counted" });
-    // Once counted (even to 0) or received, a 0 is the shelf.
-    const counted = rows(0);
-    counted.restaurant_inventory = counted.restaurant_inventory.map((i) => (i.id === FLOUR ? { ...i, last_counted_at: "2026-11-01T10:00:00Z" } : i));
-    expect((await svc(counted).dishesUsingItem(HOUSE_A, FLOUR, "owner")).dishes[0]).toMatchObject({ servesFromStock: 0 });
-    const received = rows(0);
-    received.restaurant_inventory = received.restaurant_inventory.map((i) => (i.id === FLOUR ? { ...i, last_counted_at: null } : i));
-    received.inventory_lots = [{ id: "lot1", restaurant_id: HOUSE_A, inventory_id: FLOUR }];
-    expect((await svc(received).dishesUsingItem(HOUSE_A, FLOUR, "owner")).dishes[0]).toMatchObject({ servesFromStock: 0 });
   });
 
   it("another house's item is not read: a 404, never its stock", async () => {

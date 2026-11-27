@@ -366,7 +366,7 @@ describe('From stock (r108 g11): how many serves the stock on hand makes', () =>
   });
 
   it('every reason has words', () => {
-    for (const why of ['size_not_known', 'pack_size_not_known', 'unit_mismatch', 'no_yield', 'stock_unread', 'never_counted'] as const) {
+    for (const why of ['size_not_known', 'pack_size_not_known', 'unit_mismatch', 'no_yield', 'stock_unread'] as const) {
       expect(servesFromStockWords({ servesFromStock: null, servesWhy: why }, 'dish', null).sub).toBe(SERVES_WHY[why]);
     }
   });

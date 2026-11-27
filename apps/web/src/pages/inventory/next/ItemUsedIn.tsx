@@ -130,7 +130,6 @@ export const SERVES_WHY: Record<ServesWhy, string> = {
   unit_mismatch: 'the recipe measures it another way than the shelf counts it',
   no_yield: 'the recipe does not say how many it makes',
   stock_unread: 'the stock on hand could not be read',
-  never_counted: 'the stock has not been counted or received yet',
 };
 
 /**
