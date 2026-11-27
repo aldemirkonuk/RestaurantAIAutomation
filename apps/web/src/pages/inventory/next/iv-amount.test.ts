@@ -26,8 +26,28 @@ describe('amountUnit: what is typed for a good, in its own unit (ADR 0070)', () 
     expect(g.why('0')).toBeNull();
     const ml = amountUnit('ml');
     expect(ml.parse('2')).toBeNull();
-    expect(ml.why('1500')).toBe('Say which: 1,500 ml or 1,500 l.');
+    expect(ml.why('1500')).toBe('Say which: 1500 ml or 1500 l.');
     expect(amountUnit('bottle').why('500')).toBeNull();
+  });
+
+  it('asks about one point or comma and exactly three digits, since it is a thousands mark in one house and a decimal in another', () => {
+    const g = amountUnit('g');
+    // The thousandfold slip: "20.000 ml" retyped from the prompt booked 20 ml.
+    expect(g.parse('2.000')).toBeNull();
+    expect(g.why('2.000')).toBe('Say which: 2 kg or 2000 kg.');
+    expect(g.parse('2,000 g')).toBeNull();
+    expect(g.why('2,000 g')).toBe('Say which: 2 g or 2000 g.');
+    expect(g.why('1.250')).toBe('Say which: 1.25 kg or 1250 kg.');
+    const ml = amountUnit('ml');
+    expect(ml.parse('20.000 ml')).toBeNull();
+    expect(ml.why('20.000 ml')).toBe('Say which: 20 ml or 20000 ml.');
+    // The prompt's own number is said without a mark, so retyping it cannot be read small.
+    expect(ml.why('20000')).toBe('Say which: 20000 ml or 20000 l.');
+    expect(ml.parse('20000 ml')).toBe(20_000);
+    // Two places, four places, or a bare 0.xxx are decimals and are read as before.
+    expect(g.parse('0.035 kg')).toBe(35);
+    expect(g.parse('2.25')).toBe(2250);
+    expect(ml.parse('1.5')).toBe(1500);
   });
 
   it('refuses what is not a whole gram, never rounding it', () => {
