@@ -6,8 +6,9 @@
 
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { AuthContext } from '@/contexts/AuthContext';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
 import { CATALOGUE } from './rp-catalogue';
@@ -416,5 +417,94 @@ describe('Fill the screen (r109 g1)', () => {
       window.matchMedia = mm;
       delete (window.screen as unknown as Record<string, unknown>).orientation;
     }
+  });
+});
+
+describe('Copy link (r109 g5)', () => {
+  const THE_LINK = 'flat=till&days=90&compare=prior&grain=week';
+  const messy = `/reports?${THE_LINK}&restaurant=h-9&token=secret&utm=1&sheet=abc`;
+  const houses = {
+    activeRestaurantId: 'h1',
+    availableRestaurants: [
+      { id: 'h0', name: 'Elsewhere', city: null, chain_id: null, chain_name: null },
+      { id: 'h1', name: 'Antalya Meyhouse', city: null, chain_id: null, chain_name: null },
+    ],
+  } as never;
+  const setClipboard = (value: unknown) =>
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value });
+  afterEach(() => {
+    delete (navigator as unknown as Record<string, unknown>).clipboard;
+    vi.useRealTimers();
+  });
+
+  it('copies origin + /reports with only flat, days, compare and grain; says so once, politely', async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    setClipboard({ writeText });
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/reports?${THE_LINK}`);
+    const status = await within(dialog).findByText('Link copied.');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+    // The button does not morph.
+    expect(within(dialog).getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+  });
+
+  it('the line goes after four seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setClipboard({ writeText: () => Promise.resolve() });
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    await within(dialog).findByText('Link copied.');
+    await act(async () => {
+      vi.advanceTimersByTime(4100);
+    });
+    expect(within(dialog).queryByText('Link copied.')).toBeNull();
+  });
+
+  it('a refused clipboard shows the link in a read-only, selected field: no dead end', async () => {
+    setClipboard({ writeText: () => Promise.reject(new Error('NotAllowedError')) });
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    const box = (await within(dialog).findByDisplayValue(`${window.location.origin}/reports?${THE_LINK}`)) as HTMLInputElement;
+    expect(box).toHaveAttribute('readonly');
+    expect(within(dialog).getByText('Copy it from here')).toBeInTheDocument();
+    expect(box.selectionStart).toBe(0);
+    expect(box.selectionEnd).toBe(box.value.length);
+    expect(within(dialog).queryByText('Link copied.')).toBeNull();
+  });
+
+  it('no clipboard at all shows the same field', async () => {
+    paint(<Harness id="till" register={answered(TILL)} />, [messy]);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    expect(await within(dialog).findByText('Copy it from here')).toBeInTheDocument();
+  });
+
+  it('the head names the active house, and the link never carries it', () => {
+    setClipboard({ writeText: vi.fn(() => Promise.resolve()) });
+    paint(
+      <AuthContext.Provider value={houses}>
+        <Harness id="till" register={answered(TILL)} />
+      </AuthContext.Provider>,
+      ['/reports?flat=till'],
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(dialog.querySelector('.rp-cut__window')?.textContent).toMatch(/^Antalya Meyhouse · /);
+    expect(dialog.querySelector('.rp-cut__window')?.textContent).not.toMatch(/Elsewhere/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy link' }));
+    expect((navigator.clipboard.writeText as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toMatch(/Antalya|h1/);
+  });
+
+  it('with no house to name, the window line is the page\'s own', () => {
+    paint(<Harness id="till" register={answered(TILL)} />, ['/reports?flat=till']);
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(dialog.querySelector('.rp-cut__window')?.textContent).not.toContain(' · Antalya');
+    expect(dialog.querySelector('.rp-cut__window')?.textContent?.startsWith('Antalya')).toBe(false);
   });
 });

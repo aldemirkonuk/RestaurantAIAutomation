@@ -27,7 +27,8 @@
  *     declined where refused). The browser's first Escape leaves its full
  *     screen; the second closes this view. Closing by any road gives the full
  *     screen and the lock back. Nothing animates (MOTIONS.md, non-motions).
- *  6. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
+ *  6. **"Copy link" shares the view, not the reader's seat.** See `flatShareUrl`.
+ *  7. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
  *     window-level palette key (ReportsNext.tsx); while this view is up it is
  *     stopped at `document`, which the bubble reaches before `window`, so the
  *     palette never opens unseen underneath (audit 2026-11-07).
@@ -39,12 +40,15 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useContext,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Maximize2, Minimize2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { ArrowLeft, Link2, Maximize2, Minimize2 } from 'lucide-react';
+import { AuthContext } from '@/contexts/AuthContext';
 import { lockBodyScroll, openStack } from '@/components/mudavym/overlayState';
 import { readGroundFromDom, type MudavymGround } from '@/lib/mudavym/shellGround';
 import type { ComboPick } from './rp-combo';
@@ -53,6 +57,24 @@ import './reports-flat.css';
 
 /** The search parameter that lays a cutting flat: `/reports?flat=till`. */
 export const FLAT_PARAM = 'flat';
+
+/** The only parts of the page address a shared link carries: what is open and how it is read. */
+const SHARE_PARAMS = [FLAT_PARAM, 'days', 'compare', 'grain'] as const;
+
+/**
+ * The link to this view: origin + /reports + flat, days, compare and grain,
+ * and nothing else. No house id and no figure: the recipient's own active
+ * house and role decide what they read (a staff reader gets the withheld body).
+ */
+export function flatShareUrl(origin: string, search: string): string {
+  const from = new URLSearchParams(search);
+  const to = new URLSearchParams();
+  for (const k of SHARE_PARAMS) {
+    const v = from.get(k);
+    if (v !== null) to.set(k, v);
+  }
+  return `${origin}/reports?${to.toString()}`;
+}
 
 /** True where the browser can give one element the whole screen (not iPhone Safari). */
 function canFillScreen(): boolean {
@@ -131,6 +153,43 @@ export default function CuttingFlat({
   const titleId = useId();
   const canFill = canFillScreen();
   const [filled, setFilled] = useState(false);
+  const { search } = useLocation();
+  const auth = useContext(AuthContext);
+  const houseName =
+    auth?.availableRestaurants?.find((r) => r.id === auth.activeRestaurantId)?.name ?? null;
+  const shareUrl = flatShareUrl(window.location.origin, search);
+  const [said, setSaid] = useState(false);
+  const [manual, setManual] = useState(false);
+  const manualRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!said) return;
+    const t = window.setTimeout(() => setSaid(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [said]);
+  useEffect(() => {
+    if (manual) manualRef.current?.select();
+  }, [manual]);
+  const copyLink = () => {
+    const clip = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+    if (!clip || typeof clip.writeText !== 'function') {
+      setManual(true);
+      return;
+    }
+    let wrote: Promise<void>;
+    try {
+      wrote = Promise.resolve(clip.writeText(shareUrl));
+    } catch {
+      setManual(true);
+      return;
+    }
+    wrote.then(
+      () => {
+        setManual(false);
+        setSaid(true);
+      },
+      () => setManual(true),
+    );
+  };
   const lockedRef = useRef(false);
   const closeRef = useRef(onClose);
   useEffect(() => {
@@ -276,7 +335,7 @@ export default function CuttingFlat({
             <h2 id={titleId} className="rp-cut__title rp-flat__title">
               {title}
             </h2>
-            <p className="rp-cut__window">{windowLine}</p>
+            <p className="rp-cut__window">{houseName ? `${houseName} · ${windowLine}` : windowLine}</p>
           </div>
           <div className="rp-flat__controls">
             {graphs.length > 0 && (
@@ -297,6 +356,10 @@ export default function CuttingFlat({
               </label>
             )}
             {windowControl}
+            <button type="button" className="rp-btn rp-ink rp-focus rp-flat__fill" onClick={copyLink}>
+              <Link2 size={14} strokeWidth={1.8} aria-hidden />
+              <span>Copy link</span>
+            </button>
             {canFill && (
               <button
                 type="button"
@@ -311,12 +374,27 @@ export default function CuttingFlat({
           </div>
         </div>
       </div>
+      {manual && (
+        <label className="rp-flat__manual">
+          <span className="rp-cap">Copy it from here</span>
+          <input
+            ref={manualRef}
+            className="rp-select rp-focus"
+            readOnly
+            value={shareUrl}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        </label>
+      )}
       <div className="rp-flat__body">
         {renderBody(graph, { pick: comboPick, onPick: setComboPick })}
       </div>
       <p className="rp-cap rp-flat__note">
         This view is not saved to your sheet.
         {windowControl ? ' The window you pick is kept in the page link, so a reload or a shared link opens on it.' : ''}
+      </p>
+      <p className="rp-cap rp-flat__said" role="status" aria-live="polite">
+        {said ? 'Link copied.' : ''}
       </p>
     </div>,
     document.body,
