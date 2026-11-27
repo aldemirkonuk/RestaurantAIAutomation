@@ -27,7 +27,7 @@
  * them any more.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
@@ -55,9 +55,12 @@ import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
-import WhoIsWriting from './WhoIsWriting';
+import { CODE_HOLD_STRIP_PX, CodeHold, loaders } from './mail-code';
 import { mailTabLabel, type MailAnswer } from './mail-format';
 import { useMailSummary } from './useMailData';
+
+// Who is writing is drawn only on the Mail list, so its code is fetched when that list shows it.
+const WhoIsWriting = lazy(() => loaders.whoIsWriting());
 
 function GlanceFigure({
   label,
@@ -433,7 +436,11 @@ export default function CommunicationsNext() {
             // ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
             // strangers are mail, not money. Drawn in the Mail tab since r21
             // (2026-11-13), so Mail reaches every person who writes.
-            whoIsWriting={<WhoIsWriting />}
+            whoIsWriting={
+              <Suspense fallback={<CodeHold testId="who-is-writing-opening" height={CODE_HOLD_STRIP_PX}>Opening who is writing…</CodeHold>}>
+                <WhoIsWriting />
+              </Suspense>
+            }
           />
         ) : (
         <>

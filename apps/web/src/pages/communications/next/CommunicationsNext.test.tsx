@@ -363,11 +363,12 @@ describe('CommunicationsNext', () => {
   // ── ADR 0160 §113, Open item 3: senders and strangers moved here ──────────
   // r21 (2026-11-13): "Who is writing" moved into the Mail tab, so the tab
   // reaches strangers and held letters too. MailTab mounts it (MailTab.test).
-  it('Letters no longer carries "Who is writing"; Mail does', () => {
+  it('Letters no longer carries "Who is writing"; Mail does', async () => {
     render(<CommunicationsNext />);
     expect(screen.queryByTestId('who-is-writing')).toBeNull();
     render(<CommunicationsNext />, '/communications?tab=mail');
-    expect(within(screen.getByTestId('mail-tab-stub')).getByTestId('who-is-writing')).toBeInTheDocument();
+    // Its code arrives when the Mail tab draws it (a lazy chunk), behind a held place.
+    expect(await within(screen.getByTestId('mail-tab-stub')).findByTestId('who-is-writing')).toBeInTheDocument();
   });
 
   /**
