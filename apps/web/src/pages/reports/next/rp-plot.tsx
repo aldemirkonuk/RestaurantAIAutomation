@@ -33,7 +33,7 @@
  * a screen reader without a second description.
  */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -150,6 +150,84 @@ function PlotCaption({ children }: { children: ReactNode }) {
   return <p className="rp-plot-cap">{children}</p>;
 }
 
+/* ── the legend that hides and shows a series (r109 g4) ───────────────────────
+   Highcharts' legendItemClick, in this page's terms: a drawing with two or more
+   series gets one button per series. View-only: held in the plot, so it is per
+   cutting, separate in full screen, and gone when "Draw as" changes. Hiding
+   never rescales (the y domain is fixed from every series), never moves the
+   gutters, and drops the series from the hover detail and the spoken summary.
+   The last series still shown cannot be hidden. */
+interface LegendItem {
+  key: string;
+  /** The series said as a phrase: "the prior 30 days". */
+  name: string;
+  swatch: 'bar' | 'line' | 'dash' | 'hollow';
+}
+
+function useLegend(scope: string, keys: ReadonlyArray<string>) {
+  const [state, setState] = useState<{ scope: string; hidden: string[]; seen: string[] }>({
+    scope,
+    hidden: [],
+    seen: [],
+  });
+  const cur = state.scope === scope ? state : { scope, hidden: [], seen: [] };
+  const hidden = cur.hidden.filter((k) => keys.includes(k));
+  const shown = keys.filter((k) => !hidden.includes(k));
+  const toggle = (k: string) =>
+    setState(() => {
+      if (hidden.includes(k)) return { ...cur, hidden: cur.hidden.filter((h) => h !== k) };
+      if (shown.length <= 1) return cur; // One series stays drawn.
+      return { ...cur, hidden: [...cur.hidden, k], seen: cur.seen.includes(k) ? cur.seen : [...cur.seen, k] };
+    });
+  return { hidden, shown, again: cur.seen, toggle, on: (k: string) => !hidden.includes(k) };
+}
+
+function PlotLegend({
+  items,
+  hidden,
+  onToggle,
+}: {
+  items: ReadonlyArray<LegendItem>;
+  hidden: ReadonlyArray<string>;
+  onToggle: (key: string) => void;
+}) {
+  const noteId = useId();
+  const lastOne = items.length - hidden.length <= 1;
+  return (
+    <div className="rp-legend rp-no-drag" role="group" aria-label="Series drawn">
+      {items.map((it) => {
+        const off = hidden.includes(it.key);
+        const locked = !off && lastOne;
+        return (
+          <button
+            key={it.key}
+            type="button"
+            className="rp-legend__btn rp-focus"
+            data-off={off ? 'true' : undefined}
+            aria-pressed={!off}
+            aria-disabled={locked ? true : undefined}
+            aria-describedby={locked ? noteId : undefined}
+            onClick={() => onToggle(it.key)}
+          >
+            <span className="rp-legend__swatch" data-swatch={it.swatch} aria-hidden />
+            {off ? `Show ${it.name}` : `Hide ${it.name}`}
+          </button>
+        );
+      })}
+      <span id={noteId} className="rp-sr-only">
+        One series stays drawn
+      </span>
+    </div>
+  );
+}
+
+/** The y domain every series shares, fixed from ALL of them once any is hidden. */
+function fixedDomain(values: ReadonlyArray<number | null | undefined>, anyHidden: boolean) {
+  if (!anyHidden) return {};
+  const top = Math.max(0, ...values.filter((v): v is number => typeof v === 'number'));
+  return top > 0 ? { domain: [0, top] as [number, number] } : {};
+}
+
 /** The one-sentence reading a screen reader gets in place of the picture: the high and the low. */
 export function readingOf(
   rows: ReadonlyArray<{ label: string; v: number | null | undefined }>,
@@ -178,9 +256,12 @@ function Plot({
   label,
   caption,
   held = false,
+  legend,
 }: {
   children: ReactNode;
   label: string;
+  /** The series buttons, when the drawing carries two or more (r109 g4). */
+  legend?: ReactNode;
   /** The slot is drawn, the drawing is not yet (`useAfterPaint`): a heavy plot's first frame. */
   held?: boolean;
   /** What is drawn, said once above the plot (N-03). */
@@ -189,7 +270,14 @@ function Plot({
   const { ref, state } = useDrawIn();
   return (
     <>
-      {caption != null && <PlotCaption>{caption}</PlotCaption>}
+      {legend != null ? (
+        <div className="rp-plot-head">
+          {caption != null && <PlotCaption>{caption}</PlotCaption>}
+          {legend}
+        </div>
+      ) : (
+        caption != null && <PlotCaption>{caption}</PlotCaption>
+      )}
       <div className="rp-plot" role="img" aria-label={label} ref={ref} data-draw={state}>
         {!held && (
           <ResponsiveContainer width="100%" height="100%" debounce={1}>
@@ -491,9 +579,25 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   // The window just before, dashed beside the measured one. Drawn only when
   // some day of it is known; a day that is not stays a gap, never a zero.
   const hasPrior = all.some((d) => d.prior != null);
+  // r109 g4: the series a reader may hide. Only a drawing with two or more has a legend.
+  const keys = ['value', ...(hasProjection ? ['projected'] : []), ...(hasPrior ? ['prior'] : [])];
+  const lg = useLegend(kind, keys);
+  const priorName = priorLabel ?? 'the prior window';
+  const names: Record<string, string> = {
+    value: hasProjection ? 'the measured days' : yLabel.toLowerCase(),
+    projected: `the ${projectedLabel ?? 'projected'} part`,
+    prior: priorName,
+  };
+  const items: LegendItem[] = keys.map((k) => ({
+    key: k,
+    name: names[k],
+    swatch: k === 'prior' ? 'dash' : k === 'projected' ? 'hollow' : kind === 'bars' ? 'bar' : 'line',
+  }));
+  const legend = keys.length >= 2 ? <PlotLegend items={items} hidden={lg.hidden} onToggle={lg.toggle} /> : undefined;
+  const hiddenWords = lg.hidden.length > 0 ? `, ${lg.hidden.map((k) => names[k]).join(' and ')} hidden` : '';
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
-  }${hasPrior ? `, ${priorLabel ?? 'the prior window'} dashed beside it` : ''}${readingOf(
+  }${hasPrior ? `, ${priorName} dashed beside it` : ''}${hiddenWords}${readingOf(
     all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
     format,
     unit,
@@ -506,6 +610,11 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
       format,
     ),
+  );
+  // Hiding never rescales: once any series is hidden the domain is fixed from all of them.
+  const domain = fixedDomain(
+    [...all.map((d) => d.value ?? d.projected), ...all.map((d) => d.prior)],
+    lg.hidden.length > 0,
   );
   const tip = (
     <Tooltip
@@ -527,7 +636,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
         minTickGap={26}
         padding={kind === 'bars' ? undefined : X_ORIGIN_PAD}
       />
-      <YAxis {...AXIS} width={gutter} tickFormatter={(v: number) => format(v)} />
+      <YAxis {...AXIS} width={gutter} tickFormatter={(v: number) => format(v)} {...domain} />
       {tip}
       {(refs ?? []).map((r) => (
         <ReferenceLine
@@ -547,7 +656,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       {(refs ?? []).flatMap((r) => {
         // The seam where measurement stops: a 4 px dot on the line where it crosses.
         const at = r.x != null ? data.find((d) => d.label === r.x) : undefined;
-        const y = at ? (at.value ?? at.projected) : null;
+        const y = at && lg.on('value') ? (at.value ?? at.projected) : null;
         return typeof y === 'number'
           ? [<ReferenceDot key={`${r.label}:dot`} x={r.x} y={y} r={4} fill="var(--seal)" stroke="var(--paper-0)" strokeWidth={1.5} className="rp-seam-dot" />]
           : [];
@@ -563,12 +672,19 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     // projected bar side by side at half width, and drew the seam twice.
     const rows = data.map((d) => ({
       ...d,
-      shown: d.value ?? d.projected ?? null,
+      shown:
+        d.value != null
+          ? lg.on('value')
+            ? d.value
+            : null
+          : d.projected != null && lg.on('projected')
+            ? d.projected
+            : null,
       isProjected: d.value == null && d.projected != null,
     }));
     const labelled = rows.length <= LABEL_BARS_MAX;
     return (
-      <Plot label={label} caption={caption} held={held}>
+      <Plot label={label} caption={caption} held={held} legend={legend}>
         <BarChart data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -588,7 +704,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
               ),
             )}
           </Bar>
-          {hasPrior && (
+          {hasPrior && lg.on('prior') && (
             <Bar
               dataKey="prior"
               fill="transparent"
@@ -606,20 +722,22 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   if (kind === 'area')
     return (
-      <Plot label={label} caption={caption} held={held}>
+      <Plot label={label} caption={caption} held={held} legend={legend}>
         <AreaChart data={data} margin={MARGIN}>
           {axes}
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke="var(--seal)"
-            strokeWidth={1.6}
-            fill="var(--seal-tint)"
-            isAnimationActive={false}
-            connectNulls={false}
-            dot={false}
-          />
-          {hasProjection && (
+          {lg.on('value') && (
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke="var(--seal)"
+              strokeWidth={1.6}
+              fill="var(--seal-tint)"
+              isAnimationActive={false}
+              connectNulls={false}
+              dot={false}
+            />
+          )}
+          {hasProjection && lg.on('projected') && (
             <Area
               type="monotone"
               dataKey="projected"
@@ -632,11 +750,12 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
               dot={false}
             />
           )}
-          {hasPrior && (
+          {hasPrior && lg.on('prior') && (
             <Area
               type="monotone"
               dataKey="prior"
               className="rp-prior"
+              data-again={lg.again.includes('prior') ? 'true' : undefined}
               stroke="var(--ink-3)"
               strokeWidth={1.2}
               strokeDasharray="2 3"
@@ -651,19 +770,21 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     );
 
   return (
-    <Plot label={label} caption={caption} held={held}>
+    <Plot label={label} caption={caption} held={held} legend={legend}>
       <LineChart data={data} margin={MARGIN}>
         {axes}
-        <Line
-          type="monotone"
-          dataKey="value"
-          stroke="var(--seal)"
-          strokeWidth={1.6}
-          dot={false}
-          isAnimationActive={false}
-          connectNulls={false}
-        />
-        {hasProjection && (
+        {lg.on('value') && (
+          <Line
+            type="monotone"
+            dataKey="value"
+            stroke="var(--seal)"
+            strokeWidth={1.6}
+            dot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+        )}
+        {hasProjection && lg.on('projected') && (
           <Line
             type="monotone"
             dataKey="projected"
@@ -675,11 +796,12 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
             connectNulls={false}
           />
         )}
-        {hasPrior && (
+        {hasPrior && lg.on('prior') && (
           <Line
             type="monotone"
             dataKey="prior"
             className="rp-prior"
+            data-again={lg.again.includes('prior') ? 'true' : undefined}
             stroke="var(--ink-3)"
             strokeWidth={1.2}
             strokeDasharray="2 3"
@@ -725,6 +847,7 @@ export function ComboPlot({
   onPick?: (p: ComboPick) => void;
 }) {
   const [own, setOwn] = useState<Partial<ComboPick> | undefined>(pick);
+  const lg = useLegend('combo', ['bars', 'line']);
   const plan = planCombo(series, onPick ? pick : own);
   if (!plan) return null;
   const set = (side: keyof ComboPick, key: string) => {
@@ -739,6 +862,11 @@ export function ComboPlot({
   const caption = split
     ? `${titled(bars.label, bars.unit)} (bars, left) · ${titled(line.label, line.unit)} (line, right) · by ${series.xLabel}`
     : `${titled(bars.label, shared ?? undefined)} · by ${series.xLabel}`;
+  const barTop = Math.max(0, ...rows.map((r) => r.bar).filter((v): v is number => typeof v === 'number'));
+  const lineTop = Math.max(0, ...rows.map((r) => r.line).filter((v): v is number => typeof v === 'number'));
+  const anyOff = lg.hidden.length > 0;
+  const barsDomain = fixedDomain([split ? barTop : Math.max(barTop, lineTop)], anyOff);
+  const lineDomain = fixedDomain([lineTop], anyOff);
   const words = split
     ? `Bars: ${named(bars)}, on the left scale. Line: ${named(line)}, on the right scale.`
     : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
@@ -783,8 +911,18 @@ export function ComboPlot({
           rows.map((r) => ({ label: r.full ?? r.label, v: r.bar })),
           bars.format,
           bars.unit,
-        )}`}
+        )}${lg.hidden.length > 0 ? `, ${lg.hidden.map((k) => (k === 'bars' ? 'the bars' : 'the line')).join(' and ')} hidden` : ''}`}
         caption={caption}
+        legend={
+          <PlotLegend
+            items={[
+              { key: 'bars', name: bars.label.toLowerCase(), swatch: 'bar' },
+              { key: 'line', name: line.label.toLowerCase(), swatch: 'line' },
+            ]}
+            hidden={lg.hidden}
+            onToggle={lg.toggle}
+          />
+        }
       >
         <ComposedChart
           data={rows}
@@ -797,6 +935,7 @@ export function ComboPlot({
             {...AXIS}
             width={barGutter}
             tickFormatter={(v: number) => bars.format(v)}
+            {...barsDomain}
           />
           {split && (
             <YAxis
@@ -805,14 +944,16 @@ export function ComboPlot({
               {...AXIS}
               width={lineGutter}
               tickFormatter={(v: number) => line.format(v)}
+              {...lineDomain}
             />
           )}
           <Tooltip
             wrapperStyle={tipWrapper(barGutter)}
             {...tipMotion()}
             cursor={{ fill: 'var(--seal-tint)' }}
-            content={<ComboTip plan={plan} /> as unknown as never}
+            content={<ComboTip plan={plan} hidden={lg.hidden} /> as unknown as never}
           />
+          {lg.on('bars') && (
           <Bar
             yAxisId="bars"
             dataKey="bar"
@@ -826,6 +967,8 @@ export function ComboPlot({
               <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i, rows.length)} />
             ))}
           </Bar>
+          )}
+          {lg.on('line') && (
           <Line
             yAxisId={split ? 'line' : 'bars'}
             dataKey="line"
@@ -837,6 +980,7 @@ export function ComboPlot({
             isAnimationActive={false}
             connectNulls={false}
           />
+          )}
         </ComposedChart>
       </Plot>
       <p className="rp-cap">{words}</p>
@@ -849,17 +993,20 @@ function ComboTip({
   active,
   payload,
   plan,
+  hidden = [],
 }: {
   active?: boolean;
   payload?: Array<{ payload?: { full?: string; bar: number | null; line: number | null } }>;
   plan: ComboPlan;
+  /** The legend's hidden series: not in the hover detail either. */
+  hidden?: ReadonlyArray<string>;
 }) {
   const row = active ? payload?.[0]?.payload : undefined;
   if (!row) return null;
   const lines: Array<[string, number | null, ComboPlan['bars']]> = [
-    ['Bars', row.bar, plan.bars],
-    ['Line', row.line, plan.line],
-  ];
+    ['Bars', row.bar, plan.bars] as [string, number | null, ComboPlan['bars']],
+    ['Line', row.line, plan.line] as [string, number | null, ComboPlan['bars']],
+  ].filter(([side]) => !hidden.includes(String(side).toLowerCase()));
   return (
     <div className="rp-tip">
       <span className="rp-tip__head">{row.full}</span>

@@ -1449,3 +1449,74 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
 .rp-sparks[data-pending] {
   min-height: 66px;
 }
+
+/* r109 g4: the legend that hides and shows a series. One row beside the caption;
+   each button is 44px tall by padding (a swatch and a phrase). Hiding changes
+   nothing else on the card: the domain, the gutters and the figures stay. */
+.rp-plot-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 12px;
+}
+.rp-plot-head .rp-plot-cap {
+  margin: 0;
+}
+.rp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 4px;
+}
+.rp-legend__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 14px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--rp-mono);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.rp-legend__btn[data-off='true'] {
+  color: var(--ink-4);
+  text-decoration: line-through;
+}
+.rp-legend__btn[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+.rp-legend__swatch {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  box-sizing: border-box;
+}
+.rp-legend__swatch[data-swatch='bar'] {
+  background: var(--seal);
+  border-radius: 2px;
+}
+.rp-legend__swatch[data-swatch='line'] {
+  height: 0;
+  border-top: 2px solid var(--ink-2);
+}
+.rp-legend__swatch[data-swatch='dash'] {
+  height: 0;
+  border-top: 2px dashed var(--ink-3);
+}
+.rp-legend__swatch[data-swatch='hollow'] {
+  border: 1px dashed var(--seal-deep);
+  background: var(--seal-tint);
+  border-radius: 2px;
+}
+/* A series shown again is painted where it belongs: no replay of the prior's draw. */
+.rp-prior:has(> [data-again]) {
+  /* recharts puts the attribute on the path inside the .rp-prior layer, not on the layer. */
+  animation: none;
+}
