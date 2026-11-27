@@ -1529,23 +1529,44 @@ export class DocumentsController {
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     const last = new Map<string, number>();
     if (goods.length) {
-      const { data: lots, error: lotErr } = await client
-        .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
-        .eq("restaurant_id", user.restaurantId)
-        .eq("cost_provenance", "invoice")
-        .in("inventory_id", goods)
-        .not("unit_cost", "is", null)
-        .order("received_at", { ascending: false })
-        .limit(1000);
-      if (lotErr)
+      // This paper's own lots are not its "last" cost: verifying it stamped them
+      // cost_provenance 'invoice', so reopening a verified paper would compare
+      // every price with itself and say nothing moved (r106).
+      const { data: own, error: ownErr } = await client
+        .from("document_deliveries")
+        .select("delivery_id")
+        .eq("document_id", id);
+      if (ownErr)
         throw new HttpException(
-          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+          `This paper's deliveries could not be read, so no price was compared: ${ownErr.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
-      // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+      const ownIds = [...new Set(((own ?? []) as { delivery_id: string }[]).map((d) => d.delivery_id))];
+      // One newest lot per good, never one shared page: a rarely bought good
+      // behind a thousand newer lots of the paper's other goods must still be read.
+      const newest = await Promise.all(
+        goods.map(async (good) => {
+          let q = client
+            .from("inventory_lots")
+            .select("inventory_id, unit_cost, received_at")
+            .eq("restaurant_id", user.restaurantId)
+            .eq("cost_provenance", "invoice")
+            .eq("inventory_id", good)
+            .not("unit_cost", "is", null);
+          if (ownIds.length)
+            q = q.or(`delivery_id.is.null,delivery_id.not.in.(${ownIds.join(",")})`);
+          return q.order("received_at", { ascending: false }).limit(1);
+        }),
+      );
+      for (const { data: lots, error: lotErr } of newest) {
+        if (lotErr)
+          throw new HttpException(
+            `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
+          if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+      }
     }
     const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
     return {
