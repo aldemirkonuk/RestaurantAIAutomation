@@ -261,12 +261,26 @@ function Body({
         </dl>
       )}
       {notes.map((n, i) => (
-        <p key={i} className="rp-cap" title={typeof n === 'string' ? n : undefined}>
-          {n}
-        </p>
+        <Note key={i} note={n} />
       ))}
       <Working lines={view.basis} defaultOpen={workingOpen} />
     </>
+  );
+}
+
+/** A note under a chart. The sheet clamps it to three lines, so the whole sentence is its title:
+    a JSX note (the projection's figures and its "not a measurement") has no string to give, so
+    its rendered text is read back. */
+function Note({ note }: { note: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && typeof note !== 'string') el.title = (el.textContent ?? '').trim();
+  });
+  return (
+    <p ref={ref} className="rp-cap" title={typeof note === 'string' ? note : undefined}>
+      {note}
+    </p>
   );
 }
 
@@ -298,6 +312,8 @@ export interface CuttingProps {
   onFit?: (id: AnalysisId, px: number | null) => void;
   /** Folded to a 72 px strip: the register's honest answer is a sentence (`rp-strip.ts`). */
   strip?: boolean;
+  /** The house being read: a stand-in is only ever the SAME house's last drawing. */
+  house?: string | null;
 }
 
 export default function Cutting({
@@ -316,24 +332,29 @@ export default function Cutting({
   onDays,
   strip = false,
   onFit,
+  house,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
      labelled with its own days (ADR 0020); never for a first read or another house. */
-  const lastRead = useRef<{ data: unknown; days: number } | null>(null);
+  const lastRead = useRef<{ data: unknown; days: number; house: string | null | undefined } | null>(null);
   if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
-    lastRead.current = { data: register.data, days: ctx.days };
+    lastRead.current = { data: register.data, days: ctx.days, house };
   const standIn =
     spec.takesWindow &&
     register?.loading &&
     !register.failure &&
     lastRead.current &&
+    lastRead.current.house === house &&
     lastRead.current.days !== ctx.days
       ? lastRead.current
       : null;
   const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
   const windowLine = spec.window(viewCtx);
+  // The head's line says what is drawn and, while the new window is read, what is coming. It is
+  // a line that is always there, so a pick moves nothing (a sentence above the drawing did).
+  const headLine = standIn ? `${windowLine} · reading ${ctx.days} days` : windowLine;
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.
   const answer = standIn ? standIn.data : register?.data;
@@ -353,7 +374,7 @@ export default function Cutting({
   // Only the till takes a window; other bodies keep their blocks as direct children.
   const framed = (kids: ReactNode) =>
     spec.takesWindow ? (
-      <div className="rp-standin" data-stale={standIn ? '' : undefined} aria-busy={standIn ? true : undefined}>
+      <div className="rp-standin" data-stale={standIn ? '' : undefined}>
         {kids}
       </div>
     ) : (
@@ -361,14 +382,16 @@ export default function Cutting({
     );
   const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
     readsRegister(spec) ? (
-      framed(
-        <>
+      <>
+        {/* Outside the busy drawing, and out of the flow: assistive technology holds back changes
+            inside a busy subtree, and a visible sentence above the drawing moved it. */}
         {standIn && (
-          <p className="rp-cap" role="status">
+          <p className="rp-sr-only" role="status">
             Reading the last {ctx.days} days. Until they arrive, the figures shown are the last{' '}
             {standIn.days} days.
           </p>
         )}
+        {framed(
         <RegisterBody
           register={spec.register}
           loading={standIn ? false : (register?.loading ?? true)}
@@ -386,9 +409,9 @@ export default function Cutting({
               flat={workingOpen}
             />
           )}
-        </RegisterBody>
-        </>,
-      )
+        </RegisterBody>,
+        )}
+      </>
     ) : (
       <Body
         view={spec.view(null, ctx)}
@@ -475,7 +498,7 @@ export default function Cutting({
       <div className="rp-cut__head">
         <div style={{ minWidth: 0 }}>
           <h2 className="rp-cut__title">{spec.title}</h2>
-          <p className="rp-cut__window">{windowLine}</p>
+          <p className="rp-cut__window">{headLine}</p>
         </div>
         {arranging ? (
           <div className="rp-row" style={{ gap: 6 }}>
@@ -559,7 +582,7 @@ export default function Cutting({
       {flat && (
         <CuttingFlat
           title={spec.title}
-          windowLine={windowLine}
+          windowLine={headLine}
           graphs={offered}
           initialGraph={drawn}
           initialComboPick={comboPick}

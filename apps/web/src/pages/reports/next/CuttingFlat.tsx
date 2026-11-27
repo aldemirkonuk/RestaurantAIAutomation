@@ -192,7 +192,7 @@ export default function CuttingFlat({
             <h2 id={titleId} className="rp-cut__title rp-flat__title">
               {title}
             </h2>
-            <p className="rp-cut__window">{windowLine}</p>
+            <p className="rp-cut__window" title={windowLine}>{windowLine}</p>
           </div>
           <div className="rp-flat__controls">
             {graphs.length > 0 && (
