@@ -35,6 +35,10 @@ export const ANALYSIS_IDS = [
 
 export type AnalysisId = (typeof ANALYSIS_IDS)[number];
 
+/** The cards that are prose or a list: on the phone they grow to their content. Every other card draws a chart
+ *  or a table and holds its slot, so a window or Draw-as change never moves the page (r102). */
+export const TEXT_IDS: ReadonlySet<AnalysisId> = new Set<AnalysisId>(['reading', 'goals', 'writing']);
+
 export function isAnalysisId(v: unknown): v is AnalysisId {
   return typeof v === 'string' && (ANALYSIS_IDS as readonly string[]).includes(v);
 }

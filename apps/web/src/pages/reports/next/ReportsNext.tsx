@@ -78,7 +78,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
-import { FIT_IDS, fittedRows } from './rp-fit';
+import { FIT_IDS, controlRows, fittedRows } from './rp-fit';
 import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
 import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
@@ -157,6 +157,17 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const [needPx, setNeedPx] = useState<Partial<Record<AnalysisId, number>>>({});
   const onFit = useCallback((id: AnalysisId, px: number | null) => {
     setNeedPx((cur) => {
+      if ((cur[id] ?? null) === px) return cur;
+      const next = { ...cur };
+      if (px === null) delete next[id];
+      else next[id] = px;
+      return next;
+    });
+  }, []);
+  /** How tall each arranged card's controls row is (`Cutting`): the sheet adds it to the card. Display only. */
+  const [controlPx, setControlPx] = useState<Partial<Record<AnalysisId, number>>>({});
+  const onControls = useCallback((id: AnalysisId, px: number | null) => {
+    setControlPx((cur) => {
       if ((cur[id] ?? null) === px) return cur;
       const next = { ...cur };
       if (px === null) delete next[id];
@@ -503,11 +514,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       : fit
         ? { ...c.slot, h: fittedRows(c.slot.h, needPx[c.id]) }
         : c.slot,
+    extraRows: editing ? controlRows(controlPx[c.id]) : undefined,
     body: (
       <Cutting
         id={c.id}
         strip={strip}
         onFit={FIT_IDS.includes(c.id) ? onFit : undefined}
+        onControls={onControls}
         graph={c.graph}
         register={data.registers[c.id]}
         ctx={ctx}

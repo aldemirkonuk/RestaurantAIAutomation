@@ -296,6 +296,8 @@ export interface CuttingProps {
   onDays: (d: number) => void;
   /** Reports the height this card's content needs (`rp-fit.ts`), so the sheet can draw its slot to fit. */
   onFit?: (id: AnalysisId, px: number | null) => void;
+  /** While arranging, the height of the controls row, so the sheet adds it to the card (r101). */
+  onControls?: (id: AnalysisId, px: number | null) => void;
   /** Folded to a 72 px strip: the register's honest answer is a sentence (`rp-strip.ts`). */
   strip?: boolean;
 }
@@ -316,6 +318,7 @@ export default function Cutting({
   onDays,
   strip = false,
   onFit,
+  onControls,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
 
@@ -453,6 +456,22 @@ export default function Cutting({
     // `onFit` is stable (a state setter wrapper); the register's arrival is what changes the blocks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fits, id, register?.data]);
+
+  // The arrange controls are room the card gains: tell the sheet how tall they are, now and as they rewrap.
+  useEffect(() => {
+    const controls = arranging ? rootRef.current?.querySelector<HTMLElement>(':scope > .rp-cut__controls') : null;
+    if (!controls) {
+      onControls?.(id, null);
+      return;
+    }
+    const report = () => onControls?.(id, Math.ceil(controls.offsetHeight));
+    report();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(report);
+    ro.observe(controls);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arranging, id, onControls]);
 
   // Focus goes back to the control that opened the view, however it closed.
   const wasFlat = useRef(flat);

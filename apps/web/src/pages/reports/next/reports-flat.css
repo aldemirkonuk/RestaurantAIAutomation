@@ -154,10 +154,13 @@
     align-items: center;
     gap: 10px;
   }
+  /* The title wins the line and the window sentence wraps under it whole, never cut to an ellipsis with the
+     title gone (r101); the pair stays inside the head's 44 px. */
   .rp-flat__row > div:first-child {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
     flex: 1 1 auto;
     min-width: 0;
   }
@@ -168,9 +171,7 @@
   .rp-flat__row .rp-cut__window {
     margin: 0;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
   }
   .rp-flat__controls {
     flex: 0 0 auto;
