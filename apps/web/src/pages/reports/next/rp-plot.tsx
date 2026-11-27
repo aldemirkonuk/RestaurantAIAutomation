@@ -460,8 +460,12 @@ export function thinCats<T extends { label: string; value?: number | null; proje
   const must = new Set<number>([0, data.length - 1]);
   const named = new Set(refs.map((r) => r.x).filter((x) => x != null).map(String));
   data.forEach((d, i) => {
-    const edge = i > 0 && (data[i - 1].value == null) !== (d.value == null);
-    if (edge || named.has(d.label)) must.add(i);
+    // Only the seam where measurement hands over to the projection is a must-row. A plain closed day is an
+    // ordinary row: counting every null/non-null edge made a house closed on Mondays carry 2 rows a week
+    // and overrun the cap the drawing is held to (r104 review).
+    const seam =
+      i > 0 && (data[i - 1].value == null) !== (d.value == null) && (d.projected != null || data[i - 1].projected != null);
+    if (seam || named.has(d.label)) must.add(i);
   });
   const rest = data.map((_, i) => i).filter((i) => !must.has(i));
   const buckets = Math.max(max - must.size, 1);

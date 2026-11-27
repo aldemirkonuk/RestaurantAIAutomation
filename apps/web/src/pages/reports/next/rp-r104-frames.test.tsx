@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render } from '@testing-library/react';
-import { CatPlot, HOLD_OVER, MAX_DRAWN, PHONE_DRAWN } from './rp-plot';
+import { CatPlot, HOLD_OVER, MAX_DRAWN, PHONE_DRAWN, thinCats } from './rp-plot';
 import { forgetRisen } from './rp-draw';
 import type { CatSeries } from './rp-view';
 
@@ -65,6 +65,26 @@ describe('a phone draws few enough points that a long window is not held (r103 7
     expect(bars(container)).toBeGreaterThan(40);
     expect(bars(container)).toBeLessThanOrEqual(PHONE_DRAWN);
     expect(container.textContent).toMatch(new RegExp(`${bars(container)} of 365`));
+  });
+
+  it('[REVERT-FAILS] a house closed one day in seven still draws within the cap, on a phone and on a desk', () => {
+    const closed = (every: number[]): CatSeries => ({
+      ...series(365),
+      data: Array.from({ length: 365 }, (_, i) => ({
+        label: `D${i + 1}`,
+        value: every.includes(i % 7) ? null : 100 + ((i * 37) % 91),
+      })),
+    });
+    const oneDay = closed([0]);
+    const twoDays = closed([0, 2]);
+    for (const s of [oneDay, twoDays]) {
+      expect(thinCats(s.data, [], PHONE_DRAWN).length).toBeLessThanOrEqual(PHONE_DRAWN);
+      expect(thinCats(s.data, [], MAX_DRAWN).length).toBeLessThanOrEqual(MAX_DRAWN);
+    }
+    const { container } = render(<CatPlot series={oneDay} kind="bars" />);
+    expect(bars(container)).toBeGreaterThan(0);
+    expect(bars(container)).toBeLessThanOrEqual(PHONE_DRAWN);
+    expect(bars(container), 'a held frame again').toBeLessThanOrEqual(HOLD_OVER);
   });
 
   it('[REVERT-FAILS] a desk keeps the fuller drawing, held a frame as before', () => {
