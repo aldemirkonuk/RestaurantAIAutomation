@@ -17,7 +17,7 @@ ALTER TABLE public.wine_consumption_log
   ADD CONSTRAINT wine_consumption_log_cost_basis_check
   CHECK (cost_basis IS NULL OR cost_basis IN
     ('invoice_lot_wac', 'invoice_lot_wac_partial', 'agreed_lot_wac', 'last_purchase_price',
-     'invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial'));
+     'invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial', 'ledger_lot_draw'));
 
 COMMENT ON COLUMN public.wine_consumption_log.cost_basis IS
-  'What the cost was read from at sale: invoice_lot_wac, invoice_lot_wac_partial, agreed_lot_wac, last_purchase_price, pour_lot_wac or pour_lot_wac_partial; invoice_restated once a verified invoice moved it.';
+  'What the cost was read from at sale: invoice_lot_wac, invoice_lot_wac_partial, agreed_lot_wac, last_purchase_price, pour_lot_wac or pour_lot_wac_partial (a pour has no ledger row, r105), ledger_lot_draw (read from the lots the sale drew); invoice_restated once a verified invoice moved it.';
