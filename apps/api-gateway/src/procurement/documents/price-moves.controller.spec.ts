@@ -1,7 +1,7 @@
 import { DocumentsController } from "./documents.controller";
 
 /** A thenable fake db: one canned answer per table, every call chains. */
-const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null } };
+const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null }, document_deliveries: { data: [], error: null } };
 type Call = { table: string; method: string; args: unknown[] };
 function controllerWith(results: Record<string, { data: unknown; error: unknown }>, calls: Call[] = []) {
   results = { ...HOUSE, ...results };
@@ -14,6 +14,7 @@ function controllerWith(results: Record<string, { data: unknown; error: unknown 
         // or pre-cut. A filter on a column the fixture rows do not carry is
         // ignored (the call is still recorded and asserted separately).
         const eqs: [string, unknown][] = [];
+        const ins: [string, unknown[]][] = [];
         const lts: [string, string][] = [];
         let ord: { col: string; asc: boolean } | null = null;
         let cap: number | null = null;
@@ -23,6 +24,7 @@ function controllerWith(results: Record<string, { data: unknown; error: unknown 
           let rows = (r.data as Record<string, any>[]).filter(
             (row) =>
               eqs.every(([c, v]) => !(c in row) || row[c] === v) &&
+              ins.every(([c, vs]) => c in row && vs.includes(row[c])) &&
               lts.every(([c, v]) => !(c in row) || String(row[c]) < v),
           );
           if (ord) {
@@ -32,7 +34,8 @@ function controllerWith(results: Record<string, { data: unknown; error: unknown 
           return { ...r, data: cap == null ? rows : rows.slice(0, cap) };
         };
         const rec = (m: string, args: unknown[]) => calls.push({ table, method: m, args });
-        for (const m of ["select", "in", "not"]) b[m] = (...args: unknown[]) => (rec(m, args), b);
+        for (const m of ["select", "not"]) b[m] = (...args: unknown[]) => (rec(m, args), b);
+        b.in = (...args: unknown[]) => (rec("in", args), ins.push([args[0] as string, args[1] as unknown[]]), b);
         b.eq = (...args: unknown[]) => (rec("eq", args), eqs.push([args[0] as string, args[1]]), b);
         b.lt = (...args: unknown[]) => (rec("lt", args), lts.push([args[0] as string, String(args[1])]), b);
         b.order = (...args: unknown[]) => (rec("order", args), (ord = { col: args[0] as string, asc: (args[1] as any)?.ascending !== false }), b);
@@ -99,6 +102,53 @@ describe("DocumentsController.priceMoves — a cost that jumped with no PO to ca
     const out = await c.priceMoves("d1", user);
     expect(out.lines[0]).toMatchObject({ compared: true });
     expect(out.lines[1]).toMatchObject({ compared: true, moved: true, sentence: "was 16.00, now 20.00, up 25 percent" });
+  });
+
+  describe("a verified paper is not compared with its own lot, nor with later deliveries", () => {
+    const owned = (cost: number, at: string, delivery: string, good = "g1") => ({ ...lot(cost, at, good), delivery_id: delivery });
+    // The paper's own delivery is dOwn: at VERIFIED its door lot was finalised
+    // with this paper's own unit price and invoice provenance.
+    const own = { document_deliveries: { data: [{ delivery_id: "dOwn" }], error: null } };
+
+    it("compares the newest verified paper with the delivery before it, not with itself", async () => {
+      const c = controllerWith({
+        ...own,
+        procurement_document_lines: { data: [line({ unit_price: 11.8 })], error: null },
+        inventory_lots: { data: [owned(11.8, "2026-11-01T00:00:00Z", "dOwn"), owned(10, "2026-10-01T00:00:00Z", "dEarlier")], error: null },
+      });
+      const out = await c.priceMoves("d1", user);
+      expect(out.lines[0]).toMatchObject({ compared: true, moved: true, sentence: "was 10.00, now 11.80, up 18 percent" });
+    });
+
+    it("compares an OLDER verified paper with what came before it, never with a later delivery", async () => {
+      const c = controllerWith({
+        ...own,
+        procurement_document_lines: { data: [line({ unit_price: 11.8 })], error: null },
+        inventory_lots: {
+          data: [owned(15, "2026-11-20T00:00:00Z", "dLater"), owned(11.8, "2026-11-01T00:00:00Z", "dOwn"), owned(10, "2026-10-01T00:00:00Z", "dEarlier")],
+          error: null,
+        },
+      });
+      const out = await c.priceMoves("d1", user);
+      // Inverted before: "was 15.00, now 11.80, down 21 percent".
+      expect(out.lines[0]).toMatchObject({ sentence: "was 10.00, now 11.80, up 18 percent" });
+    });
+
+    it("a paper with no lot of its own yet is compared with the newest lot, as before", async () => {
+      const c = controllerWith({
+        procurement_document_lines: { data: [line({})], error: null },
+        inventory_lots: { data: [owned(10, "2026-11-01T00:00:00Z", "dEarlier")], error: null },
+      });
+      expect((await c.priceMoves("d1", user)).lines[0]).toMatchObject({ compared: true, moved: true });
+    });
+
+    it("says it failed when the paper's deliveries cannot be read", async () => {
+      const c = controllerWith({
+        procurement_document_lines: { data: [line({})], error: null },
+        document_deliveries: { data: null, error: { message: "boom" } },
+      });
+      await expect(c.priceMoves("d1", user)).rejects.toMatchObject({ status: 500 });
+    });
   });
 
   it("has no sentence when the good has no previous cost", async () => {
