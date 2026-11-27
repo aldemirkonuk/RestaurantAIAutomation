@@ -211,7 +211,8 @@ describe('a house with no time zone says so on spend and the week (ADR 0296)', (
   it('a quiet stretch is said plainly, never called ambiguous', () => {
     const c = pacing.select({ spendLast30d: 0, spendPrev30d: 0, committedOpenOrders: 0, openOrderCount: 0 }) as PacingRegister;
     const view = pacing.view(c, { days: 30 });
-    expect(String(view.say)).toMatch(/No delivered purchase order/);
+    // A node since r38: the sentence, then the way in (rp-next-step.tsx).
+    expect(sayOf(view.say)).toMatch(/No delivered purchase order/);
   });
 
   it('the week names no weekday and says why', () => {

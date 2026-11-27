@@ -13,6 +13,7 @@
 
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { withStep } from './rp-next-step';
 import ReadingList from './ReadingList';
 import {
   EM,
@@ -118,7 +119,10 @@ const reading = analysis<ReadingRows>({
         say:
           withheld > 0
             ? `Nothing here is written for your role. ${withheldSentences(withheld)}`
-            : 'The engine has produced no insight for this restaurant yet. It computes once a day, and again whenever this page finds nothing stored — there is nothing to say, rather than nothing to show.',
+            : withStep(
+                'The engine has produced no insight for this restaurant yet. It computes once a day, and again whenever this page finds nothing stored — there is nothing to say, rather than nothing to show.',
+                'start',
+              ),
         figures: [],
         notes: [],
         basis: [],
@@ -548,7 +552,10 @@ const pacing = analysis<PacingRegister>({
       };
     if (c.spendLast30d === 0 && c.spendPrev30d === 0)
       return {
-        say: 'No delivered purchase order falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.',
+        say: withStep(
+          'No delivered purchase order falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.',
+          'orders',
+        ),
         figures,
         notes,
         basis,
@@ -637,7 +644,10 @@ const week = analysis<WeekRegister>({
       };
     if (w.weekdayProfile.length === 0)
       return {
-        say: 'No consumption is recorded in the last 90 days, so the week has no shape yet.',
+        say: withStep(
+          'No consumption is recorded in the last 90 days, so the week has no shape yet.',
+          'consumption',
+        ),
         figures: [],
         notes: [],
         basis,
@@ -686,7 +696,10 @@ const week = analysis<WeekRegister>({
             : [];
     if (data.every((b) => (b.value ?? 0) === 0))
       return {
-        say: 'Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape to draw yet.',
+        say: withStep(
+          'Every weekday reads zero over the last 90 days — the consumption log recorded no movement, so the week has no shape to draw yet.',
+          'consumption',
+        ),
         figures,
         notes,
         basis,
@@ -837,9 +850,16 @@ const ahead = analysis<AheadRegister>({
       const young = a.observed?.young === true;
       const why = young ? 'Too few days of records to project from' : 'No model fitted this history';
       return {
+        // The way in only when the history holds no consumption at all; a
+        // history with movement that no model fitted is not a missing feed.
         say: young
           ? `Nothing is projected yet: the house has ${a.observed?.observedDays == null ? 'too few' : figure(a.observed.observedDays)} days of records, and a forecast needs two of each weekday.`
-          : 'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.',
+          : a.history.values.some((v) => (v ?? 0) !== 0)
+            ? 'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.'
+            : withStep(
+                'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.',
+                'consumption',
+              ),
         figures: [
           { label: `Next ${a.horizon} days`, value: EM, note: why },
         ],
