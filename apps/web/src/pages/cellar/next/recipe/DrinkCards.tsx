@@ -35,6 +35,7 @@ import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInASer
 import { formatHousePercent } from '../../../../lib/house-number';
 import { recipeWords, type RecipeWords } from './recipeWords';
 import { lineShares, type ShareInput } from './lineShare';
+import TryPrice from './TryPrice';
 
 interface Card {
   id: string;
@@ -460,6 +461,8 @@ export default function DrinkCards({
           </li>
         ))}
       </ul>
+      {/* Try a price (r108 g8): owners and managers, the roles that see money; staff get no money and so no box. */}
+      {sayMoney ? <TryPrice cost={shownCost} sayMoney={sayMoney} sayPct={sayPct} tax={tax} isDish={isDish} /> : null}
       {shared ? (
         <div className="cl-rcp-card-said" data-testid="line-shares-block" style={{ marginTop: 8 }}>
           <span>Share of the cost a {words.unit}</span>

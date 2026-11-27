@@ -392,9 +392,10 @@
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
 /* The menu offers hold their line before the menu read lands: one line, and two at a phone where the
    "no menu is current" sentence wraps. Not an inline height: that would beat this rule. */
-.cl-offer-room { min-height: 1lh; }
+/* "Try a price" (r108 drinks-g8) holds its sentence's room the same way, so typing never moves what is under it. */
+.cl-offer-room, .cl-try-room { min-height: 1lh; }
 @media (max-width: 640px) {
-  .cl-offer-room { min-height: 2lh; }
+  .cl-offer-room, .cl-try-room { min-height: 2lh; }
 }
 
 /* facts of record: a label above the figure, never a label beside it */
