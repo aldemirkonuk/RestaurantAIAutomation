@@ -11,7 +11,9 @@ import {
   MUDAVYM_PAGES,
   clearMudavymDesignCache,
   useMudavymDesign,
+  useMudavymDesignVerdict,
 } from './useMudavymDesign';
+import { forgetHouseReads } from '../../contexts/AuthContext';
 
 const checkFlag = vi.mocked(settingsApi.checkFeatureFlag);
 
@@ -321,5 +323,77 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     expect(result.current).toBe(false); // legacy while the check is in flight, even though held-back
     await waitFor(() => expect(result.current).toBe(true));
     expect(checkFlag).toHaveBeenCalledWith('r1', `mudavym_design_${page}`);
+  });
+});
+
+describe('the last answer seeds the first render (perf-p10-2)', () => {
+  const SEED = (house: string) => `mudavym.flagSeed:${house}:mudavym_design_arrival`;
+
+  it('a kept answer for this house draws next at the first render, and the read still goes out', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    window.sessionStorage.setItem(SEED('r1'), '1');
+    checkFlag.mockResolvedValue(checkResult(true, true));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
+    expect(result.current).toBe(true); // no wait for the round trip
+    await waitFor(() => expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_arrival'));
+  });
+
+  it('a stale answer is corrected once the read lands, and the new answer is kept', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    window.sessionStorage.setItem(SEED('r1'), '1');
+    checkFlag.mockResolvedValue(checkResult(false, true));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
+    expect(result.current).toBe(true);
+    await waitFor(() => expect(result.current).toBe(false));
+    expect(window.sessionStorage.getItem(SEED('r1'))).toBe('0');
+  });
+
+  it('with no kept answer it behaves as before: off until the read lands', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    checkFlag.mockResolvedValue(checkResult(true, true));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
+    expect(result.current).toBe(false);
+    await waitFor(() => expect(result.current).toBe(true));
+  });
+
+  it('the key names the house: another house\'s answer is never read, and a failed read keeps nothing', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r2');
+    window.sessionStorage.setItem(SEED('r1'), '1');
+    checkFlag.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(() => useMudavymDesign('arrival'));
+    expect(result.current).toBe(false);
+    await waitFor(() => expect(checkFlag).toHaveBeenCalled());
+    expect(window.sessionStorage.getItem(SEED('r2'))).toBeNull();
+  });
+
+  it('the verdict hook answers from the kept answer instead of null, and the read corrects it', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    window.sessionStorage.setItem(SEED('r1'), '1');
+    checkFlag.mockResolvedValue(checkResult(false, true));
+    const { result } = renderHook(() => useMudavymDesignVerdict('arrival'));
+    expect(result.current).toBe(true);
+    await waitFor(() => expect(result.current).toBe(false));
+  });
+
+  it('a house switch or sign-out wipes every kept answer', () => {
+    window.sessionStorage.setItem(SEED('r1'), '1');
+    window.sessionStorage.setItem('unrelated', 'keep');
+    forgetHouseReads(undefined);
+    expect(window.sessionStorage.getItem(SEED('r1'))).toBeNull();
+    expect(window.sessionStorage.getItem('unrelated')).toBe('keep');
+  });
+
+  it('blocked storage reads as unknown, never throws', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      checkFlag.mockResolvedValue(checkResult(true, true));
+      const { result } = renderHook(() => useMudavymDesign('arrival'));
+      expect(result.current).toBe(false);
+    } finally {
+      get.mockRestore();
+    }
   });
 });

@@ -22,6 +22,7 @@ import { useCallback } from 'react'
 
 /**
  * The house's goods list: the one key and fetcher /inventory reads, so any
+ * route can start it before the page that draws it mounts (p10-2) and any
  * other reader (the Cmd-K palette's Goods, r108 g13) shares its cache. The key
  * carries the restaurant id, so one house's list is never read as another's.
  */
@@ -32,6 +33,7 @@ export function inventoryListQuery(restaurantId: string) {
       const items = await inventoryApi.getInventory(restaurantId)
       return items.map(normalizeInventoryItem)
     },
+    staleTime: 30_000,
   }
 }
 
