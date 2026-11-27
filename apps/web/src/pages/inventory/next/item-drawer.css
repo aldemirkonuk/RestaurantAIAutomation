@@ -258,7 +258,14 @@ button.ivd-card:active {
 }
 /* The one-line "Used in 3 dishes, 2 drinks" under the head: a 44 px tap that scrolls to where it is used. */
 .ivd-usedchip {
-  display: inline-flex;
+  /* Block-level, not inline: an inline-flex box sits on the text baseline, and an
+     empty held one (no text) put its baseline at its bottom edge, so the held
+     chip and the real one made line boxes about 7 px apart (r108-7a). A minimum,
+     not a fixed height: at 320-375 px with 200% text the sentence wraps past 44 px
+     and must grow, not overlap the Used in section below (WCAG 1.4.4 / 1.4.10).
+     The empty held chip shares this class, so it takes the same 44 px. */
+  display: flex;
+  width: fit-content;
   align-items: center;
   min-height: 44px;
   margin: 0;
