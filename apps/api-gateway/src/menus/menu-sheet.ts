@@ -12,8 +12,7 @@
  * `category` is the menu's section. The reader has no `currency` column at
  * this base (the house's money is named by the house, not by the file), so
  * none is written. A price is written with a dot decimal and no thousands
- * mark whatever the house's money: the reader keeps digits and dots only, so
- * a decimal comma would read as a hundredfold price.
+ * mark whatever the house's money, so it reads the same in any locale.
  *
  * FORMULA INJECTION: a cell that starts with = + - or @ (or a tab or return)
  * is opened by a spreadsheet as a formula. Such a cell is written with a
