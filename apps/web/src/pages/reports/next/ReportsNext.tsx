@@ -83,12 +83,12 @@ import {
   type Slot,
 } from './rp-sheet';
 import { COMPARE_ANSWER_PX, COMPARE_GRID_ROWS, FIT_IDS, controlRows, fittedRows } from './rp-fit';
-import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
+import { drawnRegister, isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type LastRead, type SparkSeries } from './rp-strip';
 import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
-import { defaultSheet, useReportsNextData } from './useReportsNextData';
+import { defaultSheet, useReportsNextData, type Register } from './useReportsNextData';
 import './reports-next.css';
 
 export interface ReportsNextProps {
@@ -262,6 +262,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     };
   }, []);
   const headRef = useRef<HTMLElement | null>(null);
+  const tillLast = useRef<LastRead>(null);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {
@@ -616,6 +617,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     .map((c) => c.id)
     .filter((id) => readsRegister(CATALOGUE[id]));
 
+  // The hold follows what the till card draws, stand-in included (Cutting's own rule).
+  const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast);
+  const tillHeld = tillAnswersCompare(tillRead.data, tillRead.ctx);
   const cuttings: SheetCutting[] = view.cuttings.map((c) => {
     const fit = !editing && FIT_IDS.includes(c.id);
     // A cutting whose honest answer is a sentence folds to a strip while the
@@ -631,8 +635,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         : c.slot,
     extraRows: editing ? controlRows(controlPx[c.id]) : undefined,
     // Phone: the till holds the compare answer's row while compare is drawn (r107 g5).
-    holdPx: c.id === 'till' ? (!strip && tillAnswersCompare(data.registers.till?.data, ctx) ? COMPARE_ANSWER_PX : 0) : undefined,
-    holdRows: c.id === 'till' ? (!strip && tillAnswersCompare(data.registers.till?.data, ctx) ? COMPARE_GRID_ROWS : 0) : undefined,
+    holdPx: c.id === 'till' ? (!strip && tillHeld ? COMPARE_ANSWER_PX : 0) : undefined,
+    holdRows: c.id === 'till' ? (!strip && tillHeld ? COMPARE_GRID_ROWS : 0) : undefined,
     body: (
       <Cutting
         id={c.id}

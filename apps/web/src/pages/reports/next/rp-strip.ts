@@ -12,6 +12,7 @@ import { readsRegister, type ViewCtx } from "./rp-spec";
 import type { AnalysisId, GraphType } from "./rp-sheet";
 import type { AnalysisView } from "./rp-view";
 import type { Register } from "./useReportsNextData";
+import type { MutableRefObject } from "react";
 
 /** Rows a collapsed (empty) cutting keeps: 2 x 34 + 14 = 82 px of ruling, drawn 72 px tall. */
 export const STRIP_ROWS = 2;
@@ -126,4 +127,34 @@ export function sparkOf(
   } catch {
     return null;
   }
+}
+
+/** The last whole read of a windowed register and the days it answered. */
+export type LastRead = { data: unknown; days: number } | null;
+
+/**
+ * What a windowed card DRAWS right now (ADR 0020): the register's own answer, or,
+ * while a newly picked window is read, the last whole read with its own days (the
+ * stand-in, never for a first read). Cutting draws from this and the page sizes
+ * the phone till's held row from the same answer, so a hold cannot fall to 0
+ * while the card still shows the prior row (r107 reports fix on #2178).
+ * Updates `last` as a render-time ref, as Cutting always has.
+ */
+export function drawnRegister(
+  takesWindow: boolean,
+  register: Register<unknown> | undefined,
+  ctx: ViewCtx,
+  last: MutableRefObject<LastRead>,
+): { standIn: NonNullable<LastRead> | null; data: unknown; ctx: ViewCtx } {
+  if (takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
+    last.current = { data: register.data, days: ctx.days };
+  const standIn =
+    takesWindow && register?.loading && !register.failure && last.current && last.current.days !== ctx.days
+      ? last.current
+      : null;
+  return {
+    standIn,
+    data: standIn ? standIn.data : register?.data,
+    ctx: standIn ? { ...ctx, days: standIn.days } : ctx,
+  };
 }
