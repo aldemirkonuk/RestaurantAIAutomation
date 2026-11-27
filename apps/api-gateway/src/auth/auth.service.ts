@@ -3337,7 +3337,7 @@ export class AuthService {
     const { data: verif, error: verifError } =
       await this.databaseService.supabase
         .from("email_verifications")
-        .select("id, expires_at, verified_at, user_id")
+        .select("id, expires_at, verified_at, user_id, email")
         .eq("token", token)
         .maybeSingle();
 
@@ -3370,7 +3370,13 @@ export class AuthService {
       );
     }
 
-    const user = await this.verifyEmailProvedByLink(verif.user_id);
+    // Second argument: the address an emailed CODE proved (the code path's, not
+    // a link's). The link's own address is the third.
+    const user = await this.verifyEmailProvedByLink(
+      verif.user_id,
+      null,
+      typeof verif.email === "string" ? verif.email : null,
+    );
 
     await this.databaseService.supabase
       .from("email_verifications")
@@ -3414,7 +3420,15 @@ export class AuthService {
    * verified is returned as it is. A failed write verifies nothing: 503, and
    * the link is not spent.
    */
-  private async verifyEmailProvedByLink(userId: string): Promise<any> {
+  private async verifyEmailProvedByLink(
+    userId: string,
+    // Reserved: the address an emailed code proved (the code path passes it
+    // here; a link has none). Kept in this position so a link's address,
+    // which is the THIRD argument, can never be read as a proved address.
+    _provedEmail: string | null = null,
+    // The address the LINK was mailed to.
+    linkEmail: string | null = null,
+  ): Promise<any> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: row, error: readErr } = await this.databaseService.supabase
         .from("users")
@@ -3430,6 +3444,21 @@ export class AuthService {
         );
       }
       if (!row) throw new BadRequestException("User not found");
+      // A link proves the mailbox it was mailed to. When the account has
+      // moved to another address since (changeUnverifiedEmail), a link for
+      // the old one proves nothing about the new one, even if it was
+      // inserted after the move voided the rows (a resend racing the move).
+      if (
+        linkEmail !== null &&
+        String(row.email ?? "").trim().toLowerCase() !==
+          linkEmail.trim().toLowerCase()
+      ) {
+        throw new BadRequestException({
+          message:
+            "This link was sent to an address this account no longer uses. Use the newest email we sent.",
+          code: "LINK_FOR_OLD_ADDRESS",
+        });
+      }
       if (row.email_verified === true) return row;
 
       const lapsed =
@@ -3450,6 +3479,7 @@ export class AuthService {
         .eq("user_id", userId)
         .eq("email_verified", false)
         .eq("session_version", from)
+        .eq("email", row.email)
         .select("*")
         .maybeSingle();
       if (error) {
