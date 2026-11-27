@@ -27,6 +27,7 @@
  */
 
 import { useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { InviteTeamDialog } from '@/components/team/InviteTeamDialog';
 import { TeamLaborSettings } from '@/components/team/TeamLaborSettings';
 import { TeamGoalsSettings } from '@/components/team/TeamGoalsSettings';
@@ -42,7 +43,9 @@ const ROLE_MEANS: Record<string, string> = {
 
 export function TeamSection({ data }: { data: SettingsNextData }) {
   const { team, role, canManage, restaurantId, writer, setMemberRole, removeMember, revokeInvite, userId } = data;
-  const [inviting, setInviting] = useState(false);
+  // `?invite=1` (the first-menu page's "Invite your people") opens the sheet on arrival.
+  const [searchParams] = useSearchParams();
+  const [inviting, setInviting] = useState(() => canManage && searchParams.get('invite') === '1');
   const [labourOpen, setLabourOpen] = useState(false);
   const inviteAnchor = useRef<HTMLButtonElement>(null);
 

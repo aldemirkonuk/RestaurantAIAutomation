@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
   addMenuItem,
+  getOnboardingProgress,
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
@@ -46,6 +48,59 @@ function price(item: MenuImportReviewItem) {
     item.bottlePrice != null ? `${item.bottlePrice} bottle` : null,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+type SessionRole = { activeRole?: string | null; user?: { role?: string | null } | null } | null
+
+/**
+ * The session's role, read without requiring one: `useAuth` throws outside an
+ * AuthProvider, and a page with no signed-in context simply has no role. The
+ * hook is called either way, so the order of hooks never changes.
+ */
+function useSessionRole(): SessionRole {
+  try {
+    return useAuth() as SessionRole
+  } catch {
+    return null
+  }
+}
+
+/**
+ * One calm line after the first proof: the way on to a working team. The
+ * invite itself is the settings team section's own sheet (no new endpoint, no
+ * motion). Shown to an owner or a manager, and only once the setup says nobody
+ * has been invited; a read that fails shows nothing, because the line is a
+ * pointer, not a fact about the house.
+ */
+function InviteYourPeople() {
+  const auth = useSessionRole()
+  const role = auth?.activeRole ?? auth?.user?.role ?? null
+  const mayInvite = role === 'owner' || role === 'manager'
+  const [invited, setInvited] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!mayInvite) return
+    let live = true
+    Promise.resolve()
+      .then(() => getOnboardingProgress())
+      .then((progress) => {
+        if (live && progress) setInvited(progress.team_member_invited)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [mayInvite])
+
+  if (!mayInvite || invited !== false) return null
+  return (
+    <p className="mt-6 text-sm text-[#6d685f]">
+      Next:{' '}
+      <Link to="/settings?tab=team&invite=1" className="text-[#1a5e6b] underline">
+        Invite your people
+      </Link>
+    </p>
+  )
 }
 
 export default function HouseMenu() {
@@ -324,6 +379,7 @@ export default function HouseMenu() {
         <button type="button" onClick={() => navigate('/house')} className="mt-10 bg-[#1a5e6b] px-6 py-3 text-white">
           Open the house
         </button>
+        <InviteYourPeople />
         </div>
         {showOriginal && sourceImage && (
           <aside className="border-l border-[#211f1b]/15 pl-6">

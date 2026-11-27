@@ -63,7 +63,9 @@ vi.mock('../../../hooks/queries/useDataTerms', () => ({
   useDataTerms: () => ({ data: undefined }),
   useInvalidateDataTerms: () => vi.fn(),
 }));
-vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
+vi.mock('@/components/team/InviteTeamDialog', () => ({
+  InviteTeamDialog: ({ open }: { open: boolean }) => (open ? <div data-testid="invite-sheet" /> : null),
+}));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
 vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
 vi.mock('@/components/locations/AddLocationDialog', () => ({ AddLocationDialog: () => null }));
@@ -818,6 +820,16 @@ describe('SettingsNext — provenance and unknowns', () => {
     // The branch with no date on it gets an em dash naming why — never a
     // substituted date, and never the other branch's.
     expect(screen.getByText(/reached your session without one/i)).toBeInTheDocument();
+  });
+
+  it('opens the invite sheet on arrival from the first-menu page (?invite=1), and not otherwise', () => {
+    mount('/settings?tab=team&invite=1');
+    expect(screen.getByTestId('invite-sheet')).toBeInTheDocument();
+  });
+
+  it('leaves the invite sheet shut without ?invite=1', () => {
+    mount('/settings?tab=team');
+    expect(screen.queryByTestId('invite-sheet')).toBeNull();
   });
 
   it('does not fabricate an empty roster out of a failed read', () => {
