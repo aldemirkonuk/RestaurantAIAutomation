@@ -50,6 +50,14 @@ describe('ReceiptsCoverage (r109 g2)', () => {
     );
   });
 
+  it('states no figure when every sale in the window kept no cost', () => {
+    const none = { checked: '0', partial: '0', estimate: '0', other: '0', total: '0', sales: 0, estimateDeliveries: [] };
+    expect(coverageSentence(cov({ ...none, notKept: 5 }))).toBe('Last 7 days the till sold 5 drinks, and none kept a cost.');
+    expect(coverageSentence(cov({ ...none, notKept: 1 }))).toBe('Last 7 days the till sold 1 drink, and it kept no cost.');
+    expect(coverageSentence(cov({ ...none, notKept: 5 }))).not.toMatch(/0\.00/);
+    expect(coverageSentence(cov({ ...none, notKept: 0 }))).toBe('Last 7 days the till sold no drinks with a cost.');
+  });
+
   it('opens a delivery that has a paper, and says when there is none yet', async () => {
     api.coverage.mockResolvedValueOnce(cov());
     const onOpen = show();

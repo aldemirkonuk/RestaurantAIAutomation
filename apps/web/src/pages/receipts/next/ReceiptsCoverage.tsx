@@ -29,6 +29,11 @@ const plural = (k: number, one: string, many: string) => `${k} ${k === 1 ? one :
 export function coverageSentence(c: SaleCostCoverage): string {
   const m = (s: string) => fmtMoney(n(s), c.currency);
   if (c.sales === 0 && c.notKept === 0) return `Last ${c.days} days the till sold no drinks with a cost.`;
+  // Nothing kept a cost: there is no total to state, and a 0.00 would stand for unknown (ADR 0020).
+  if (c.sales === 0)
+    return c.notKept === 1
+      ? `Last ${c.days} days the till sold 1 drink, and it kept no cost.`
+      : `Last ${c.days} days the till sold ${c.notKept} drinks, and none kept a cost.`;
   const parts = [`${m(c.checked)} from checked papers`];
   if (n(c.partial) !== 0) parts.push(`${m(c.partial)} on papers partly checked`);
   if (n(c.estimate) !== 0)
