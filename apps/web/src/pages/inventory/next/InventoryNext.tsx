@@ -53,6 +53,7 @@ import {
 } from './LazyPanels';
 import InventoryTable from './InventoryTable';
 import ItemDrawer from './ItemDrawer';
+import { useDataTermsSignInBusy } from '../../../hooks/queries/useDataTerms';
 import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
 import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
@@ -223,6 +224,7 @@ export default function InventoryNext() {
   const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
   const [naming, setNaming] = useState(() => params.has('name-delivery'));
+  const termsBusy = useDataTermsSignInBusy();
   const searchRef = useRef<HTMLInputElement>(null);
   const toolsRef = useRef<HTMLElement>(null);
   const ladder = useLadder(data.state === 'reading');
@@ -1267,7 +1269,8 @@ export default function InventoryNext() {
           />
         </PanelSuspense>
       ) : null}
-      {openId !== null && data.state === 'ready' && rows !== null ? (
+      {/* The terms sheet cannot be dismissed (ADR 0207 §19), so a link's drawer waits for it: one overlay at a time. */}
+      {openId !== null && data.state === 'ready' && rows !== null && !termsBusy ? (
         <ItemDrawer
           key={openId}
           row={rows.find((r) => r.id === openId) ?? null}

@@ -14,7 +14,9 @@ import type { InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
 
 const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
+const terms = vi.hoisted(() => ({ busy: false }));
 const exportSpy = vi.hoisted(() => vi.fn(async (_opts: unknown) => undefined));
+vi.mock('../../../hooks/queries/useDataTerms', () => ({ useDataTermsSignInBusy: () => terms.busy }));
 vi.mock('../../../lib/tableExport', () => ({ exportTable: exportSpy }));
 
 vi.mock('./useInventoryNextData', async (orig) => ({
@@ -1225,6 +1227,24 @@ describe('INV-W38 — the view is the URL', () => {
     fireEvent.click(screen.getByTestId('inv-row-a').querySelector('button[aria-expanded]')!);
     expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
     expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it("an owner who has not accepted the terms meets the sheet alone: a link's drawer waits, then opens on acceptance", () => {
+    terms.busy = true;
+    try {
+      mock.data = data({ rows: two() });
+      const seen = renderAt('/inventory?open=b');
+      expect(screen.queryByRole('heading', { name: 'Istanbul White' })).toBeNull();
+      expect(screen.queryByTestId('ivd-cards')).toBeNull();
+      // The link survives, so the drawer opens once the terms are accepted.
+      expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+      cleanup();
+      terms.busy = false;
+      renderAt('/inventory?open=b');
+      expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+    } finally {
+      terms.busy = false;
+    }
   });
 
   it('opens the title a ?highlight= link names, by row id or by wine id', () => {

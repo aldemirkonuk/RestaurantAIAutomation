@@ -40,8 +40,6 @@
  *     own single-topmost-overlay contract (ADR 0112) covers the rest.
  */
 
-import { useLocation } from 'react-router-dom';
-import { opensItemDrawer } from '../../lib/opensItemDrawer';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDataTerms } from '../../hooks/queries/useDataTerms';
 import { DataTermsAcceptSheet } from './DataTermsAcceptSheet';
@@ -53,9 +51,6 @@ export function DataTermsSignInGate() {
   const activeRole = auth?.activeRole ?? null;
   const isOwner = activeRole === 'owner';
   const q = useDataTerms(isOwner);
-  // A link that opens a good's drawer (`/inventory?open=`) puts the drawer above this sheet, which
-  // cannot then be answered. It waits until the drawer closes, like #2078's theme sheet.
-  const { pathname, search } = useLocation();
 
   if (!isOwner) return null;
   // Loading, or a failed fetch that has not yet resolved to data: render
@@ -70,7 +65,6 @@ export function DataTermsSignInGate() {
   // the per-owner field only knows the house, and is read as that.
   const acceptedByYou = q.data.yours ? q.data.yours.current : q.data.current;
   if (acceptedByYou) return null;
-  if (opensItemDrawer(pathname, search)) return null;
 
   return <DataTermsAcceptSheet readout={q.data} dismissable={false} />;
 }

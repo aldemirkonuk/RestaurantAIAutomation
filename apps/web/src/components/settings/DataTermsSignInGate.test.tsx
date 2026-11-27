@@ -150,19 +150,13 @@ describe('when the sheet shows, and when it never does', () => {
   });
 });
 
-describe("never above a good's drawer (/inventory?open=)", () => {
-  it('an owner with unaccepted terms waits while a link has the good open, and is met on the plain page', () => {
+describe("the terms are never put off for a good's drawer (ADR 0207 §19: must accept to continue)", () => {
+  it('an owner with unaccepted terms is met on /inventory?open= and ?highlight= as on any page', () => {
     dataTermsMock.data = readout();
-    mount('/inventory?open=item-1');
-    expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
-    cleanup();
-    mount('/inventory');
-    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
-  });
-
-  it('an open= on another page is not a drawer', () => {
-    dataTermsMock.data = readout();
-    mount('/orders?open=o1');
-    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+    for (const entry of ['/inventory?open=item-1', '/inventory?highlight=item-1', '/inventory', '/orders?open=o1']) {
+      mount(entry);
+      expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+      cleanup();
+    }
   });
 });
