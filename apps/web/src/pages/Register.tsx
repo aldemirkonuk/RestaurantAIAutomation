@@ -1100,7 +1100,7 @@ export function Register() {
                   <Building2 className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
                   <input
                     id="restaurant-name"
-                    autoComplete="organization" enterKeyHint="next"
+                    autoComplete="section-house organization" enterKeyHint="next"
                     type="text"
                     value={restaurantName}
                     onChange={(e) => setRestaurantName(e.target.value)}
@@ -1211,7 +1211,7 @@ export function Register() {
                   <label htmlFor="restaurant-city" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>City <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
                   <input
                     id="restaurant-city"
-                    autoComplete="address-level2" enterKeyHint="next"
+                    autoComplete="section-house address-level2" enterKeyHint="next"
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
@@ -1223,7 +1223,7 @@ export function Register() {
                   <label htmlFor="restaurant-state" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.stateLabel}</label>
                   <input
                     id="restaurant-state"
-                    autoComplete="address-level1" enterKeyHint="next"
+                    autoComplete="section-house address-level1" enterKeyHint="next"
                     type="text"
                     value={stateProvince}
                     onChange={(e) => setStateProvince(e.target.value)}
@@ -1239,7 +1239,7 @@ export function Register() {
                   <label htmlFor="restaurant-postal-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.postalLabel}</label>
                   <input
                     id="restaurant-postal-code"
-                    autoComplete="postal-code" enterKeyHint="next"
+                    autoComplete="section-house postal-code" enterKeyHint="next"
                     type="text"
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}

@@ -52,10 +52,12 @@ describe('GetStarted autofill', () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByLabelText('Restaurant name')
-    expect(field('Restaurant name')).toHaveAttribute('autocomplete', 'organization')
-    expect(field('Address')).toHaveAttribute('autocomplete', 'address-line1')
-    expect(field('City')).toHaveAttribute('autocomplete', 'address-level2')
-    expect(field('Restaurant phone')).toHaveAttribute('autocomplete', 'tel')
+    expect(field('Restaurant name')).toHaveAttribute('autocomplete', 'section-house organization')
+    expect(field('Address')).toHaveAttribute('autocomplete', 'section-house address-line1')
+    expect(field('City')).toHaveAttribute('autocomplete', 'section-house address-level2')
+    // The house's own phone is not the person's: no tel token, so one saved
+    // address cannot fill it with the owner's mobile (r107).
+    expect(field('Restaurant phone')).toHaveAttribute('autocomplete', 'off')
     expect(field('Restaurant phone')).toHaveAttribute('inputmode', 'tel')
   })
 })
