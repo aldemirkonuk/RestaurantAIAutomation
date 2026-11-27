@@ -28,6 +28,14 @@ import {
   type HouseItemResearchView,
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
+import { seesHouseAmounts } from "../dashboard/amounts-for-role";
+import {
+  SETTLED_PRICES,
+  settledMovesFrom,
+  type SettledMove,
+  type SettledRow,
+} from "./settled-price-moves";
+
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -36,6 +44,10 @@ import {
   BulkCreateInventoryItemsDto,
   BulkInventoryLineDto,
 } from "./dto/inventory.dto";
+
+/** Settled-price rows read per page, and pages (newest first) read for the list. */
+const SETTLED_PAGE = 1000;
+const SETTLED_READ_PAGES = 5;
 
 const ML_PER_OZ = 29.5735;
 
@@ -83,6 +95,7 @@ export class InventoryService {
     rollup?: Record<string, any>,
     locations?: any[],
     analytics?: Record<string, any>,
+    settled?: SettledMove,
   ): Record<string, any> {
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
@@ -196,9 +209,48 @@ export class InventoryService {
         analytics?.usage_qty === null || analytics?.usage_qty === undefined
           ? undefined
           : Number(analytics.usage_qty),
+      // r104 g3: what the last two settled deliveries cost per unit (the
+      // "Price signals" chip). Absent = fewer than two settled deliveries.
+      // Cost figures: they travel with `wac` and leave with it.
+      lastSettledCost: settled?.last ?? undefined,
+      previousSettledCost: settled?.previous ?? undefined,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
       locations: locations ?? [],
     };
+  }
+
+  /**
+   * r104 g3: each good's last two settled delivery costs, one house. Newest
+   * first, in pages, up to SETTLED_READ_PAGES of them (a house past that reads
+   * its newest rows, and the oldest goods' moves may be missing: `capped`).
+   * `ok: false` is a FAILED read, never an empty one (ADR 0020).
+   */
+  private async fetchSettledMoves(
+    restaurantId: string,
+  ): Promise<{ map: Map<string, SettledMove>; ok: boolean; capped: boolean }> {
+    try {
+      const client = this.dbService.getClient();
+      const rows: SettledRow[] = [];
+      let capped = false;
+      for (let page = 0; page < SETTLED_READ_PAGES; page += 1) {
+        const { data, error } = await client
+          .from("inventory_lot_revaluations")
+          .select("inventory_id, source_order_id, new_unit_cost, new_cost_provenance, created_at")
+          .eq("restaurant_id", restaurantId)
+          .in("new_cost_provenance", [...SETTLED_PRICES])
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(page * SETTLED_PAGE, page * SETTLED_PAGE + SETTLED_PAGE - 1);
+        if (error) throw error;
+        rows.push(...((data ?? []) as SettledRow[]));
+        if ((data ?? []).length < SETTLED_PAGE) break;
+        if (page === SETTLED_READ_PAGES - 1) capped = true;
+      }
+      return { map: settledMovesFrom(rows), ok: true, capped };
+    } catch (err: any) {
+      this.logger.warn(`fetchSettledMoves failed: ${err?.message}`);
+      return { map: new Map(), ok: false, capped: false };
+    }
   }
 
   /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
@@ -278,13 +330,26 @@ export class InventoryService {
     }
   }
 
-  async getRestaurantInventory(restaurantId: string) {
+  /**
+   * `viewer` is the caller's role when a person asked (the controller always
+   * passes it). A role whose policy does not see `money` gets no settled-cost
+   * figures and the gateway does not read them (ADR 0360 d9). A caller with no
+   * `viewer` is the gateway itself.
+   */
+  async getRestaurantInventory(
+    restaurantId: string,
+    viewer?: { role?: string | null },
+  ) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup, locations, analytics] = await Promise.all([
+    const money = viewer === undefined || seesHouseAmounts(viewer.role);
+    const [data, rollup, locations, analytics, settled] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),
+      money
+        ? this.fetchSettledMoves(restaurantId)
+        : { map: new Map<string, SettledMove>(), ok: true, capped: false },
     ]);
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
@@ -292,11 +357,17 @@ export class InventoryService {
         rollup.get(row.id),
         locations.get(row.id),
         analytics.map.get(row.id),
+        settled.map.get(row.id),
       ),
       // Additive: every existing reader that does not know this field simply
       // ignores it. `false` means the analytics join itself could not be
       // read for this batch — not that this row has no analytics row.
       analyticsReadable: analytics.ok,
+      // r104 g3: false = the settled-price read failed, so "no price move" is
+      // unknown, not "none"; `settledCostsCapped` = only the newest rows were read.
+      ...(money
+        ? { settledCostsReadable: settled.ok, settledCostsCapped: settled.capped }
+        : {}),
     }));
   }
 

@@ -1,0 +1,129 @@
+import { InventoryService } from "./inventory.service";
+import { settledMovesFrom, type SettledRow } from "./settled-price-moves";
+
+/**
+ * The list row carries a good's last two settled delivery costs (r104 g3), so
+ * the "Price signals" chip can say which goods' prices moved. Settled means
+ * invoice or manual; one delivery is one point; a failed read is told apart
+ * from no move; only this house's rows are asked for.
+ */
+const rv = (inv: string, order: string | null, cost: number | null, at: string, prov = "invoice"): SettledRow => ({
+  inventory_id: inv,
+  source_order_id: order,
+  new_unit_cost: cost,
+  new_cost_provenance: prov,
+  created_at: at,
+});
+
+describe("settledMovesFrom", () => {
+  it("two settled deliveries give the newest and the one before", () => {
+    const m = settledMovesFrom([rv("g1", "o1", 10, "2026-01-01T00:00:00Z"), rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z")]);
+    expect(m.get("g1")).toEqual({ last: 11.2, previous: 10 });
+  });
+
+  it("one delivery gives no move, never a zero", () => {
+    expect(settledMovesFrom([rv("g1", "o1", 10, "2026-01-01T00:00:00Z")]).has("g1")).toBe(false);
+  });
+
+  it("an estimate or a sample price is not a settled price", () => {
+    const m = settledMovesFrom([
+      rv("g1", "o1", 10, "2026-01-01T00:00:00Z"),
+      rv("g1", "o2", 99, "2026-02-01T00:00:00Z", "estimated"),
+      rv("g1", "o3", 99, "2026-03-01T00:00:00Z", "sample"),
+    ]);
+    expect(m.has("g1")).toBe(false);
+  });
+
+  it("a correction moves the delivery's price, not its date; lots settled in one go are one point", () => {
+    const m = settledMovesFrom([
+      rv("g1", "o1", 10, "2026-01-01T00:00:00Z"),
+      rv("g1", "o2", 12, "2026-02-01T00:00:00Z"),
+      rv("g1", "o2", 12, "2026-02-01T00:00:00Z"),
+      rv("g1", "o1", 9, "2026-03-01T00:00:00Z"),
+    ]);
+    // o1 was first settled in January, so it is still the earlier delivery; its price is the corrected 9.
+    expect(m.get("g1")).toEqual({ last: 12, previous: 9 });
+  });
+
+  it("goods are kept apart, and an order-less settle is keyed by its moment", () => {
+    const m = settledMovesFrom([
+      rv("g1", null, 5, "2026-01-01T00:00:00Z"),
+      rv("g1", null, 5, "2026-01-01T00:00:00Z"),
+      rv("g1", null, 6, "2026-02-01T00:00:00Z"),
+      rv("g2", "o9", 3, "2026-01-01T00:00:00Z"),
+    ]);
+    expect(m.get("g1")).toEqual({ last: 6, previous: 5 });
+    expect(m.has("g2")).toBe(false);
+  });
+
+  it("a missing or negative cost is skipped", () => {
+    const m = settledMovesFrom([rv("g1", "o1", null, "2026-01-01T00:00:00Z"), rv("g1", "o2", 4, "2026-02-01T00:00:00Z")]);
+    expect(m.has("g1")).toBe(false);
+  });
+});
+
+describe("the list read carries the settled costs", () => {
+  function service(revals: { data?: any[]; error?: any }) {
+    const calls: { table: string; filters: Record<string, unknown> }[] = [];
+    const client = {
+      from: (table: string) => {
+        const call = { table, filters: {} as Record<string, unknown> };
+        calls.push(call);
+        const chain: any = {
+          select: () => chain,
+          eq: (k: string, v: unknown) => ((call.filters[k] = v), chain),
+          in: (k: string, v: unknown) => ((call.filters[k] = v), chain),
+          order: () => chain,
+          range: () => chain,
+          then: (res: any) =>
+            res(table === "inventory_lot_revaluations" ? { data: revals.data ?? [], error: revals.error ?? null } : { data: [], error: null }),
+        };
+        return chain;
+      },
+    };
+    const db: any = {
+      getClient: () => client,
+      getRestaurantInventory: jest.fn().mockResolvedValue([{ id: "g1", wine_name: "Gin" }, { id: "g2", wine_name: "Rum" }]),
+    };
+    return { svc: new InventoryService(db), calls };
+  }
+
+  it("a row with two settled deliveries names both; one with none says nothing; the read is one house's, settled only", async () => {
+    const { svc, calls } = service({
+      data: [rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z"), rv("g1", "o1", 10, "2026-01-01T00:00:00Z")],
+    });
+    const out: any[] = await svc.getRestaurantInventory("r1");
+    expect(out[0]).toMatchObject({ lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true, settledCostsCapped: false });
+    expect(out[1].lastSettledCost).toBeUndefined();
+    const read = calls.find((c) => c.table === "inventory_lot_revaluations")!;
+    expect(read.filters.restaurant_id).toBe("r1");
+    expect(read.filters.new_cost_provenance).toEqual(["invoice", "manual"]);
+  });
+
+  it("a failed read says it failed, and the rest of the list still answers", async () => {
+    const { svc } = service({ error: { message: "timeout" } });
+    const out: any[] = await svc.getRestaurantInventory("r1");
+    expect(out).toHaveLength(2);
+    expect(out[0].settledCostsReadable).toBe(false);
+    expect(out[0].lastSettledCost).toBeUndefined();
+  });
+
+  it("a role that does not see money gets no settled cost, and the table is not read for it", async () => {
+    const data = [rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z"), rv("g1", "o1", 10, "2026-01-01T00:00:00Z")];
+    for (const role of ["waiter", "bartender", "host", undefined]) {
+      const { svc, calls } = service({ data });
+      const out: any[] = await svc.getRestaurantInventory("r1", { role });
+      expect(JSON.stringify(out)).not.toMatch(/SettledCost/);
+      expect(calls.some((c) => c.table === "inventory_lot_revaluations")).toBe(false);
+    }
+  });
+
+  it("an owner and a manager still read them", async () => {
+    const data = [rv("g1", "o2", 11.2, "2026-02-01T00:00:00Z"), rv("g1", "o1", 10, "2026-01-01T00:00:00Z")];
+    for (const role of ["owner", "manager"]) {
+      const { svc } = service({ data });
+      const out: any[] = await svc.getRestaurantInventory("r1", { role });
+      expect(out[0]).toMatchObject({ lastSettledCost: 11.2, previousSettledCost: 10 });
+    }
+  });
+});
