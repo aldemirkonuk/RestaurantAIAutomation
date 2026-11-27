@@ -263,7 +263,13 @@ describe('a thread', () => {
     const onAnswer = vi.fn();
     const { onOpenReply } = mount('/communications?thread=gm%3Aabc', { draftedOrderIds: new Set(['o1']), onAnswer });
     fireEvent.click(await screen.findByTestId('write-thread-reply'));
-    expect(onAnswer).toHaveBeenCalledWith({ providerId: 'p1', answers: 'm6', subject: 'Re: Standing order' });
+    expect(onAnswer).toHaveBeenCalledWith({
+      providerId: 'p1',
+      answers: 'm6',
+      subject: 'Re: Standing order',
+      // The letter answered rides along from the page already read (r109 mail-gap g3).
+      context: { name: 'Bodega Álvaro', at: '2026-11-07T09:00:00Z', text: 'Six cases, as every week.' },
+    });
     expect(onOpenReply).not.toHaveBeenCalled();
     expect(screen.getByTestId('open-thread-reply')).toHaveTextContent('Open the drafted reply');
   });

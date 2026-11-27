@@ -134,3 +134,13 @@ describe('the thread acts on a phone', () => {
     expect(act.className).not.toMatch(/(^|\s)min-h-/);
   });
 });
+
+describe('the thread gives up the width a reply sheet takes (r109 mail-gap g3)', () => {
+  it('is the .mail-thread the page rule pads, and carries that rule', async () => {
+    mount();
+    await screen.findByTestId('write-thread-reply');
+    const section = screen.getByLabelText('Thread');
+    expect(section.classList.contains('mail-thread')).toBe(true);
+    expect(section.querySelector('style')?.textContent).toContain('.mudavym[data-sheet-open=compress] .mail-thread');
+  });
+});
