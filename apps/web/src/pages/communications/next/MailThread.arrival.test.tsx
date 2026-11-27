@@ -182,3 +182,51 @@ describe('a new letter below', () => {
     expect((await screen.findByTestId('new-letter-below')).className).not.toContain('mail-fade-in');
   });
 });
+
+describe('a letter that arrives never folds the letter being read (r109 mail g8)', () => {
+  const out = (i: number): MailMessage =>
+    L(i, { direction: 'outbound', status: 'SENT', sentAt: `2026-11-0${i}T09:00:00Z`, receivedAt: null, door: 'from_house' });
+  const read = [out(1), out(2), out(3), out(4)];
+  const openIds = () => screen.queryAllByTestId('mail-letter').map((el) => el.getAttribute('data-letter-id'));
+  const li = (id: string) => document.querySelector<HTMLElement>(`[data-testid="mail-letter"][data-letter-id="${id}"]`);
+
+  it('the newest letter stays open when another arrives under it', async () => {
+    messages = read;
+    mount();
+    await screen.findAllByTestId('mail-letter');
+    expect(openIds()).toEqual(['m4']);
+    await arrive([...read, L(5)]);
+    await waitFor(() => expect(li('m5')).not.toBeNull());
+    expect(openIds()).toEqual(['m4', 'm5']);
+    expect(screen.queryByTestId('mail-letter-folded')).toBeNull();
+  });
+
+  it('keeps it open through a later refetch with nothing new', async () => {
+    messages = read;
+    mount();
+    await screen.findAllByTestId('mail-letter');
+    await arrive([...read, L(5)]);
+    await waitFor(() => expect(li('m5')).not.toBeNull());
+    await arrive([...read, L(5)]);
+    expect(openIds()).toEqual(['m4', 'm5']);
+  });
+
+  it('the arriving letter fades in by the existing class; the letter being read does not', async () => {
+    messages = read;
+    mount();
+    await screen.findAllByTestId('mail-letter');
+    await arrive([...read, L(5)]);
+    await waitFor(() => expect(li('m5')).not.toBeNull());
+    expect(li('m5')!.className).toContain('mail-fade-in');
+    expect(li('m4')!.className).not.toContain('mail-fade-in');
+  });
+
+  it('reduced motion: the arriving letter draws no animation class', async () => {
+    messages = read;
+    mount(true);
+    await screen.findAllByTestId('mail-letter');
+    await arrive([...read, L(5)]);
+    await waitFor(() => expect(li('m5')).not.toBeNull());
+    expect(li('m5')!.className).not.toContain('mail-fade-in');
+  });
+});

@@ -599,7 +599,7 @@ export function MailThread({
                   m={r.m}
                   vendor={vendor}
                   facts={bookFacts?.get(r.m.id)}
-                  unfolded={unfoldedIds.has(r.m.id)}
+                  unfolded={unfoldedIds.has(r.m.id) || entering.has(r.m.id)}
                   onTakeBack={r.m.id === undoId ? () => noReply.mutate({ id: r.m.id, marked: false }) : undefined}
                   takingBack={noReply.isPending && noReply.variables?.marked === false}
                   house={house}
