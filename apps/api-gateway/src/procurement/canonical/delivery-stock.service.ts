@@ -15,7 +15,7 @@ import {
   PaperNote,
   notHouseMoney,
 } from "./paper-landed-cost";
-import { CostTaxBasis, HouseTax } from "../landed-cost";
+import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -1198,6 +1198,77 @@ export class DeliveryStockService {
       if (rows.length < page) break;
     }
     return { ok: true, value: totals };
+  }
+
+  /**
+   * What this paper's deliveries could not cost, said back to the receipts page
+   * (r107, DD-r106-23). `agreedPrices` has always decided which items hold
+   * their landed cost; the page never saw the answer, so a paper whose lots
+   * stayed provisional read as an ordinary paper. House-scoped: a document that
+   * is not this house's is a 404 (the same answer as one that does not exist),
+   * and an unreadable step is a 500 in words, never an empty list.
+   */
+  async heldCostsOfDocument(
+    restaurantId: string,
+    documentId: string,
+  ): Promise<
+    StockResult<{
+      taxBasisKnown: boolean;
+      held: { deliveryId: string; inventoryId: string; why: string }[];
+    }>
+  > {
+    const doc = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    if (doc.error)
+      return { ok: false, status: 500, error: `the document could not be read: ${doc.error.message}` };
+    if (!doc.data) return { ok: false, status: 404, error: "Document not found" };
+
+    const house = await this.db
+      .getClient()
+      .from("restaurants")
+      .select("tax_basis, reclaims_input_tax")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (house.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `whether this house has said how it treats tax could not be read: ${house.error.message}`,
+      };
+    const taxBasisKnown =
+      houseReclaims(houseTaxForLotCost((house.data ?? null) as HouseTaxRow | null)).reclaims !== null;
+
+    const joins = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("delivery_id")
+      .eq("document_id", documentId);
+    if (joins.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `the deliveries of this document could not be read: ${joins.error.message}`,
+      };
+    const deliveryIds = [
+      ...new Set(((joins.data ?? []) as unknown as { delivery_id: string }[]).map((r) => r.delivery_id)),
+    ];
+    const held: { deliveryId: string; inventoryId: string; why: string }[] = [];
+    for (const deliveryId of deliveryIds) {
+      const delivery = await this.deliveryFor(restaurantId, deliveryId);
+      if (!delivery.ok) return delivery;
+      const booked = await this.bookedSoFar(deliveryId);
+      if (!booked.ok) return booked;
+      const priced = await this.agreedPrices(restaurantId, deliveryId, booked.value);
+      if (!priced.ok) return priced;
+      for (const [inventoryId, why] of priced.value.held)
+        held.push({ deliveryId, inventoryId, why });
+    }
+    return { ok: true, value: { taxBasisKnown, held } };
   }
 
   private async deliveryFor(
