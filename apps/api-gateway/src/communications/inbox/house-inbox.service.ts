@@ -513,7 +513,7 @@ export class HouseInboxService {
       });
     }
     try {
-      return await this.readOneGrant(row, nowMs);
+      return await this.readOneGrant(row, nowMs, floorSeconds);
     } finally {
       if (lease.kind === "held") await this.releaseRead(connectionId, lease.token);
     }
@@ -584,6 +584,7 @@ export class HouseInboxService {
   private async readOneGrant(
     row: Record<string, unknown>,
     nowMs: number,
+    floorSeconds = 0,
   ): Promise<GrantReadOutcome> {
     const connectionId = String(row.id);
     const userId = String(row.user_id);
@@ -656,7 +657,22 @@ export class HouseInboxService {
     // and read nothing. Turning the reader on does not sweep the mailbox.
     const cursor = await this.loadCursor(connectionId);
     if (cursor === null) {
-      const seeded = await this.seedCursor(connectionId, restaurantId, nowMs);
+      const seed = await this.seedCursor(connectionId, restaurantId, nowMs);
+      // Another press or run wrote the first cursor between this one's lease
+      // check and its insert (the table's key refused the second). That read DID
+      // happen, a moment ago, so this press is answered like any press inside
+      // the minute, not as a failure that read nothing.
+      if (seed === "exists") {
+        return this.blank(row, floorSeconds > 0 ? "too_soon" : "busy", {
+          bookAddresses: addresses.length,
+          waitSeconds: floorSeconds > 0 ? floorSeconds : undefined,
+          says:
+            floorSeconds > 0
+              ? `Someone checked this mailbox a moment ago, so it was not read again. Check again in ${floorSeconds} s.`
+              : "Another read started this grant's cursor a moment ago, so this one left it alone. Nothing is filed twice.",
+        });
+      }
+      const seeded = seed === "seeded";
       return this.blank(row, seeded ? "seeded" : "error", {
         bookAddresses: addresses.length,
         cursorAdvancedTo: seeded ? nowMs : null,
@@ -1124,7 +1140,7 @@ export class HouseInboxService {
     connectionId: string,
     restaurantId: string,
     nowMs: number,
-  ): Promise<boolean> {
+  ): Promise<"seeded" | "exists" | "failed"> {
     const { error } = await this.db.client.from("house_inbox_cursors").insert({
       connection_id: connectionId,
       restaurant_id: restaurantId,
@@ -1133,12 +1149,15 @@ export class HouseInboxService {
       last_read_at: new Date(nowMs).toISOString(),
     });
     if (error) {
+      // 23505: the cursor row is keyed on the connection, so a first run that
+      // lost the race to another first run is refused here, and only here.
+      if ((error as { code?: string }).code === "23505") return "exists";
       this.logger.error(
         `House inbox: cursor could not be seeded for ${connectionId} — ${error.message}`,
       );
-      return false;
+      return "failed";
     }
-    return true;
+    return "seeded";
   }
 
   private async saveCursor(
