@@ -298,6 +298,19 @@ export interface MailMessage {
    * (r37 walk w3 M-F2). Absent from a gateway that predates it.
    */
   filedFromHeld?: MailFiledFromHeld | null;
+  /**
+   * Details (r108 mail-gap g8): the house mailbox a mirrored letter arrived in
+   * (its address for an owner or manager, "a connected mailbox" for staff),
+   * and the sender check it was stored with. Absent from an older gateway.
+   */
+  mailbox?: string | null;
+  senderCheck?: 'passed' | 'failed' | null;
+  signedBy?: string | null;
+  /**
+   * r109 mail-gap g1: what a checked delivery notice said of a letter the
+   * house sent. Null or absent on every other letter, and from an older gateway.
+   */
+  delivery?: MailDelivery | null;
 }
 
 /** Who vouched for a held letter, as GET /mail/thread says it. */
@@ -322,19 +335,6 @@ export function filedFromHeldWords(f: MailFiledFromHeld, vendor: string): string
   const who = f.byName ?? (f.byRecorded ? 'someone whose name is not on record' : 'nobody recorded');
   const when = f.at ? `, ${fmtWhen(f.at)}` : '';
   return `${why}; filed under ${vendor} by ${who}${when}.`;
-  /**
-   * Details (r108 mail-gap g8): the house mailbox a mirrored letter arrived in
-   * (its address for an owner or manager, "a connected mailbox" for staff),
-   * and the sender check it was stored with. Absent from an older gateway.
-   */
-  mailbox?: string | null;
-  senderCheck?: 'passed' | 'failed' | null;
-  signedBy?: string | null;
-  /**
-   * r109 mail-gap g1: what a checked delivery notice said of a letter the
-   * house sent. Null or absent on every other letter, and from an older gateway.
-   */
-  delivery?: MailDelivery | null;
 }
 
 /** A delivery notice's mark on a house letter (GET /mail/thread). */
