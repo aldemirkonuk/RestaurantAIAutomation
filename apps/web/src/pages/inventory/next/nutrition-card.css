@@ -55,3 +55,24 @@
   padding: 0;
   border: 0;
 }
+
+/* The fill lane (r108 g14): a step enters +12 px on Y over 160 ms. Under
+   reduced motion nothing moves or fades (ADR 0112): no rule applies. */
+.ivn-lane-h {
+  margin: 0 0 8px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ivn-lane-step {
+    animation: ivn-lane-in 160ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+}
+@keyframes ivn-lane-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}

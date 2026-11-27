@@ -23,6 +23,7 @@ export const StorageLocationManager = lazy(() => import('../../../components/inv
 export const ManualReceiptWorkspace = lazy(() => import('../../../components/inventory/ManualReceiptWorkspace').then((m) => ({ default: m.ManualReceiptWorkspace })));
 export const PosMappingPanel = lazy(() => import('../../../components/inventory/PosMappingPanel').then((m) => ({ default: m.PosMappingPanel })));
 export const AuctionLotStart = lazy(() => import('../command/AuctionLotStart').then((m) => ({ default: m.AuctionLotStart })));
+export const NutritionLane = lazy(() => import('./NutritionLane'));
 export const AutoLocatePreviewModal = lazy(() => import('../../../components/inventory/AutoLocatePreviewModal').then((m) => ({ default: m.AutoLocatePreviewModal })));
 
 /** What a panel that could not load says, as a toast. */
