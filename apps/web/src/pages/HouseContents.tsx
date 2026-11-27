@@ -18,6 +18,8 @@ import { skipFolio } from '../services/api/arrival'
 import { useAuth } from '../contexts/AuthContext'
 import { readHoursUnsaved } from '../lib/houseHoursNote'
 import { countryByName } from '../lib/countries'
+import { InvoiceProposal } from '../components/onboarding/InvoiceProposal'
+import { readLastInvoice, writeLastInvoice } from '../lib/houseLastInvoice'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
 const PAPER_MAX_BYTES = 10 * 1024 * 1024
@@ -93,6 +95,7 @@ export default function HouseContents() {
   const proof = readProof()
   const standing = proof ? proofStanding(proof.items) : null
   const [supplier, setSupplier] = useState('')
+  const vendorInput = useRef<HTMLInputElement>(null)
   const [supplierEmail, setSupplierEmail] = useState('')
   const email = vendorEmail(supplierEmail)
   const [saving, setSaving] = useState(false)
@@ -211,7 +214,9 @@ export default function HouseContents() {
   // on its way is ignored. Nothing is read back: proposing registers from the
   // paper is ADR 0144's known gap, and the row says so. Skippable, and the
   // skip is recorded on the house's opening book (`evidence`).
-  const [paper, setPaper] = useState<PaperState>('ask')
+  // r109 g2: the paper kept for this tab and house, so its seller is proposed after a reload.
+  const [lastDoc, setLastDoc] = useState(() => readLastInvoice(user?.restaurantId))
+  const [paper, setPaper] = useState<PaperState>(() => (lastDoc ? 'sent' : 'ask'))
   const paperSending = useRef(false)
   const sendPaper = async (file: File | undefined) => {
     if (!file || paperSending.current) return
@@ -223,7 +228,11 @@ export default function HouseContents() {
     setPaper('sending')
     try {
       const contentBase64 = await fileBase64(file)
-      await documentsApi.upload({ contentBase64, filename: file.name, mimeType: file.type || undefined, source: 'upload' })
+      const uploaded = await documentsApi.upload({ contentBase64, filename: file.name, mimeType: file.type || undefined, source: 'upload' })
+      if (uploaded?.documentId) {
+        writeLastInvoice(user?.restaurantId, uploaded.documentId)
+        setLastDoc(uploaded.documentId)
+      }
       setPaper('sent')
     } catch (cause) {
       paperSending.current = false
@@ -401,6 +410,7 @@ export default function HouseContents() {
                   <span className="font-serif text-2xl">Who is your first vendor?</span>
                   <input
                     aria-label="Vendor"
+                    ref={vendorInput}
                     role="combobox"
                     aria-expanded={listOpen && matches.length > 0}
                     aria-controls="house-vendor-matches"
@@ -503,12 +513,27 @@ export default function HouseContents() {
           <div className="py-6 font-serif text-2xl">
             <span className="block text-xs uppercase tracking-[0.12em] text-[#1a5e6b]">Next · for your costs</span>
             {paper === 'sent' ? (
-              <p className="mt-2" role="status">
-                Your last invoice is on Receipts.{' '}
-                <Link to="/receipts" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
-                  See it on Receipts
-                </Link>
-              </p>
+              <>
+                <p className="mt-2" role="status">
+                  Your last invoice is on Receipts.{' '}
+                  <Link to="/receipts" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                    See it on Receipts
+                  </Link>
+                </p>
+                {lastDoc && (
+                  <InvoiceProposal
+                    docId={lastDoc}
+                    vendorOpen={vendorRead === 'ask' && !saved}
+                    moneyUnset={moneyUnset}
+                    busy={saving}
+                    onPrefill={(name) => {
+                      setSupplier((now) => (now.trim() ? now : name))
+                      vendorInput.current?.focus()
+                    }}
+                    onPick={(row) => void pickRow(row)}
+                  />
+                )}
+              </>
             ) : paper === 'sending' ? (
               <p className="mt-2 text-[#6d685f]" role="status">Sending your last invoice…</p>
             ) : paper === 'skipped' ? (
