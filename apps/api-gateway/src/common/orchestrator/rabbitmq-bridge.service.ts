@@ -691,6 +691,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       let providerQuery = this.databaseService.supabase
         .from("providers")
         .select("id, restaurant_id, name")
+        // Exact, never a pattern: a From of `%@%` must not reach a vendor.
         .ilike("contact_email", ilikeExactly(senderEmail));
       if (restaurantIdFromEvent) {
         providerQuery = providerQuery.eq(

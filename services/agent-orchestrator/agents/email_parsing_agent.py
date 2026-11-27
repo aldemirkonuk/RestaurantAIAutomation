@@ -54,7 +54,21 @@ except ImportError:
 _FOLD = re.compile(r"\r?\n(?=[ \t])")
 # Any C0 control except TAB, and DEL — left after unfolding, it is injection.
 _CONTROL = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
-_ADDR_SPEC = re.compile(r'^[^\s@<>()",;]+@[^\s@<>()",;]+$')
+# `%` and `*` are refused in the domain (QA round 24): no mail host is named
+# with them, and they are the LIKE / PostgREST wildcards a forged `%@%` uses.
+_ADDR_SPEC = re.compile(r'^[^\s@<>()",;]+@[^\s@<>()",;%*]+$')
+_LIKE_META = re.compile(r"[\\%_*]")
+
+
+def like_exactly(address: str) -> str:
+    """A sender address as a PostgREST ``ilike`` value that matches that
+    address and nothing else (QA round 24: ``%@%`` was read as a pattern and
+    resolved to another house's provider). Backslash, ``%``, ``_`` and ``*``
+    are escaped; PostgREST turns ``*`` into ``%``, so an escaped ``*`` can only
+    miss. ilike, not eq: ``providers.contact_email`` keeps the case a manager
+    typed (unique on ``lower(contact_email)``), so eq on the folded address
+    would stop matching ``Sales@BigDist.com``."""
+    return _LIKE_META.sub(lambda m: "\\" + m.group(0), address)
 
 
 def _scan(value: str) -> Tuple[str, bool]:
@@ -777,7 +791,7 @@ Respond with ONLY valid JSON:
             result = (
                 await self.db.supabase.table("providers")
                 .select("id, contact_email")
-                .ilike("contact_email", normalized)
+                .ilike("contact_email", like_exactly(normalized))
                 .limit(1)
                 .execute()
             )

@@ -24,6 +24,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
+from agents.email_parsing_agent import like_exactly
 from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from models.email_intel import EmailClassification, PromoDetails
@@ -936,7 +937,7 @@ class EmailIntelAgent(BaseAgent):
                 self.database.supabase.table("providers")
                 .select("id")
                 .eq("restaurant_id", restaurant_id)
-                .ilike("email", sender_email.strip().lower())
+                .ilike("email", like_exactly(sender_email.strip().lower()))
                 .limit(1)
                 .execute()
             )
@@ -948,7 +949,7 @@ class EmailIntelAgent(BaseAgent):
                 self.database.supabase.table("provider_contacts")
                 .select("id")
                 .eq("restaurant_id", restaurant_id)
-                .ilike("email", sender_email.strip().lower())
+                .ilike("email", like_exactly(sender_email.strip().lower()))
                 .limit(1)
                 .execute()
             )

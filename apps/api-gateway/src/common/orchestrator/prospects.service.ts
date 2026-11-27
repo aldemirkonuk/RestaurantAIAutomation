@@ -5,7 +5,10 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
-import { senderDomain } from "../../communications/inbound-headers";
+import {
+  likeExactly,
+  senderDomain,
+} from "../../communications/inbound-headers";
 
 /** A persisted attachment reference stored on a prospect (bytes live in Storage). */
 export interface ProspectAttachmentRef {
@@ -467,7 +470,7 @@ export class ProspectsService {
           .from("providers")
           .select("id")
           .eq("restaurant_id", restaurantId)
-          .ilike("contact_email", p.sender_email)
+          .ilike("contact_email", likeExactly(p.sender_email))
           .is("deleted_at", null)
           .limit(1);
       if (existingError) {
@@ -503,7 +506,7 @@ export class ProspectsService {
             .from("providers")
             .select("id")
             .eq("restaurant_id", restaurantId)
-            .ilike("contact_email", p.sender_email ?? "")
+            .ilike("contact_email", likeExactly(p.sender_email ?? ""))
             .is("deleted_at", null)
             .limit(1);
         if (racedError) {

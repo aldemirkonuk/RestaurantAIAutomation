@@ -131,7 +131,9 @@ export function decodeEncodedWords(value: string | null | undefined): string {
   return out;
 }
 
-const ADDR_SPEC = /^[^\s@<>()",;]+@[^\s@<>()",;]+$/;
+// `%` and `*` are refused in the domain (QA round 24): no mail host is named
+// with them, and they are the LIKE / PostgREST wildcards a forged `%@%` uses.
+const ADDR_SPEC = /^[^\s@<>()",;]+@[^\s@<>()",;%*]+$/;
 const ADDRESS_TOKEN = /[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+/g;
 
 function flatten(list: Parsed[]): Parsed[] {
@@ -297,6 +299,20 @@ export function senderAddress(
 }
 
 const BARE_DOMAIN = /^[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+
+/**
+ * A sender address as a PostgREST `ilike` value that matches that address
+ * and nothing else (QA round 24: a From of `%@%` was read as a pattern and
+ * filed against another house's vendor). `\\`, `%`, `_` and `*` are escaped;
+ * PostgREST turns `*` into `%`, so an escaped `*` can only miss, never widen.
+ *
+ * Why ilike and not `eq`: `providers.contact_email` keeps the case a manager
+ * typed and is unique on `lower(contact_email)`, so `eq` on the folded
+ * address would stop matching a vendor stored as `Sales@BigDist.com`.
+ */
+export function likeExactly(address: string): string {
+  return address.replace(/[\\%_*]/g, (c) => `\\${c}`);
+}
 
 /**
  * The domain a sender belongs to, or "". A header or an address goes through
