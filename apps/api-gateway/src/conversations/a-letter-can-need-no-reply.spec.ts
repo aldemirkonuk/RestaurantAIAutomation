@@ -43,7 +43,7 @@ const db = {
     // The thread page reads each letter's addresses by id: none here.
     from: () => {
       const c: any = { then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) };
-      for (const m of ["select", "eq", "in"]) c[m] = () => c;
+      for (const m of ["select", "eq", "in", "not", "order", "limit"]) c[m] = () => c;
       return c;
     },
   },

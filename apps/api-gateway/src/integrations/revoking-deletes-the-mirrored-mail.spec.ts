@@ -127,7 +127,7 @@ describe("disconnecting a grant that mirrors mail", () => {
     const result = await service.disconnect(PERSON, "gmail_read", HOUSE);
 
     expect(retention.calls).toEqual([
-      { connectionId: GRANT, restaurantId: HOUSE, ownerUserId: PERSON },
+      { connectionId: GRANT, restaurantId: HOUSE, ownerUserId: PERSON, integrationId: "gmail_read" },
     ]);
     expect((result as { retention: { deleted: number } }).retention.deleted).toBe(
       2,
@@ -150,7 +150,7 @@ describe("disconnecting a grant that mirrors mail", () => {
     await service.disconnect(PERSON, "gmail_read_all", HOUSE);
 
     expect(retention.calls).toEqual([
-      { connectionId: GRANT, restaurantId: HOUSE, ownerUserId: PERSON },
+      { connectionId: GRANT, restaurantId: HOUSE, ownerUserId: PERSON, integrationId: "gmail_read_all" },
     ]);
     expect(order).toEqual(["local_revoke", "sweep"]);
   });

@@ -367,7 +367,7 @@ export class MailService {
       return emptyThread(key);
     }
     const withRaw = (opts.with ?? "").trim();
-    const other = otherPersonOf(withRaw);
+    let other = otherPersonOf(withRaw);
     const providerId = withRaw
       ? PERSON_KEY_RE.exec(withRaw)?.[1]?.toLowerCase()
       : undefined;
@@ -379,21 +379,53 @@ export class MailService {
     // One read: the page, newest first by each letter's own time (received
     // for inbound, sent for outbound), keyset-paged on (at, id). The function
     // returns explicit columns: never email_headers, Gmail ids or message_id.
-    const { data, error } = await this.db.rpc(
-      other ? "mail_thread_letters_other" : "mail_thread_letters",
-      {
-        p_restaurant_id: houseId,
-        p_thread_key: key,
-        ...(other
-          ? { p_kind: other.kind, p_address: other.address }
-          : { p_provider_id: providerId ?? null }),
-        p_withhold_house_letters: withhold,
-        p_before_at: before?.at ?? null,
-        p_before_id: before?.key ?? null,
-        p_limit: MAIL_THREAD_PAGE + 1,
-      },
-    );
+    const readLetters = (who: typeof other) =>
+      this.db.rpc(
+        who ? "mail_thread_letters_other" : "mail_thread_letters",
+        {
+          p_restaurant_id: houseId,
+          p_thread_key: key,
+          ...(who
+            ? { p_kind: who.kind, p_address: who.address }
+            : { p_provider_id: providerId ?? null }),
+          p_withhold_house_letters: withhold,
+          p_before_at: before?.at ?? null,
+          p_before_id: before?.key ?? null,
+          p_limit: MAIL_THREAD_PAGE + 1,
+        },
+      );
+    let { data, error } = await readLetters(other);
     if (error) this.failed("thread", error);
+    // A KEY ALONE OPENS EVERY KIND THE CALLER MAY READ. A deep link, a
+    // notification or a search hit carries the thread key and no person, and a
+    // team or guest letter has no vendor to fall back to: with no vendor
+    // letters under the key, the thread is the house's first team or guest
+    // letter under it, the same "first letter's person" the vendor read uses.
+    // Tenant-scoped, and never asked for a caller who may not read them
+    // (withheld stays withheld, above).
+    if (!withRaw && !withhold && !((data ?? []) as unknown[]).length) {
+      const { data: first, error: firstError } = await this.db
+        .from("procurement_conversations")
+        .select("kind, from_address")
+        .eq("restaurant_id", houseId)
+        .eq("thread_key", key)
+        .in("kind", ["team", "guest"])
+        .not("from_address", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      if (firstError) this.failed("thread person", firstError);
+      const hit = ((first ?? []) as any[])[0];
+      const found = otherPersonOf(
+        hit && typeof hit.from_address === "string"
+          ? `${hit.kind}:${hit.from_address}`
+          : null,
+      );
+      if (found) {
+        other = found;
+        ({ data, error } = await readLetters(other));
+        if (error) this.failed("thread", error);
+      }
+    }
     const rows = (data ?? []) as any[];
     const head = rows[0];
     if (!head) {

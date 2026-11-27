@@ -1336,6 +1336,7 @@ export class IntegrationsOauthService {
         connectionId: String(data.id),
         restaurantId: String(data.restaurant_id ?? ""),
         ownerUserId: userId,
+        integrationId,
       });
       this.logger.log(`disconnect ${integrationId}: ${run.says}`);
       return { success: true, retention: run };

@@ -60,7 +60,7 @@ function answer(r: Read) {
 
 function chain(r: Read): any {
   const c: any = {};
-  for (const m of ["select", "eq", "or", "not", "order", "limit", "maybeSingle"]) {
+  for (const m of ["select", "eq", "in", "or", "not", "order", "limit", "maybeSingle"]) {
     c[m] = (...args: unknown[]) => {
       r.calls.push([m, args]);
       return c;
@@ -160,12 +160,14 @@ describe("the house comes from the token and nowhere else", () => {
     },
   );
 
-  it("/thread is one read, of the token's house only", async () => {
+  it("/thread reads the token's house only: the vendor read, then the key-alone lookup, both in that house", async () => {
     const res = await get(`/thread?key=t-1&restaurantId=${HOUSE_B}`);
     expect(res.status).toBe(200);
     expect(reads.map((r) => `${r.kind}:${r.name}`)).toEqual([
       "rpc:mail_thread_letters",
+      "from:procurement_conversations",
     ]);
+    expect(reads[1].calls).toContainEqual(["eq", ["restaurant_id", HOUSE_A]]);
     expect(reads[0].payload).toMatchObject({
       p_restaurant_id: HOUSE_A,
       p_thread_key: "t-1",
