@@ -43,6 +43,8 @@ export interface OpenOrder {
   openQty: number;
   unit: string | null;
   expected: string | null;
+  /** The vendor the order is with: a new hold with another vendor never changes it. */
+  providerId: string | null;
   /** openQty in the book's own unit, or null when the units differ (nothing is guessed). */
   inBookUnit: number | null;
   /**
@@ -148,7 +150,7 @@ export async function readOnOrder(
   if (book.error) return unread(book.error.message);
   const bookUom: string | null = (book.data as Row | null)?.uom ?? null;
 
-  const HEAD = "id, order_number, restaurant_id, inventory_id, status, quantity, unit_type, bottles_total, expected_delivery_date";
+  const HEAD = "id, order_number, restaurant_id, inventory_id, provider_id, status, quantity, unit_type, bottles_total, expected_delivery_date";
   const LINE = "id, order_id, restaurant_id, inventory_id, quantity, unit_type, bottles_per_unit, total_bottles";
 
   const [heads, lines] = await Promise.all([
@@ -228,7 +230,13 @@ export async function readOnOrder(
   for (const o of open) {
     const status = up(o.status);
     const id = String(o.id);
-    const base = { id, orderNumber: o.order_number ?? null, status, expected: o.expected_delivery_date ?? null };
+    const base = {
+      id,
+      orderNumber: o.order_number ?? null,
+      status,
+      expected: o.expected_delivery_date ?? null,
+      providerId: o.provider_id ?? null,
+    };
     const hasLines = withLines.has(id);
     const mine = byOrder.get(id) ?? [];
     if (hasLines && mine.length === 0) continue; // its lines are other goods'

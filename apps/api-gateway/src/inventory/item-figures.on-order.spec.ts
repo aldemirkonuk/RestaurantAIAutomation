@@ -140,6 +140,19 @@ describe("ItemFiguresService on order (r109 g1)", () => {
     expect(onOrder.readable).toBe(false);
   });
 
+  it("each open order says which vendor it is with, a line-bearing order by its header", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [
+      head("o1", "IN_TRANSIT", 2, { provider_id: "v-1" }),
+      head("o2", "PENDING", 3, { provider_id: "v-2", inventory_id: "item-9" }),
+      head("o3", "PENDING", 1),
+    ];
+    db.tables.procurement_order_items = [line("l2", "o2", 3)];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => o.providerId)).toEqual(["v-1"]);
+    expect(Object.fromEntries(onOrder.unsent!.map((o) => [o.id, o.providerId]))).toEqual({ o2: "v-2", o3: null });
+  });
+
   it("a line naming another house fails the whole read closed, never a figure", async () => {
     const { db, svc } = seed();
     db.tables.procurement_orders = [head("o1", "CONFIRMED", 6)];
