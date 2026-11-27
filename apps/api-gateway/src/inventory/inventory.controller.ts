@@ -158,9 +158,11 @@ export class InventoryController {
     @CurrentUser() user?: { role?: string },
   ) {
     try {
-      return await this.inventoryService.getRestaurantInventory(restaurantId, {
-        role: user?.role,
-      });
+      return await this.inventoryService.getRestaurantInventory(
+        restaurantId,
+        { role: user?.role },
+        { lean: true },
+      );
     } catch (error) {
       const msg =
         error?.message || String(error) || "Failed to fetch inventory";

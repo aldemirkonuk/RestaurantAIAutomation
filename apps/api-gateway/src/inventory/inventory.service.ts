@@ -309,6 +309,12 @@ export class InventoryService {
     }
   }
 
+  private withoutUnreadColumns(row: Record<string, any>): Record<string, any> {
+    const kept = { ...row };
+    for (const col of InventoryService.LIST_UNREAD_COLUMNS) delete kept[col];
+    return kept;
+  }
+
   /** Phase 2: per-inventory WAC / on-hand / location spread. `ok: false` = failed read (G15). */
   private async fetchLotRollup(
     restaurantId: string,
@@ -417,14 +423,62 @@ export class InventoryService {
   }
 
   /**
+   * Columns of `restaurant_inventory` that no web or mobile surface reads
+   * (re-checked by grep over apps/web/src and apps/mobile on 2026-11-25: zero
+   * references to either spelling). The agents read these straight from the
+   * database, never through this list. The house list leaves them out because
+   * most are null on every row and together they were about half of the
+   * 745 KB the page waits on. The MCP reader keeps the whole row.
+   */
+  static readonly LIST_UNREAD_COLUMNS = [
+    "expected_stock",
+    "in_transit_quantity",
+    "validation_max",
+    "buffer_window_minutes",
+    "inventory_state",
+    "last_alert_level",
+    "alert_count",
+    "last_manual_edit_at",
+    "last_manual_edit_by",
+    "manual_edit_reason",
+    "custom_price",
+    "last_purchase_price",
+    "margin_percentage",
+    "sales_velocity_30d",
+    "sales_velocity_7d",
+    "last_delivery_date",
+    "menu_position",
+    "deleted_at",
+    "is_optional_tracking",
+    "current_volume_ml",
+    "is_generic_bucket",
+    "velocity_weight",
+    "toast_menu_item_id",
+    "square_item_id",
+    "clover_item_id",
+    "internal_sku",
+    "pos_sku",
+    "sku_aliases",
+    "markup_classification",
+    "pour_size_confirmed_at",
+    "pour_size_confirmed_by",
+    "shelf_life_basis",
+    "shelf_life_days",
+    "shelf_life_days_set_at",
+    "shelf_life_days_set_by",
+  ] as const;
+
+  /**
    * `viewer` is the caller's role when a person asked (the controller always
    * passes it). A role whose policy does not see `money` gets no settled-cost
    * figures and the gateway does not read them (ADR 0360 d9). A caller with no
    * `viewer` is the gateway itself.
+   * `opts.lean` (the house list) leaves out LIST_UNREAD_COLUMNS.
    */
   async getRestaurantInventory(
     restaurantId: string,
     viewer?: { role?: string | null },
+    opts: { lean?: boolean } = {},
   ) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
     const money = viewer === undefined || seesHouseAmounts(viewer.role);
@@ -439,7 +493,7 @@ export class InventoryService {
     ]);
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
-        row,
+        opts.lean ? this.withoutUnreadColumns(row) : row,
         rollup.data.get(row.id),
         locations.data.get(row.id),
         analytics.map.get(row.id),
