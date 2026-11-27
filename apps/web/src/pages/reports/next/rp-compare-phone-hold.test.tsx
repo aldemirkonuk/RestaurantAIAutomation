@@ -28,6 +28,10 @@ vi.mock('react-grid-layout/legacy', () => ({
 }));
 
 import Sheet from './Sheet';
+import Cutting from './Cutting';
+import { CATALOGUE } from './rp-catalogue';
+import { ANALYSIS_IDS } from './rp-sheet';
+import type { ArrangeApi } from './rp-arrange';
 import { CatPlot } from './rp-plot';
 import { COMPARE_ANSWER_PX, COMPARE_GRID_ROWS } from './rp-fit';
 import { slotHeightPx } from './rp-sheet';
@@ -167,5 +171,64 @@ describe('the prior line draws once', () => {
     const before = container.querySelector('.rp-prior');
     rerender(plot(2, 'line'));
     expect(container.querySelector('.rp-prior')).toBe(before);
+  });
+});
+
+describe('the phone till card with compare off (r109, walk r108 finding 4)', () => {
+  const noop = vi.fn();
+  const arrangeApi = {
+    picked: null, origin: null, message: '', cols: 12, keyDown: () => noop,
+    pickUp: noop, place: noop, cancel: noop, nudge: noop, resize: noop,
+  } as unknown as ArrangeApi;
+  const RAW = {
+    posConnected: true, revenue: 100, checkCount: 3, from: '2026-10-29', to: '2026-11-27', days: 30,
+    dailySeries: [{ date: '2026-11-01', revenue: 100, checks: 3 }],
+  };
+  const drawTill = (arranging: boolean) =>
+    render(
+      <MemoryRouter>
+        <Cutting
+          id="till"
+          graph="table"
+          register={{ data: CATALOGUE.till.select(RAW), loading: false, failure: null, refetch: vi.fn() } as never}
+          ctx={{ days: 30, compare: false }}
+          arranging={arranging}
+          swapOptions={ANALYSIS_IDS.map((id) => ({ id, taken: false }))}
+          arrange={arrangeApi}
+          onGraph={vi.fn()}
+          onSwap={vi.fn()}
+          onRemove={vi.fn()}
+          onDays={vi.fn()}
+          onCompare={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+  const rule = (selector: RegExp) => css.match(selector)?.[0] ?? '';
+
+  it('[REVERT-FAILS] the held height is a floor: the card is never set shorter than its content, so no last line is cut', () => {
+    // The hold is a height (it settles over 160 ms), so it clips a card whose content outgrew it unless the
+    // item also refuses to shrink below its content (card 370, content 394 at 375, compare off).
+    expect(rule(/\.rp-stack__item\[data-holds\]\s*\{[^}]*\}/)).toMatch(/min-height:\s*min-content/);
+    phone();
+    const off = sheet(0);
+    expect(item(off.container).style.height).toBe(`${slotHeightPx(SLOT.h)}px`);
+    expect(item(off.container).hasAttribute('data-holds')).toBe(true);
+  });
+
+  it('[REVERT-FAILS] the till head is marked for the phone only while reading, so the picker can take its own row', () => {
+    expect(drawTill(false).container.querySelector('.rp-cut__head')?.hasAttribute('data-window')).toBe(true);
+    cleanup();
+    expect(drawTill(true).container.querySelector('.rp-cut__head')?.hasAttribute('data-window')).toBe(false);
+  });
+
+  it('[REVERT-FAILS] at a phone width the sub-line is one line and the picker has a row of its own', () => {
+    const phoneCss = css.slice(css.indexOf('@media (max-width: 767px)'));
+    expect(phoneCss).toMatch(/\.rp-cut__head\[data-window\]\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(phoneCss).toMatch(
+      /\.rp-cut__head\[data-window\] > div:first-child,\s*\.rp-cut__head\[data-window\] > \.rp-row\s*\{[^}]*flex:\s*1 1 100%/,
+    );
+    expect(phoneCss).toMatch(/\.rp-cut__head\[data-window\] \.rp-cut__window\s*\{[^}]*white-space:\s*nowrap/);
+    // the rule is the phone's: the 1440 head keeps its two columns
+    expect(css.slice(0, css.indexOf('@media (max-width: 767px)'))).not.toMatch(/\.rp-cut__head\[data-window\]/);
   });
 });
