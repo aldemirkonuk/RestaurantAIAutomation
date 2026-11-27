@@ -460,6 +460,30 @@ describe('the item drawer', () => {
     }
   });
 
+  it('a card press scrolls the detail smoothly, instantly under reduced motion (r109 g7)', async () => {
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    const wasMq = window.matchMedia;
+    Element.prototype.scrollIntoView = spy;
+    const at = (el: Element) => spy.mock.calls.filter((_, i) => spy.mock.contexts[i] === el).map((c) => c[0]);
+    try {
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-evidence')));
+      expect(at(screen.getByTestId('ivd-evidence'))).toEqual([{ block: 'nearest', behavior: 'smooth' }]);
+      spy.mockClear();
+      cleanup();
+      window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-evidence')));
+      expect(at(screen.getByTestId('ivd-evidence'))).toEqual([{ block: 'nearest', behavior: 'auto' }]);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      window.matchMedia = wasMq;
+    }
+  });
+
   it('shows energy per 100 ml on the "What’s in it" card, and the nutrition card in the slot', async () => {
     api.nutrition.mockResolvedValue({
       ...nothingStated,
@@ -687,6 +711,8 @@ describe('the first-screen taste line', () => {
       open(row());
       fireEvent.click(await screen.findByTestId('taste-line-open'));
       await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-taste-slot')));
+      const slot = screen.getByTestId('ivd-taste-slot');
+      expect(spy.mock.calls.find((_, i) => spy.mock.contexts[i] === slot)?.[0]).toEqual({ block: 'nearest', behavior: 'smooth' });
     } finally {
       Element.prototype.scrollIntoView = was;
     }
