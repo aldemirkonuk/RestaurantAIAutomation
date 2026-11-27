@@ -9,8 +9,8 @@
  * same `commit` as the pointer hold, with no animation-frame clock.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup as cleanupAll, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
 
@@ -520,5 +520,50 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
     h.strangers = failedAgain([stranger()], today(19, 5));
     render(<WhoIsWriting />);
     expect(screen.getByTestId('who-summary')).toHaveTextContent(/· as it was at 19:05$/);
+  });
+});
+
+describe('WhoIsWriting — the section holds the height it settled at (perf-p9-5)', () => {
+  const loading = { data: undefined, isLoading: true, isError: false, error: null, refetch: vi.fn() };
+  const rect = (height: number) =>
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ height } as DOMRect);
+  beforeEach(() => {
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      /* ignore */
+    }
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a settled section remembers its height; the next loading one holds it, then lets go', () => {
+    rect(212);
+    const first = render(<WhoIsWriting />);
+    expect(screen.getByTestId('who-section').style.minHeight).toBe('');
+    first.unmount();
+    expect(window.sessionStorage.getItem('who-is-writing-height:r1:wide:open')).toBe('212');
+
+    h.senders = loading;
+    h.strangers = loading;
+    const again = render(<WhoIsWriting />);
+    expect(screen.getByTestId('who-section').style.minHeight).toBe('212px');
+    again.unmount();
+
+    h.senders = ok([sender()]);
+    h.strangers = ok([stranger()]);
+    render(<WhoIsWriting />);
+    expect(screen.getByTestId('who-section').style.minHeight).toBe(''); // settled: it is as tall as its content
+  });
+
+  it('holds nothing on a first visit, and the folded and open sections are held apart', () => {
+    rect(212);
+    h.senders = loading;
+    h.strangers = loading;
+    render(<WhoIsWriting />);
+    expect(screen.getByTestId('who-section').style.minHeight).toBe('');
+    window.sessionStorage.setItem('who-is-writing-height:r1:wide:folded', '60');
+    cleanupAll();
+    render(<WhoIsWriting />, '/communications');
+    expect(screen.getByTestId('who-section').style.minHeight).toBe('60px');
   });
 });

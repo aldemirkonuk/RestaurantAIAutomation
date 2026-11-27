@@ -410,6 +410,34 @@ function Strangers({
   );
 }
 
+/* ── the section holds the height it settled at ─────────────────────── */
+
+/** Height the section measured last time in this tab, per house, width class and open/folded state. */
+function heldKey(house: string, open: boolean): string {
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 640;
+  return `who-is-writing-height:${house}:${narrow ? 'narrow' : 'wide'}:${open ? 'open' : 'folded'}`;
+}
+
+/** The settled height, or null when unknown. Storage may throw (private window): then nothing is held. */
+export function readHeldHeight(house: string, open: boolean): number | null {
+  try {
+    const raw = house ? window.sessionStorage.getItem(heldKey(house, open)) : null;
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberHeldHeight(house: string, open: boolean, px: number): void {
+  if (!house || !Number.isFinite(px) || px < 1) return;
+  try {
+    window.sessionStorage.setItem(heldKey(house, open), String(Math.round(px)));
+  } catch {
+    /* storage blocked: the section simply does not hold */
+  }
+}
+
 /* ── the section ─────────────────────────────────────────────────────── */
 
 export default function WhoIsWriting() {
@@ -440,8 +468,25 @@ export default function WhoIsWriting() {
   );
   const staleAt = staleAts.length ? Math.min(...staleAts) : 0;
 
+  // Until both reads land the summary reads dashes and the open body reads
+  // "Reading…", both shorter than what replaces them, so the page below moved
+  // when they answered. The section keeps the height it settled at last time in
+  // this tab. A first visit in a tab holds nothing. No animation.
+  const sectionRef = useRef<HTMLElement>(null);
+  const settled = !senders.isLoading && !strangers.isLoading;
+  const house = activeRestaurantId ?? '';
+  useEffect(() => {
+    if (settled && sectionRef.current) rememberHeldHeight(house, open, sectionRef.current.getBoundingClientRect().height);
+  }, [settled, house, open, allHouses]);
+  const held = settled ? null : readHeldHeight(house, open);
+
   return (
-    <section aria-label="Who is writing" style={{ marginTop: 40 }}>
+    <section
+      ref={sectionRef}
+      aria-label="Who is writing"
+      data-testid="who-section"
+      style={{ marginTop: 40, minHeight: held ?? undefined }}
+    >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', marginBottom: open ? 14 : 0 }}>
         <h2 style={{ ...H3, fontSize: 11, margin: 0 }}>Who is writing</h2>
         <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)' }} data-testid="who-summary">
