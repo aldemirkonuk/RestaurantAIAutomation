@@ -151,7 +151,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
           <Link to="/cellar" className="cl-focus" style={{ textDecoration: 'none' }}>
             <Wordmark size={13} />
           </Link>
-          <nav aria-label="Cellar registers" className="cl-spine-nav" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
+          <nav aria-label="Cellar registers" className="cl-spine-nav" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto', visibility: data.authLoading || data.registersLoading ? 'hidden' : undefined }}>
             {spine.map((id) => {
               const href = registerHref(id);
               return (
@@ -212,6 +212,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
               </p>
               {/* The rule, on the page. A name that changes with the house has
                   to say why it changed, or it reads as a bug. */}
+              <div className="cl-notes-hold">
               <p className="cl-note" data-testid="cellar-naming-rule">
                 {naming.because}
                 {' The address stays /cellar whatever this page is called.'}
@@ -223,6 +224,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
               <p className="cl-note" data-testid="cellar-view-rule">
                 {view.because}
               </p>
+              </div>
               <hr className="cl-rule" style={{ margin: '16px 0 0' }} />
               <Registers data={data} />
             </>

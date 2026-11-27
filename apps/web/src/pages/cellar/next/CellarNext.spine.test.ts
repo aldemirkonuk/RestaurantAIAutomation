@@ -16,4 +16,17 @@ describe('the register nav holds its two-row room from first paint', () => {
     expect(block).toMatch(/min-height: 64px;/);
     expect(block).not.toMatch(/transition|animation|opacity/);
   });
+
+  it('the nav is visibility hidden while the registers read is in flight, and not after', () => {
+    expect(tsx).toMatch(
+      /visibility: data\.authLoading \|\| data\.registersLoading \? 'hidden' : undefined \}\}>\s*\{spine\.map/,
+    );
+  });
+
+  it('the two rule notes sit in a block that holds their settled room at a phone, with no motion', () => {
+    expect(tsx).toMatch(/<div className="cl-notes-hold">\s*<p className="cl-note" data-testid="cellar-naming-rule">/);
+    const block = css.match(/@media \(max-width: 640px\) \{\s*\.cl-notes-hold \{[^}]*\}\s*\}/)?.[0] ?? '';
+    expect(block).toMatch(/min-height: 52px;/);
+    expect(block).not.toMatch(/transition|animation|opacity/);
+  });
 });
