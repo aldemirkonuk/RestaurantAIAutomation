@@ -5,11 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
 import { Wine, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
-import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
-import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
-import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { apiClient } from '../services/api/client'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
@@ -49,7 +46,6 @@ type EmailAvailability = {
 
 type Path = 'join' | 'create'
 type PathAStep = 1 | 2
-type PathBStep = 1 | 2
 
 interface InvitePreview {
   valid: boolean
@@ -82,8 +78,7 @@ export function Register() {
     return 'create'
   })
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
-  const [pathBStep, setPathBStep] = useState<PathBStep>(1)
-  const [loading, setLoading] = useState(false)
+    const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Path A state
@@ -103,37 +98,6 @@ export function Register() {
   const [createEmail, setCreateEmail] = useState('')
   const [createPassword, setCreatePassword] = useState('')
   const [createConfirm, setCreateConfirm] = useState('')
-
-  // Path B restaurant fields
-  const [address, setAddress] = useState('')
-  const [city, setCity] = useState('')
-  const [country, setCountry] = useState('')
-  const [stateProvince, setStateProvince] = useState('')
-  const [postalCode, setPostalCode] = useState('')
-  const [neighborhood, setNeighborhood] = useState('')
-
-  /**
-   * The money this house reports in — asked, never assumed.
-   *
-   * `restaurants.currency` carried `DEFAULT 'USD'` and this form never named the
-   * column, so all fourteen production houses asserted dollars: two in Turkiye,
-   * one in London, none of them ever asked (ADR 0117 Q25, founder 2026-09-05).
-   * The default is dropped and the question is asked here.
-   *
-   * Three states, and they are deliberately distinct:
-   *   - `null`  the manager has not touched it, so the STATED DEFAULT below
-   *             stands and is what gets sent. The screen says so in words
-   *             before it is recorded (ADR 0083).
-   *   - a code  the manager confirmed or changed it.
-   *   - `''`    the manager explicitly chose "not now". NOTHING is sent, the row
-   *             stores NULL, and every screen says "currency not recorded"
-   *             rather than printing a dollar sign.
-   */
-  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
-
-
-  // Restaurant form section (left-rail sub-navigation within pathBStep 2)
-  const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
 
   // Email availability checking state
   const [joinEmailCheck, setJoinEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
@@ -848,316 +812,13 @@ export function Register() {
     </motion.div>
   )
 
-  // PATH B — Step 2: Restaurant details + submit
-
-  // Country-aware locale helper — single source of truth for all adaptive labels/placeholders
-  const countryLocale = (() => {
-    const c = country.toLowerCase()
-    const isUS  = c.includes('united states') || c === 'us' || c === 'usa'
-    const isUK  = c.includes('united kingdom') || c === 'uk' || c === 'gb'
-    const isTR  = c.includes('turkey') || c === 'tr' || c.includes('türkiye')
-    const isCA  = c.includes('canada') || c === 'ca'
-    const isFR  = c.includes('france') || c === 'fr'
-    const isDE  = c.includes('germany') || c === 'de'
-    if (isUS) return {
-      stateLabel: 'State', statePlaceholder: 'IL',
-      postalLabel: 'ZIP Code', postalPlaceholder: '60601',
-      areaLabel: 'Neighborhood', areaPlaceholder: 'River North, Wicker Park...',
-    }
-    if (isUK) return {
-      stateLabel: 'County', statePlaceholder: 'Greater London',
-      postalLabel: 'Postcode', postalPlaceholder: 'SW1A 1AA',
-      areaLabel: 'Borough / Area', areaPlaceholder: 'Mayfair, Shoreditch, Camden...',
-    }
-    if (isTR) return {
-      stateLabel: 'Province (İl)', statePlaceholder: 'Antalya',
-      postalLabel: 'Posta Kodu', postalPlaceholder: '07050',
-      areaLabel: 'District (İlçe / Mahalle)', areaPlaceholder: 'Konyaaltı, Lara, Muratpaşa...',
-    }
-    if (isCA) return {
-      stateLabel: 'Province', statePlaceholder: 'ON',
-      postalLabel: 'Postal Code', postalPlaceholder: 'M5V 2T6',
-      areaLabel: 'Neighbourhood', areaPlaceholder: 'Downtown Core, Old Town...',
-    }
-    if (isFR) return {
-      stateLabel: 'Région', statePlaceholder: 'Île-de-France',
-      postalLabel: 'Code Postal', postalPlaceholder: '75001',
-      areaLabel: 'Quartier', areaPlaceholder: 'Le Marais, Montmartre...',
-    }
-    if (isDE) return {
-      stateLabel: 'Bundesland', statePlaceholder: 'Bayern',
-      postalLabel: 'Postleitzahl', postalPlaceholder: '10115',
-      areaLabel: 'Stadtteil', areaPlaceholder: 'Mitte, Prenzlauer Berg...',
-    }
-    return {
-      stateLabel: 'State / Province', statePlaceholder: 'e.g. Ontario',
-      postalLabel: 'Postal Code', postalPlaceholder: 'e.g. M5V 2T6',
-      areaLabel: 'Neighborhood / Area', areaPlaceholder: 'e.g. Downtown',
-    }
-  })()
-  // Country entered enough to trigger the rest of the form
-  const countryReady = country.trim().length >= 2
-
-
-  // Left-rail section labels
-  const railSections = [
-    { num: 1 as const, label: 'Identity', sub: 'Name, cuisine' },
-    { num: 2 as const, label: 'Location', sub: 'Address, city, ZIP' },
-    { num: 3 as const, label: 'Contact', sub: 'Phone (optional)' },
-  ]
-
-  const pathBStep2 = () => (
-    <motion.div
-      key="pathB-2"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.25 }}
-    >
-      {/* Left-rail layout on desktop */}
-      <div className="sm:grid sm:grid-cols-[200px_1fr] sm:gap-6">
-
-        {/* Left Rail — hidden on mobile */}
-        <div className={on ? 'hidden sm:block border-r border-paper-2 pr-5 h-fit sticky top-6' : 'hidden sm:block bg-white/50 backdrop-blur border border-white/40 rounded-2xl p-5 h-fit sticky top-6'}>
-          {/* The folio carries the step on the house path. */}
-          {!on && <p className="text-xs uppercase tracking-wider text-gray-400 font-bold mb-4">Step 2 of 2</p>}
-          <div className="space-y-0">
-            {railSections.map(({ num, label, sub }) => {
-              const isDone = num < restaurantSection
-              const isActive = num === restaurantSection
-              return (
-                <div key={num} className="relative">
-                  {/* Connector line between items */}
-                  {num > 1 && (
-                    <div className={on ? 'absolute left-[9px] top-0 w-[2px] h-[7px] bg-paper-2' : 'absolute left-[9px] top-0 w-[2px] h-[7px] bg-gray-200'} />
-                  )}
-                  <div className="flex items-start gap-[9px] py-[7px]">
-                    <div
-                      className={[
-                        'w-5 h-5 rounded-full flex items-center justify-center text-[0.62rem] font-bold flex-shrink-0 transition-all',
-                        isDone ? (on ? 'bg-seal text-paper-0' : 'bg-green-500 text-white') : '',
-                        isActive
-                          ? on
-                            ? 'bg-seal text-paper-0 shadow-[0_2px_6px_var(--seal-ring)]'
-                            : 'bg-wine-600 text-white shadow-[0_2px_6px_rgba(26,94,107,0.35)]'
-                          : '',
-                        !isDone && !isActive
-                          ? on
-                            ? 'bg-paper-0 text-inkm-3 border border-paper-2'
-                            : 'bg-gray-100 text-gray-400 border border-gray-200'
-                          : '',
-                      ].join(' ')}
-                    >
-                      {isDone ? <Check className="w-[9px] h-[9px] stroke-[3]" /> : num}
-                    </div>
-                    <div>
-                      <p
-                        className={[
-                          'text-[0.8rem] font-semibold',
-                          isDone ? (on ? '!text-inkm-3' : 'text-gray-500') : '',
-                          isActive ? (on ? '!text-seal' : 'text-wine-600') : '',
-                          !isDone && !isActive ? (on ? '!text-inkm-3' : 'text-gray-400') : '',
-                        ].join(' ')}
-                      >
-                        {label}
-                      </p>
-                      <p className={on ? 'text-[0.68rem] !text-inkm-3' : 'text-[0.68rem] text-gray-400'}>{sub}</p>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {/* Progress bar — on the house path each panel's own "Section n of 3"
-              already says this, once. */}
-          {!on && (
-          <div className={on ? 'mt-[18px] pt-[14px] border-t border-paper-2' : 'mt-[18px] pt-[14px] border-t border-gray-200'}>
-            <div className={on ? 'h-[5px] bg-paper-2 rounded-full overflow-hidden' : 'h-[5px] bg-gray-100 rounded-full overflow-hidden'}>
-              <div
-                className={on ? 'h-full bg-seal rounded-full transition-all duration-300' : 'h-full bg-wine-600 rounded-full transition-all duration-300'}
-                style={{ width: `${(restaurantSection / 3) * 100}%` }}
-              />
-            </div>
-            <p className={on ? 'text-[0.75rem] !text-inkm-3 mt-1' : 'text-[0.75rem] text-gray-500 mt-1'}>Section {restaurantSection} of 3</p>
-          </div>
-          )}
-        </div>
-
-        {/* Main panel */}
-        <div>
-          {/* Panel 1: Identity */}
-          {restaurantSection === 1 && (
-            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              {/* Nav */}
-              <div className="flex gap-[10px] mt-5">
-                <button
-                  type="button"
-                  onClick={() => { setPathBStep(1); setError(null) }}
-                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
-                >
-                  ← Back
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRestaurantSection(2)}
-                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]'}
-                >
-                  Next: Location
-                  <ArrowRight className="w-[13px] h-[13px]" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Panel 2: Location */}
-          {restaurantSection === 2 && (
-            <div className={on ? 'pt-1' : 'bg-white/60 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-7'}>
-              <span className={on ? 'inline-flex items-center bg-seal-tint text-seal text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]' : 'inline-flex items-center bg-wine-100 text-wine-600 text-[0.68rem] font-bold uppercase tracking-[0.07em] px-[9px] py-[3px] rounded-full mb-[10px]'}>
-                Section 2 of 3
-              </span>
-              <h2 className={on ? 'font-display text-[1.2rem] font-extrabold !text-inkm-1 tracking-tight mb-[3px]' : 'font-display text-[1.2rem] font-extrabold text-gray-900 tracking-tight mb-[3px]'}>
-                Location
-              </h2>
-              <p className={on ? 'text-[0.84rem] !text-inkm-3 mb-[22px]' : 'text-[0.84rem] text-gray-500 mb-[22px]'}>
-                Where is your restaurant located?
-              </p>
-
-              {/* Country */}
-              <div className="mb-[18px]">
-                <label htmlFor="restaurant-country" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Country <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
-                <CountryCombobox id="restaurant-country" value={country} onChange={setCountry} />
-                {!countryReady && (
-                  <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Enter your country to continue filling in the address</p>
-                )}
-              </div>
-
-              {/* Street Address — Google Places Autocomplete */}
-              <div className="mb-[18px]">
-                <label htmlFor="restaurant-address" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                  Street Address <span className={on ? 'text-seal' : 'text-wine-600'}>*</span>
-                </label>
-                <PlacesAutocomplete
-                  id="restaurant-address"
-                  country={country}
-                  value={address}
-                  onChange={(next) => {
-                    setAddress(next)
-                  }}
-                  onPlaceSelect={(place: PlaceResult) => {
-                    setAddress(place.streetAddress)
-                    if (place.city) setCity(place.city)
-                    if (place.stateProvince) setStateProvince(place.stateProvince)
-                    if (place.postalCode) setPostalCode(place.postalCode)
-                    if (place.country) setCountry(place.country)
-                    if (place.neighborhood) setNeighborhood(place.neighborhood)
-                  }}
-                  placeholder="Start typing your street address…"
-                  className={on ? 'py-3 border-paper-2 bg-paper-0' : 'py-3 border-gray-300 bg-white/80 focus:ring-2 focus:ring-wine-500'}
-                />
-              </div>
-
-              {/* City + State */}
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label htmlFor="restaurant-city" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>City <span className={on ? 'text-seal' : 'text-wine-600'}>*</span></label>
-                  <input
-                    id="restaurant-city"
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Chicago"
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="restaurant-state" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.stateLabel}</label>
-                  <input
-                    id="restaurant-state"
-                    type="text"
-                    value={stateProvince}
-                    onChange={(e) => setStateProvince(e.target.value)}
-                    placeholder={countryLocale.statePlaceholder}
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-                  />
-                </div>
-              </div>
-
-              {/* ZIP + Neighborhood */}
-              <div className="grid grid-cols-2 gap-3 mb-0">
-                <div>
-                  <label htmlFor="restaurant-postal-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>{countryLocale.postalLabel}</label>
-                  <input
-                    id="restaurant-postal-code"
-                    type="text"
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder={countryLocale.postalPlaceholder}
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="restaurant-neighborhood" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>
-                    {countryLocale.areaLabel}
-                    <span className={on ? 'text-inkm-3 font-normal ml-1 text-xs' : 'text-gray-400 font-normal ml-1 text-xs'}>(optional)</span>
-                  </label>
-                  <input
-                    id="restaurant-neighborhood"
-                    type="text"
-                    value={neighborhood}
-                    onChange={(e) => setNeighborhood(e.target.value)}
-                    placeholder={countryLocale.areaPlaceholder}
-                    className={on ? 'block w-full px-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full px-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-                  />
-                </div>
-              </div>
-
-              {/*
-                The currency step, extracted so the decision can be rendered and
-                asserted on its own (`components/onboarding/CurrencyStep.tsx`).
-                It sits under the address because it is DERIVED from it: the
-                default comes from the country above and moves when that moves.
-              */}
-              <CurrencyStep
-                country={country}
-                choice={currencyChoice}
-                onChange={setCurrencyChoice}
-              />
-
-              {/* Nav */}
-              <div className="flex gap-[10px] mt-5">
-                <button
-                  type="button"
-                  onClick={() => setRestaurantSection(1)}
-                  className={on ? 'flex-1 py-3 border border-paper-2 rounded-[10px] bg-paper-0 text-inkm-2 text-[0.9rem] font-bold hover:border-seal-ring transition-colors' : 'flex-1 py-3 border border-gray-200 rounded-[10px] bg-white text-gray-700 text-[0.9rem] font-bold hover:border-gray-300 transition-colors'}
-                >
-                  ← Identity
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRestaurantSection(3)}
-                  className={on ? 'flex-[2] py-3 border-none rounded-[10px] bg-seal text-paper-0 text-[0.9rem] font-bold hover:bg-seal-deep transition-colors flex items-center justify-center gap-[7px]' : 'flex-[2] py-3 border-none rounded-[10px] bg-wine-600 text-white text-[0.9rem] font-bold hover:bg-wine-700 transition-colors flex items-center justify-center gap-[7px]'}
-                >
-                  Next: Contact
-                  <ArrowRight className="w-[13px] h-[13px]" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  )
-
   // Single step key — AnimatePresence fires ONLY when the user actually navigates between steps
-  const stepKey = `${path}-${path === 'join' ? pathAStep : pathBStep}`
+  const stepKey = `${path}-${path === 'join' ? pathAStep : 1}`
 
   const content = (() => {
     if (path === 'join') return pathAStep === 1 ? pathAStep1() : pathAStep2()
-    if (path === 'create') return pathBStep === 1 ? pathBStep1() : pathBStep2()
+    if (path === 'create') return pathBStep1()
   })()
-
-  // For the restaurant form (path B step 2), render outside the card to support the wider rail layout
-  const isRestaurantForm = path === 'create' && pathBStep === 2
 
   // sketch 118 · Direction B, the founder's pick (2026-09-19; ADR 0149 row 35,
   // his build directions in the sketch README). The endpaper holds still
@@ -1165,7 +826,7 @@ export function Register() {
   // voice until the form knows the house's name, and then it is that name —
   // the one place the endpaper changes. The leaf carries everything that
   // changes per screen, and the folio is the only place a step is counted.
-  // Derived from the existing path/pathAStep/pathBStep state; the flow above
+  // Derived from the existing path/pathAStep state; the flow above
   // is untouched.
   const endpaperFor = (): { houseLine: string; tag: string; folio: string; title: string; lede: string } => {
     const voice = { houseLine: 'Every house keeps its own.', tag: 'Open one, or be entered in one that already exists.' }
@@ -1203,7 +864,6 @@ export function Register() {
         tag={ep.tag}
         folio={ep.folio}
         pageKey={stepKey}
-        wide={isRestaurantForm}
       >
         <h2 className="mdv-ep-leaf-title">{ep.title}</h2>
         <p className="mdv-ep-leaf-lede">{ep.lede}</p>
@@ -1222,7 +882,7 @@ export function Register() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className={isRestaurantForm ? 'relative w-full max-w-4xl' : 'relative w-full max-w-2xl'}
+        className="relative w-full max-w-2xl"
       >
         <div className="text-center mb-8">
           <motion.div
@@ -1238,20 +898,12 @@ export function Register() {
         </div>
 
         <AnimatePresence mode="wait" initial={false}>
-          {isRestaurantForm ? (
-            /* Restaurant form: no card wrapper — the rail layout manages its own panels */
-            <div key={stepKey}>
-              {content}
-            </div>
-          ) : (
-            /* All other steps: standard glass card */
-            <div
-              key={stepKey}
-              className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
-            >
-              {content}
-            </div>
-          )}
+          <div
+            key={stepKey}
+            className="rounded-2xl border border-wine-100/80 bg-white/80 backdrop-blur-md p-8 overflow-hidden shadow-[0_24px_64px_-24px_rgba(26,94,107,0.18),0_8px_24px_-12px_rgba(15,23,42,0.08)]"
+          >
+            {content}
+          </div>
         </AnimatePresence>
 
         <p className="text-center text-xs text-gray-400 mt-8">© 2026 Mudavym. All rights reserved.</p>
