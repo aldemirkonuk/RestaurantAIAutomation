@@ -54,15 +54,20 @@ function make() {
     getClient: jest.fn(),
   };
   const svc: any = new (InventoryService as any)(db);
-  jest.spyOn(svc, "fetchLotRollup").mockResolvedValue(
-    new Map([["wine", { wac: 20, live_qty: 4, has_invoice_cost: true, open_ml: 100 }]]),
-  );
-  jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue(
-    new Map([["wine", [{ locationId: "l1", qty: 4, wac: 20 }]]]),
-  );
+  jest.spyOn(svc, "fetchLotRollup").mockResolvedValue({
+    ok: true,
+    data: new Map([["wine", { wac: 20, live_qty: 4, has_invoice_cost: true, open_ml: 100 }]]),
+  });
+  jest.spyOn(svc, "fetchLocationBreakdown").mockResolvedValue({
+    ok: true,
+    data: new Map([["wine", [{ locationId: "l1", qty: 4, wac: 20 }]]]),
+  });
   jest
     .spyOn(svc, "fetchAnalytics")
     .mockResolvedValue({ map: new Map(), ok: true });
+  jest
+    .spyOn(svc, "fetchSettledMoves")
+    .mockResolvedValue({ map: new Map(), ok: true, capped: false });
   return svc as InventoryService;
 }
 
