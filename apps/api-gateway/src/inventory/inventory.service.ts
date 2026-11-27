@@ -309,6 +309,51 @@ export class InventoryService {
     }
   }
 
+  /**
+   * Keys of the MAPPED list row that are dropped from the lean reply after the
+   * derived figures are computed (glassesPerBottle reads
+   * glasses_per_bottle_override, markupRatio reads markup_ratio, so these cannot
+   * go before mapping). Two kinds, both audited against apps/web/src and
+   * apps/mobile on 2026-11-27:
+   *  - LIST_DEAD_KEYS: no reader at all, dropped always.
+   *  - LIST_NULL_OMITTED_KEYS: the raw column is only ever read through
+   *    `normalizeInventoryItem` (`?? undefined`) or not at all, so absent and
+   *    null read the same; dropped only when null, so a house that fills
+   *    sku / provider_id still receives them.
+   * `lastCountedAt` is NOT here: four web readers compare it `=== null`.
+   */
+  static readonly LIST_DEAD_KEYS = [
+    "glasses_per_bottle_override",
+    "expected_delivery_date",
+    "storage_location_id",
+    "beverage_id",
+    "max_price",
+  ] as const;
+
+  static readonly LIST_NULL_OMITTED_KEYS = [
+    "negotiated_price",
+    "last_alerted_at",
+    "toast_item_guid",
+    "last_counted_at",
+    "physical_stock",
+    "threshold_max",
+    "last_sold_at",
+    "menu_section",
+    "target_price",
+    "markup_ratio",
+    "provider_id",
+    "identity_id",
+    "sku",
+  ] as const;
+
+  private withoutEmptyListKeys(item: Record<string, any>): Record<string, any> {
+    for (const k of InventoryService.LIST_DEAD_KEYS) delete item[k];
+    for (const k of InventoryService.LIST_NULL_OMITTED_KEYS) {
+      if (item[k] === null) delete item[k];
+    }
+    return item;
+  }
+
   private withoutUnreadColumns(row: Record<string, any>): Record<string, any> {
     const kept = { ...row };
     for (const col of InventoryService.LIST_UNREAD_COLUMNS) delete kept[col];
@@ -491,25 +536,28 @@ export class InventoryService {
         ? this.fetchSettledMoves(restaurantId)
         : { map: new Map<string, SettledMove>(), ok: true, capped: false },
     ]);
-    return (data || []).map((row) => ({
-      ...this.mapInventoryItem(
+    return (data || []).map((row) => {
+      const mapped = this.mapInventoryItem(
         opts.lean ? this.withoutUnreadColumns(row) : row,
         rollup.data.get(row.id),
         locations.data.get(row.id),
         analytics.map.get(row.id),
         { rollup: rollup.ok, locations: locations.ok },
         settled.map.get(row.id),
-      ),
-      // Additive: every existing reader that does not know this field simply
-      // ignores it. `false` means the analytics join itself could not be
-      // read for this batch — not that this row has no analytics row.
-      analyticsReadable: analytics.ok,
-      // r104 g3: false = the settled-price read failed, so "no price move" is
-      // unknown, not "none"; `settledCostsCapped` = only the newest rows were read.
-      ...(money
-        ? { settledCostsReadable: settled.ok, settledCostsCapped: settled.capped }
-        : {}),
-    }));
+      );
+      return {
+        ...(opts.lean ? this.withoutEmptyListKeys(mapped) : mapped),
+        // Additive: every existing reader that does not know this field simply
+        // ignores it. `false` means the analytics join itself could not be
+        // read for this batch — not that this row has no analytics row.
+        analyticsReadable: analytics.ok,
+        // r104 g3: false = the settled-price read failed, so "no price move" is
+        // unknown, not "none"; `settledCostsCapped` = only the newest rows were read.
+        ...(money
+          ? { settledCostsReadable: settled.ok, settledCostsCapped: settled.capped }
+          : {}),
+      };
+    });
   }
 
   /**
