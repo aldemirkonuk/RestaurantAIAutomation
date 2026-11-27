@@ -46,7 +46,15 @@ import {
 import 'react-grid-layout/css/styles.css';
 import { tuck } from '@/lib/mudavym';
 import { useAfterPaint } from './rp-draw';
-import { colsForWidth, liftCuttings, projectCuttings, sheetLayouts, slotRect } from './rp-arrange';
+import {
+  colsForWidth,
+  deflateLayout,
+  inflateCuttings,
+  liftCuttings,
+  projectCuttings,
+  sheetLayouts,
+  slotRect,
+} from './rp-arrange';
 import {
   ANALYSIS_IDS,
   SHEET_BREAKPOINTS,
@@ -186,7 +194,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
   const shown = useMemo(
     () =>
       arranging
-        ? cuttings.map((c) => (c.extraRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.extraRows } } : c))
+        ? inflateCuttings(cuttings, (id) => cuttings.find((c) => c.id === id)?.extraRows ?? 0)
         : stacked
           ? cuttings
           : cuttings.map((c) => (c.holdRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.holdRows } } : c)),
@@ -211,15 +219,16 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         id: l.i as AnalysisId,
         slot: { x: l.x, y: l.y, w: l.w, h: l.h },
       }));
-      const lifted = liftCuttings(shown, projectCuttings(shown, cols), placed, cols);
+      /* Deflate BEFORE lifting (r101): the grid's y values are inflated and uneven under row-mates, so lifting
+         them re-sorts the list order and saves the gaps. Take the controls rows off, compact again, and lift
+         against the stored, un-inflated sheet. */
+      const flat = deflateLayout(placed, (id) => cuttings.find((c) => c.id === id)?.extraRows ?? 0, cols);
+      const lifted = liftCuttings(cuttings, projectCuttings(cuttings, cols), flat, cols);
       const slots: Partial<Record<AnalysisId, Slot>> = {};
-      for (const c of lifted) {
-        const extra = shown.find((x) => x.id === c.id)?.extraRows ?? 0;
-        slots[c.id] = extra ? { ...c.slot, h: Math.max(1, c.slot.h - extra) } : c.slot;
-      }
+      for (const c of lifted) slots[c.id] = c.slot;
       onMove(slots, lifted.map((c) => c.id), (item?.i as AnalysisId | undefined) ?? undefined);
     },
-    [arranging, shown, el, onMove],
+    [arranging, cuttings, el, onMove],
   );
 
   /* The ghost is positioned from react-grid-layout's OWN `calcGridItemPosition`
