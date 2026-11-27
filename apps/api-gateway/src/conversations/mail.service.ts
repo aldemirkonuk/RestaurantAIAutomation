@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   Logger,
   NotFoundException,
@@ -11,6 +12,8 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { readHouseZone, type HouseZone } from "../common/house-day";
 import type {
+  MailAttachment,
+  MailAttachmentLink,
   MailMessage,
   MailNoReplyAnswer,
   MailOrderRef,
@@ -67,8 +70,17 @@ function emptyThread(key: string): MailThreadPage {
     messages: [],
     before: null,
     waiting: false,
+    attachmentsRead: true,
   };
 }
+
+/** The private bucket the bridge stores a letter's files in (persistAttachments). */
+const ATTACHMENT_BUCKET = "vendor-attachments";
+/** A link to a file works this long: enough to open it, too short to pass around. */
+export const ATTACHMENT_LINK_SECONDS = 300;
+export const ATTACHMENT_NOT_FOUND = "That file is not in this house's mail.";
+export const ATTACHMENT_LINK_FAILED =
+  "The file could not be opened just now. Nothing was changed; try again in a moment.";
 
 /** Said to anyone who is not the house's owner or manager. */
 export const NO_REPLY_NOT_YOURS =
@@ -297,6 +309,7 @@ export class MailService {
 
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
+    const files = await this.readAttachments(kept.map((m) => m.id));
     return {
       key,
       subject:
@@ -328,6 +341,7 @@ export class MailService {
               typeof m.no_reply_marked_at === "string"
                 ? m.no_reply_marked_at
                 : null,
+            attachments: files?.get(m.id) ?? [],
           }),
         ),
       before:
@@ -336,6 +350,134 @@ export class MailService {
           : null,
       // Every row carries the same thread-wide answer; the newest is read.
       waiting: head.thread_waiting === true,
+      attachmentsRead: files !== null,
+    };
+  }
+
+  /**
+   * The files each letter of a page carried (r28 mail gap 13), by letter id.
+   * Read by the letters' own ids, which mail_thread_letters has already
+   * proven are this house's and readable by this caller; a file belongs to
+   * its letter (ON DELETE CASCADE). Null when the read failed: the page then
+   * says the files could not be read, and still shows the letters.
+   */
+  private async readAttachments(
+    letterIds: string[],
+  ): Promise<Map<string, MailAttachment[]> | null> {
+    const out = new Map<string, MailAttachment[]>();
+    if (!letterIds.length) return out;
+    let data: unknown;
+    try {
+      const res = await this.db
+        .from("conversation_attachments")
+        .select(
+          "id, conversation_id, filename, mime_type, size_bytes, bytes_deleted_at, created_at",
+        )
+        .in("conversation_id", letterIds)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
+      if (res.error) throw new Error(res.error.message);
+      data = res.data;
+    } catch (e) {
+      this.logger.error(
+        `mail attachments read failed: ${(e as Error)?.message ?? "unknown"}`,
+      );
+      return null;
+    }
+    for (const r of (data ?? []) as any[]) {
+      const list = out.get(r.conversation_id) ?? [];
+      list.push({
+        id: r.id,
+        filename:
+          typeof r.filename === "string" && r.filename.trim()
+            ? r.filename
+            : "A file with no name",
+        mimeType: typeof r.mime_type === "string" ? r.mime_type : null,
+        sizeBytes:
+          r.size_bytes === null || r.size_bytes === undefined
+            ? null
+            : Number(r.size_bytes),
+        removedAt:
+          typeof r.bytes_deleted_at === "string" ? r.bytes_deleted_at : null,
+      });
+      out.set(r.conversation_id, list);
+    }
+    return out;
+  }
+
+  /**
+   * A short-lived address for one file a letter carried (r28 mail gap 13).
+   * The file must belong to a letter of the caller's house that the caller
+   * may read: staff never reach a withheld letter's file, and another house's
+   * file is "not in this house's mail", the same answer as a file that does
+   * not exist. A file removed under the retention rule is 410, in words.
+   */
+  async attachmentLink(
+    houseId: string,
+    callerRole: string | null | undefined,
+    attachmentId: unknown,
+  ): Promise<MailAttachmentLink> {
+    const id =
+      typeof attachmentId === "string" ? attachmentId.trim().toLowerCase() : "";
+    if (!UUID_RE.test(id)) throw new NotFoundException(ATTACHMENT_NOT_FOUND);
+
+    const fileRes = await this.db
+      .from("conversation_attachments")
+      .select(
+        "id, conversation_id, filename, mime_type, storage_path, bytes_deleted_at",
+      )
+      .eq("id", id)
+      .limit(1);
+    if (fileRes.error) this.failed("attachment", fileRes.error);
+    const file = ((fileRes.data ?? []) as any[])[0];
+    if (!file) throw new NotFoundException(ATTACHMENT_NOT_FOUND);
+
+    let letterQuery = this.db
+      .from("procurement_conversations")
+      .select("id")
+      .eq("id", file.conversation_id)
+      .eq("restaurant_id", houseId);
+    if (withholdsHouseLetters(callerRole)) {
+      letterQuery = letterQuery
+        .or(WITHHOLD_HOUSE_DRAFT)
+        .or(WITHHOLD_HOUSE_CANCELLED);
+    }
+    const letterRes = await letterQuery.limit(1);
+    if (letterRes.error) this.failed("attachment letter", letterRes.error);
+    if (!((letterRes.data ?? []) as any[])[0]) {
+      throw new NotFoundException(ATTACHMENT_NOT_FOUND);
+    }
+
+    if (typeof file.bytes_deleted_at === "string") {
+      throw new GoneException(
+        "This file was removed under the house's mail retention rule. Its name is kept with the letter.",
+      );
+    }
+    if (typeof file.storage_path !== "string" || !file.storage_path) {
+      throw new NotFoundException(ATTACHMENT_NOT_FOUND);
+    }
+    let url: string | null = null;
+    try {
+      const { data, error } = await this.db.storage
+        .from(ATTACHMENT_BUCKET)
+        .createSignedUrl(file.storage_path, ATTACHMENT_LINK_SECONDS);
+      if (error) throw error;
+      url = typeof data?.signedUrl === "string" ? data.signedUrl : null;
+    } catch (e) {
+      this.logger.error(
+        `mail attachment link failed: ${(e as Error)?.message ?? "unknown"}`,
+      );
+    }
+    if (!url) throw new ServiceUnavailableException(ATTACHMENT_LINK_FAILED);
+    return {
+      id: file.id,
+      filename:
+        typeof file.filename === "string" && file.filename.trim()
+          ? file.filename
+          : "A file with no name",
+      mimeType: typeof file.mime_type === "string" ? file.mime_type : null,
+      url,
+      expiresInSeconds: ATTACHMENT_LINK_SECONDS,
     };
   }
 
