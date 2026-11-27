@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
+import { readHouseAnswer, routeAfterVerificationFromHouses } from '../lib/afterVerification'
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -37,6 +38,10 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  // The address is verified but the houses could not be read (ADR 0020: a
+  // failed read says it failed). The link is spent, so "Try again" re-reads.
+  const [housesUnread, setHousesUnread] = useState(false)
+  const sessionHouse = useRef<string | null>(null)
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
@@ -48,6 +53,43 @@ export function VerifyEmail() {
   // and (ADR 0229 fork 6) removes a password they never set.
   const mustSignIn = Boolean(token) && ((!loading && !user) || refusal === 'sign-in')
   const alreadyVerified = Boolean(token) && user?.emailVerified === true && !verified
+
+  // Where a verified person goes is decided from what the server says they
+  // hold (`routeAfterVerificationFromHouses`): a membership waiting to be
+  // accepted (ADR 0229 fork 13) goes to the chooser, a person with no house and
+  // nothing waiting opens one on /get-started (ADR 0213), and only a session
+  // already in a house asks whether the menu is uploaded (re-verification).
+  const goOn = async () => {
+    setHousesUnread(false)
+    let read: ReturnType<typeof readHouseAnswer> = null
+    try {
+      const { data } = await apiClient.get('/auth/houses')
+      read = readHouseAnswer(data)
+    } catch {
+      read = null
+    }
+    if (!read) {
+      setHousesUnread(true)
+      return
+    }
+    setVerified(true)
+    toast.success('Email verified! Redirecting...')
+    const route = routeAfterVerificationFromHouses(read, Boolean(sessionHouse.current))
+    const progress = route === null ? await getOnboardingProgress().catch(() => null) : null
+    const destination = route ?? (progress?.menu_uploaded ? '/' : '/get-started')
+    setTimeout(() => {
+      window.location.href = destination
+    }, 1500)
+  }
+
+  const tryAgain = async () => {
+    setVerifying(true)
+    try {
+      await goOn()
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   const handleVerify = async () => {
     if (!token) {
@@ -66,22 +108,8 @@ export function VerifyEmail() {
       // One helper stores every session, so `activeRestaurantId` follows the
       // token's house (ADR 0164).
       const house = storeSession(data.accessToken, data.refreshToken)
-      setVerified(true)
-      toast.success('Email verified! Redirecting...')
-      // A session in no house goes to the chooser (ADR 0164): it shows a
-      // membership waiting to be accepted (ADR 0229 fork 13), and sends an
-      // account-only signup (ADR 0213) with nothing waiting on to
-      // /get-started. Only a session in a house asks whether the menu is
-      // already uploaded (re-verification flows).
-      const progress = house ? await getOnboardingProgress().catch(() => null) : null
-      const destination = !house
-        ? '/choose-house'
-        : progress?.menu_uploaded
-          ? '/'
-          : '/get-started'
-      setTimeout(() => {
-        window.location.href = destination
-      }, 1500)
+      sessionHouse.current = house
+      await goOn()
     } catch (err: unknown) {
       const refused = linkRefusal(err)
       if (refused) setRefusal(refused)
@@ -130,6 +158,19 @@ export function VerifyEmail() {
       </Link>
     </div>
   ) : null
+
+  /** The verified address whose houses could not be read: one way on. */
+  const unreadNotice = (
+    <div className="mdv-pub__stack" data-testid="verify-houses-unread">
+      <p className="mdv-alert" role="alert">
+        Your address is verified, but we couldn&apos;t read your houses just now.
+        Nothing was opened.
+      </p>
+      <button className="mdv-btn mdv-btn--seal" onClick={tryAgain} disabled={verifying}>
+        {verifying ? 'Trying again' : 'Try again'}
+      </button>
+    </div>
+  )
 
   const handleResend = async () => {
     // Rate limit: 1 per 60 seconds (T-26-05-03)
@@ -180,6 +221,8 @@ export function VerifyEmail() {
         <div className="mdv-pub__plate mdv-pub__stack">
           {verified ? (
             <p role="status">Your address is verified. Redirecting you now…</p>
+          ) : housesUnread ? (
+            unreadNotice
           ) : (
             <>
               {error && (
@@ -237,6 +280,14 @@ export function VerifyEmail() {
           )}
         </div>
       </PublicShell>
+    )
+  }
+
+  if (housesUnread) {
+    return (
+      <AuthShell title="Email Verified!" subtitle="One more read, then you are in.">
+        <AuthCard>{unreadNotice}</AuthCard>
+      </AuthShell>
     )
   }
 
