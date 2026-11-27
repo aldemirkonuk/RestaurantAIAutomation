@@ -11,6 +11,10 @@
  * "Sold as", and the groups hold their height for one frame so nothing under
  * them jumps.
  *
+ * "At the till" (r109 g3) lists the till buttons mapped to the good, which
+ * are what move its stock on a sale: "Gin & Tonic · by the glass · Square".
+ * No money is in it, so staff see it too; a manager can open Map POS buttons.
+ *
  * An empty group is said as "None" under the server's own sentence for it,
  * which names the state (no current menu, not a catalogue drink); the drawer
  * never sums the groups into "not used anywhere". Dish recipes come from
@@ -33,7 +37,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import HeldReading from './HeldReading';
-import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
+import type { ItemMenuLine, ItemTillButton, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
 import {
   dishHref,
   type ItemDish,
@@ -385,6 +389,61 @@ function LinkLine({ line, good, onLink }: { line: ItemMenuLine; good: string; on
   );
 }
 
+const TILL_WORDS: Record<string, string> = { '*': 'every till', square: 'Square', toast: 'Toast', clover: 'Clover', lightspeed: 'Lightspeed' };
+const SALE_UNIT_WORDS: Record<string, string> = { glass: 'by the glass', bottle: 'by the bottle' };
+
+/** "Gin & Tonic · by the glass · Square": the button, how it sells, which till. */
+export function tillButtonWords(b: ItemTillButton): string {
+  const till = TILL_WORDS[b.source.toLowerCase()] ?? b.source.charAt(0).toUpperCase() + b.source.slice(1);
+  return [b.itemName || 'A button with no name', b.saleUnit ? SALE_UNIT_WORDS[b.saleUnit] ?? b.saleUnit : null, till]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+export const TILL_NONE = 'No till button draws this good, so a till sale does not move it.';
+export const TILL_FOOD = 'A dish sale does not draw its foods yet.';
+export const TILL_RECIPE = 'A button pointed at a recipe is not listed here; recipes are not drawn at the till yet.';
+export const TILL_UNREAD = 'Which till buttons draw this good could not be read here.';
+
+/** The till buttons that draw this good down on a sale (r109 g3). An older gateway's absent group is unread. */
+function AtTheTill({ group, kind, onMapTill }: { group: ItemUsedInGroup<ItemTillButton> | undefined; kind: string | null; onMapTill?: () => void }) {
+  const read = !!group && group.readable && group.lines !== null;
+  const lines = read ? (group.lines ?? []) : [];
+  return (
+    <section className="ivd-used-g" data-testid="ivd-used-till">
+      <h4 className="ivd-used-h">At the till</h4>
+      {!read ? (
+        <p className="iv-note">{TILL_UNREAD}</p>
+      ) : lines.length === 0 ? (
+        <p className="iv-said" data-testid="ivd-used-till-none">
+          {TILL_NONE}
+        </p>
+      ) : (
+        <ul className="ivd-used-list">
+          {lines.map((b) => (
+            <li key={b.id}>
+              <span>{tillButtonWords(b)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {read ? (
+        <p className="iv-note">
+          {kind === 'food' ? `${TILL_FOOD} ` : ''}
+          {TILL_RECIPE}
+        </p>
+      ) : null}
+      {onMapTill ? (
+        <p className="iv-note">
+          <button type="button" className="iv-linkish iv-focus ivd-till-map" onClick={onMapTill}>
+            Change on Map POS buttons
+          </button>
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 type UsedGroup<T> = ItemUsedInGroup<T>;
 const read = <T,>(g: UsedGroup<T> | undefined): g is UsedGroup<T> & { lines: T[] } => !!g && g.readable && g.lines !== null;
 
@@ -425,6 +484,7 @@ export default function ItemUsedIn({
   onRetryDishes,
   onRetryDrinks,
   onLink,
+  onMapTill,
 }: {
   load: UsedInLoad;
   dishes: DishesLoad;
@@ -439,6 +499,8 @@ export default function ItemUsedIn({
   onRetryDrinks?: () => void;
   /** Link an unlinked line to this good (owner/manager); resolves once the fresh Used in is in place, rejects with words. */
   onLink?: (menuItemId: string) => Promise<void>;
+  /** Open the house's Map POS buttons (managers only; the drawer closes first). */
+  onMapTill?: () => void;
 }) {
   // A link moves a line from the unlinked group into Sold as. The groups hold
   // the height they had for the one frame the move is drawn in, so the dish
@@ -569,6 +631,7 @@ export default function ItemUsedIn({
           hideWhenEmpty
           act={link ? (l) => <LinkLine line={l} good={load.data.item.displayName ?? 'this good'} onLink={link} /> : undefined}
         />
+        <AtTheTill group={load.data.atTill} kind={load.data.item.kind} onMapTill={canManage ? onMapTill : undefined} />
       </div>
     );
   }
