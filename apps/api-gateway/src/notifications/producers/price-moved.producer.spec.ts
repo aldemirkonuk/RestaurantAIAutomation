@@ -28,7 +28,8 @@ class Q {
   private f: Array<(r: Row) => boolean> = [];
   private nested: Array<(l: Row) => boolean> = [];
   private lim: number | null = null;
-  private ord: { col: string; asc: boolean } | null = null;
+  private ord: Array<{ col: string; asc: boolean }> = [];
+  private win: { from: number; to: number } | null = null;
   constructor(private rows: Row[]) {}
   select() { return this; }
   private add(col: string, test: (v: any) => boolean) {
@@ -48,7 +49,8 @@ class Q {
     return this.add(c, (x) => !set.includes(x));
   }
   or() { return this; }
-  order(col: string, o?: { ascending?: boolean }) { this.ord = { col, asc: o?.ascending !== false }; return this; }
+  order(col: string, o?: { ascending?: boolean }) { this.ord.push({ col, asc: o?.ascending !== false }); return this; }
+  range(from: number, to: number) { this.win = { from, to }; return this; }
   limit(n: number) { this.lim = n; return this; }
   private run() {
     let out = this.rows.filter((r) => this.f.every((t) => t(r)));
@@ -62,11 +64,19 @@ class Q {
         }))
         .filter((r) => r.procurement_document_lines.length > 0);
     }
-    if (this.ord) {
-      const { col, asc } = this.ord;
-      out = [...out].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (asc ? 1 : -1));
+    if (this.ord.length) {
+      out = [...out].sort((a, b) => {
+        for (const { col, asc } of this.ord) {
+          const c = a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0;
+          if (c) return c * (asc ? 1 : -1);
+        }
+        return 0;
+      });
     }
-    return this.lim == null ? out : out.slice(0, this.lim);
+    if (this.win) out = out.slice(this.win.from, this.win.to + 1);
+    if (this.lim != null) out = out.slice(0, this.lim);
+    // PostgREST answers at most 1000 rows whatever the read asked for
+    return out.slice(0, 1000);
   }
   maybeSingle() { return Promise.resolve({ data: this.run()[0] ?? null, error: null }); }
   then(res: any, rej: any) { return Promise.resolve({ data: this.run(), error: null }).then(res, rej); }
@@ -182,6 +192,24 @@ describe("PriceMovedProducer", () => {
     expect(sent(notifications)).toHaveLength(first);
     expect(second.emitted).toBe(0);
     expect(second.alreadyClaimed).toBeGreaterThan(0);
+  });
+
+  it("[REVERT-FAILS] a move on a late line of a long paper is read past the 1000-row cap", async () => {
+    const { tables, notifications, producer } = build();
+    const goods = Array.from({ length: 25 }, (_, j) => `z${j + 1}`);
+    paper(tables, { id: "doc-old", verified_at: "2026-10-01T10:00:00Z" },
+      goods.map((g) => ({ inventory_id: g, description: `Wine ${g}`, line_total: 60 })));
+    // 49 papers of 25 priced-but-uncompared lines, then the one that moved on line 22:
+    // 50 x 25 = 1250 lines, so a capped read never reaches line 22.
+    for (let k = 1; k <= 49; k++)
+      paper(tables, { id: `doc-${String(k).padStart(2, "0")}`, doc_number: `n${k}`, verified_at: `2026-11-27T09:${String(k).padStart(2, "0")}:00Z` },
+        Array.from({ length: 25 }, (_, j) => ({ inventory_id: `p${k}-${j}`, description: `Other ${k}-${j}`, line_total: 60 })));
+    paper(tables, { id: "doc-99", doc_number: "4471", verified_at: "2026-11-27T10:30:00Z" },
+      goods.map((g, j) => ({ inventory_id: g, description: `Wine ${g}`, line_total: j === 21 ? 84 : 60 })));
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(sent(notifications).map((r: any) => r.message)).toEqual([
+      "Anadolu Wines, invoice 4471: Wine z22 up 40% (5.00 -> 7.00).",
+    ]);
   });
 
   it("[REVERT-FAILS] staff are never in the audience", async () => {
