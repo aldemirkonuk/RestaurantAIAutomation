@@ -1174,3 +1174,12 @@ textarea.cl-field {
 @media (max-width: 640px) {
   .cl-spine-nav { min-height: 64px; align-content: flex-start; }
 }
+
+/* The two rule notes under the headline ("The Cellar" / which view opens) wrap to a long unread
+   sentence and settle two lines shorter once the registers read lands (walk p11: 69px to 52px at
+   375, 0.17 CLS with the nav). The settled room is held from first paint; the nav stays visibility:
+   hidden while the read is in flight so the provisional one-register set never shows. No transition,
+   and none under reduced motion (ADR 0112). */
+@media (max-width: 640px) {
+  .cl-notes-hold { min-height: 52px; }
+}
