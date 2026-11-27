@@ -17,6 +17,7 @@ import {
   letterAt,
   letterLook,
   mailTabLabel,
+  READING_WITHIN_MIN,
   spanWords,
   storedKindsLine,
   todayLine,
@@ -134,6 +135,28 @@ describe('the house mailbox door', () => {
     const st = houseMailboxStatus(r, { readFailed: false, now: NOW });
     expect(st).toMatchObject({ state: 'behind', words: 'Behind by 40 min.', tone: 'warn' });
     expect(intakeLine(st, r, NOW)).toBe('Your mailbox is behind by 40 min');
+  });
+
+  it('holds "reading" for exactly 15 minutes and no longer', () => {
+    // The window is the brief's rule, pinned at both edges so it cannot drift.
+    expect(READING_WITHIN_MIN).toBe(15);
+    const atEdge = reader({ lastReadAt: new Date(NOW - 15 * MIN).toISOString() });
+    expect(houseMailboxStatus(atEdge, { readFailed: false, now: NOW })).toMatchObject({
+      state: 'reading',
+      tone: 'seal',
+    });
+    const justPast = reader({ lastReadAt: new Date(NOW - 15 * MIN - 1).toISOString() });
+    expect(houseMailboxStatus(justPast, { readFailed: false, now: NOW })).toMatchObject({
+      state: 'behind',
+      words: 'Behind by 15 min.',
+      tone: 'warn',
+    });
+    const sixteen = reader({ lastReadAt: new Date(NOW - 16 * MIN).toISOString() });
+    expect(houseMailboxStatus(sixteen, { readFailed: false, now: NOW })).toMatchObject({
+      state: 'behind',
+      words: 'Behind by 16 min.',
+      tone: 'warn',
+    });
   });
 
   it('is not connected when no grant exists', () => {
