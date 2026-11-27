@@ -2,6 +2,8 @@
  * r110 drinks-g4: Learn the specs, a staff drill on the house's own cards. Three Leitner boxes (box 1 first), keys Space / 1 / 2,
  * progress only in this browser, no money, and no animation under reduced motion.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { DrinkCard } from '../../../../services/api/recipes';
@@ -151,5 +153,10 @@ describe('Learn the specs', () => {
     expect(screen.getByTestId('learn-face').className).not.toMatch(/--in/);
     key(' ');
     expect(screen.getByTestId('learn-spec').className).toBe('');
+  });
+
+  it('the drill buttons are 44 px tall on a phone or a coarse pointer', () => {
+    const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8').replace(/\s+/g, ' ');
+    expect(css).toContain('@media (max-width: 719px), (pointer: coarse) { .cl-learn-actions button { min-height: 44px; } }');
   });
 });

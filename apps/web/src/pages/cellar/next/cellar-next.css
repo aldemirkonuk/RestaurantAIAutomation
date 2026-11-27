@@ -1213,6 +1213,8 @@ textarea.cl-field {
 .cl-learn-method { white-space: pre-wrap; }
 .cl-learn-actions { display: flex; gap: 8px; margin-top: 16px; }
 .cl-learn-actions kbd { margin-left: 6px; font: inherit; opacity: 0.6; }
+/* On a phone or a coarse pointer the drill's buttons are 44 px tall (walk r110: 30 px at 375). The row holds one height whether it shows Show or Knew it / Not yet, so nothing moves. */
+@media (max-width: 719px), (pointer: coarse) { .cl-learn-actions button { min-height: 44px; } }
 .cl-learn-reveal { animation: cl-learn-reveal 200ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .cl-learn-face--in { animation: cl-learn-face 120ms linear both; }
 @keyframes cl-learn-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
