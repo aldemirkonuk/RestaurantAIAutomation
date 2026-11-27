@@ -2697,3 +2697,28 @@ describe('ReportsNext — the phone till card holds the compare answer (r107 g5)
     expect(on - off).toBe(66);
   });
 });
+
+describe('a till-window click redraws the till card and no other (perf-p4-5, r108)', () => {
+  const drawnOf = (ids: readonly string[]) => ids.map((id) => vi.spyOn(CATALOGUE[id as keyof typeof CATALOGUE], 'window'));
+  const tillChip = (name: string) =>
+    within(screen.getByRole('region', { name: 'Through the till' })).getByRole('button', { name });
+
+  it.each(['/reports', '/reports?compare=prior'])('[REVERT-FAILS] %s: every other card is drawn once, the till again', (at) => {
+    // `window` is read by a cutting's body and by nothing on the page around it,
+    // so its call count is how many times that card was drawn.
+    const others = DEFAULT_ON.filter((id) => id !== 'till');
+    const spies = drawnOf(others);
+    const [till] = drawnOf(['till']);
+    hook.current = base();
+    paint(at);
+    const drawnBefore = spies.map((s) => s.mock.calls.length);
+    expect(drawnBefore.every((n) => n > 0)).toBe(true);
+    const tillBefore = till.mock.calls.length;
+
+    fireEvent.click(tillChip('90 days'));
+
+    expect(till.mock.calls.length).toBeGreaterThan(tillBefore);
+    expect(spies.map((s) => s.mock.calls.length)).toEqual(drawnBefore);
+    [...spies, till].forEach((s) => s.mockRestore());
+  });
+});

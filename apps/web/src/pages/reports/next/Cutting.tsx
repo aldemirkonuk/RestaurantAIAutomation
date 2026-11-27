@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -333,7 +333,14 @@ export interface CuttingProps {
   strip?: boolean;
 }
 
-export default function Cutting({
+/** What the router half hands the body: whether the link lays this card flat, and the two moves. */
+interface CuttingBodyProps extends CuttingProps {
+  flat: boolean;
+  onOpenFlat: () => void;
+  onCloseFlat: () => void;
+}
+
+function CuttingBody({
   id,
   graph,
   register,
@@ -351,7 +358,10 @@ export default function Cutting({
   strip = false,
   onFit,
   onControls,
-}: CuttingProps) {
+  flat: flatAsked,
+  onOpenFlat: openFlat,
+  onCloseFlat: closeFlat,
+}: CuttingBodyProps) {
   const spec = CATALOGUE[id];
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
@@ -444,34 +454,11 @@ export default function Cutting({
 
   const held = arrange.picked === id;
 
-  /* Laid flat: only with a register, only while reading, only for the id
-     the URL names (`get` answers the first, so two params open one dialog).
-     Opening pushes an entry marked with this id, so close goes back through
-     history and Back, Esc and the button agree; a cold `?flat=` has no entry
-     of ours, so close removes the param in place. */
-  const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+  // Laid flat: the router shell below reads the link (see `Cutting`).
   const canLayFlat = readsRegister(spec);
-  const flat = canLayFlat && !arranging && params.get(FLAT_PARAM) === id;
+  const flat = canLayFlat && !arranging && flatAsked;
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const flatLabel = `Show ${spec.title} full screen`;
-
-  const openFlat = () => {
-    const next = new URLSearchParams(params);
-    next.set(FLAT_PARAM, id);
-    setParams(next, { state: { rpFlat: id } });
-  };
-  const closeFlat = () => {
-    const ours = (location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
-    if (ours) {
-      navigate(-1);
-      return;
-    }
-    const next = new URLSearchParams(params);
-    next.delete(FLAT_PARAM);
-    setParams(next, { replace: true });
-  };
 
   // A fitted card tells the sheet what its content needs, now and whenever a
   // block inside it changes size. Only while it is read as a table: a chart
@@ -633,5 +620,53 @@ export default function Cutting({
         />
       )}
     </section>
+  );
+}
+
+/** Memoised: the page hands each cutting only what it reads (perf-p4-5, r108). */
+const CuttingBodyMemo = memo(CuttingBody);
+
+/**
+ * The router half of a cutting. The link changes on every till-window click
+ * (`?days=`), and a component that reads it redraws with it, so only this
+ * shell reads the link; the body below is handed a boolean and two functions
+ * that stay the same, and redraws only when what it draws changes.
+ *
+ * Laid flat: only with a register, only while reading, only for the id the
+ * URL names (`get` answers the first, so two params open one dialog). Opening
+ * pushes an entry marked with this id, so close goes back through history and
+ * Back, Esc and the button agree; a cold `?flat=` has no entry of ours, so
+ * close removes the param in place.
+ */
+export default function Cutting(props: CuttingProps) {
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const router = useRef({ params, setParams, navigate, location });
+  router.current = { params, setParams, navigate, location };
+  const { id } = props;
+  const onOpenFlat = useCallback(() => {
+    const r = router.current;
+    const next = new URLSearchParams(r.params);
+    next.set(FLAT_PARAM, id);
+    r.setParams(next, { state: { rpFlat: id } });
+  }, [id]);
+  const onCloseFlat = useCallback(() => {
+    const r = router.current;
+    if ((r.location.state as { rpFlat?: unknown } | null)?.rpFlat === id) {
+      r.navigate(-1);
+      return;
+    }
+    const next = new URLSearchParams(r.params);
+    next.delete(FLAT_PARAM);
+    r.setParams(next, { replace: true });
+  }, [id]);
+  return (
+    <CuttingBodyMemo
+      {...props}
+      flat={params.get(FLAT_PARAM) === id}
+      onOpenFlat={onOpenFlat}
+      onCloseFlat={onCloseFlat}
+    />
   );
 }

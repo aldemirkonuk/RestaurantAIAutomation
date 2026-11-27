@@ -330,3 +330,34 @@ describe('useReportsNextData — whose sheet this is', () => {
     expect(result.current.sheetUnread).toMatch(/signed in/);
   });
 });
+
+describe('useReportsNextData — a window switch leaves the other registers the same objects (perf-p4-5, r108)', () => {
+  it('[REVERT-FAILS] seats keeps its register identity while the till reads the new window', async () => {
+    auth.rid = 'r1';
+    auth.role = 'owner';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === SEATS) return { data: { tables: [] } };
+      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: { posConnected: true } };
+      return { data: {} };
+    });
+    const { result, rerender } = renderHook(
+      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['seats', 'till']),
+      { wrapper: wrapper(), initialProps: { days: 30 } },
+    );
+    await waitFor(() => {
+      expect(result.current.registers.till?.loading).toBe(false);
+      expect(result.current.registers.seats?.loading).toBe(false);
+    });
+    const seats = result.current.registers.seats;
+    const till = result.current.registers.till;
+
+    rerender({ days: 90 });
+    await waitFor(() => expect(paths()).toContain('/analytics/pos-revenue/r1?days=90'));
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+
+    expect(result.current.registers.seats).toBe(seats);
+    expect(result.current.registers.till).not.toBe(till);
+  });
+});
