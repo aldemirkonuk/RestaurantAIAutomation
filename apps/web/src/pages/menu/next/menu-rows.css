@@ -36,14 +36,6 @@
   }
 }
 
-/* The room the current menu's table will take, held while it is read: desktop
-   only, where the walk measured the +287 px jump (r103 menu-7, F2). */
-@media (min-width: 900px) {
-  .mdv-reserve {
-    min-height: var(--mdv-reserve, 0px);
-  }
-}
-
 /* Below 600 px a table of 5-7 columns is wider than the page: its actions (Change
    price, Discard, Make current) sat past the edge of a scroller. Each line and each
    kept menu is a stacked card instead, its actions 44 px high. Layout only: no

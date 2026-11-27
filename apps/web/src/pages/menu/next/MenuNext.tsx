@@ -42,7 +42,7 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, restoreMenuItem, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
@@ -129,26 +129,6 @@ function failWords(e: unknown, none: string): string {
   const sent = e as { code?: unknown; response?: unknown; message?: unknown } | null;
   if (sent?.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
   return e instanceof Error ? e.message : none;
-}
-
-/**
- * The room the current menu's table takes, from the walk: 4 lines were 287 px
- * (a 63 px head and 56 px a line). The count is the house's last, kept on this
- * device; with none it is 4. A house with no current menu reserves nothing.
- */
-const HEAD_PX = 63;
-const LINE_PX = 56;
-export function reservedFor(lines: number): number {
-  return lines > 0 ? HEAD_PX + lines * LINE_PX : 0;
-}
-const countKey = (house: string | null) => `mdv.menu.lines.${house ?? ''}`;
-function lastLineCount(house: string | null): number {
-  try {
-    const n = Number(window.localStorage.getItem(countKey(house)));
-    return Number.isInteger(n) && n >= 0 && window.localStorage.getItem(countKey(house)) !== null ? n : 4;
-  } catch {
-    return 4;
-  }
 }
 
 function useActiveMenu(restaurantId: string | null) {
@@ -514,18 +494,6 @@ export default function MenuNext() {
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
-  // Read once for the house: the count this page stores below must not take the room away at the next render.
-  const lastCount = useMemo(() => lastLineCount(activeRestaurantId), [activeRestaurantId]);
-  // Remember how many lines the current menu had, to hold their room next time.
-  const shown = q.data ? (q.data.menuId ? q.data.items.length : 0) : null;
-  useEffect(() => {
-    if (shown === null) return;
-    try {
-      window.localStorage.setItem(countKey(activeRestaurantId), String(shown));
-    } catch {
-      /* a device that keeps nothing keeps nothing */
-    }
-  }, [shown, activeRestaurantId]);
   const queryClient = useQueryClient();
   // Lines already shown. A line that turns up later is new: it enters and
   // inks in, and stays marked so a later render does not cancel the animation.
@@ -673,6 +641,7 @@ export default function MenuNext() {
       </tr>
     </thead>
   );
+  const settled = !(authLoading || q.isLoading);
 
   return (
     <div
@@ -691,14 +660,10 @@ export default function MenuNext() {
           Menu.
         </h1>
 
-        {authLoading || q.isLoading ? (
-          // The table that lands is about 287 px for 4 lines at desktop width: the room is held while it is read, so the
-          // sections below do not jump when it arrives (r103 menu-7, walk F2).
-          <div className="mdv-reserve" style={{ ['--mdv-reserve' as string]: `${reservedFor(lastCount)}px` }} data-testid="menu-reserve">
-            <p className="cl-said" role="status">
-              Reading the menu…
-            </p>
-          </div>
+        {!settled ? (
+          <p className="cl-said" role="status">
+            Reading the menu…
+          </p>
         ) : q.isError ? (
           <div role="alert" data-testid="menu-error" style={{ display: 'grid', gap: 8, justifyItems: 'start' }}>
             <p className="cl-said">
@@ -716,15 +681,12 @@ export default function MenuNext() {
             </button>
           </div>
         ) : !q.data?.menuId ? (
-          // The room held while reading is held here too, so the sections below do not jump up
-          // when the read ends with no current menu (r103 F8: CLS 0.125 at 1440 px; a reserve, not
-          // an ease). The house's stored count decides it; a stored 0 holds nothing.
-          <div className="mdv-reserve" style={{ ['--mdv-reserve' as string]: `${reservedFor(lastCount)}px` }} data-testid="menu-no-active-reserve">
-            <p className="cl-said" data-testid="menu-no-active">
-              No current menu yet. Read one below and make it current — Add to menu has nothing to
-              add to until a menu is current.
-            </p>
-          </div>
+          // No room is held: the sections below are not drawn until the read settles, so there is
+          // nothing above or below this sentence to jump (DD-r108-15 retires r103 F8's reserve).
+          <p className="cl-said" data-testid="menu-no-active">
+            No current menu yet. Read one below and make it current — Add to menu has nothing to
+            add to until a menu is current.
+          </p>
         ) : (
           <>
             {/* Every kept menu is stored as "Wine List" (the column's default), so
@@ -852,26 +814,37 @@ export default function MenuNext() {
           </>
         )}
 
-        {/* ADR 0193 round 3: every price this house holds, kept when its wine
-            leaves the menu (the founder, 2026-09-21: "add a section to that
-            where you can lock price, but wha f that menu item disappears?"). */}
-        {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
+        {/* Everything below the menu waits for the current-menu read to settle
+            (perf p4 p4-1; DD-r108-15). Held room for it was never the right size:
+            the sections were laid out first and the lines then landed ABOVE them,
+            pushing them out of view (375 owner CLS 0.696). Absent until the read
+            answers, they have nothing to be pushed by. They are mounted but
+            hidden (display: none, no box, so no shift), not absent: their reads
+            start with the page's, so Menus kept is read once per load and a
+            failed read still shows under the one Retry (r103 menu-3). Static:
+            no fade, no motion (ADR 0112). */}
+        <div hidden={!settled} data-testid="menu-below">
+            {/* ADR 0193 round 3: every price this house holds, kept when its wine
+                leaves the menu (the founder, 2026-09-21: "add a section to that
+                where you can lock price, but wha f that menu item disappears?"). */}
+            {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
 
-        {activeRestaurantId ? <MenuVersions canManage={canManage} retryAbove={q.isError} /> : null}
+            {activeRestaurantId ? <MenuVersions canManage={canManage} retryAbove={q.isError} /> : null}
 
-        <footer
-          style={{
-            marginTop: 40,
-            paddingTop: 12,
-            borderTop: '1px solid var(--paper-2)',
-          }}
-        >
-          <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
-            Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete. Change price sets the line's glass or bottle price; on the
-            current menu the house's own price follows unless it is locked. An empty box keeps its price.
-          </p>
-        </footer>
+            <footer
+              style={{
+                marginTop: 40,
+                paddingTop: 12,
+                borderTop: '1px solid var(--paper-2)',
+              }}
+            >
+              <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
+                Discard removes a line from what guests see. What it cost and who added it is kept —
+                nothing here is a delete. Change price sets the line's glass or bottle price; on the
+                current menu the house's own price follows unless it is locked. An empty box keeps its price.
+              </p>
+            </footer>
+        </div>
       </div>
     </div>
   );

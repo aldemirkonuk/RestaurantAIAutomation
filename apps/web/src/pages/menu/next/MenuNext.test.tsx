@@ -605,75 +605,45 @@ describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => 
   });
 });
 
-// r103 menu-7 (walk F2): the room of the current menu's table is held while it is read.
-describe('MenuNext — the table\'s room is held while it is read (r103 menu-7)', () => {
-  afterEach(() => window.localStorage.clear());
-
-  it('holds 287 px for the 4 lines it assumes, 63 for the head and 56 a line', async () => {
-    const { reservedFor } = await import('./MenuNext');
-    expect(reservedFor(4)).toBe(287);
-    expect(reservedFor(0)).toBe(0);
-  });
-
-  it('while the menu is read, the box is held at the last count this device saw', async () => {
-    window.localStorage.setItem('mdv.menu.lines.r1', '2');
-    mockGetMenu.mockReturnValue(new Promise(() => {}));
+// DD-r108-15: #2195's settled gating replaces r103 menu-7's held room (menu-reserve, menu-no-active-reserve).
+describe('MenuNext — nothing below the menu is drawn until its read settles (DD-r108-15)', () => {
+  it('Locked prices, Menus kept and the footer take no room while the menu read is pending', async () => {
+    let settle: (m: ActiveMenu) => void = () => {};
+    mockGetMenu.mockReturnValue(new Promise<ActiveMenu>((r) => (settle = r)));
     mount();
-    const held = await screen.findByTestId('menu-reserve');
-    expect(held.style.getPropertyValue('--mdv-reserve')).toBe('175px');
-    expect(within(held).getByText('Reading the menu…')).toBeInTheDocument();
-  });
-
-  it('with no count kept it holds 4 lines, and the count is kept once the menu lands', async () => {
-    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' }), line({ id: 'c', name: 'Salep' })] }));
-    mount();
-    expect(screen.getByTestId('menu-reserve').style.getPropertyValue('--mdv-reserve')).toBe('287px');
+    expect(screen.getByText('Reading the menu…')).toBeInTheDocument();
+    expect(screen.getByText('Locked prices')).not.toBeVisible();
+    expect(screen.getByText('Menus kept')).not.toBeVisible();
+    expect(screen.getByText(/nothing here is a delete/)).not.toBeVisible();
+    settle(menu());
     await screen.findAllByTestId('menu-row');
-    await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('3'));
+    expect(screen.getByText('Locked prices')).toBeVisible();
+    expect(screen.getByText('Menus kept')).toBeVisible();
+    expect(screen.getByText(/nothing here is a delete/)).toBeVisible();
   });
 
-  // r104 menu-g4 (r103 F8): a house with no current menu held the room while reading and gave it all back.
-  it('a house with no current menu keeps the room it held while reading (cold device: 4 lines)', async () => {
-    mockGetMenu.mockResolvedValue(menu({ menuId: null, items: [] }));
+  it('reads Menus kept once per load, from the start, though it is hidden until the menu settles', async () => {
+    let settle: (m: ActiveMenu) => void = () => {};
+    mockGetMenu.mockReturnValue(new Promise<ActiveMenu>((r) => (settle = r)));
+    mockVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockVersions.mockClear();
     mount();
-    const held = (await screen.findByTestId('menu-no-active-reserve')) as HTMLElement;
-    expect(held.style.getPropertyValue('--mdv-reserve')).toBe('287px');
-    expect(within(held).getByTestId('menu-no-active')).toBeInTheDocument();
+    await waitFor(() => expect(mockVersions).toHaveBeenCalledTimes(1));
+    settle(menu());
+    await screen.findAllByTestId('menu-row');
+    expect(mockVersions).toHaveBeenCalledTimes(1);
   });
 
-  // r104 walk w-menu: the count was read again on every render, so the 0 the page stored for a
-  // no-current house took the room away at the next render (CLS 0.11 at 1440 px, cold device).
-  it('keeps the room it held through a later render, though the page has stored a 0 by then', async () => {
-    mockGetMenu.mockResolvedValue(menu({ menuId: null, items: [] }));
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const tree = () => (
-      <QueryClientProvider client={qc}>
-        <MenuNext />
-      </QueryClientProvider>
-    );
-    const { rerender } = render(tree());
-    await screen.findByTestId('menu-no-active-reserve');
-    await waitFor(() => expect(window.localStorage.getItem('mdv.menu.lines.r1')).toBe('0'));
-    rerender(tree());
-    expect(screen.getByTestId('menu-no-active-reserve').style.getPropertyValue('--mdv-reserve')).toBe('287px');
-  });
-
-  it('holds the stored count\'s room for it, and nothing when the stored count is 0', async () => {
-    window.localStorage.setItem('mdv.menu.lines.r1', '2');
-    mockGetMenu.mockResolvedValue(menu({ menuId: null, items: [] }));
-    const a = mount();
-    expect((await screen.findByTestId('menu-no-active-reserve')).style.getPropertyValue('--mdv-reserve')).toBe('175px');
-    a.unmount();
-    window.localStorage.setItem('mdv.menu.lines.r1', '0');
+  it('holds no guessed room: no reserve while reading, none under the no-current-menu sentence', async () => {
+    let settle: (m: ActiveMenu) => void = () => {};
+    mockGetMenu.mockReturnValue(new Promise<ActiveMenu>((r) => (settle = r)));
     mount();
-    expect((await screen.findByTestId('menu-no-active-reserve')).style.getPropertyValue('--mdv-reserve')).toBe('0px');
-  });
-
-  it('is held on desktop only, where the jump was measured', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const css = readFileSync(join(__dirname, 'menu-rows.css'), 'utf8');
-    expect(css).toMatch(/@media \(min-width: 900px\)\s*\{\s*\.mdv-reserve\s*\{\s*min-height: var\(--mdv-reserve/);
+    expect(screen.queryByTestId('menu-reserve')).not.toBeInTheDocument();
+    settle(menu({ menuId: null, items: [] }));
+    expect(await screen.findByTestId('menu-no-active')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-no-active-reserve')).not.toBeInTheDocument();
+    expect(document.querySelector('.mdv-reserve')).toBeNull();
+    expect(screen.getByText('Menus kept')).toBeVisible();
   });
 });
 
