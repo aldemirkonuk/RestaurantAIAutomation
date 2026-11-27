@@ -1,9 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  InternalServerErrorException,
-  NotFoundException,
-} from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
+import { copyIntoDraft } from "./menu-copy";
 
 /**
  * "Raise prices by a percent" (r108 menu-g9). The session's call: the raise
@@ -113,10 +109,7 @@ export function repriceRefusal(percent: unknown, roundTo: unknown): string | nul
   return null;
 }
 
-// ── The copy ────────────────────────────────────────────────────────────────
-
-export const REPRICE_PAGE_ROWS = 1000;
-export const REPRICE_INSERT_BATCH = 500;
+// ── The copy (menu-copy.ts) ─────────────────────────────────────────────────
 
 /** What the reprice call answers. */
 export interface RepriceReply {
@@ -127,22 +120,13 @@ export interface RepriceReply {
   heldOtherMoney: number;
 }
 
-/** The columns a line's copy must not carry over: its own id, its menu, and when it was made. */
-const NOT_COPIED = new Set(["id", "menu_id", "created_at"]);
-
-type Db = { from: (table: string) => any };
-
 /**
  * Copies the house's current menu `menuId` into a new draft with its prices
- * moved. The menu read and every line read name the house, so another
- * house's menu id is the same 404 as a missing one (ADR 0147). Lines are read
- * keyset-paged on id, PAGE_ROWS at a time, so a menu past 1000 lines is copied
- * whole, and inserted in batches. Nothing on the current menu is written. A
- * failed write takes the half-made draft away again; it never stays as a
- * shorter menu.
+ * moved (copyIntoDraft: house-scoped, keyset-paged, batched, a failed write
+ * takes the half-made draft away). Nothing on the current menu is written.
  */
 export async function repriceIntoDraft(
-  sb: Db,
+  sb: { from: (table: string) => any },
   input: { restaurantId: string; menuId: string; userId: string; percent: number; roundTo: number; sections?: string[] | null },
   log: { error: (m: string) => void } = { error: () => undefined },
 ): Promise<RepriceReply> {
@@ -150,98 +134,24 @@ export async function repriceIntoDraft(
   if (refusal) throw new BadRequestException(refusal);
   const { restaurantId, menuId, userId, percent, roundTo } = input;
   const sections = input.sections && input.sections.length > 0 ? input.sections : null;
-
-  const { data: menu, error: menuErr } = await sb
-    .from("restaurant_menus")
-    .select("id, name, status, menu_type, cadence")
-    .eq("id", menuId)
-    .eq("restaurant_id", restaurantId)
-    .maybeSingle();
-  if (menuErr) {
-    throw new InternalServerErrorException(`The menu could not be read just now, so no draft was made (${menuErr.message}).`);
-  }
-  if (!menu) throw new NotFoundException("Menu not found");
-  if (menu.status !== "active") {
-    throw new ConflictException("Only the current menu's prices can be raised. Nothing was made.");
-  }
-
-  const lines: Array<Record<string, unknown>> = [];
-  let after: string | null = null;
-  for (;;) {
-    let q = sb
-      .from("menu_items")
-      .select("*")
-      .eq("menu_id", menuId)
-      .eq("restaurant_id", restaurantId)
-      .neq("status", "discarded");
-    if (after) q = q.gt("id", after);
-    const { data, error } = await q.order("id", { ascending: true }).limit(REPRICE_PAGE_ROWS);
-    if (error) {
-      throw new InternalServerErrorException(`The menu's lines could not be read just now, so no draft was made (${error.message}).`);
-    }
-    const page = (data ?? []) as Array<Record<string, unknown>>;
-    lines.push(...page);
-    if (page.length < REPRICE_PAGE_ROWS) break;
-    after = String(page[page.length - 1].id);
-  }
-
-  const name = `${menu.name ?? "The current menu"}, prices ${percentWords(percent)}`;
   const counts = { changed: 0, unchanged: 0, heldOtherMoney: 0 };
-  const rows = lines.map((line) => {
-    const moved = repriceLine(line as RepriceLineIn, percent, roundTo, sections);
-    if (moved.outcome === "changed") counts.changed += 1;
-    else if (moved.outcome === "held_other_money") counts.heldOtherMoney += 1;
-    else counts.unchanged += 1;
-    const copy: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(line)) if (!NOT_COPIED.has(k)) copy[k] = v;
-    return { ...copy, restaurant_id: restaurantId, by_glass_price: moved.by_glass_price, bottle_price: moved.bottle_price };
-  });
-
-  const now = new Date().toISOString();
-  const { data: draft, error: draftErr } = await sb
-    .from("restaurant_menus")
-    .insert({
-      restaurant_id: restaurantId,
-      name,
-      menu_type: menu.menu_type ?? "beverage",
-      status: "draft",
-      read_state: "done",
-      cadence: menu.cadence ?? null,
-      source_method: "manual",
-      lines_extracted: rows.length,
-      extracted_by: userId,
-      extracted_at: now,
-    })
-    .select("id")
-    .single();
-  if (draftErr || !draft) {
-    throw new InternalServerErrorException(
-      `The draft could not be made, so nothing changed (${draftErr?.message ?? "no row returned"}).`,
-    );
-  }
-  const draftId = String(draft.id);
-
-  for (let i = 0; i < rows.length; i += REPRICE_INSERT_BATCH) {
-    const batch = rows.slice(i, i + REPRICE_INSERT_BATCH).map((r) => ({ ...r, menu_id: draftId }));
-    const { error } = await sb.from("menu_items").insert(batch);
-    if (error) {
-      await dropHalfMadeDraft(sb, restaurantId, draftId, log);
-      throw new InternalServerErrorException(
-        `The draft's lines could not all be written, so the draft was taken away and nothing changed (${error.message}).`,
-      );
-    }
-  }
-  return { menuId: draftId, name, ...counts };
-}
-
-async function dropHalfMadeDraft(sb: Db, restaurantId: string, draftId: string, log: { error: (m: string) => void }) {
-  const lines = await sb.from("menu_items").delete().eq("menu_id", draftId).eq("restaurant_id", restaurantId);
-  const menu = await sb
-    .from("restaurant_menus")
-    .delete()
-    .eq("id", draftId)
-    .eq("restaurant_id", restaurantId)
-    .eq("status", "draft");
-  const failure = lines?.error?.message ?? menu?.error?.message;
-  if (failure) log.error(`menu ${draftId}: a half-made repriced draft could not be removed: ${failure}`);
+  const made = await copyIntoDraft(
+    sb,
+    {
+      restaurantId,
+      menuId,
+      userId,
+      name: (current) => `${current ?? "The current menu"}, prices ${percentWords(percent)}`,
+      notCurrent: "Only the current menu's prices can be raised. Nothing was made.",
+    },
+    (line) => {
+      const moved = repriceLine(line as RepriceLineIn, percent, roundTo, sections);
+      if (moved.outcome === "changed") counts.changed += 1;
+      else if (moved.outcome === "held_other_money") counts.heldOtherMoney += 1;
+      else counts.unchanged += 1;
+      return { by_glass_price: moved.by_glass_price, bottle_price: moved.bottle_price };
+    },
+    log,
+  );
+  return { menuId: made.menuId, name: made.name, ...counts };
 }
