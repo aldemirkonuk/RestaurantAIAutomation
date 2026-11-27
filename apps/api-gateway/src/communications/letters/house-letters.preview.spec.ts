@@ -193,4 +193,16 @@ describe("buildLetterHeaders: the one header block send and preview share", () =
     ).toEqual(["To: a@b.example", "Subject: Hi", "In-Reply-To: <x@y>", "References: <w@y> <x@y>"]);
     expect(buildLetterHeaders({ from: "me@h.example", to: ["a@b.example"], subject: "Hi" })[0]).toBe("From: me@h.example");
   });
+
+  it("writes Cc, Bcc and Reply-To between Subject and the threading when they are given", () => {
+    expect(
+      buildLetterHeaders({
+        to: "a@b.example",
+        cc: ["c@b.example"],
+        bcc: ["d@b.example"],
+        subject: "Hi",
+        replyTo: "r@b.example",
+      }),
+    ).toEqual(["To: a@b.example", "Cc: c@b.example", "Bcc: d@b.example", "Subject: Hi", "Reply-To: r@b.example"]);
+  });
 });
