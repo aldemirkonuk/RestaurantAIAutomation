@@ -1308,6 +1308,57 @@ export function noReplyTarget(
   return last?.id ?? null;
 }
 
+/** A thread of this many letters or more folds its earlier ones (r108 mail g9). */
+export const FOLD_AT = 4;
+/** A run of this many folded letters in a row is one "N earlier letters" button. */
+export const STACK_AT = 3;
+
+/**
+ * Which letters of a thread stay open when it folds (r108 mail g9). Under
+ * FOLD_AT letters, all of them. Otherwise: the newest letter; every letter
+ * that waits on the house (an inbound, not automatic, unmarked letter after
+ * the house's last letter, while the thread waits) and the no-reply target;
+ * every outbound letter whose look has a chip (queued, unsent, refused, not
+ * confirmed); and the newest marked letter, where the mark is taken back.
+ * Letters are oldest to newest, as the thread draws them.
+ */
+export function openLettersOf(
+  letters: readonly MailMessage[],
+  head: Pick<MailThreadPage, 'waiting'> | null,
+): ReadonlySet<string> {
+  const open = new Set<string>();
+  if (letters.length < FOLD_AT) {
+    letters.forEach((m) => open.add(m.id));
+    return open;
+  }
+  const newest = letters.reduce((best, m) => (letterAt(m) >= letterAt(best) ? m : best));
+  open.add(newest.id);
+  if (head?.waiting === true) {
+    const lastOut = letters
+      .filter((m) => m.direction === 'outbound')
+      .reduce<string | null>((best, m) => (best === null || letterAt(m) > best ? letterAt(m) : best), null);
+    for (const m of letters) {
+      if (m.direction !== 'inbound' || m.automatic === true || m.noReplyMarkedAt) continue;
+      if (lastOut === null || letterAt(m) > lastOut) open.add(m.id);
+    }
+    const target = noReplyTarget(head, letters);
+    if (target) open.add(target);
+  }
+  for (const m of letters) {
+    if (m.direction === 'outbound' && letterLook(m).chip) open.add(m.id);
+  }
+  const marked = letters.filter((m) => m.direction === 'inbound' && m.noReplyMarkedAt).slice(-1)[0];
+  if (marked) open.add(marked.id);
+  return open;
+}
+
+/** What a folded letter says: its first 90 characters, or the removed words when it has no text. */
+export function foldedLine(m: MailMessage): string {
+  const text = m.text.replace(/\s+/g, ' ').trim();
+  if (text) return text.length > 90 ? text.slice(0, 90) : text;
+  return letterLook(m).removed ?? 'No text was recorded for this letter.';
+}
+
 /**
  * Why a "needs no reply" mark, or taking it back, did not hold. The page reads
  * only the status and says every case in words written here; a failure never
