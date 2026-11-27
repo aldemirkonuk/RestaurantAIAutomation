@@ -300,6 +300,13 @@ describe("loose lines: kind=dish (r109 inventory g4)", () => {
     ]);
   });
 
+  it("a line whose base unit is not known proposes nothing, even alone", async () => {
+    const t = dishHouse();
+    t.recipe_lines.push(line({ restaurant_id: A, version_id: "v-salad1", position: 2, label: "Sumac", unit_code: "pinch", base_unit: null }));
+    const out = await svc(t).looseDishLines(A);
+    expect(out.groups.find((g) => g.key === "sumac")?.proposed).toBeNull();
+  });
+
   it("the drink queue is unchanged by it: no dish line is in the drinks' answer", async () => {
     const out = await svc(dishHouse()).looseLines(A);
     expect(out.groups.flatMap((g) => g.lines).map((l) => l.cocktailId)).not.toContain("d-pasta");
