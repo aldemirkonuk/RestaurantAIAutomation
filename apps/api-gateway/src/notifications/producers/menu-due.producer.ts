@@ -102,7 +102,9 @@ export class MenuDueProducer {
     await this.ledger.emit(
       { restaurantId, producer: PRODUCER, audience: managers, tally, now },
       {
-        dedupeKey: `menu-due:${restaurantId}:${menu.id}:${due.state}`,
+        // The stint is in the key: Make current on a kept menu re-activates the same id with a
+        // new made_current_at, and a permanent claim on {menu.id}:{state} would keep it silent.
+        dedupeKey: `menu-due:${restaurantId}:${menu.id}:${Date.parse(menu.made_current_at as string)}:${due.state}`,
         occurredAt: now,
         payload: {
           type: "menu_due",

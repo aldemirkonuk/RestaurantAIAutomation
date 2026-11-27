@@ -81,6 +81,21 @@ describe("MenuDueProducer (DD-r108-17)", () => {
     expect(notifications.persistForRestaurant.calls[1][1].message).toMatch(/so a newer one is overdue\./);
   });
 
+  it("a kept menu made current again rings due again in its new stint, and still once within it", async () => {
+    const { db, notifications, producer } = build([current()]);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, at(35));
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    // Make current on the same (kept) menu id: a later made_current_at, same row.
+    const again = "2026-12-15T09:00:00Z";
+    db.tables.restaurant_menus[0].made_current_at = again;
+    const later = (days: number) => new Date(Date.parse(again) + days * DAY);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, later(10));
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, later(35));
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, later(36));
+    expect(notifications.persistForRestaurant.calls).toHaveLength(2);
+  });
+
   it("reports an unreadable menu table as a failure, never as 'not due'", async () => {
     const { db, notifications, producer } = build([current()]);
     db.failures.restaurant_menus = "statement timeout";
