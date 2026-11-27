@@ -417,11 +417,6 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       // empty lens and print "no delivered purchase order" (audit G6); the
       // read is now whole or refused (ADR 0292), with the database's words.
       const client = makeClient({ procurement_orders: ORDER_ROWS, restaurants: HOUSE });
-    it("refuses, rather than reading as no spend, a query that really does fail", async () => {
-      // A column that does not exist anywhere. This used to degrade to an
-      // empty lens and print "no delivered purchase order" (audit G6); the
-      // read is now whole or refused (ADR 0292), with the database's words.
-      const client = makeClient({ procurement_orders: ORDER_ROWS, restaurants: HOUSE });
       const realFrom = client.from;
       client.from = jest.fn((table: string) => {
         const b = realFrom(table);
@@ -437,10 +432,6 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
         {} as any,
         {} as any,
       );
-      await expect(svc.getCashflow(RESTAURANT)).rejects.toMatchObject({
-        name: "WholeReadError",
-        message: expect.stringContaining("42703"),
-      });
       await expect(svc.getCashflow(RESTAURANT)).rejects.toMatchObject({
         name: "WholeReadError",
         message: expect.stringContaining("42703"),
