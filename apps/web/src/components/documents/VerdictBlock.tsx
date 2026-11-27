@@ -153,10 +153,12 @@ export interface VerdictBlockProps {
   /** The delivery states this document's event is in, for the clock chip. */
   states?: string[]
   /**
-   * The sentence that says why prices were not compared when the paper is in
-   * another money than the house costs in. When nothing was compared, it
-   * replaces the "no order or door count" line, which would stack a second
-   * negative on the real cause.
+   * The sentence that says why prices were not compared against earlier costs
+   * when the paper is in another money than the house costs in. It is its own
+   * line under the heading and never replaces it: the heading's fact (no order
+   * or door count, or N lines differ) is a different fact from the money one,
+   * and a paper paired with an order still needs this line, or silence reads
+   * as "nothing moved".
    */
   foreignMoney?: string | null
 }
@@ -225,7 +227,7 @@ export function VerdictBlock({ doc, states = [], foreignMoney = null }: VerdictB
         {nothingRead
           ? 'Nothing was read from this document, so nothing could be compared.'
           : nothingCompared
-            ? foreignMoney || 'Not compared — no order or door count to compare against.'
+            ? 'Not compared — no order or door count to compare against.'
             : clean
               ? 'Nothing on this document differs from the delivery.'
               : `${differing.length} ${differing.length === 1 ? 'line differs' : 'lines differ'} from the delivery.`}
@@ -239,7 +241,16 @@ export function VerdictBlock({ doc, states = [], foreignMoney = null }: VerdictB
         </p>
       )}
 
-      {nothingCompared && !foreignMoney && (
+      {foreignMoney && (
+        <p
+          data-testid="foreign-money-note"
+          style={{ margin: '3px 0 0', fontSize: 11.5, lineHeight: 1.35 }}
+        >
+          {foreignMoney}
+        </p>
+      )}
+
+      {nothingCompared && (
         <p
           data-testid="not-compared-note"
           style={{ margin: '3px 0 0', fontSize: 11.5, lineHeight: 1.35 }}

@@ -211,36 +211,96 @@ describe('CanonicalDocumentPage', () => {
     expect(container.querySelector('.cd-page')?.getAttribute('data-embedded')).toBe('true')
   })
 
-  it('an embedded paper held back for its money says that one sentence, not also "no order or door count" (r107)', async () => {
+  it('an embedded paper held back for its money says that one sentence once, under the unchanged heading (r107)', async () => {
     const r = response()
     r.canonical.layer3.lines = []
     r.canonical.layer1.lines = r.canonical.layer1.lines.length ? r.canonical.layer1.lines : []
-    documentMock.mockResolvedValue(r)
-    priceMovesMock.mockResolvedValue({
-      thresholdPct: 10,
-      paperCurrency: 'TRY',
-      houseCurrency: 'USD',
-      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false, reason: 'currency_differs' }],
-    })
+    documentMock.mockResolvedValue({ ...r, money: { paperCurrency: 'TRY', houseCurrency: 'USD' } })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/orders']}>
-          <CanonicalDocumentPage documentId="doc-syn" embedded />
-        </MemoryRouter>
-      </QueryClientProvider>,
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
     )
     const verdict = await waitFor(() => {
       const v = container.querySelector('.cd-verdict')
       expect(v?.textContent).toMatch(/Prices are in TRY and the house costs in USD/)
       return v as Element
     })
-    expect(verdict.textContent).not.toMatch(/no order or door count/)
+    expect(verdict.querySelector('h2')?.textContent).toMatch(/no order or door count/)
     // Said once on the page (r108): the receipts money card no longer repeats it.
     expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
   })
 
-  it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
+  it('an embedded foreign paper that has a comparison source still says the money sentence, once (r107)', async () => {
+    const r = response()
+    const l3 = r.canonical.layer3.lines as Array<Record<string, unknown>>
+    expect(l3.some((l) => l.ordered != null || l.shipped != null || l.received !== 'not_counted')).toBe(true)
+    documentMock.mockResolvedValue({ ...r, money: { paperCurrency: 'TRY', houseCurrency: 'USD' } })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
+    )
+    await waitFor(() => expect(container.textContent).toMatch(/Prices are in TRY and the house costs in USD/))
+    expect(container.querySelector('.cd-verdict h2')?.textContent).not.toMatch(/no order or door count/)
+    expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
+  })
+
+    it('a staff session is never asked for the price moves, and still hears the money cause (r110 F2)', async () => {
+    const r = response()
+    r.canonical.layer3.lines = []
+    documentMock.mockResolvedValue({ ...r, money: { paperCurrency: 'TRY', houseCurrency: 'USD' } })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'staff', user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
+    )
+    const verdict = await waitFor(() => {
+      const v = container.querySelector('.cd-verdict')
+      expect(v?.textContent).toMatch(/Prices are in TRY and the house costs in USD/)
+      return v as Element
+    })
+    // The cause, not "no order or door count" said as if it were the reason alone.
+    expect(verdict.textContent).toMatch(/so none were compared against earlier costs/)
+    expect(priceMovesMock).not.toHaveBeenCalled()
+  })
+
+  it('an unknown or same money says no money sentence, and nobody asks the price moves (r110 F2)', async () => {
+    for (const money of [{ paperCurrency: 'TRY', houseCurrency: null }, { paperCurrency: 'USD', houseCurrency: 'USD' }]) {
+      documentMock.mockResolvedValue({ ...response(), money })
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const { container, unmount } = render(
+        <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'owner', user: null } as never}>
+          <QueryClientProvider client={qc}>
+            <MemoryRouter initialEntries={['/orders']}>
+              <CanonicalDocumentPage documentId="doc-syn" embedded />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </AuthContext.Provider>,
+      )
+      await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+      expect(container.textContent).not.toMatch(/Prices are in/)
+      unmount()
+    }
+    expect(priceMovesMock).not.toHaveBeenCalled()
+  })
+
+it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
     documentMock.mockResolvedValue(response())
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     // Only the house fields are read; the rest of the auth value is not.

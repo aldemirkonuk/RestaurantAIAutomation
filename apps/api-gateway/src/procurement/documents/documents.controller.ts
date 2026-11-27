@@ -568,7 +568,7 @@ export class DocumentsController {
       throw new HttpException(built.error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    const [{ data: row, error: rowErr }, spine, log] = await Promise.all([
+    const [{ data: row, error: rowErr }, spine, log, { data: house, error: houseErr }] = await Promise.all([
       this.db
         .getClient()
         .from("procurement_documents")
@@ -582,17 +582,23 @@ export class DocumentsController {
          * put it.
          */
         .select(
-          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at",
+          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at, currency",
         )
         .eq("id", id)
         .eq("restaurant_id", user.restaurantId)
         .maybeSingle(),
       this.spine.forDocument(user.restaurantId, id),
       this.corrections.correctionLog(user.restaurantId, id),
+      // The house's money, ROLE-FREE (r110 F2): a code is not money, and the
+      // sheet needs it to say a foreign-money paper's real cause to staff, who
+      // may not read /price-moves. Same column that route compares against.
+      this.db.getClient().from("restaurants").select("currency").eq("id", user.restaurantId).maybeSingle(),
     ]);
 
     const failedRead: string[] = [];
     if (rowErr) failedRead.push(`document metadata: ${rowErr.message}`);
+    if (houseErr) failedRead.push(`the house's money: ${houseErr.message}`);
+    const code = (v: unknown) => (typeof v === "string" ? v.trim().toUpperCase() : "") || null;
     if (!spine.ok) failedRead.push(spine.error);
     if (!log.ok) failedRead.push(log.error);
 
@@ -625,6 +631,14 @@ export class DocumentsController {
 
     return {
       canonical: built.value,
+      /**
+       * The paper's and the house's money codes, as /price-moves compares them
+       * (trimmed, upper-cased). NULL is "not known or not read", never a match.
+       */
+      money: {
+        paperCurrency: rowErr ? null : code((row as { currency?: unknown } | null)?.currency),
+        houseCurrency: houseErr ? null : code((house as { currency?: unknown } | null)?.currency),
+      },
       // NULL means the read failed and `failedRead` says so. An empty array
       // means the reads succeeded and this document is on no delivery — the
       // page then collapses the spine and shows the sheet alone.
