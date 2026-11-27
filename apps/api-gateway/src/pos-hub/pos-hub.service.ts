@@ -20,6 +20,8 @@ import {
   CostSnapshot,
   SaleCostSource,
   checkMarginFromRows,
+  type CheckFacts,
+  type HouseTaxBasis,
   pickSaleCostSource,
   snapshotLineCost,
 } from "./sale-cost";
@@ -2055,7 +2057,7 @@ export class PosHubService {
       .getClient()
       .from("wine_consumption_log")
       .select(
-        "wine_name, quantity, volume_ml, total_revenue, cost_at_sale, cost_basis, notes",
+        "wine_name, quantity, volume_ml, total_revenue, cost_at_sale, cost_basis, notes, cost_source_lot_id",
       )
       .eq("restaurant_id", restaurantId)
       .eq("source", "pos")
@@ -2070,7 +2072,93 @@ export class PosHubService {
       const at = n.indexOf(":", 4);
       return at > 0 && n.startsWith(`${externalCheckId}:`, at + 1);
     });
-    return { externalCheckId, ...checkMarginFromRows(rows) };
+    const facts = await this.readCheckFacts(restaurantId, externalCheckId);
+    if (facts.taxBasis) await this.readCostTaxBasis(restaurantId, rows);
+    return { externalCheckId, ...checkMarginFromRows(rows, facts) };
+  }
+
+  /**
+   * What the check itself says (r110 g5): its subtotal after discounts, every
+   * line at the price rung (food too, comped at 0), and the house's tax basis.
+   * A failed read throws (ADR 0020). A column the schema does not have yet
+   * (42703: restaurants.tax_basis before #1459) means no house could have
+   * stated it, so it reads as unset. No till states a check's tax to the hub
+   * today (CanonicalCheck has no tax field), so statedTax is null.
+   */
+  private async readCheckFacts(
+    restaurantId: string,
+    externalCheckId: string,
+  ): Promise<CheckFacts> {
+    const db = this.dbService.getClient();
+    const [check, house] = await Promise.all([
+      db
+        .from("pos_checks")
+        .select("subtotal, items, voided")
+        .eq("restaurant_id", restaurantId)
+        .eq("external_check_id", externalCheckId),
+      db.from("restaurants").select("tax_basis").eq("id", restaurantId),
+    ]);
+    if (check.error)
+      throw new Error(
+        `The check could not be read (${check.error.message}); no margin is shown.`,
+      );
+    if (house.error && house.error.code !== "42703")
+      throw new Error(
+        `The house's tax basis could not be read (${house.error.message}); no margin is shown.`,
+      );
+    const basis = house.error ? null : (house.data ?? [])[0]?.tax_basis;
+    const taxBasis: HouseTaxBasis =
+      basis === "prices_include_tax" || basis === "prices_exclude_tax"
+        ? basis
+        : null;
+    const found = (check.data ?? []) as any[];
+    // Two tills with the same check id: which subtotal is this one's is not
+    // known, so none is used.
+    if (found.length !== 1)
+      return { subtotal: null, rungTotal: null, statedTax: null, taxBasis };
+    const c = found[0];
+    const S = c.subtotal == null ? null : Number(c.subtotal);
+    let G: number | null = 0;
+    if (c.voided === true) G = 0;
+    else
+      for (const it of Array.isArray(c.items) ? c.items : []) {
+        if (it?.comped === true) continue;
+        const price = it?.price == null ? null : Number(it.price);
+        const qty = Number(it?.qty);
+        if (price === null || !Number.isFinite(price) || !Number.isFinite(qty)) {
+          G = null;
+          break;
+        }
+        G += price * qty;
+      }
+    return {
+      subtotal: S !== null && Number.isFinite(S) ? S : null,
+      rungTotal: G,
+      statedTax: null,
+      taxBasis,
+    };
+  }
+
+  /** Each costed line's lot cost_tax_basis (F3); 42703 = not stated anywhere. */
+  private async readCostTaxBasis(restaurantId: string, rows: any[]) {
+    const ids = [
+      ...new Set(rows.map((r) => r.cost_source_lot_id).filter(Boolean)),
+    ];
+    if (!ids.length) return;
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("inventory_lots")
+      .select("id, cost_tax_basis")
+      .eq("restaurant_id", restaurantId)
+      .in("id", ids);
+    if (error && error.code !== "42703")
+      throw new Error(
+        `The lots' cost tax basis could not be read (${error.message}); no margin is shown.`,
+      );
+    const byId = new Map(
+      ((error ? [] : data) ?? []).map((l: any) => [l.id, l.cost_tax_basis]),
+    );
+    for (const r of rows) r.cost_tax_basis = byId.get(r.cost_source_lot_id) ?? null;
   }
 
   async upsertItemMapping(restaurantId: string, mapping: any) {
