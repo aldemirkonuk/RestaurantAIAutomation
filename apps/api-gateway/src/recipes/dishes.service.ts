@@ -308,7 +308,7 @@ export class DishesService {
         this.all<any>("recipe line read", sentence, (from, to) =>
           client
             .from("recipe_lines")
-            .select("id, version_id, position, label, role, inventory_id, qty_base, base_unit, usable_pct")
+            .select("id, version_id, position, label, role, inventory_id, component_dish_id, qty_base, base_unit, usable_pct")
             .eq("restaurant_id", restaurantId)
             .in("version_id", ids)
             .order("id", { ascending: true })
@@ -348,6 +348,20 @@ export class DishesService {
       }
     }
     const allergenRows = await allergenRead;
+    // A made line is priced through its component, by the same read the drawer uses,
+    // so the list and the drawer name one cost for one drink.
+    const madeIds = [...new Set([...lines.values()].flat().map((l) => l.component_dish_id).filter(Boolean))] as string[];
+    let components = new Map<string, { name: string; perBase: number | null }>();
+    if (priced && madeIds.length) {
+      try {
+        components = await this.recipes.componentRates(restaurantId, madeIds, money, 1);
+      } catch (e) {
+        if (!opts.pricingUnread) this.failed(`${owner} component read`, e, sentence);
+        this.logger.error(`dishes: ${owner} component read failed, costs left unread: ${(e as { message?: string })?.message ?? String(e)}`);
+        opts.pricingUnread();
+        priced = false;
+      }
+    }
 
     for (const p of pointers) {
       const v = versions.get(p.versionId);
@@ -360,6 +374,7 @@ export class DishesService {
         const figured = recipeCost(
           rows.map((l) => ({
             role: l.role,
+            made: l.component_dish_id ? (components.get(l.component_dish_id) ?? null) : null,
             inventoryId: l.inventory_id,
             qtyBase: Number(l.qty_base),
             baseUnit: l.base_unit as BaseUnit,
