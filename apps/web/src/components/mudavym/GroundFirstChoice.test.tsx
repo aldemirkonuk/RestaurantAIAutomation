@@ -341,6 +341,25 @@ describe('a deep link whose drawer has not mounted yet (r109 inventory-5)', () =
     expect(ask()).toBeInTheDocument();
   });
 
+  it.each([
+    ['staff', '?open=item-1'],
+    ['manager', '?highlight=wine-1'],
+    ['staff', '?highlight=wine-1'],
+  ])('[REVERT-FAILS] a %s on %s is not asked before the drawer, nor under it, and is asked once it closes (r110 inventory-1)', (role, search) => {
+    roleMock.current = role;
+    link(search);
+    setGroundOwner(ALICE);
+    const { rerender } = render(page(false));
+    act(() => applyAccountGround(undefined));
+    expect(ask()).toBeNull();
+    rerender(page(true));
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(ask()).toBeNull();
+    window.history.replaceState(null, '', '/inventory');
+    rerender(page(false));
+    expect(ask()).toBeInTheDocument();
+  });
+
   it('gives up waiting when the link opens nothing, so a sheet that is owed still shows', () => {
     vi.useFakeTimers();
     link('?open=item-1');

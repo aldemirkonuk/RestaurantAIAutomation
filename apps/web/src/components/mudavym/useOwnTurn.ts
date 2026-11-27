@@ -30,7 +30,14 @@ import { openStackSize, subscribeOpenStack } from './overlayState';
 
 export const DEEP_LINK_GIVES_UP_MS = 10_000;
 
-const hasOpenParam = () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('open');
+// `?highlight=` is the older name for the same drawer (iv-url.ts ALIASES): the dashboard's
+// low-stock alert and the one-tap action centre still link with it (r110 inventory-1).
+const DRAWER_PARAMS = ['open', 'highlight'] as const;
+const hasOpenParam = () => {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  return DRAWER_PARAMS.some((key) => params.has(key));
+};
 /** Read once, on the first paint of the first first-run sheet: a later in-app `?open=` is not a link from outside. */
 let atLoad: { deepLink: boolean; at: number } | null = null;
 function loadedWith(): { deepLink: boolean; at: number } {
