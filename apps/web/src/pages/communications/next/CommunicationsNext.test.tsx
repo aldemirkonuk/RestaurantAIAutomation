@@ -1106,6 +1106,22 @@ describe('Mail and Letters', () => {
     mockMailSummary.current = { data: undefined };
   });
 
+  // A reply opened from a Mail thread adds `reply=` to a Mail address; closing it leaves Mail.
+  it('closing a reply opened from a Mail thread keeps the Mail tab and its person and thread', () => {
+    mockData.current = { ...base, drafts: [waiting] };
+    at('/communications?tab=mail&with=vendor:p1&thread=gm:t1');
+    fireEvent.click(screen.getByText('stub open reply'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/reply=o1/);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Leave it waiting' })[0]);
+    const where = screen.getByTestId('where').textContent ?? '';
+    expect(where).toContain('tab=mail');
+    expect(where).not.toContain('tab=letters');
+    expect(where).toMatch(/with=vendor/);
+    expect(where).toMatch(/thread=gm/);
+    expect(where).not.toContain('reply=');
+    expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
+  });
+
   // r107 mail-gap g4: a bare address opens Mail; only an address that names Letters opens Letters.
   it('a bare /communications opens on Mail and fires no Letters act', () => {
     at('/communications');

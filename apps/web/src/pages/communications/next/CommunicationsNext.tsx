@@ -263,7 +263,8 @@ export default function CommunicationsNext() {
     houseDrafts.refetch();
     if (linked) {
       // The link was what put the page on Letters; the tab is named before it goes (g4).
-      params.set('tab', 'letters');
+      // Only when Letters is what is showing: a letter opened from a Mail thread leaves Mail.
+      if (tab === 'letters') params.set('tab', 'letters');
       params.delete('draft');
       setParams(params, { replace: true });
     }
@@ -286,7 +287,9 @@ export default function CommunicationsNext() {
   }, [replyLinked, replyHit]);
   const dropReply = () => {
     if (!params.has('reply')) return;
-    params.set('tab', 'letters');
+    // Name the tab only when it is Letters that shows: a reply opened from a Mail
+    // thread adds `reply=` to a Mail address, and closing it leaves Mail where it was.
+    if (tab === 'letters') params.set('tab', 'letters');
     params.delete('reply');
     setParams(params, { replace: true });
   };
