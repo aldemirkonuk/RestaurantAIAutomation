@@ -3,6 +3,8 @@
  * and back (r107 onboarding g2): sessionStorage, 30 minutes, never a secret.
  */
 import { createElement } from 'react'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -134,6 +136,18 @@ describe('sign-up autofill', () => {
     expect(field('Confirm Password *')).toHaveAttribute('autocomplete', 'new-password')
     expect(field('Password *')).toHaveAttribute('enterkeyhint', 'next')
     expect(field('Confirm Password *')).toHaveAttribute('enterkeyhint', 'done')
+  })
+
+  // The restaurant step of the sign-up form is not reachable today (the house
+  // comes after verification), so its fields are pinned in source, not by mount.
+  it('the restaurant fields are a section apart from the person\'s (r107)', () => {
+    const source = readFileSync(path.resolve(__dirname, '../Register.tsx'), 'utf8')
+    for (const id of ['restaurant-name', 'restaurant-city', 'restaurant-state', 'restaurant-postal-code']) {
+      const at = source.indexOf(`id="${id}"`)
+      expect(at, id).toBeGreaterThan(-1)
+      const tag = source.slice(at, at + 200)
+      expect(tag, id).toMatch(/autoComplete="section-house [a-z0-9-]+"/)
+    }
   })
 
   it('join: the same, after the invite is read', async () => {

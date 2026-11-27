@@ -712,19 +712,19 @@ export default function GetStarted() {
           <div className="mdv-spread-stack">
             <label className="block">
               <span className="mdv-label">Restaurant name · required</span>
-              <input aria-label="Restaurant name" autoComplete="organization" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} />
+              <input aria-label="Restaurant name" autoComplete="section-house organization" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} />
             </label>
             <label className="block">
               <span className="mdv-label">Address · required</span>
-              <input aria-label="Address" autoComplete="address-line1" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} />
+              <input aria-label="Address" autoComplete="section-house address-line1" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} />
             </label>
             <label className="block">
               <span className="mdv-label">Restaurant phone · optional</span>
-              <input aria-label="Restaurant phone" autoComplete="tel" inputMode="tel" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} />
+              <input aria-label="Restaurant phone" autoComplete="off" inputMode="tel" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} />
             </label>
             <label className="block">
               <span className="mdv-label">City · required</span>
-              <input aria-label="City" autoComplete="address-level2" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={city} onChange={(e) => setCity(e.target.value)} />
+              <input aria-label="City" autoComplete="section-house address-level2" enterKeyHint="next" onKeyDown={submitOnEnter(() => void createHouse())} value={city} onChange={(e) => setCity(e.target.value)} />
             </label>
             <div>
               <label htmlFor="arrival-country" className="mdv-label">Country · required</label>
