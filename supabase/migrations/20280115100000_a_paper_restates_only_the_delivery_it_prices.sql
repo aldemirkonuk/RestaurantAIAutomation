@@ -25,6 +25,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_row record;
+  v_unit numeric(14,6);
   v_new numeric(12,4);
   v_rows int := 0;
   v_capped int := 0;
@@ -39,10 +40,13 @@ DECLARE
   v_base_unit numeric;
   v_basis text;
 BEGIN
-  IF p_unit_cost IS NULL OR p_unit_cost <= 0 THEN
-    RAISE EXCEPTION 'restate_sale_cost: p_unit_cost must be above zero (an unknown cost restates nothing)'
+  IF p_unit_cost IS NULL OR p_unit_cost < 0 THEN
+    RAISE EXCEPTION 'restate_sale_cost: p_unit_cost must not be negative or unknown (an unknown cost restates nothing)'
       USING ERRCODE = '22023';
   END IF;
+  -- A free line (0) is a real cost (#2507); compare and write the unit at the
+  -- column's own scale so a retry restates nothing.
+  v_unit := round(p_unit_cost, 6);
   IF p_source_order_id IS NULL THEN
     RAISE EXCEPTION 'restate_sale_cost: p_source_order_id is required; a restatement names the delivery it follows'
       USING ERRCODE = '22023';
@@ -65,11 +69,11 @@ BEGIN
        AND cost_basis IN ('last_purchase_price', 'invoice_restated')
        AND cost_at_sale > 0
        AND cost_unit_at_sale > 0
-       AND cost_unit_at_sale IS DISTINCT FROM p_unit_cost
+       AND cost_unit_at_sale IS DISTINCT FROM v_unit
      ORDER BY recorded_at, id
        FOR UPDATE
   LOOP
-    v_new := round(v_row.cost_at_sale * p_unit_cost / v_row.cost_unit_at_sale, 4);
+    v_new := round(v_row.cost_at_sale * v_unit / v_row.cost_unit_at_sale, 4);
     INSERT INTO public.wine_consumption_cost_restatements
       (restaurant_id, inventory_id, consumption_id, source_order_id,
        prior_cost_at_sale, prior_cost_basis, prior_unit_cost,
@@ -77,10 +81,10 @@ BEGIN
     VALUES
       (p_restaurant_id, p_inventory_id, v_row.id, p_source_order_id,
        v_row.cost_at_sale, v_row.cost_basis, v_row.cost_unit_at_sale,
-       v_new, p_unit_cost, p_performed_by);
+       v_new, v_unit, p_performed_by);
     UPDATE public.wine_consumption_log
        SET cost_at_sale = v_new,
-           cost_unit_at_sale = p_unit_cost,
+           cost_unit_at_sale = v_unit,
            cost_basis = 'invoice_restated'
      WHERE id = v_row.id;
     v_rows := v_rows + 1;
@@ -107,12 +111,12 @@ BEGIN
   LOOP
     SELECT jsonb_agg(
              CASE WHEN m.hit
-                  THEN t.e || jsonb_build_object('unit_cost', p_unit_cost, 'invoiced', true)
+                  THEN t.e || jsonb_build_object('unit_cost', v_unit, 'invoiced', true)
                   ELSE t.e END
              ORDER BY t.ord),
            sum((t.e->>'qty')::numeric),
            sum((t.e->>'qty')::numeric *
-               CASE WHEN m.hit THEN p_unit_cost ELSE (t.e->>'unit_cost')::numeric END),
+               CASE WHEN m.hit THEN v_unit ELSE (t.e->>'unit_cost')::numeric END),
            bool_and(m.hit OR coalesce((t.e->>'invoiced')::boolean, false))
       INTO v_parts, v_qty, v_cost, v_all_invoiced
       FROM jsonb_array_elements(v_row.cost_parts) WITH ORDINALITY AS t(e, ord)
