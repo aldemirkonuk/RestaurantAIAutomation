@@ -1,6 +1,7 @@
 /**
- * Copy a drink (r107 drinks-g3). The register, the writes hook and the recipe
- * api are real; only the network and the list read are stubbed.
+ * Copy a drink (r107 drinks-g3, reworked r108 drinks-r108-4): the name is asked
+ * first and nothing is written until Save. The register, the writes hook and
+ * the recipe api are real; only the network and the list read are stubbed.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -74,17 +75,49 @@ beforeEach(() => {
   h.put.mockResolvedValue({ data: { versionId: 'v9' } });
 });
 
+const COMPONENT = '55555555-5555-4555-8555-555555555555';
+const nameBox = () => screen.getByLabelText('Name') as HTMLInputElement;
+// Let any write a click started reach the network stub before "nothing was written" is read.
+const settle = () => new Promise((r) => setTimeout(r, 60));
+const save = () => fireEvent.click(screen.getByRole('button', { name: /Make the copy/ }));
+
 describe('Copy a drink', () => {
-  it('makes a new drink and writes the same lines, once, on it', async () => {
+  it('opens the form on the copy\'s name and writes nothing before Save', async () => {
     h.get.mockResolvedValue({ data: source(LINES) });
     mount();
     fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    expect(nameBox().value).toBe('Whiskey Sour copy');
+    expect((screen.getByLabelText('Price') as HTMLInputElement).value).toBe('');
+    expect(screen.getByTestId('cocktail-draft')).toHaveTextContent('A copy of “Whiskey Sour”');
+    await settle();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('Leave it writes nothing and keeps no stray copy', async () => {
+    h.get.mockResolvedValue({ data: source(LINES) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    fireEvent.click(screen.getByRole('button', { name: /Leave it/ }));
+    expect(screen.queryByTestId('cocktail-draft')).toBeNull();
+    await settle();
+    expect(h.post).not.toHaveBeenCalled();
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('Save writes the drink once under the typed name, then the same lines, once, on it', async () => {
+    h.get.mockResolvedValue({ data: source(LINES) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    fireEvent.change(nameBox(), { target: { value: 'Sour No. 2' } });
+    save();
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
     expect(h.post).toHaveBeenCalledTimes(1);
     const [url, body] = h.post.mock.calls[0];
     expect(url).toBe(`/cocktails/${RID}`);
-    expect(body).toMatchObject({ name: 'Whiskey Sour copy', menuSection: 'Sours', glass: 'Coupe', method: 'Shake', garnish: 'Cherry' });
+    expect(body).toMatchObject({ name: 'Sour No. 2', menuSection: 'Sours', glass: 'Coupe', method: 'Shake', garnish: 'Cherry' });
     expect(body).not.toHaveProperty('price');
+    expect(body).not.toHaveProperty('displayName');
     const [putUrl, put] = h.put.mock.calls[0];
     expect(putUrl).toContain(`/cocktails/${NEW}`);
     expect(put.expectedVersionId).toBeNull();
@@ -93,8 +126,24 @@ describe('Copy a drink', () => {
       { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 25, unit: 'ml' },
       { role: 'untracked', inventoryId: null, label: 'Bitters', qty: 2, unit: 'dash' },
     ]);
-    expect(await screen.findByText(/was copied\. Give the copy its name/)).toBeTruthy();
-    expect((screen.getByDisplayValue('Whiskey Sour copy') as HTMLInputElement).value).toBe('Whiskey Sour copy');
+    expect(await screen.findByText('“Sour No. 2” is on this house’s list, with the recipe of “Whiskey Sour”.')).toBeTruthy();
+    expect(screen.queryByTestId('cocktail-draft')).toBeNull();
+  });
+
+  it('carries a made line as the same component id and unit, and never copies the component', async () => {
+    const made = L({ id: 'l4', role: 'made', inventoryId: null, componentId: COMPONENT, label: 'Sour mix', itemName: null, qtyEntered: 22.5, unitCode: 'ml', status: 'linked' });
+    h.get.mockResolvedValue({ data: source([L({}), made]) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    save();
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines).toEqual([
+      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 50, unit: 'ml' },
+      { role: 'made', inventoryId: null, componentId: COMPONENT, label: 'Sour mix', qty: 22.5, unit: 'ml' },
+    ]);
+    // One write of a drink (the copy), none of a component.
+    expect(h.post).toHaveBeenCalledTimes(1);
+    expect(h.post.mock.calls[0][0]).toBe(`/cocktails/${RID}`);
   });
 
   it('keeps the drink and says so when its recipe write is refused', async () => {
@@ -102,14 +151,27 @@ describe('Copy a drink', () => {
     h.put.mockRejectedValue(new Error('nope'));
     mount();
     fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    save();
     expect(await screen.findByText('The drink was made but its recipe was not copied. Open it and add the lines.')).toBeTruthy();
     expect(h.post).toHaveBeenCalledTimes(1);
   });
 
-  it('writes nothing when a line cannot be carried', async () => {
-    h.get.mockResolvedValue({ data: source([L({ role: 'made' as never })]) });
+  it('a refused first write leaves the form open and says nothing was copied', async () => {
+    h.get.mockResolvedValue({ data: source(LINES) });
+    h.post.mockRejectedValue(new Error('refused'));
     mount();
     fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    save();
+    expect(await screen.findByText('Nothing was copied — refused. The list is unchanged.')).toBeTruthy();
+    expect(h.put).not.toHaveBeenCalled();
+    expect(nameBox().value).toBe('Whiskey Sour copy');
+  });
+
+  it('writes nothing when a made line names no component', async () => {
+    h.get.mockResolvedValue({ data: source([L({ role: 'made', inventoryId: null, componentId: null })]) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    save();
     expect(await screen.findByText('This drink has a line a copy cannot carry yet, so nothing was copied.')).toBeTruthy();
     expect(h.post).not.toHaveBeenCalled();
     expect(h.put).not.toHaveBeenCalled();

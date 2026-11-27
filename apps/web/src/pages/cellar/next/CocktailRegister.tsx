@@ -41,7 +41,7 @@ import {
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
 import RecipeBook from './recipe/RecipeBook';
-import { COPY_CANNOT_CARRY, COPY_RECIPE_FAILED, copyFields } from './recipe/copyDrink';
+import { COPY_CANNOT_CARRY, COPY_RECIPE_FAILED, copyFields, copyRefused, copySaid, type CopySource } from './recipe/copyDrink';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
@@ -211,6 +211,8 @@ export default function CocktailRegister({
   const tax = useListTax();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
+  // The drink the open form is a copy of: nothing is written until Save.
+  const [copyOf, setCopyOf] = useState<CopySource | null>(null);
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
   // lines link here, so a good leads to the drink that uses it, and the drink
   // opens on its cards and its nutrition card.
@@ -346,6 +348,7 @@ export default function CocktailRegister({
   const submit = async () => {
     if (!draft?.name?.trim() || priceRead.bad) return;
     const { priceText: _typed, ...fields } = draft;
+    if (copyOf) return saveCopy(copyOf, priceRead.price == null ? fields : { ...fields, price: priceRead.price });
     try {
       if (editId) {
         // An amend sends the price it reads, null included: a cleared box
@@ -367,20 +370,30 @@ export default function CocktailRegister({
     }
   };
 
-  // Copy: a new drink (own id) with the source's section, glass, method, garnish
-  // and recipe lines; the form then opens on the new drink so its name is edited.
-  const doCopy = async (c: (typeof rows)[number]) => {
-    const label = c.display_name ?? c.name;
+  // Copy: the form opens first, on the copy's own name ("Gimlet copy") with the
+  // source's section, glass, method and garnish and no price. Nothing is written
+  // until Save; Leave it writes nothing (r107 drinks walk F6: writing first left
+  // a stray "Gimlet copy" behind a Leave it).
+  const doCopy = (c: (typeof rows)[number]) => {
+    setEditId(null);
+    setCopyOf(c);
+    changeDraft({ ...copyFields(c), priceText: '' });
+  };
+
+  // Save on a copy: the new drink, then its recipe (two writes). A refused
+  // first write leaves the form open and the list unchanged; a refused recipe
+  // keeps the drink and says so.
+  const saveCopy = async (src: CopySource, input: CocktailInput) => {
+    const from = src.display_name ?? src.name;
     try {
-      const out = await copy.mutateAsync(c);
+      const out = await copy.mutateAsync({ src, input });
+      setDraft(null);
+      setCopyOf(null);
       if (out.state === 'cannot') return setSaid(COPY_CANNOT_CARRY);
-      if (out.state === 'recipe_failed') setSaid(COPY_RECIPE_FAILED);
-      else setSaid(`“${label}” was copied. Give the copy its name.`);
-      setEditId(out.id);
-      setDraft({ ...copyFields(c), priceText: '' });
+      setSaid(out.state === 'recipe_failed' ? COPY_RECIPE_FAILED : copySaid((input.name ?? '').trim(), from));
       setOpenId(out.id);
     } catch (e) {
-      setSaid(`Nothing was copied${e instanceof Error ? ` — ${e.message}` : ''}. The list is unchanged.`);
+      setSaid(copyRefused(e instanceof Error ? e.message : null));
     }
   };
 
@@ -414,10 +427,11 @@ export default function CocktailRegister({
           <button
             type="button"
             className="cl-btn cl-focus"
-            data-on={draft !== null && editId === null}
+            data-on={draft !== null && editId === null && copyOf === null}
             onClick={() => {
-              changeDraft(draft && editId === null ? null : {});
+              changeDraft(draft && editId === null && copyOf === null ? null : {});
               setEditId(null);
+              setCopyOf(null);
             }}
             style={{ marginLeft: 'auto' }}
           >
@@ -440,7 +454,11 @@ export default function CocktailRegister({
       {draft && manages ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
           <h3 className="cl-h2" style={{ fontSize: 19 }}>
-            {editId ? 'Amend this cocktail' : 'A cocktail on this house’s list'}
+            {editId
+              ? 'Amend this cocktail'
+              : copyOf
+                ? `A copy of “${copyOf.display_name ?? copyOf.name}”`
+                : 'A cocktail on this house’s list'}
           </h3>
           <div
             style={{
@@ -474,17 +492,17 @@ export default function CocktailRegister({
               type="button"
               className="cl-btn cl-focus"
               onClick={submit}
-              disabled={!draft.name?.trim() || priceRead.bad || create.isPending || amend.isPending}
+              disabled={!draft.name?.trim() || priceRead.bad || create.isPending || amend.isPending || copy?.isPending}
             >
               <Check size={13} aria-hidden />
-              {create.isPending || amend.isPending
+              {create.isPending || amend.isPending || copy?.isPending
                 ? 'Recording…'
-                : editId ? 'Record the amendment' : 'Put it on the list'}
+                : editId ? 'Record the amendment' : copyOf ? 'Make the copy' : 'Put it on the list'}
             </button>
             <button
               type="button"
               className="cl-btn cl-focus"
-              onClick={() => { changeDraft(null); setEditId(null); }}
+              onClick={() => { changeDraft(null); setEditId(null); setCopyOf(null); }}
             >
               <X size={13} aria-hidden />
               Leave it
@@ -720,6 +738,7 @@ export default function CocktailRegister({
                               className="cl-btn cl-focus"
                               onClick={() => {
                                 setEditId(c.id);
+                                setCopyOf(null);
                                 changeDraft({
                                   name: c.name,
                                   displayName: c.display_name ?? undefined,
@@ -740,7 +759,7 @@ export default function CocktailRegister({
                                 className="cl-btn cl-focus"
                                 data-testid="cocktail-copy"
                                 disabled={copy?.isPending}
-                                onClick={() => void doCopy(c)}
+                                onClick={() => doCopy(c)}
                               >
                                 <Copy size={13} aria-hidden />
                                 Copy
