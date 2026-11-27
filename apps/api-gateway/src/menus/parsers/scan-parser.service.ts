@@ -16,6 +16,8 @@ import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
 import { menuScanVerdict } from "./menu-scan-verdict";
 import { keepPrintedSizes } from "./printed-sizes";
+import { readMenuPrice } from "./menu-price";
+import { isKitchenLine } from "../menu-line-view";
 import {
   MENU_CATEGORY_VOCABULARY,
   MenuReadWarning,
@@ -35,6 +37,9 @@ export class MenuReadWaitingException extends ServiceUnavailableException {}
 
 /**
  * Two things in this prompt are load-bearing and were both set by measurement.
+ * (r110 menu-g1 added kind, section and the dish clause after that
+ * measurement: the 0.909 identity agreement below is owed again, and a dense
+ * mixed menu's truncation re-checked, before this prompt is merged.)
  *
  * `raw_text` is absent on purpose. It used to be requested and persisted to
  * menu_items.raw_extracted_text as an audit trail. An A/B over six real menus
@@ -126,7 +131,12 @@ const DISH_CLAUSE =
   "its one price in bottle_price, and omit producer, vintage, region, " +
   "grape_variety and by_glass_price for it (e.g. 'Tiramisu 9' is " +
   '{"name":"Tiramisu","category":"food","bottle_price":9}). A dessert wine, ' +
-  "port or sherry is a drink, not a dish. ";
+  "port or sherry is a drink, not a dish. " +
+  // r110 menu-g1: say which a line is, and keep a dish's printed section.
+  'kind is "dish" for a dish and "drink" for a drink. A dish also returns section: ' +
+  "its printed section heading exactly as printed, and description and printed_marks " +
+  "as a drink does (e.g. 'Çorbalar ... Mercimek çorbası 180' is " +
+  '{"kind":"dish","name":"Mercimek çorbası","category":"food","section":"Çorbalar","bottle_price":180}). ';
 
 export const WINE_EXTRACTION_PROMPT =
   "You are analyzing a restaurant menu image. " +
@@ -134,7 +144,7 @@ export const WINE_EXTRACTION_PROMPT =
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
   "them — and EVERY dish listed as well. For each item return JSON: " +
-  "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price, description, printed_marks, sizes }. " +
+  "{ kind, name, producer, category, section, vintage, region, grape_variety, by_glass_price, bottle_price, description, printed_marks, sizes }. " +
   CATEGORY_VOCABULARY_CLAUSE +
   DISH_CLAUSE +
   PRINTED_MARKS_CLAUSE +
@@ -194,6 +204,43 @@ export function keepSizesOf(items: WineExtractItem[], warnings: MenuReadWarning[
   return out;
 }
 
+/** The fields only a drink carries; a read dish keeps none of them. */
+const DRINK_ONLY_FIELDS = ["producer", "vintage", "region", "grape_variety", "by_glass_price"] as const;
+
+/**
+ * A read dish as a kitchen line (r110 menu-g1, ADR 0213 #17: kitchen lines are
+ * counted, never silently dropped). menu_items stores no kitchen flag: every
+ * later read (menu-line-view.ts lineForViewer, the carry's isKitchenItem)
+ * decides it again from category, raw line and name. So the category stored
+ * must read as a kitchen line on its own, or a soup under "Çorbalar" would be
+ * read back as a drink and carried to the house as a bottle at its price.
+ * The printed section is kept as category when it reads as a kitchen section
+ * by that same test ("Mains", "Soups"); otherwise the category is "food".
+ * Its one price stays in bottle_price, the column a CSV kitchen line uses; a
+ * price the reader sent as text goes through the one price reader, and a
+ * price that does not read is left off, never 0. Exported for the spec.
+ */
+export function readDishesOf(items: WineExtractItem[]): WineExtractItem[] {
+  return items.map((item) => {
+    if (item.kind !== "dish") return item;
+    const dish: WineExtractItem = { ...item };
+    for (const k of DRINK_ONLY_FIELDS) delete (dish as any)[k];
+    delete dish.section;
+    const price: unknown = item.bottle_price;
+    delete dish.bottle_price;
+    if (typeof price === "number" && Number.isFinite(price) && price >= 0) dish.bottle_price = price;
+    else if (typeof price === "string") {
+      const read = readMenuPrice(price);
+      if (read.amount !== null) dish.bottle_price = read.amount;
+    }
+    const section = typeof item.section === "string" ? item.section.trim() : "";
+    const asLine = dish as unknown as Record<string, unknown>;
+    dish.category = section && isKitchenLine(section, dish.raw_text, asLine) ? section : "food";
+    dish.kitchen_line = true;
+    return dish;
+  });
+}
+
 /** What a house is told when this gateway has no menu reader switched on. */
 export const MENU_READER_OFF =
   "The menu reader is not switched on here, so nothing was read. Type the lines in instead, or try again later.";
@@ -241,7 +288,7 @@ export class ScanParserService {
     warnings: MenuReadWarning[] = [],
   ): Promise<WineExtractItem[]> {
     const items = await this.parseRaw(imageBase64, restaurantId, arrival, warnings);
-    return keepSizesOf(items, warnings);
+    return keepSizesOf(readDishesOf(items), warnings);
   }
 
   private async parseRaw(
@@ -491,7 +538,9 @@ export class ScanParserService {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, " ")
           .trim();
-      const key = `${norm(item.producer)}|${norm(item.name)}|${norm(
+      // r110 menu-g1: a dish and a drink of one name are two lines.
+      const kind = item.kind === "dish" ? "dish" : "drink";
+      const key = `${kind}|${norm(item.producer)}|${norm(item.name)}|${norm(
         (item as any).vintage,
       )}`;
       if (seen.has(key)) continue;

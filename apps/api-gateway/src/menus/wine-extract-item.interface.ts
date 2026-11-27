@@ -56,6 +56,14 @@ export interface WineExtractItem {
   // r109 menu-g3: every size the line prints, as printed. Shown beside the
   // line, never carried into a house price (parsers/printed-sizes.ts).
   sizes?: Array<{ label: string; ml?: number | null; price: number | string }>;
+  // r110 menu-g1: what the reader says the line is. A 'dish' is mapped by
+  // scan-parser readDishesOf to a kitchen line (kitchen_line true, category
+  // a kitchen section, its one price in bottle_price); no kind is a drink.
+  kind?: "drink" | "dish";
+  // The dish's printed section heading, as the reader returned it.
+  section?: string;
+  // Set only by readDishesOf. The import honours it before its own test.
+  kitchen_line?: boolean;
 }
 
 /**

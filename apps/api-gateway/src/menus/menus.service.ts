@@ -2767,7 +2767,10 @@ export class MenusService {
     // it is decided here with the same test the page and the carry use
     // (menu-line-view.ts isKitchenLine), kept on the menu unlinked, and never
     // sent to the resolver. No library row, so no submission either.
+    // An item that says it is a kitchen line (a read dish, r110 menu-g1) is
+    // one, whatever its section is called, as isKitchenItem honours it.
     const kitchen = items.map((item) =>
+      item.kitchen_line === true ||
       isKitchenLine(item.category, item.raw_text, item as unknown as Record<string, unknown>),
     );
     //

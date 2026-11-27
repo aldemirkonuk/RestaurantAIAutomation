@@ -1,3 +1,4 @@
+import { readDishesOf } from "./parsers/scan-parser.service";
 import {
   BadRequestException,
   ConflictException,
@@ -1126,6 +1127,37 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.items).toHaveLength(2);
     expect(tables.menu_items.every((l) => l.wine_library_id === null)).toBe(true);
     expect(tables.master_wine_library_submissions).toHaveLength(0);
+  });
+
+  it("a read dish (kitchen_line true) is never sent to the library, whatever its section is called (r110 menu-g1)", async () => {
+    const tables: Record<string, Row[]> = base();
+    const sent: string[] = [];
+    const spy = {
+      ...wineSubmissions,
+      resolveLibraryWinesBatch: async (items: Array<{ name: string }>) => {
+        sent.push(...items.map((i) => i.name));
+        return items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 }));
+      },
+    };
+    const read = [
+      { name: "Opus One", producer: "Opus", category: "red", bottle_price: 62 },
+      ...readDishesOf([{ kind: "dish", name: "Mercimek çorbası", section: "Çorbalar", bottle_price: 180 }]),
+      // The import's own contract: an item that says it is a kitchen line is one.
+      { name: "Hünkar beğendi", category: "Ev yemekleri", bottle_price: 390, kitchen_line: true },
+    ];
+    const service = makeService(tables, {
+      wineSubmissions: spy,
+      scanParser: { parseWithWarnings: async () => ({ items: read, warnings: [] }) },
+    });
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1" } as any, "user-1");
+    await service.whenRead(r.menuId);
+    expect(sent).toEqual(["Opus One"]);
+    const soup = tables.menu_items.find((l) => l.name === "Mercimek çorbası")!;
+    const plate = tables.menu_items.find((l) => l.name === "Hünkar beğendi")!;
+    expect([soup.wine_library_id, plate.wine_library_id]).toEqual([null, null]);
+    expect([soup.category, soup.bottle_price]).toEqual(["food", 180]);
+    expect(tables.menu_items).toHaveLength(3);
+    expect(tables.master_wine_library_submissions).toHaveLength(1);
   });
 
   it("a CSV read becomes a NEW draft version with its source, its lines as read, and who read it -- and touches no price", async () => {
