@@ -1,4 +1,4 @@
-import { SetupReminderService } from "./setup-reminder.service";
+import { SetupReminderService, SETUP_REMINDER_MENU_PAGE } from "./setup-reminder.service";
 import { hashUnsubscribeToken } from "../analytics/digest/digest-schedule";
 
 /** DD-r108-57. An in-memory PostgREST, so the conditional claim is real. */
@@ -54,6 +54,7 @@ function world(over: { progress?: Rec; user?: Rec; role?: string } = {}) {
       { user_id: "u-1", restaurant_id: "h-1", role: over.role ?? "owner", is_active: true, valid_until: null },
     ],
     restaurants: [{ id: "h-1", name: "Meyhane" }],
+    restaurant_menus: [] as Rec[],
   };
 }
 
@@ -120,6 +121,29 @@ describe("SetupReminderService.runOnce", () => {
     const { service, gmail } = build(world(over));
     await service.runOnce(NOW);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("a draft menu with a stale menu_uploaded=false: no letter, and the row is healed", async () => {
+    const w = world();
+    w.restaurant_menus.push({ restaurant_id: "h-1", status: "draft" });
+    const { service, gmail, db } = build(w);
+    const tally = await service.runOnce(NOW);
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(tally.skipped).toBe(1);
+    const row = db.tables.user_onboarding_progress[0];
+    expect(row.menu_uploaded).toBe(true);
+    expect(row.setup_reminder_sent_at).toBeNull();
+  });
+
+  it("a full page of menu versions is unknown, not none: nothing sent", async () => {
+    // h-1 shows no version, but the page is full of h-3's: h-1 may be past the cap.
+    const w = world();
+    w.user_onboarding_progress.push({ ...w.user_onboarding_progress[0], id: "p-3", restaurant_id: "h-3" });
+    for (let i = 0; i < SETUP_REMINDER_MENU_PAGE; i++) w.restaurant_menus.push({ restaurant_id: "h-3" });
+    const { service, gmail } = build(w);
+    const tally = await service.runOnce(NOW);
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(tally.skipped).toBe(2);
   });
 
   it("two instances at once: one letter", async () => {
