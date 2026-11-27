@@ -168,6 +168,23 @@ describe('dismissability', () => {
     expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
   });
 
+  // r109 walk Finding 2: the sign-in sheet has no way out but Hold to accept, so it
+  // must not tell the owner that reading the terms asks nothing of them yet.
+  it('says it stays open until accepted when it is not dismissable, and never that it asks nothing yet', () => {
+    mount({}, { dismissable: false });
+    const sheet = screen.getByRole('dialog');
+    expect(sheet.getAttribute('aria-label')).toMatch(/They stay open until you accept them;/);
+    expect(sheet.getAttribute('aria-label')).not.toMatch(/asks nothing of you/);
+    expect(sheet.textContent).toMatch(/To go on in Mudavym, accept them: they stay open until you do\./);
+  });
+
+  it('a dismissable sheet may still say reading asks nothing yet, and shows no must-accept line', () => {
+    mount({}, { dismissable: true });
+    const sheet = screen.getByRole('dialog');
+    expect(sheet.getAttribute('aria-label')).toMatch(/Reading them asks nothing of you yet;/);
+    expect(sheet.textContent).not.toMatch(/To go on in Mudavym/);
+  });
+
   it('shows a close control, and calls onClose, when it is dismissable', () => {
     const { onClose } = mount({}, { dismissable: true });
     fireEvent.click(screen.getByRole('button', { name: /put it down/i }));

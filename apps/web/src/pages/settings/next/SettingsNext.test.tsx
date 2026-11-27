@@ -61,6 +61,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 // suite mounts no QueryClientProvider, and the terms have their own suites.
 vi.mock('../../../hooks/queries/useDataTerms', () => ({
   useDataTerms: () => ({ data: undefined }),
+  useDataTermsSignInBusy: () => false,
   useInvalidateDataTerms: () => vi.fn(),
 }));
 vi.mock('@/components/team/InviteTeamDialog', () => ({

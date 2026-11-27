@@ -141,7 +141,7 @@ function InviteYourPeople() {
   return (
     <p className="mt-6 text-sm text-[#6d685f]">
       Next:{' '}
-      <Link to="/settings?tab=team&invite=1" className="text-[#1a5e6b] underline">
+      <Link to="/settings?tab=team&invite=1" className="inline-flex min-h-[44px] items-center text-[#1a5e6b] underline">
         Invite your people
       </Link>
     </p>
