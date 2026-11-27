@@ -343,8 +343,8 @@ export default function GetStarted() {
   const pickStands = zone.source === 'pick' && zone.choices.includes(pickedZone)
   const timezone = zone.source === 'pick' ? (pickStands ? pickedZone : undefined) : zone.zone
 
-  // Warm the Maps library once the person is past the door, so the restaurant
-  // step's first suggestion does not wait on the script (r105 onboarding g3).
+  // Warm the Maps library once the person is on the restaurant step, so its
+  // first suggestion does not wait on the script (r105 onboarding g3).
   useEffect(() => {
     if (step === 'restaurant') warmPlaces()
   }, [step])

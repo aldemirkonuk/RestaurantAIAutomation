@@ -129,6 +129,7 @@ vi.mock('framer-motion', async () => {
 vi.mock('../../components/ui/PlacesAutocomplete', async () => {
   const React = await import('react')
   return {
+    warmPlaces: vi.fn(),
     PlacesAutocomplete: (props: {
       id?: string
       value: string
