@@ -1115,7 +1115,8 @@ describe('ReportsNext — honesty', () => {
       target: { value: 'bars' },
     });
     expect(within(till).getByText(/No POS check has ever landed/)).toBeInTheDocument();
-    expect(till.querySelectorAll('.rp-plot').length).toBe(0);
+    // The drawing is lazy: until its module resolves a CatPlot is only its outline.
+    expect(till.querySelectorAll('.rp-plot, .rp-plot-outline').length).toBe(0);
   });
 
   it('names the register that broke and offers a retry only when retrying can help', () => {
@@ -1941,7 +1942,7 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
     ).toBeInTheDocument();
     expect(within(room).queryByText('Read it again')).not.toBeInTheDocument();
     expect(within(room).queryByText(/Your role cannot read/)).not.toBeInTheDocument();
-    expect(room.querySelectorAll('.rp-plot').length).toBe(0);
+    expect(room.querySelectorAll('.rp-plot, .rp-plot-outline').length).toBe(0);
 
     const served = screen.getByRole('region', { name: 'Who served it' });
     expect(
