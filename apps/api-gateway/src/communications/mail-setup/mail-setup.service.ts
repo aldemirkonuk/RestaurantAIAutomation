@@ -151,7 +151,7 @@ export class MailSetupService {
     // trigger refuses another house's grant too; this is the plain-words door.
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
-      .select("id, scopes")
+      .select("id, user_id, scopes")
       .eq("id", connectionId)
       .eq("restaurant_id", restaurantId)
       .eq("provider", "google")
@@ -167,6 +167,19 @@ export class MailSetupService {
     if (!data || !scopes.includes(GMAIL_SEND_SCOPE)) {
       throw new BadRequestException(
         "That mailbox is not one this house can send from any more. Nothing was changed.",
+      );
+    }
+    // ONLY YOUR OWN MAILBOX (QA round 26, #973; the session's call under the
+    // 2026-11-07 /goal). A person's send consent lets the house's letters
+    // leave from their mailbox when THEY write, or when nobody else has one;
+    // it does not let a colleague make that mailbox the line every letter of
+    // the house leaves from. Clearing a choice stays open to any owner or
+    // manager: it hands the house back to the plain rule and uses nobody's
+    // mailbox without their say. HouseSenderService.resolve checks the same
+    // thing again, so a row that got past this door is not obeyed.
+    if (String((data as any).user_id) !== userId) {
+      throw new ForbiddenException(
+        "Only the person who connected that mailbox can choose it for the house's letters. Ask them to choose it here, or connect your own mailbox in Connections. Nothing was changed.",
       );
     }
 
@@ -265,7 +278,7 @@ export class MailSetupService {
           .order("connected_at", { ascending: true }),
         this.db.client
           .from("house_mail_sender_choice")
-          .select("connection_id")
+          .select("connection_id, chosen_by")
           .eq("restaurant_id", restaurantId)
           .maybeSingle(),
         this.sender.resolve(restaurantId, userId),
@@ -283,6 +296,9 @@ export class MailSetupService {
         typeof (choice.data as any)?.connection_id === "string"
           ? ((choice.data as any).connection_id as string)
           : null;
+      // A choice counts only when its owner made it (the resolver's rule).
+      const chosenBy =
+        typeof (choice.data as any)?.chosen_by === "string" ? ((choice.data as any).chosen_by as string) : null;
       const sendingId = identity.grant?.connectionId ?? null;
       const names = await this.namesOf(rows.map((r) => String(r.user_id)));
       const choices: MailSenderChoice[] = rows.map((r) => ({
@@ -290,7 +306,7 @@ export class MailSetupService {
         address: typeof r.account_email === "string" && r.account_email ? r.account_email : null,
         personName: names.get(String(r.user_id)) ?? null,
         mine: String(r.user_id) === userId,
-        chosen: String(r.id) === chosenId,
+        chosen: String(r.id) === chosenId && String(r.user_id) === chosenBy,
         sending: String(r.id) === sendingId,
       }));
       // A choice that points at a grant which no longer sends is not a choice.

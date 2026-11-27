@@ -38,6 +38,20 @@ function view(over: Partial<MailSetupView> = {}): MailSetupView {
   };
 }
 
+/** The chef's mailbox is the house's choice and sends now; mine is free to pick. */
+function chefSending(): MailSetupView {
+  return view({
+    senders: {
+      failed: null,
+      chosenConnectionId: CHEF,
+      choices: [
+        { connectionId: MINE, address: 'me@house.test', personName: 'Deniz', mine: true, chosen: false, sending: false },
+        { connectionId: CHEF, address: 'office@house.test', personName: 'Ayşe', mine: false, chosen: true, sending: true },
+      ],
+    },
+  });
+}
+
 const CONNECTED: MailStatus = { state: 'connected', words: 'Connected · last letter 4 min ago', tone: 'seal' };
 const SENDER: SenderLineInput = { kind: 'house_mailbox', address: 'me@house.test' };
 
@@ -139,14 +153,14 @@ describe('which address letters leave from', () => {
   });
 
   it('saves the picked mailbox with PUT sender, and shows what the server now holds', async () => {
-    answer(view());
+    answer(chefSending());
     const saved = view({
       senders: {
         failed: null,
-        chosenConnectionId: CHEF,
+        chosenConnectionId: MINE,
         choices: [
-          { connectionId: MINE, address: 'me@house.test', personName: 'Deniz', mine: true, chosen: false, sending: false },
-          { connectionId: CHEF, address: 'office@house.test', personName: 'Ayşe', mine: false, chosen: true, sending: true },
+          { connectionId: MINE, address: 'me@house.test', personName: 'Deniz', mine: true, chosen: true, sending: true },
+          { connectionId: CHEF, address: 'office@house.test', personName: 'Ayşe', mine: false, chosen: false, sending: false },
         ],
       },
     });
@@ -154,14 +168,14 @@ describe('which address letters leave from', () => {
     mount();
     const save = await screen.findByRole('button', { name: 'Save' });
     expect((save as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getAllByRole('radio')[1]);
+    fireEvent.click(screen.getAllByRole('radio')[0]);
     expect((save as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(save);
     await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith('/communications/mail-setup/sender', { connectionId: CHEF }),
+      expect(api.put).toHaveBeenCalledWith('/communications/mail-setup/sender', { connectionId: MINE }),
     );
     const rows = await screen.findAllByTestId('setup-sender-choice');
-    await waitFor(() => expect(rows[1].textContent).toMatch(/letters leave from here now/));
+    await waitFor(() => expect(rows[0].textContent).toMatch(/letters leave from here now/));
     expect(screen.getByRole('button', { name: 'Let Mudavym choose again' })).toBeTruthy();
     expect(api.post).not.toHaveBeenCalled();
   });
@@ -176,13 +190,26 @@ describe('which address letters leave from', () => {
     );
   });
 
-  it("a refused save shows the server's words, not a status code", async () => {
+  it("a colleague's mailbox cannot be picked here, and the page says who can choose it", async () => {
+    // QA round 26, #973 defect 2: only the person who connected a mailbox may
+    // make it the house's. The server refuses it too; this is the plain door.
     answer(view());
+    mount();
+    const radios = await screen.findAllByRole('radio');
+    expect((radios[0] as HTMLInputElement).disabled).toBe(false);
+    expect((radios[1] as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId('setup-sender-own-only').textContent).toBe(
+      'You can choose only a mailbox you connected yourself. A colleague’s mailbox is chosen by that colleague, here.',
+    );
+  });
+
+  it("a refused save shows the server's words, not a status code", async () => {
+    answer(chefSending());
     api.put.mockRejectedValue(
       fail(400, 'That mailbox is not one this house can send from any more. Nothing was changed.'),
     );
     mount();
-    fireEvent.click((await screen.findAllByRole('radio'))[1]);
+    fireEvent.click((await screen.findAllByRole('radio'))[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     const err = await screen.findByTestId('setup-save-failed');
     expect(err.textContent).toBe('That mailbox is not one this house can send from any more. Nothing was changed.');

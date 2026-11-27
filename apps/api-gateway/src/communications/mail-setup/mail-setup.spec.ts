@@ -62,7 +62,7 @@ describe("who may change the house's mail", () => {
 describe("MailSetupService.read", () => {
   it("lists only this house's live sending grants, with who, which is mine, chosen and sending", async () => {
     const { service } = build({
-      house_mail_sender_choice: { rows: [{ restaurant_id: HOUSE, connection_id: G_CHEF }] },
+      house_mail_sender_choice: { rows: [{ restaurant_id: HOUSE, connection_id: G_CHEF, chosen_by: CHEF }] },
     });
     const view = await service.read(HOUSE, ME, "owner");
     expect(view.canChange).toBe(true);
@@ -79,6 +79,20 @@ describe("MailSetupService.read", () => {
     const view = await service.read(HOUSE, ME, "staff");
     expect(view.canChange).toBe(false);
     expect(view.senders.choices.map((c) => c.sending)).toEqual([true, false]);
+  });
+
+  it("a colleague's mailbox chosen by someone else is not a choice: the plain rule sends", async () => {
+    // QA round 26, #973 defect 2: only the person who connected a mailbox may
+    // make it the house's. A row that says otherwise is not obeyed.
+    const { service } = build({
+      house_mail_sender_choice: { rows: [{ restaurant_id: HOUSE, connection_id: G_CHEF, chosen_by: ME }] },
+    });
+    const view = await service.read(HOUSE, ME, "owner");
+    expect(view.senders.chosenConnectionId).toBeNull();
+    expect(view.senders.choices.map((c) => [c.connectionId, c.chosen, c.sending])).toEqual([
+      [G_MINE, false, true],
+      [G_CHEF, false, false],
+    ]);
   });
 
   it("a choice pointing at a grant that no longer sends is reported as no choice", async () => {
@@ -184,15 +198,35 @@ describe("MailSetupService.chooseSender", () => {
     expect(db.writes).toEqual([]);
   });
 
-  it("saves the choice for this house, naming who chose", async () => {
+  it("saves the choice of the chooser's own mailbox, naming who chose", async () => {
     const { service, db } = build({});
-    await service.chooseSender(HOUSE, ME, "manager", G_CHEF);
+    await service.chooseSender(HOUSE, ME, "manager", G_MINE);
     expect(db.writes).toHaveLength(1);
     expect(db.writes[0]).toMatchObject({
       table: "house_mail_sender_choice",
       op: "upsert",
-      payload: { restaurant_id: HOUSE, connection_id: G_CHEF, chosen_by: ME },
+      payload: { restaurant_id: HOUSE, connection_id: G_MINE, chosen_by: ME },
     });
+  });
+
+  it.each(["manager", "owner"])(
+    "a %s may not choose a colleague's mailbox: only the person who connected it may; nothing is written",
+    async (role) => {
+      // QA round 26, #973 defect 2 (probe B2-colleague-grant).
+      const { service, db } = build({});
+      const refused = service.chooseSender(HOUSE, ME, role, G_CHEF);
+      await expect(refused).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.chooseSender(HOUSE, ME, role, G_CHEF)).rejects.toThrow(
+        /Only the person who connected that mailbox can choose it/,
+      );
+      expect(db.writes).toEqual([]);
+    },
+  );
+
+  it("the person who connected a mailbox may choose it", async () => {
+    const { service, db } = build({});
+    await service.chooseSender(HOUSE, CHEF, "manager", G_CHEF);
+    expect(db.writes[0]).toMatchObject({ op: "upsert", payload: { connection_id: G_CHEF, chosen_by: CHEF } });
   });
 
   it("null clears this house's choice only", async () => {
@@ -205,7 +239,7 @@ describe("MailSetupService.chooseSender", () => {
 
   it("a failed save says nothing was changed", async () => {
     const { service } = build({ house_mail_sender_choice: { writeErrors: [{ message: "x" }] } });
-    await expect(service.chooseSender(HOUSE, ME, "owner", G_CHEF)).rejects.toThrow(
+    await expect(service.chooseSender(HOUSE, ME, "owner", G_MINE)).rejects.toThrow(
       new ServiceUnavailableException("The choice could not be saved. Nothing was changed; try again."),
     );
   });

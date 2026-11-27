@@ -375,10 +375,18 @@ export class HouseSenderService {
       );
       return this.unreadable(base, houseChoice.failed, readSwitchedOn);
     }
+    // A choice counts only when the person who made it is the person whose
+    // mailbox it is (QA round 26, #973; the session's call under the
+    // 2026-11-07 /goal). Consenting to "this house's own letters may leave
+    // from my mailbox" is not consenting to being made the house's ONE line by
+    // somebody else. chooseSender refuses that; this is the second wall, for a
+    // row that got past it.
     // Otherwise prefer the asking person's own grant, so the letter leaves
     // from the mailbox they expect; otherwise the house's first live one.
     const chosen =
-      withSend.find((r) => String(r.id) === houseChoice.connectionId) ??
+      withSend.find(
+        (r) => String(r.id) === houseChoice.connectionId && String(r.user_id) === houseChoice.chosenBy,
+      ) ??
       withSend.find((r) => String(r.user_id) === userId) ??
       withSend[0];
     const address = (chosen.account_email as string | null) ?? null;
@@ -429,19 +437,26 @@ export class HouseSenderService {
    */
   private async houseChoice(
     restaurantId: string,
-  ): Promise<{ connectionId: string | null; failed: string | null }> {
+  ): Promise<{ connectionId: string | null; chosenBy: string | null; failed: string | null }> {
     try {
       const { data, error } = await this.db.client
         .from("house_mail_sender_choice")
-        .select("connection_id")
+        .select("connection_id, chosen_by")
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
-      if (error) return { connectionId: null, failed: error.message };
-      const id = (data as Record<string, unknown> | null)?.connection_id;
-      return { connectionId: typeof id === "string" ? id : null, failed: null };
+      if (error) return { connectionId: null, chosenBy: null, failed: error.message };
+      const row = data as Record<string, unknown> | null;
+      const id = row?.connection_id;
+      const by = row?.chosen_by;
+      return {
+        connectionId: typeof id === "string" ? id : null,
+        chosenBy: typeof by === "string" ? by : null,
+        failed: null,
+      };
     } catch (e) {
       return {
         connectionId: null,
+        chosenBy: null,
         failed: e instanceof Error ? e.message : "the read threw",
       };
     }
