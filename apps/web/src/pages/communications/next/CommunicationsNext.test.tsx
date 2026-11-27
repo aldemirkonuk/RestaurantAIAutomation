@@ -139,7 +139,7 @@ vi.mock('./WhoIsWriting', () => ({
   default: () => <section aria-label="Who is writing" data-testid="who-is-writing" />,
 }));
 
-import CommunicationsNext from './CommunicationsNext';
+import CommunicationsNext, { readLastBookRows, rememberBookRows } from './CommunicationsNext';
 import { communicationsTour } from '../../../guidance/content/communications';
 import { roomForAct } from '../../../lib/mudavym/counterRead';
 
@@ -1102,5 +1102,65 @@ describe('the tour finds every step (COMMS-W38)', () => {
       expect(container.querySelector(step.element), step.element).not.toBeNull();
     }
     expect(container.querySelector('[data-tour="comms-write"]')?.textContent).toMatch(/Write a letter/);
+  });
+});
+
+describe('the unread conversation book holds its room (perf-p10-1)', () => {
+  beforeEach(() => window.sessionStorage.clear());
+
+  it('holds six rows on a first visit while unread, and says it is reading', () => {
+    mockData.current = { ...base, hasData: false };
+    render(<CommunicationsNext />);
+    const held = screen.getByTestId('book-reading');
+    expect(held.style.minHeight).toBe('252px');
+    expect(held.textContent).toContain('Reading the conversation book');
+  });
+
+  it('holds the last known row count for this house, clamped to twelve', () => {
+    rememberBookRows('r1', 40);
+    expect(readLastBookRows('r1')).toBe(12);
+    mockData.current = { ...base, hasData: false };
+    render(<CommunicationsNext />);
+    expect(screen.getByTestId('book-reading').style.minHeight).toBe('504px');
+  });
+
+  it('releases the hold when rows land, and keeps their count for the next visit', () => {
+    mockData.current = { ...base, hasData: true, rows: [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })] };
+    render(<CommunicationsNext />);
+    expect(screen.queryByTestId('book-reading')).toBeNull();
+    expect(readLastBookRows('r1')).toBe(3);
+  });
+
+  it('an empty house collapses once: it holds nothing the next time, and the empty line replaces the hold', () => {
+    mockData.current = { ...base, hasData: true, rows: [] };
+    const first = render(<CommunicationsNext />);
+    expect(screen.queryByTestId('book-reading')).toBeNull();
+    expect(screen.getByText(/The book is open and empty/)).toBeTruthy();
+    expect(readLastBookRows('r1')).toBe(0);
+    first.unmount();
+    mockData.current = { ...base, hasData: false };
+    render(<CommunicationsNext />);
+    expect(screen.getByTestId('book-reading').style.minHeight).toBe('0px');
+  });
+
+  it('releases the hold when the read fails, and remembers nothing from a failure', () => {
+    mockData.current = { ...base, hasData: false, isError: true, errorMessage: 'status code 500' };
+    render(<CommunicationsNext />);
+    expect(screen.queryByTestId('book-reading')).toBeNull();
+    expect(screen.getByTestId('book-unread')).toBeTruthy();
+    expect(readLastBookRows('r1')).toBeNull();
+  });
+
+  it('blocked storage reads as a first visit, never throws', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      mockData.current = { ...base, hasData: false };
+      render(<CommunicationsNext />);
+      expect(screen.getByTestId('book-reading').style.minHeight).toBe('252px');
+    } finally {
+      get.mockRestore();
+    }
   });
 });
