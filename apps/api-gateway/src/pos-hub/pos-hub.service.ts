@@ -17,6 +17,7 @@ import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
 import {
+  COST_PARTS_CAP,
   CostSnapshot,
   SaleCostSource,
   checkMarginFromRows,
@@ -2009,14 +2010,34 @@ export class PosHubService {
           .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", inventoryIds),
-        db
-          .from("inventory_lots")
-          .select(
-            "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, delivery_id, received_at, stock_state",
-          )
-          .eq("restaurant_id", restaurantId)
-          // pickSaleCostSource keeps live lots only
-          .in("inventory_id", inventoryIds),
+        // Every live, on-hand lot, costed or not, read per item, oldest first.
+        // An unfiltered read keeps depleted lots at qty 0 and passes
+        // PostgREST's 1000-row cap, so the parts would miss live lots and the
+        // sale would be restated over a shelf the rollup never read. One past
+        // the cap is enough to say "capped". Costed and sample lots are NOT
+        // filtered here: FIFO draws every live lot, so the oldest one must be
+        // seen even when it carries no cost, or a line drawn from it would name
+        // a younger priced lot's order and be restated by a paper that never
+        // priced it (r102 F2 names the picked lot only when it is costed).
+        Promise.all(
+          inventoryIds.map((id) =>
+            db
+              .from("inventory_lots")
+              .select(
+                "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, delivery_id, received_at, stock_state",
+              )
+              .eq("restaurant_id", restaurantId)
+              .eq("inventory_id", id)
+              .eq("stock_state", "live")
+              .gt("qty", 0)
+              .order("received_at", { ascending: true })
+              .order("id", { ascending: true })
+              .limit(COST_PARTS_CAP + 1),
+          ),
+        ).then((reads) => ({
+          data: reads.flatMap((r: any) => r.data ?? []),
+          error: reads.find((r: any) => r.error)?.error ?? null,
+        })),
       ]);
       const failed = inv.error || rollup.error || lots.error;
       if (failed) {

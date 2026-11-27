@@ -70,6 +70,12 @@ function makeDb(opts: DbOpts = {}) {
         select: () => q,
         eq: () => q,
         in: async () => ({ data: [], error: null }),
+        // the sale-cost lots read is filtered, ordered and limited at the source
+        gt: () => q,
+        not: () => q,
+        neq: () => q,
+        order: () => q,
+        limit: () => q,
         upsert: async (row: Row) => {
           if (table === "pos_checks") calls.checks.push(row);
           return { error: null };
