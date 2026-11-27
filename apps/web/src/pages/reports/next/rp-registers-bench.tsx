@@ -67,6 +67,11 @@ export interface BenchRegister {
   tie: boolean;
   weekdays: Array<{ day: string; mean: number | null; n: number | null }>;
   goals: BenchGoalRow[];
+  /**
+   * Why a buying window is withheld: an order in it carries no recorded cost
+   * (the cashflow lens's `unread`, the purchases goal's own sentence).
+   */
+  spendUnread: string | null;
   /** True when that register's own read failed: a read that did not happen, never "nothing". */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
@@ -105,6 +110,13 @@ export const bench = analysis<BenchRegister>({
       spendPrev30d: num(cf.spendPrev30d),
       paceDeltaPct: num(cf.paceDeltaPct),
       committed: num(cf.committedOpenOrders),
+      spendUnread: (() => {
+        const u = obj(cf.unread);
+        const first = [u.spendLast30d, u.spendPrev30d].find(
+          (v) => typeof v === 'string' && v.trim() !== '',
+        );
+        return first == null ? null : String(first);
+      })(),
       openOrderCount: num(cf.openOrderCount),
       trendPerDayPct: num(se.trendPerDayPct),
       bestDay: se.bestDay == null ? null : str(se.bestDay),
@@ -144,7 +156,11 @@ export const bench = analysis<BenchRegister>({
       {
         label: 'Bought, last 30 days',
         value: money(b.spendLast30d),
-        note: b.cashflowMissing ? 'the cashflow register could not be read' : undefined,
+        note: b.cashflowMissing
+          ? 'the cashflow register could not be read'
+          : b.spendLast30d === null && b.spendUnread
+            ? 'an order in this window has no recorded cost'
+            : undefined,
       },
       { label: 'Bought, the 30 before', value: money(b.spendPrev30d) },
       {
@@ -260,6 +276,7 @@ export const bench = analysis<BenchRegister>({
         b.cashflowMissing
           ? 'The cashflow register could not be read, so its four figures are em dashes rather than zeros.'
           : null,
+        b.spendUnread,
         b.seasonalityMissing
           ? 'The seasonality register could not be read, so the week’s extremes are em dashes.'
           : null,

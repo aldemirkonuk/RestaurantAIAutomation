@@ -306,8 +306,14 @@ function writePacing(payload: unknown): ExportDoc {
   // A house with no time zone has no days to file a delivery on (ADR 0296):
   // spend is withheld, and what is committed is still stated.
   const zoneUnset = c.zoneUnset === true;
+  // A window withheld over an order with no recorded cost is null, not zero
+  // (order-cost.ts), so it is never read as "nothing was bought".
   const bothZero = !zoneUnset && last === 0 && prev === 0;
-  const spendWhy = zoneUnset ? HOUSE_ZONE_UNSET : "the cashflow register returned no figure";
+  const unread = obj(c.unread);
+  const why = (key: string, fallback: string) =>
+    unread[key] == null ? fallback : str(unread[key]);
+  const spendWhy = (key: string) =>
+    zoneUnset ? HOUSE_ZONE_UNSET : why(key, "the cashflow register returned no figure");
 
   return doc({
     say: zoneUnset
@@ -316,10 +322,10 @@ function writePacing(payload: unknown): ExportDoc {
         ? "No delivered purchase order falls in either 30-day window, so there is no pace to read."
         : null,
     figures: [
-      f("Paid out, the last 30 days", figure(last, spendWhy), "money"),
-      f("Paid out, the 30 days before", figure(prev, spendWhy), "money"),
+      f("Paid out, the last 30 days", figure(last, spendWhy("spendLast30d")), "money"),
+      f("Paid out, the 30 days before", figure(prev, spendWhy("spendPrev30d")), "money"),
       f("Pace", figure(pctOf(c.paceDeltaPct), zoneUnset ? HOUSE_ZONE_UNSET : "Needs two comparable 30-day windows"), "percent"),
-      f("Committed, not yet delivered", figure(c.committedOpenOrders, "the cashflow register returned no figure"), "money"),
+      f("Committed, not yet delivered", figure(c.committedOpenOrders, why("committedOpenOrders", "the cashflow register returned no figure")), "money"),
       f("Open orders", figure(c.openOrderCount, "the cashflow register returned no figure"), "count"),
     ],
     tables:
@@ -342,7 +348,9 @@ function writePacing(payload: unknown): ExportDoc {
     notes: [
       projection && projection.length > 0 || zoneUnset
         ? ""
-        : "Too few weeks of purchasing to project — withheld rather than a line drawn through two points.",
+        : unread.projectedNext4Weeks != null
+          ? `No projection: ${str(unread.projectedNext4Weeks)}`
+          : "Too few weeks of purchasing to project — withheld rather than a line drawn through two points.",
     ],
     // The orders are read whole (ADR 0292): a failed read refuses the sheet,
     // so a zero here is a quiet month, never a read that came back empty.
