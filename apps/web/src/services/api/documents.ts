@@ -243,6 +243,19 @@ export const documentsApi = {
   },
 
   /**
+   * A vendor's statement against this house's papers (r109 g5): matched by
+   * document number, never by amount alone. Owner and manager only.
+   */
+  async statementTieout(id: string): Promise<StatementTieout> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/statement-tieout`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
    * Mint the one-time seal a VERIFICATION has to carry back — at the moment the
    * confirm gesture BEGINS.
    *
@@ -503,3 +516,26 @@ export function allocatedChargesFor(doc: ProcurementDocument | null): number {
 }
 
 export default documentsApi
+
+/** r109 g5: one statement row against the house's paper of that number. */
+export interface StatementTieoutRow {
+  docNumber: string | null
+  docDate: string | null
+  kind: 'invoice' | 'credit'
+  amount: string | null
+  verdict: 'checked_same' | 'on_file_not_checked' | 'amount_differs' | 'never_received' | 'not_compared'
+  /** Statement minus paper; only for amount_differs. */
+  differsBy: string | null
+  reason: string | null
+  paperId: string | null
+}
+
+export interface StatementTieout {
+  currency: string | null
+  providerId: string | null
+  notCompared: 'vendor_unknown' | null
+  entriesRead: number
+  rows: StatementTieoutRow[]
+  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; kind: 'invoice' | 'credit' }[]
+  paymentsIgnored: number
+}

@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { ReceiptsStatementTieout } from './ReceiptsStatementTieout';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -887,6 +888,17 @@ function VendorPricesNote({ docId }: { docId: string }) {
   );
 }
 
+/** r109 g5: a statement against the house's papers, owners and managers only; staff never ask. */
+function StatementTieoutPart({ docId }: { docId: string }) {
+  const { activeRole, user } = useAuth();
+  if (!canSeeCreditLedger(activeRole, user?.role)) return null;
+  return (
+    <CardPart label="Against your papers">
+      <ReceiptsStatementTieout docId={docId} />
+    </CardPart>
+  );
+}
+
 function CardPart({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
   return (
     <div
@@ -1375,6 +1387,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
         <PriceMovesNote docId={doc.id} />
         <VendorPricesNote docId={doc.id} />
       </CardPart>
+
+      {doc.doc_type === 'statement' && <StatementTieoutPart docId={doc.id} />}
 
       {/*
         The paper is no longer beside these lines: the sheet above brings it on
