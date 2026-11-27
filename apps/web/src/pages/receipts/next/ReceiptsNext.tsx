@@ -995,6 +995,7 @@ function CardPart({ label, first = false, children }: { label: string; first?: b
 function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (viaKeyboard: boolean) => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
+  const { activeRole, user } = useAuth();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
   /**
    * The formatted sheet above this card reads the same rows under its own keys
@@ -1465,8 +1466,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
 
       {doc.doc_type === 'statement' && <StatementTieoutPart docId={doc.id} />}
       {/* r108 g17: what the seal did to the books, from the receipts it wrote */}
-      {doc.status === 'verified' && (
-        <CardPart label="What sealing changed">
+      {doc.status === 'verified' && canSeeCreditLedger(activeRole, user?.role) && (
+        <CardPart label="What verifying its delivery changed">
           <SealedChangesPart docId={doc.id} />
         </CardPart>
       )}

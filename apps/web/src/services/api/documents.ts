@@ -19,20 +19,35 @@ import { apiClient } from './client'
  */
 import { sealed, rethrowSpoken } from './seal'
 
-export interface SealedChangeEvent {
-  at: string
+export interface SealedChanges {
   stockValueDelta: string
   bottles: number
   salesCostDelta: string
   sales: number
   notKnown: number
-}
-export interface SealedChanges extends Omit<SealedChangeEvent, 'at'> {
   status: string
   currency: string | null
   orders: string[]
+  /** How many deliveries the paper is linked to: a door delivery has lots but no order. */
+  deliveries: number
   otherPapers: number
-  events: SealedChangeEvent[]
+  /** r109 g3: the sales it re-costed, by table, newest first; latest event per sale, exact text. */
+  salesList?: SettledSale[]
+  /** Sales in the total that cannot be named (a delivery-path settlement carries no check). */
+  salesUnnamed?: number
+}
+
+export interface SettledSale {
+  id: string
+  at: string | null
+  wine: string | null
+  quantity: number
+  unit: string | null
+  volumeMl: number
+  voided: boolean
+  table: string
+  before: string | null
+  after: string
 }
 
 /** r109 g2: how much of the till's drinks cost is exact, by basis, as exact decimal text. */
