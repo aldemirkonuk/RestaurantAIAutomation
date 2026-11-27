@@ -26,7 +26,7 @@
  * read with the page, it says so, never that the letters carried none.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
@@ -37,6 +37,9 @@ import {
   letterAt,
   letterLook,
   ARRIVED_ONLY,
+  STACK_AT,
+  foldedLine,
+  openLettersOf,
   AUTOMATIC_LETTER_WORDS,
   mailKindOf,
   noReplyFailWords,
@@ -46,7 +49,7 @@ import {
   type MailMessage,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
-import { FadeAway, MailMotionStyles, useArriveFocus } from './mail-motion';
+import { FadeAway, MailMotionStyles, prefersReducedMotion, useArriveFocus } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
 import { RetryRead, useReadAgain } from './MailRetry';
@@ -71,8 +74,11 @@ function Letter({
   facts,
   onTakeBack,
   takingBack,
+  unfolded,
 }: {
   m: MailMessage;
+  /** Opened from a fold by the reader: it fades in once (opacity only, none under reduced motion). */
+  unfolded?: boolean;
   vendor: string;
   facts: LetterFacts | undefined;
   /** Set only on the newest marked letter, for an owner or manager. */
@@ -86,16 +92,19 @@ function Letter({
   return (
     <li
       data-testid="mail-letter"
-      className="grid gap-1.5 rounded-lg px-3 py-2.5"
+      data-letter-id={m.id}
+      tabIndex={-1}
+      className={`grid gap-1.5 rounded-lg px-3 py-2.5${unfolded && !prefersReducedMotion() ? ' mail-fade-in' : ''}`}
       style={{
         background: inbound ? 'var(--paper-1, #F3EFE6)' : 'var(--paper-0, #FAF7F1)',
         border: look.dashed ? '1px dashed var(--ink-3, #7C7365)' : '1px solid var(--paper-2, #EAE4D8)',
         marginLeft: inbound ? 0 : 'min(10%, 48px)',
         marginRight: inbound ? 'min(10%, 48px)' : 0,
+        outline: 'none',
       }}
     >
       <div className="flex flex-wrap items-baseline gap-2">
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+        <span data-letter-name={m.id} tabIndex={-1} style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', outline: 'none' }}>
           {inbound ? vendor : 'The house'}
         </span>
         <span style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>{fmtWhen(letterAt(m))}</span>
@@ -197,6 +206,34 @@ function Letter({
   );
 }
 
+const FOLD_BUTTON = {
+  height: 44,
+  width: '100%',
+  textAlign: 'left',
+  background: 'none',
+  border: 0,
+  borderTop: '1px solid var(--paper-2, #EAE4D8)',
+  cursor: 'pointer',
+  fontFamily: SANS,
+  fontSize: 12.5,
+  color: 'var(--ink-2, #4F473C)',
+} as const;
+
+/** One earlier letter, folded to a single 44 px row. */
+function FoldedLetter({ m, vendor, onOpen }: { m: MailMessage; vendor: string; onOpen: () => void }) {
+  return (
+    <li data-testid="mail-letter-folded" data-letter-id={m.id} style={{ listStyle: 'none' }}>
+      <button type="button" aria-expanded={false} onClick={onOpen} className="flex items-baseline gap-2" style={FOLD_BUTTON}>
+        <span style={{ fontWeight: 600, color: 'var(--ink-1, #211C16)', whiteSpace: 'nowrap' }}>
+          {m.direction === 'inbound' ? vendor : 'The house'}
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 12, color: 'var(--ink-4, #665D50)', whiteSpace: 'nowrap' }}>{fmtWhen(letterAt(m))}</span>
+        <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{foldedLine(m)}</span>
+      </button>
+    </li>
+  );
+}
+
 export function MailThread({
   threadKey,
   withKey,
@@ -242,6 +279,35 @@ export function MailThread({
   // drafted reply, when there is one, stays the first act.
   const answer = canReply && onAnswer ? answerFor(head, letters) : null;
   const noReply = useNoReplyMark();
+  // Earlier letters fold (r108 mail g9). The reader's unfolds are kept for this thread only.
+  const [opened, setOpened] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
+  const unfoldedIds = opened.key === threadKey ? opened.ids : new Set<string>();
+  const focusAfter = useRef<string | null>(null);
+  const open = openLettersOf(letters, head);
+  const unfold = (ids: string[]) => {
+    focusAfter.current = ids[0] ?? null;
+    setOpened({ key: threadKey, ids: new Set([...unfoldedIds, ...ids]) });
+  };
+  useLayoutEffect(() => {
+    const id = focusAfter.current;
+    if (!id) return;
+    focusAfter.current = null;
+    document.querySelector<HTMLElement>(`[data-letter-name="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+  }, [opened]);
+  // Runs of folded letters; three or more in a row are one stack.
+  const rows: Array<{ kind: 'open'; m: MailMessage } | { kind: 'fold'; m: MailMessage } | { kind: 'stack'; ms: MailMessage[] }> = [];
+  for (let i = 0; i < letters.length; ) {
+    const m = letters[i]!;
+    if (open.has(m.id) || unfoldedIds.has(m.id)) {
+      rows.push({ kind: 'open', m });
+      i += 1;
+      continue;
+    }
+    const run: MailMessage[] = [];
+    while (i < letters.length && !open.has(letters[i]!.id) && !unfoldedIds.has(letters[i]!.id)) run.push(letters[i++]!);
+    if (run.length >= STACK_AT) rows.push({ kind: 'stack', ms: run });
+    else run.forEach((r) => rows.push({ kind: 'fold', m: r }));
+  }
   const settleId = canReply ? noReplyTarget(head, letters) : null;
   // Only the newest marked letter offers to take its mark back: an older
   // mark is behind it in the thread, and taking it back changes nothing.
@@ -362,16 +428,32 @@ export function MailThread({
           )}
 
           <ul className="grid gap-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {letters.map((m) => (
-              <Letter
-                key={m.id}
-                m={m}
-                vendor={vendor}
-                facts={bookFacts?.get(m.id)}
-                onTakeBack={m.id === undoId ? () => noReply.mutate({ id: m.id, marked: false }) : undefined}
-                takingBack={noReply.isPending && noReply.variables?.marked === false}
-              />
-            ))}
+            {rows.map((r) =>
+              r.kind === 'open' ? (
+                <Letter
+                  key={r.m.id}
+                  m={r.m}
+                  vendor={vendor}
+                  facts={bookFacts?.get(r.m.id)}
+                  unfolded={unfoldedIds.has(r.m.id)}
+                  onTakeBack={r.m.id === undoId ? () => noReply.mutate({ id: r.m.id, marked: false }) : undefined}
+                  takingBack={noReply.isPending && noReply.variables?.marked === false}
+                />
+              ) : r.kind === 'fold' ? (
+                <FoldedLetter key={r.m.id} m={r.m} vendor={vendor} onOpen={() => unfold([r.m.id])} />
+              ) : (
+                <li key={`stack-${r.ms[0]!.id}`} data-testid="mail-letter-stack" style={{ listStyle: 'none' }}>
+                  <button
+                    type="button"
+                    aria-expanded={false}
+                    onClick={() => unfold(r.ms.map((x) => x.id))}
+                    style={{ ...FOLD_BUTTON, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+                  >
+                    {r.ms.length} earlier letters
+                  </button>
+                </li>
+              ),
+            )}
           </ul>
 
           {q.isError && q.data && !q.isFetchNextPageError && (

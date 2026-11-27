@@ -37,6 +37,7 @@ Deliberate non-motions, and why each one stays still:
   A guardrail hit is a sentence to read, not an alarm.
 
 - **Mail moves by opacity only** (`mail-motion.tsx`): arrival settles, rows fade in, chips fade out.
+- **A folded letter unfolds in place** (`MailThread.tsx`, r108 g9): an unfolded body takes `mail-fade-in` 160 ms, opacity only; no height or translate animation, no fold-back animation, and nothing at all under reduced motion. Folding, not scrolling, puts the newest letter near the top.
 
 `prefers-reduced-motion` is honoured everywhere: `.cmp-pick` drops its
 transition, and the sheet renders at its end state with nothing scheduled at all
