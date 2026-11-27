@@ -14,6 +14,7 @@ import { till, tillMeasures, type TillWindow } from './rp-registers-trade';
 import { planCombo } from './rp-combo';
 import { ComboPlot } from './rp-plot';
 import { moneyIn } from './rp-format';
+import { addDays } from './rp-till-trend';
 
 vi.mock('recharts', async () => {
   const actual = await vi.importActual<typeof import('recharts')>('recharts');
@@ -111,3 +112,79 @@ describe('the till offers bars and a line', () => {
     expect(m[1].values).toEqual([null]);
   });
 });
+
+/* r109 g2: "Average a trading day, last 7" beside the takings. */
+describe('the till offers a 7-day average line', () => {
+  const span = (from: string, n: number) => Array.from({ length: n }, (_, i) => addDays(from, i));
+  // 60 house days to Dec 10; Mondays absent (closed); checks not sent by this gateway.
+  const days60 = span('2026-10-12', 60);
+  const series = days60
+    .filter((d) => new Date(`${d}T12:00:00Z`).getUTCDay() !== 1)
+    .map((date) => ({ date, revenue: 1000 }));
+  const raw = (n: number, extra: object = {}) => {
+    const kept = days60.slice(-n);
+    return {
+      ...COUNTED,
+      from: kept[0],
+      to: kept[kept.length - 1],
+      days: n,
+      revenue: 1,
+      dailySeries: series.filter((d) => d.date >= kept[0]),
+      ...extra,
+    };
+  };
+  const trail = (cats: { measures?: Array<{ key: string }> } | undefined) =>
+    cats?.measures?.find((m) => m.key === 'trail7') as
+      | { label: string; unit: string; values: Array<number | null>; tips?: Array<string | null>; note?: string; format: (v: number) => string }
+      | undefined;
+
+  it('[REVERT-FAILS] is offered at 30 days with no check counts, and not at 7', () => {
+    const at30 = till.view(read(raw(30)), { days: 30, currency: 'TRY' });
+    const m = trail(at30.cats)!;
+    expect(m.label).toBe('Average a trading day, last 7');
+    expect(at30.cats!.measures!.map((x) => x.key)).toEqual(['trail7']);
+    expect(trail(till.view(read(raw(7)), { days: 7, currency: 'TRY' }).cats)).toBeUndefined();
+  });
+
+  it('[REVERT-FAILS] shares the takings axis and says how many days it averaged', () => {
+    const view = till.view(read(raw(30)), { days: 30, currency: 'TRY' });
+    const plan = planCombo(view.cats!, { bars: 'value', line: 'trail7' })!;
+    expect(plan.split).toBe(false);
+    expect(plan.rows[29].line).toBe(1000);
+    expect(plan.rows[29].lineTip).toBe('over 6 trading days');
+    expect(trail(view.cats)!.format(1000)).toBe(moneyIn('TRY')(1000, 'compact'));
+  });
+
+  it('[REVERT-FAILS] without compare the first 6 days are null and the caption says where the line starts', () => {
+    const view = till.view(read(raw(30)), { days: 30, currency: 'TRY' });
+    const m = trail(view.cats)!;
+    expect(m.values.slice(0, 6)).toEqual([null, null, null, null, null, null]);
+    expect(m.values[6]).toBe(1000);
+    expect(m.note).toMatch(/starts on the 7th day/);
+    render(<ComboPlot series={view.cats!} pick={{ bars: 'value', line: 'trail7' }} onPick={() => {}} />);
+    expect(screen.getByText(/starts on the 7th day/)).toBeTruthy();
+  });
+
+  it('[REVERT-FAILS] with compare the first 6 take their trail from the doubled read', () => {
+    const view = till.view(read(raw(60)), { days: 30, currency: 'TRY', compare: true });
+    const m = trail(view.cats)!;
+    expect(m.values).toHaveLength(30);
+    expect(m.values.every((v) => v === 1000)).toBe(true);
+    expect(m.note).toBeUndefined();
+  });
+
+  it('[REVERT-FAILS] a withheld read offers nothing', () => {
+    const view = till.view(read({ ...raw(30), salesWithheld: true, revenue: null, dailySeries: [] }), { days: 30, currency: 'TRY' });
+    expect(view.cats).toBeUndefined();
+    const w = read(raw(30));
+    expect(tillMeasures({ ...w, salesWithheld: true }, ['2026-12-10'], moneyIn('TRY'), w, 30)).toBeUndefined();
+  });
+
+  it('keeps checks and the average check first when the counts are sent', () => {
+    const counted = raw(30, { dailySeries: series.filter((d) => d.date >= days60[30]).map((d) => ({ ...d, checks: 10 })) });
+    const view = till.view(read(counted), { days: 30, currency: 'TRY' });
+    expect(view.cats!.measures!.map((x) => x.key)).toEqual(['checks', 'avg', 'trail7']);
+    expect(planCombo(view.cats!)!.pick).toEqual({ bars: 'value', line: 'checks' });
+  });
+});
+

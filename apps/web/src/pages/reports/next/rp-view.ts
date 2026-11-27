@@ -36,6 +36,8 @@ export interface Cat {
   prior?: number | null;
   /** Long form for the tooltip when `label` is abbreviated for the axis. */
   full?: string;
+  /** An edge week or month that does not hold its whole span: its bar is drawn lighter, and `full` says so. */
+  part?: boolean;
 }
 
 /** A rule drawn across a plot, and the words for why it is there. */
@@ -59,6 +61,10 @@ export interface Measure {
   unit: string;
   format: (v: number) => string;
   values: Array<number | null>;
+  /** Words a tooltip puts after `values[i]` ("over 5 trading days"); a gap's reason when it is null. */
+  tips?: Array<string | null>;
+  /** One sentence printed under the drawing while this measure is drawn. */
+  note?: string;
 }
 
 export interface CatSeries {

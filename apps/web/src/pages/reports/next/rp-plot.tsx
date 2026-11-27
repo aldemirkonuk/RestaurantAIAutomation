@@ -71,7 +71,7 @@ import {
 import { turn } from '@/lib/mudavym';
 import { tipMotion, useAfterPaint, useDrawIn } from './rp-draw';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
-import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
+import { choose, planCombo, type ComboPick, type ComboPlan, type ComboRow } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 import { NO_STRETCH, stretchSpan, stretchStep } from './rp-stretch';
 
@@ -693,6 +693,9 @@ function valueLabels(dataKey: string, format: (v: number) => string) {
 
 const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
 
+/** A part week or month (r109 g3) is drawn this light, so a short bucket never reads as a slow one. */
+export const PART_OPACITY = 0.45;
+
 /** The most points a drawing carries; the table keeps every one (r102 M7: 365 days drew 365 recharts nodes and froze a frame). */
 export const MAX_DRAWN = 150;
 
@@ -837,7 +840,14 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
                   style={stagger(i, rows.length)}
                 />
               ) : (
-                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" style={stagger(i, rows.length)} />
+                <Cell
+                  key={`${i}:${r.label}`}
+                  fill="var(--seal)"
+                  fillOpacity={r.part ? PART_OPACITY : undefined}
+                  data-projected="false"
+                  data-part={r.part ? 'true' : undefined}
+                  style={stagger(i, rows.length)}
+                />
               ),
             )}
           </Bar>
@@ -1083,7 +1093,13 @@ export function ComboPlot({
           >
             {rows.length <= LABEL_BARS_MAX && valueLabels('bar', bars.format)}
             {rows.map((r, i) => (
-              <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i, rows.length)} />
+              <Cell
+                key={`${i}:${r.label}`}
+                fill="var(--seal)"
+                fillOpacity={r.part ? PART_OPACITY : undefined}
+                data-part={r.part ? 'true' : undefined}
+                style={stagger(i, rows.length)}
+              />
             ))}
           </Bar>
           <Line
@@ -1100,6 +1116,13 @@ export function ComboPlot({
         </ComposedChart>
       </Plot>
       <p className="rp-cap">{words}</p>
+      {[bars, line].map((m) =>
+        m.note ? (
+          <p key={m.key} className="rp-cap">
+            {m.note}
+          </p>
+        ) : null,
+      )}
     </>
   );
 }
@@ -1111,7 +1134,7 @@ function ComboTip({
   plan,
 }: {
   active?: boolean;
-  payload?: Array<{ payload?: { full?: string; bar: number | null; line: number | null } }>;
+  payload?: Array<{ payload?: ComboRow }>;
   plan: ComboPlan;
 }) {
   const row = active ? payload?.[0]?.payload : undefined;
@@ -1120,13 +1143,14 @@ function ComboTip({
         head: row.full ?? '',
         lines: (
           [
-            [row.bar, plan.bars],
-            [row.line, plan.line],
-          ] as Array<[number | null, ComboPlan['bars']]>
-        ).map(([v, m]) => ({
+            [row.bar, plan.bars, row.barTip],
+            [row.line, plan.line, row.lineTip],
+          ] as Array<[number | null, ComboPlan['bars'], string | null | undefined]>
+        ).map(([v, m, tip]) => ({
           name: m.label,
           value: v == null ? null : m.format(v),
-          tail: v == null ? '' : ` ${m.unit}`,
+          // The measure's own words for the point (the 7-day trail says how many days it averaged).
+          tail: `${v == null ? '' : ` ${m.unit}`}${tip ? ` ${tip}` : ''}`,
         })),
       }
     : null;
