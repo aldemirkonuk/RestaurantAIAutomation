@@ -15,6 +15,7 @@ import {
   lastStoredWords,
   heldAtDoorWords,
   lastWriterWords,
+  lettersLast30,
   sharedMailboxDoor,
   type IntakeRead,
   letterAt,
@@ -889,5 +890,19 @@ describe('day 1, before any letter has arrived', () => {
   it('a summary without doors does not crash the header', () => {
     const s = { ...summary(), doors: undefined } as unknown as MailSummary;
     expect(() => headerSentence(s, { failed: false, now: NOW, on: 'you' })).not.toThrow();
+  });
+});
+
+describe('lettersLast30 (r104 mail-gap g5)', () => {
+  it('never reads below today', () => {
+    expect(lettersLast30({ inLast30: 18, inToday: 8997 })).toBe(8997);
+    expect(lettersLast30({ inLast30: 9000, inToday: 8997 })).toBe(9000);
+    expect(lettersLast30({ inLast30: 4, inToday: 4 })).toBe(4);
+  });
+  it('is unknown, never 0, when the server sent no count; and the count alone when there is no today', () => {
+    expect(lettersLast30({ inToday: 5 })).toBeNull();
+    expect(lettersLast30(undefined)).toBeNull();
+    expect(lettersLast30({ inLast30: 7, inToday: null })).toBe(7);
+    expect(lettersLast30({ inLast30: 0, inToday: 0 })).toBe(0);
   });
 });
