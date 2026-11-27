@@ -340,7 +340,7 @@ export const HOUSE_CURRENCY_WORD = "house currency";
  * the stored value is not a well-formed code). Throws on a failed read, which
  * the bundle reports as `currencyUnread` and never as "not stated".
  */
-async function readHouseCurrency(
+export async function readHouseCurrency(
   client: any,
   restaurantId: string,
 ): Promise<string | null> {
