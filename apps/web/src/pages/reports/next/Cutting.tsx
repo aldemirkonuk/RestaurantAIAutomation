@@ -28,7 +28,7 @@
  * whatever type is selected.
  */
 
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import {
   ChartArea,
   ChartColumn,
@@ -54,7 +54,7 @@ import { Grip, PlacingBar } from './Placing';
 import type { ArrangeApi } from './rp-arrange';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
-import type { Register } from './useReportsNextData';
+import { TILL_WINDOWS, type Register } from './useReportsNextData';
 
 /**
  * The drawing the cutting is currently set to, as a mark rather than a word.
@@ -87,7 +87,7 @@ export function TillWindowPicker({
   /** Called when a chip is hovered, focused or touched, before any click. */
   onWarm?: (d: number) => void;
 }) {
-  const options = useMemo(() => [7, 30, 90], []);
+  const options = TILL_WINDOWS;
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
