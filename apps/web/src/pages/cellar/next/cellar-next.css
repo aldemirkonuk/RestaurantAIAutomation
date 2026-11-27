@@ -34,6 +34,12 @@
   overflow: hidden;
 }
 
+/* The signature waits, unseen, while a register settles (a list in flight, or a
+   drink a link named still opening): it holds its room and is not seen to move. */
+.mudavym:has([data-settling='true']) .cl-signature {
+  visibility: hidden;
+}
+
 /* ── sketch 121 (2026-09-19): the wine register's own record opens BESIDE a
    narrowed index, not above the full table — `.cl-stand` above is unchanged
    and still used by CatalogueRegister/CocktailRegister (MOTIONS.md's third
@@ -380,6 +386,12 @@
    raise contrast, never lower it, wherever `.cl-note` already appears. */
 .cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+/* The menu offers hold their line before the menu read lands: one line, and two at a phone where the
+   "no menu is current" sentence wraps. Not an inline height: that would beat this rule. */
+.cl-offer-room { min-height: 1lh; }
+@media (max-width: 640px) {
+  .cl-offer-room { min-height: 2lh; }
+}
 
 /* facts of record: a label above the figure, never a label beside it */
 .cl-facts {
@@ -1077,4 +1089,15 @@ textarea.cl-field {
   .cl-rcp .iv-linkish,
   .cl-rcp .tc-more { min-height: 44px; }
   .cl-rcp .iv-btn { font-size: 14px; }
+}
+
+/* ── the dish register's controls are a thumb's size on a phone (r97 walk: Add
+   dish, Save changes, Take off the list and every box were 30 px at 375). One
+   scope class on the page, so the other registers' controls are not changed. ── */
+@media (max-width: 640px) {
+  .cl-touch .cl-btn,
+  .cl-touch .cl-field {
+    height: 44px;
+    min-height: 44px;
+  }
 }
