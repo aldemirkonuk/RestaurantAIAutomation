@@ -20,8 +20,8 @@ const LINE = {
   line_total: 220.8, order_line_id: null, allowance: null,
 }
 
-async function mockGateway(page: Page) {
-  let queue = [doc('d1', 'INV-88'), doc('d2', 'INV-89'), doc('d3', 'INV-90')]
+async function mockGateway(page: Page, papers = 3) {
+  let queue = [doc('d1', 'INV-88'), doc('d2', 'INV-89'), doc('d3', 'INV-90')].slice(0, papers)
   await page.route('**/api/v1/**', (route) => {
     const req = route.request()
     const url = new URL(req.url())
@@ -93,4 +93,58 @@ for (const [name, width, landing] of [
       await expect(pane).toBeFocused()
     }
   })
+}
+
+/*
+ * r110 F5: sealing the LAST paper by keyboard must not leave focus on BODY, and
+ * the pane must not collapse under the reader (0.32 shift at 375 before). Focus
+ * stays in the "Document detail" pane, which stays mounted; the pane keeps the
+ * height the paper had. Layout shift is counted from the key press.
+ */
+for (const reduced of [false, true]) {
+  for (const width of [375, 1440, 1600]) {
+    test(`sealing the last paper keeps focus and holds the pane: ${reduced ? 'reduced' : 'motion'} ${width}`, async ({ page }) => {
+      test.setTimeout(60000)
+      await page.setViewportSize({ width, height: 900 })
+      await page.emulateMedia({ reducedMotion: reduced ? 'reduce' : 'no-preference' })
+      await mockAuthState(page, ['developer'])
+      await mockGateway(page, 1)
+      await page.goto('/receipts')
+      await page.getByRole('button', { name: 'Not now' }).click({ timeout: 8000 }).catch(() => {})
+      await page.locator('button[data-rc-id]', { hasText: 'INV-88' }).click()
+      const swipe = page.getByRole('button', { name: /Swipe up to confirm/ })
+      await expect(swipe).toBeEnabled({ timeout: 15000 })
+      await swipe.focus()
+      await page.evaluate(() => {
+        const w = window as unknown as { __cls: number; __src: string[] }
+        w.__cls = 0
+        w.__src = []
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries() as unknown as { value: number; hadRecentInput: boolean; sources: { node: Element | null; previousRect: DOMRect; currentRect: DOMRect }[] }[]) {
+            if (e.hadRecentInput) continue
+            w.__cls += e.value
+            for (const s of e.sources) {
+              const n = s.node as HTMLElement | null
+              w.__src.push(`${e.value.toFixed(4)} ${n?.tagName}.${(n?.className || '').toString().slice(0, 30)}[${n?.getAttribute?.('aria-label') ?? ''}] ${Math.round(s.previousRect.y)}+${Math.round(s.previousRect.height)} -> ${Math.round(s.currentRect.y)}+${Math.round(s.currentRect.height)}`)
+            }
+          }
+        }).observe({ type: 'layout-shift', buffered: false })
+      })
+      const paneBefore = await page.getByRole('region', { name: 'Document detail' }).boundingBox()
+      await page.keyboard.down('Space')
+      const pane = page.getByRole('region', { name: 'Document detail' })
+      // Below 2xl "All receipts" takes focus; at 2xl it is hidden and the pane does.
+      await expect(width < 1536 ? page.getByRole('button', { name: /^← All receipts$/ }) : pane).toBeFocused({ timeout: 10000 })
+      await page.keyboard.up('Space')
+      await page.waitForTimeout(600)
+      const active = await page.evaluate(() => document.activeElement?.tagName)
+      expect(active).not.toBe('BODY')
+      const paneAfter = await pane.boundingBox()
+      expect(paneAfter!.height).toBeGreaterThanOrEqual(paneBefore!.height - 1)
+      const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls)
+      console.log((await page.evaluate(() => (window as unknown as { __src: string[] }).__src)).join('\n'))
+      console.log(`CLS last paper ${reduced ? 'reduced' : 'motion'} ${width}: ${cls.toFixed(4)}`)
+      expect(cls).toBeLessThan(0.05)
+    })
+  }
 }

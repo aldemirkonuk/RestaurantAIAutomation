@@ -2075,6 +2075,26 @@ export default function ReceiptsNext() {
     const listShown = !!row && !!lane && getComputedStyle(lane).display !== 'none';
     (listShown ? row : detailPane.current)?.focus();
   }, [selectedId]);
+  // r110: sealing the LAST paper by keyboard dropped focus to BODY when the
+  // swipe unmounted, and the pane that held the paper collapsed under the
+  // reader while the queue lane opened above it (0.32 shift at 375). Now the
+  // pane keeps the paper's frame and height, says the queue is done, and
+  // "All receipts" takes focus (the pane itself where that link is hidden, at
+  // 2xl). The lane opens when the reader asks for it. No fade, no motion:
+  // the swap is instant, which is also what reduced motion asks (ADR 0112).
+  const focusAfterLast = useRef(false);
+  const lastBack = useRef<HTMLButtonElement>(null);
+  const [heldPaneH, setHeldPaneH] = useState<number | null>(null);
+  useEffect(() => {
+    if (selectedId) {
+      setHeldPaneH(null);
+      return;
+    }
+    if (!focusAfterLast.current) return;
+    focusAfterLast.current = false;
+    const back = lastBack.current;
+    (back && getComputedStyle(back).display !== 'none' ? back : detailPane.current)?.focus();
+  }, [selectedId]);
   const [rovingId, setRovingId] = useState<string | null>(null);
   const rovingRowId = reviewRows.some((d) => d.id === rovingId)
     ? rovingId
@@ -2426,7 +2446,7 @@ export default function ReceiptsNext() {
           }
         >
           {/* the queue */}
-          <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
+          <section aria-label="Awaiting review" className={selected || heldPaneH ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
               <div
                 data-testid={data.lanesSettling ? 'lane-slot-queue' : undefined}
@@ -2617,7 +2637,7 @@ export default function ReceiptsNext() {
             onPointerCancelCapture={() => { sealHeld.current = false; }}
             // With nothing open the section keeps its line, so the grid does not
             // lose it when the lanes beside it land (r105).
-            style={selected ? undefined : { minHeight: 41 }}
+            style={selected ? undefined : { minHeight: heldPaneH ?? 41 }}
           >
             {selected ? (
               <>
@@ -2666,9 +2686,40 @@ export default function ReceiptsNext() {
                 <DocView key={selected.id} doc={selected} onVerified={(viaKeyboard) => {
                     const next = nextAfter(selected.id);
                     if (viaKeyboard && next) focusAfterSeal.current = next;
+                    if (!next) {
+                      focusAfterLast.current = viaKeyboard;
+                      setHeldPaneH(detailPane.current?.offsetHeight || 41);
+                    }
                     select(next);
                   }}
                 />
+              </>
+            ) : heldPaneH && !selectedId ? (
+              <>
+                <button
+                  type="button"
+                  ref={lastBack}
+                  onClick={() => {
+                    setHeldPaneH(null);
+                    select(null);
+                  }}
+                  className="rc-ink mb-3 2xl:hidden"
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '2px 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ← All receipts
+                </button>
+                <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+                  That was the last paper waiting for you.
+                </p>
               </>
             ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
               /*
