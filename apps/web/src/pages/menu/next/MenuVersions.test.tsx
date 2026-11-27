@@ -1337,3 +1337,12 @@ describe('MenuVersions — Put it back and Add details are 44 px targets on a ph
     expect(css.slice(css.lastIndexOf('@media (max-width: 599px)'))).toContain('min-height: 44px');
   });
 });
+
+describe('readWarningSentence — an ambiguous price', () => {
+  it('says which line kind was refused and how to write it, not the generic sentence', async () => {
+    const { readWarningSentence } = await import('../../../services/api/menus');
+    const said = readWarningSentence({ kind: 'ambiguous_price', pages: null });
+    expect(said).toContain('1,250');
+    expect(said).not.toContain('Part of this file may not have been read');
+  });
+});

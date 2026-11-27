@@ -34,6 +34,9 @@ const HEADER_MAP = new Map(
   ),
 );
 
+/** The apostrophe the menu sheet puts before a cell a spreadsheet would open as a formula (#2489). */
+const FORMULA_ESCAPE = /^'(?=[=+\-@\t\r])/;
+
 const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "by_glass_price",
   "bottle_price",
@@ -518,7 +521,8 @@ export class CsvParserService {
           return;
         }
         if (typeof value === "number") (item as any)[field] = String(value);
-        else if ((value ?? "").trim()) (item as any)[field] = (value ?? "").trim();
+        // The menu sheet writes an apostrophe before a cell a spreadsheet would open as a formula (#2489).
+        else if ((value ?? "").trim()) (item as any)[field] = (value ?? "").trim().replace(FORMULA_ESCAPE, "");
         return;
       }
       const raw = typeof value === "number" ? "" : (value ?? "").trim();
