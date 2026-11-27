@@ -7,7 +7,7 @@ is not in this table.
 
 | id | token | curve · ms | fires |
 |---|---|---|---|
-| `cl-stand-settle` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms | the reading stand opening above the register when a bottle is chosen, and closing when it is dismissed — CSS `grid-template-rows: 0fr → 1fr` on `.cl-stand`. This is the row-expand "settle" the founder singled out by name on board 053. |
+| `cl-stand-settle` | `settle` | HOUSE `cubic-bezier(.16,1,.3,1)` · 320ms | the reading stand opening above the register when a bottle is chosen, and closing when it is dismissed — the drawer takes its room at once (no layout property is animated, r109 drinks-5) and its content moves 8px down into place, a `transform` on the `settle` token, on `.cl-stand`. Reduced motion: no animation at all. This is the row-expand "settle" the founder singled out by name on board 053. |
 | `cl-sort-flip` | `settle` curve | HOUSE `cubic-bezier(.16,1,.3,1)` · 180ms | the cocktail list's rows sliding to their new place when a column is sorted: FLIP, `transform: translateY` only, played through `Element.animate()` from `useSortFlip`. Rows that were on the page move; none appears or fades. Under reduced motion no animation is made at all (no slide, no opacity). The strip's average does not move on a sort: the same drinks give the same average. |
 | `cl-leaf-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | the stand's *contents* when a different bottle is chosen while it is already open — opacity 0.2→1 plus a 4px rise, run through `animate()`. The page turns; the stand does not re-open. Deliberately slower than `settle`, per the token's own note. |
 | `cl-ink` | `ink` | HOUSE · 160ms | every micro-state: register-card, shelf-card, row, chip, field, register switch, and button hover/focus. Border warms to `--seal-ring`, ground lifts one paper step. Nothing translates, nothing scales, nothing moves more than 0px. |
@@ -54,7 +54,7 @@ tuned here, and is not claimed as house motion.
   that no column in the schema separates a cola from a kombucha. Motion there
   would suggest work in progress on screen when there is none.
 - **Reduced motion**: `.cl-stand`, `.cl-ink`, `.cl-register` and `.cl-bottle`
-  drop their transitions in CSS; `cl-leaf-turn` collapses to its end state
+  drop their transitions in CSS (`.cl-stand` drops its settle animation too); `cl-leaf-turn` collapses to its end state
   through `animate()`'s reduced-motion branch; `Tally` sets the final figure
   directly without a frame loop; `HoldToApprove` becomes a two-step confirm.
 

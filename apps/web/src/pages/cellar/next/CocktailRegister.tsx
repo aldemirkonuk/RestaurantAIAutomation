@@ -321,7 +321,7 @@ export default function CocktailRegister({
   // stand first draws closed, then (after a forced style flush, so the change is
   // seen as a change) opens with its own settle. The page then reads as one
   // entrance, table then leaf, not a table and a leaf in the same frame. A click
-  // is the person's own act and opens at once. `steady` is the settle done; the
+  // is the person's own act and opens at once. `steady` is the settle done (340 ms: the 320 ms settle token, plus a frame or two); the
   // books below the leaf stay unseen until then, so they are not seen to move.
   const [linked] = useState(Boolean(openParam));
   const [laid, setLaid] = useState(!linked);
