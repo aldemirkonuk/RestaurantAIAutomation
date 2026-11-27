@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { io } from 'socket.io-client'
 import { WebSocketProvider } from './websocket'
@@ -53,9 +53,9 @@ describe('WebSocketProvider without a house', () => {
     expect(io).not.toHaveBeenCalled()
   })
 
-  it('opens a socket once a house exists', () => {
+  it('opens a socket once a house exists', async () => {
     house = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     mount()
-    expect(io).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(io).toHaveBeenCalledTimes(1))
   })
 })

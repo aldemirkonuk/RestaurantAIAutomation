@@ -21,7 +21,7 @@ import React, {
   useMemo,
   type ReactNode,
 } from 'react'
-import { io, Socket } from 'socket.io-client'
+import type { Socket } from 'socket.io-client'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
@@ -469,6 +469,10 @@ export function WebSocketProvider({
       return
     }
 
+    // The socket client (about 90 KB of source) is fetched only here, once a
+    // signed-in person in a house needs a socket; a signed-out visit, the
+    // landing and /register never download it.
+    const open = (io: typeof import('socket.io-client').io) => {
     const newSocket = io(`${config.url}/ws`, {
       auth: { token: authToken },
       transports: ['websocket', 'polling'],
@@ -897,6 +901,17 @@ export function WebSocketProvider({
       stopHeartbeat()
       newSocket.removeAllListeners()
       newSocket.close()
+    }
+    }
+
+    let cancelled = false
+    let close: (() => void) | undefined
+    void import('socket.io-client').then(({ io }) => {
+      if (!cancelled) close = open(io)
+    })
+    return () => {
+      cancelled = true
+      close?.()
     }
   }, [config.url, resolvedUserId, authToken, resolvedRestaurantId, queryClient])
 
