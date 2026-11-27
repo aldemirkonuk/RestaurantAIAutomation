@@ -1,9 +1,4 @@
-/**
- * r109 drinks-g1: a line's usable share is set on the sheet, and a sheet save
- * stops wiping it. The gateway stores a missing usablePct as null (all of
- * it), so a save body without the field erased a share set through the API,
- * loose lines or swap.
- */
+/** r109 drinks-g1: the sheet sets a line's usable share, and a save no longer wipes it (a missing one saves as null). */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

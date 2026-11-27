@@ -41,12 +41,7 @@ export interface DraftRow {
    */
   storedQty?: number | null;
   unit: RecipeUnit | '';
-  /**
-   * A stocked line's usable share, 1 to 100, as saved: 45 means the amount is
-   * 45% of what is bought (lime juice from whole limes). null is all of it.
-   * Undefined only on a draft kept before lines carried it; the sheet fills
-   * it from the saved line (withSavedUsable).
-   */
+  /** A stocked line's usable share, 1 to 100 (45: lime juice from whole limes); null is all of it. Undefined only on an older kept draft. */
   usablePct?: number | null;
   /** What is typed in the Usable % box, once it is touched. */
   usableText?: string;
@@ -98,11 +93,7 @@ export function rowQty(row: DraftRow): number | null {
 
 export const USABLE_BAD = 'Usable share is a percent from 1 to 100.';
 
-/**
- * A usable share as typed, in either decimal mark ("45", "45,5", "45.5"):
- * empty is null (all of it), a number from 1 to 100 with at most two
- * decimals is itself (the gateway keeps two), anything else is 'bad'.
- */
+/** A share as typed ("45", "45,5"): empty is null (all of it); 1 to 100 with two decimals at most; else 'bad'. */
 export function readUsable(text: string): number | null | 'bad' {
   const s = text.trim();
   if (!s) return null;
