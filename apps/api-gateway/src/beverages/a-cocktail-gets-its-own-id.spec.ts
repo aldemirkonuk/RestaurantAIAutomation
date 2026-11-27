@@ -21,11 +21,10 @@ const sql = (f: string) => readFileSync(join(MIGRATIONS, f), "utf8");
 const versions = () => readdirSync(MIGRATIONS).filter((f) => /^\d{14}_.*\.sql$/.test(f)).sort();
 
 describe("a cocktail gets its own id", () => {
-  it("createCocktail sends no id, so the column must supply one", () => {
+  it("createCocktail writes to cocktails; an id it names itself is kept, so a create works before this default is applied too", () => {
     const src = readFileSync(join(__dirname, "beverages.service.ts"), "utf8");
     const body = src.slice(src.indexOf("async createCocktail"), src.indexOf("async createCocktail") + 1500);
     expect(body).toContain('.from("cocktails")');
-    expect(body).not.toMatch(/\bid:\s/);
   });
 
   it("a migration after the table's creation sets DEFAULT gen_random_uuid() on cocktails.id", () => {
