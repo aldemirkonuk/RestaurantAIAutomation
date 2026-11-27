@@ -654,7 +654,16 @@ const stagger = (i: number, n: number): CSSProperties =>
 /** Value labels over bars hold when the bars are few enough that they cannot touch. */
 export const LABEL_BARS_MAX = 8;
 
-/** A bar's figure in tabular mono over it (N-15); the formatter is the axis's own. */
+/** A bar below the zero line rises from that line, not from its tip (reports-next.css `rp-bar--neg`). */
+export const NEG_BAR = 'rp-bar--neg';
+const negClass = (v: number | null | undefined) => (typeof v === 'number' && v < 0 ? NEG_BAR : undefined);
+
+/**
+ * A bar's figure in tabular mono over it (N-15); the formatter is the axis's own.
+ * `position="top"` is the bar's outer end for either sign: recharts flips it for
+ * a bar below zero, so a negative figure sits under its tip, never on the zero
+ * line (pinned in rp-plot-motion.test.tsx).
+ */
 function valueLabels(dataKey: string, format: (v: number) => string) {
   return (
     <LabelList
@@ -810,10 +819,17 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
                   stroke="var(--seal-deep)"
                   strokeDasharray="3 2"
                   data-projected="true"
+                  className={negClass(r.shown)}
                   style={stagger(i, rows.length)}
                 />
               ) : (
-                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" style={stagger(i, rows.length)} />
+                <Cell
+                  key={`${i}:${r.label}`}
+                  fill="var(--seal)"
+                  data-projected="false"
+                  className={negClass(r.shown)}
+                  style={stagger(i, rows.length)}
+                />
               ),
             )}
           </Bar>
@@ -1059,7 +1075,7 @@ export function ComboPlot({
           >
             {rows.length <= LABEL_BARS_MAX && valueLabels('bar', bars.format)}
             {rows.map((r, i) => (
-              <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i, rows.length)} />
+              <Cell key={`${i}:${r.label}`} fill="var(--seal)" className={negClass(r.bar)} style={stagger(i, rows.length)} />
             ))}
           </Bar>
           <Line

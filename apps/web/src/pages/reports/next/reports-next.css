@@ -382,6 +382,10 @@ html[data-mudavym-ground='charcoal'] .rp-tip {
   transform-box: fill-box;
   transform-origin: 50% 100%;
 }
+/* A bar below zero hangs from the zero line (its box top); rising from the tip would start the sweep at the far end. */
+.rp-plot .recharts-bar-rectangle > path.rp-bar--neg {
+  transform-origin: 50% 0%;
+}
 .rp-plot[data-draw='pending'] .recharts-bar-rectangle > path {
   transform: scaleY(0);
 }
