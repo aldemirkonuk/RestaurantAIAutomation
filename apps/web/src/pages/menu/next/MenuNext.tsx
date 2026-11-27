@@ -51,6 +51,7 @@ import { MenuSheetButton } from './MenuSheetButton';
 import { MenuVersions, useKeptMenuName } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { MenuReprice } from './MenuReprice';
+import { MenuEditDraft } from './MenuEditDraft';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { housePriceHint } from '@/lib/house-number';
@@ -769,6 +770,8 @@ export default function MenuNext() {
             {canManage && q.data?.menuId && lines.length > 0 ? (
               <MenuReprice menuId={q.data.menuId} lines={lines} money={(v) => money(v, currency)} />
             ) : null}
+            {/* r109 menu-g5: the current menu copied into a draft to edit over days, made current through its plan. */}
+            {canManage && q.data?.menuId && lines.length > 0 ? <MenuEditDraft menuId={q.data.menuId} /> : null}
             {discard.isError ? (
               <div role="alert" data-testid="menu-discard-error" style={{ marginTop: 8, display: 'grid', gap: 8, justifyItems: 'start' }}>
                 <p className="cl-said">
