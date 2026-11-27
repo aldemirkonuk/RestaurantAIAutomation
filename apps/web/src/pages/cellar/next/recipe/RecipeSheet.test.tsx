@@ -23,11 +23,12 @@ const TEQ = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const h = vi.hoisted(() => ({
   get: vi.fn(),
   put: vi.fn(),
+  post: vi.fn(),
   auth: {} as Record<string, unknown>,
 }));
 
 vi.mock('../../../../services/api/client', () => ({
-  apiClient: { get: h.get, put: h.put },
+  apiClient: { get: h.get, put: h.put, post: h.post },
   getErrorStatus: (e: unknown) => {
     const s = (e as { response?: { status?: unknown } } | null)?.response?.status;
     return typeof s === 'number' ? s : null;
@@ -151,6 +152,7 @@ const amount = (i: number) => (screen.getAllByLabelText('Amount')[i] as HTMLInpu
 beforeEach(() => {
   h.get.mockReset();
   h.put.mockReset();
+  h.post.mockReset();
   versions = [];
   past = {};
   other = null;
@@ -1109,3 +1111,158 @@ describe('RecipeSheet', () => {
     expect(await screen.findByTestId('recipe-repeated')).toHaveTextContent('gin is on 2 lines; a serve takes all of them.');
   });
 });
+
+describe('RecipeSheet: the cost of unsaved lines', () => {
+  const PREVIEW_URL = `/recipes/${RID}/cocktails/${CID}/cost-preview`;
+  const previewAnswer = {
+    perServe: 60,
+    perServeExact: 60,
+    priced: 3,
+    of: 3,
+    complete: true,
+    partial: 0,
+    lines: [
+      { status: 'linked', costPerServe: 30, costBasis: 'lot_wac' },
+      { status: 'linked', costPerServe: 22.5, costBasis: 'lot_wac' },
+      { status: 'linked', costPerServe: 7.5, costBasis: 'lot_wac' },
+    ],
+  };
+  const later = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  it('asks the gateway once, 400 ms after the last edit of a whole draft, and shows its cost', async () => {
+    serve(negroni());
+    h.post.mockResolvedValue({ data: previewAnswer });
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(amounts[1], { target: { value: '2' } });
+      await later(300);
+      fireEvent.change(amounts[1], { target: { value: '22,5' } });
+      await later(399);
+      expect(h.post).not.toHaveBeenCalled();
+      await later(1);
+      expect(h.post).toHaveBeenCalledTimes(1);
+      await later(2000);
+      expect(h.post).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+    const [url, body] = h.post.mock.calls[0];
+    expect(url).toBe(PREVIEW_URL);
+    expect(body).toEqual({
+      yieldServes: 1,
+      lines: [
+        { role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml' },
+        { role: 'stocked', inventoryId: '55555555-5555-4555-8555-555555555555', qtyEntered: 22.5, unitCode: 'ml' },
+        { role: 'stocked', inventoryId: '66666666-6666-4666-8666-666666666666', qtyEntered: 30, unitCode: 'ml' },
+      ],
+    });
+    await waitFor(() => expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("Your unsaved lines, at today's prices."));
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent('60');
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('never asks while the sheet is clean', async () => {
+    serve(negroni());
+    mount();
+    await screen.findAllByLabelText('Amount');
+    vi.useFakeTimers();
+    try {
+      await later(2000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(h.post).not.toHaveBeenCalled();
+  });
+
+  it('never asks while a stocked line has no amount, and keeps the saved figures', async () => {
+    serve(negroni());
+    h.post.mockResolvedValue({ data: previewAnswer });
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(amounts[1], { target: { value: '' } });
+      await later(2000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(h.post).not.toHaveBeenCalled();
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("At today's prices");
+    expect(screen.getByTestId('drink-cards')).toHaveTextContent('Save to count your changes.');
+  });
+
+  it('never asks while a stocked line is not linked to the shelf', async () => {
+    serve(negroni({ current: { ...negroni().current!, lines: [linked('gin', 30, GIN), line({ label: 'Campari' })] }, cost: { perServe: null, priced: 1, of: 2, complete: false } }));
+    h.post.mockResolvedValue({ data: previewAnswer });
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(amounts[0], { target: { value: '40' } });
+      await later(2000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(h.post).not.toHaveBeenCalled();
+  });
+
+  it('keeps the saved figures and the old note when the gateway cannot price the draft', async () => {
+    serve(negroni());
+    h.post.mockRejectedValue(Object.assign(new Error('down'), { response: { status: 503 } }));
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    fireEvent.change(amounts[1], { target: { value: '22,5' } });
+    await waitFor(() => expect(h.post).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("At today's prices");
+    expect(screen.getByTestId('drink-cards')).toHaveTextContent('Save to count your changes.');
+  });
+
+  it('a drink never saved, even with no price on the list, shows its draft cost once its lines are whole', async () => {
+    serve({ ...EMPTY, cocktail: { ...EMPTY.cocktail, price: null } }, [
+      { id: GIN, name: 'Tanqueray gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 },
+    ]);
+    h.post.mockResolvedValue({
+      data: { ...previewAnswer, perServe: 30, perServeExact: 30, priced: 1, of: 1, lines: [previewAnswer.lines[0]] },
+    });
+    mount();
+    // Before anything is typed, a never-saved drink has no cards at all.
+    fireEvent.click(await screen.findByRole('button', { name: /add an ingredient/i }));
+    expect(screen.queryByTestId('drink-cards')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /link it to your shelf/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tanqueray gin/ }));
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '30' } });
+    await waitFor(() => expect(h.post).toHaveBeenCalledTimes(1));
+    const [url, body] = h.post.mock.calls[0];
+    expect(url).toBe(PREVIEW_URL);
+    expect(body).toEqual({ yieldServes: 1, lines: [{ role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml' }] });
+    await waitFor(() => expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("Your unsaved lines, at today's prices."));
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent('30');
+    expect(screen.getByTestId('drink-cards')).toHaveTextContent('Nothing else is counted until the recipe is saved.');
+    expect(screen.getByTestId('drink-card-price')).toHaveTextContent('No price');
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('staff never ask about a drink never saved either', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'staff' } };
+    serve({ ...EMPTY, cocktail: { ...EMPTY.cocktail, price: null } });
+    mount();
+    await screen.findByTestId('recipe-sheet');
+    expect(h.post).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('drink-cards')).toBeNull();
+  });
+
+  it('staff never ask: they see no money', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'staff' } };
+    serve(negroni({ cost: null, cocktail: { ...negroni().cocktail, price: null } }));
+    mount();
+    await screen.findByTestId('recipe-sheet');
+    expect(h.post).not.toHaveBeenCalled();
+  });
+});
+
