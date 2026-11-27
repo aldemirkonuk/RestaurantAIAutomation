@@ -23,6 +23,7 @@ import {
   listMenuVersions,
   makeMenuCurrent,
   readWarningSentence,
+  removeFailedRead,
   type MenuPlan,
   type MenuVersion,
 } from '../../../services/api/menus';
@@ -48,6 +49,7 @@ vi.mock('../../../services/api/menus', async () => {
     importMenu: vi.fn(),
     getMenuSourceUrl: vi.fn(),
     getMenuPlan: vi.fn(),
+    removeFailedRead: vi.fn(),
   };
 });
 
@@ -71,6 +73,7 @@ const mockPlan = vi.mocked(getMenuPlan);
 const mockList = vi.mocked(listMenuVersions);
 const mockMake = vi.mocked(makeMenuCurrent);
 const mockImport = vi.mocked(importMenu);
+const mockRemove = vi.mocked(removeFailedRead);
 
 /** A moment on this device's clock, as an ISO string: the page shows local days, so fixtures are local too. */
 function local(y: number, m: number, d: number, h: number, mi: number, sec = 0, ms = 0): string {
@@ -113,6 +116,7 @@ beforeEach(() => {
   mockList.mockReset();
   mockMake.mockReset();
   mockImport.mockReset();
+  mockRemove.mockReset();
   mockPlan.mockReset();
   mockPlan.mockImplementation(async (id: string) => plan(id));
 });
@@ -284,6 +288,130 @@ describe('the sentence for each part of a file that was not read (ADR 0213 #17)'
 });
 
 describe('MenuVersions', () => {
+  it('a failed read can be taken off the list by an owner or a manager, and is gone when the list is read again (r105 menu-6)', async () => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'No line could be read from this file.' });
+    mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('m-bad'));
+    await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+    // The row is gone with no motion; a polite status says where it went, and goes after 4 s (r106 menu-4).
+    expect(await screen.findByTestId('menu-removed-said')).toHaveTextContent('Taken off the list.');
+    expect(screen.getByTestId('menu-removed-said')).toHaveAttribute('role', 'status');
+  });
+
+  it('the taken-off sentence is gone after four seconds, by a timer and not an animation', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'No line could be read from this file.' });
+      mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
+      mount(true);
+      fireEvent.click(await screen.findByTestId('menu-version-remove'));
+      const said = await screen.findByTestId('menu-removed-said');
+      // jsdom has no getAnimations, so "not an animation" is asserted on the source and the CSS below.
+      expect(said).toHaveAttribute('class', 'cl-said');
+      await act(async () => {
+        vi.advanceTimersByTime(4100);
+      });
+      expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the taken-off sentence is a plain status line: no animation or transition on .cl-said, in the markup or any stylesheet the menu page loads (ADR 0112)', () => {
+    const src = readFileSync(resolve(__dirname, 'MenuVersions.tsx'), 'utf8');
+    expect(src).toMatch(/className="cl-said" style=\{\{ marginTop: 10 \}\} data-testid="menu-removed-said"/);
+    // The sheets are the ones the page imports, not a hand-kept list that can drift from it.
+    const sheets = new Set<string>();
+    for (const page of ['MenuVersions.tsx', 'MenuNext.tsx']) {
+      const text = readFileSync(resolve(__dirname, page), 'utf8');
+      for (const m of text.matchAll(/^import\s+'(\.[^']+\.css)'/gm)) sheets.add(resolve(__dirname, m[1]));
+    }
+    expect([...sheets].map((f) => f.split('/').pop()).sort()).toEqual(expect.arrayContaining(['cellar-next.css', 'menu-rows.css', 'menu-settle.css']));
+    let seen = 0;
+    for (const file of sheets) {
+      const css = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const rules = [...css.matchAll(/([^{}]*\.cl-said[^{}]*)\{([^}]*)\}/g)];
+      seen += rules.length;
+      for (const [, selector, body] of rules) expect(`${selector}{${body}}`).not.toMatch(/animation|transition/);
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('a second removal inside the window gets its own four seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const a = version({ menuId: 'm-a', readState: 'failed', readFailure: 'x' });
+      const b = version({ menuId: 'm-b', readState: 'failed', readFailure: 'y' });
+      const empty = { versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null };
+      mockList.mockResolvedValueOnce({ versions: [a, b], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValueOnce({ versions: [b], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValue(empty as never);
+      mockRemove.mockResolvedValue({ menuId: 'x', removed: true });
+      mount(true);
+      fireEvent.click((await screen.findAllByTestId('menu-version-remove'))[0]);
+      await screen.findByTestId('menu-removed-said');
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      fireEvent.click(await screen.findByTestId('menu-version-remove'));
+      await waitFor(() => expect(mockRemove).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        vi.advanceTimersByTime(2000);
+      });
+      // 5 s after the first, 2 s after the second: still on screen.
+      expect(screen.getByTestId('menu-removed-said')).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(2200);
+      });
+      expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([404, 409])('a %i on removal reads the list again, so a read gone elsewhere does not stay on screen', async (status) => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+    mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockRejectedValue({ response: { status, data: { message: 'Not taken off.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('m-bad'));
+    await waitFor(() => expect(mockList.mock.calls.length).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+    // It was not taken off by this click, so no "Taken off the list." is claimed.
+    expect(screen.queryByTestId('menu-removed-said')).not.toBeInTheDocument();
+  });
+
+  it('staff are not offered it, and a read that did not fail is not either', async () => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+    const fine = version({ menuId: 'm-ok' });
+    mockList.mockResolvedValue({ versions: [failed, fine], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    const a = mount(false);
+    await screen.findAllByTestId('menu-version-row');
+    expect(screen.queryByTestId('menu-version-remove')).not.toBeInTheDocument();
+    a.unmount();
+    mount(true);
+    await screen.findAllByTestId('menu-version-row');
+    expect(screen.getAllByTestId('menu-version-remove')).toHaveLength(1);
+  });
+
+  it('a refusal says the gateway\'s words beside the read, and the read stays', async () => {
+    const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+    mockList.mockResolvedValue({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockRejectedValue({ response: { data: { message: 'Only an owner or a manager can do this.' } } });
+    mount(true);
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    expect(await screen.findByTestId('menu-version-remove-error')).toHaveTextContent('Only an owner or a manager can do this.');
+    expect(screen.getByTestId('menu-version-row')).toBeInTheDocument();
+  });
+
   it('a kept menu says which of its pages were not read; one read before warnings were kept says nothing', async () => {
     mockList.mockResolvedValue({
       current: null,

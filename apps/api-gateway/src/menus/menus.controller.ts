@@ -304,6 +304,25 @@ export class MenuVersionsController {
     return this.menusService.planFor(this.house(restaurantId), menuId);
   }
 
+  @Post(":menuId/remove")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Take a failed read off the kept list - owner or manager only",
+    description:
+      "r105 menu-6. A read whose state is failed is retired (archived with who and when, the file kept), not deleted, and the list leaves it out. 409 for any other read (nothing changed), 404 for another house's menu, 403 for staff.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The read did not fail. Nothing was changed." })
+  async removeFailedRead(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "take a failed read off the list");
+    return this.menusService.removeFailedRead(house, menuId, userId);
+  }
+
   @Post(":menuId/make-current")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

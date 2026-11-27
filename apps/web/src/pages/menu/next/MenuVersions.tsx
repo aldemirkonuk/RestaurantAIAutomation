@@ -29,6 +29,7 @@ import {
   getMenuSourceUrl,
   importMenu,
   listMenuVersions,
+  removeFailedRead,
   readWarningSentence,
   type MakeCurrentResult,
   type MenuCadence,
@@ -577,7 +578,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   );
 }
 
-function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, onStale, zone }: {
   v: MenuVersion
   zone: string | null
   /** Its name among the house's kept menus (versionLabels): no two alike. */
@@ -586,8 +587,28 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
   lastUsedId: string | null
   planning: boolean
   onPlan: (menuId: string) => void
+  /** A failed read was taken off the list: read the list again. */
+  onRemoved: () => void
+  /** The gateway said the read is gone (404) or no longer a failed read (409): the list on screen is stale, read it again. */
+  onStale: () => void
 }) {
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const remove = async () => {
+    setRemoveError(null);
+    setRemoving(true);
+    try {
+      await removeFailedRead(v.menuId);
+      onRemoved();
+    } catch (err) {
+      setRemoveError(reasonOf(err));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 404 || status === 409) onStale();
+    } finally {
+      setRemoving(false);
+    }
+  };
   const openSource = async () => {
     setLinkError(null);
     try {
@@ -641,6 +662,25 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, zone }:
           >
             {planning ? 'See below' : 'Make current'}
           </button>
+        ) : null}
+        {readState === 'failed' && canManage ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={removing}
+              onClick={() => void remove()}
+              aria-label={`Take ${label} off the list`}
+              data-testid="menu-version-remove"
+            >
+              {removing ? 'Taking off…' : 'Take off the list'}
+            </button>
+            {removeError ? (
+              <span role="alert" className="cl-note" style={{ display: 'block' }} data-testid="menu-version-remove-error">
+                {removeError}
+              </span>
+            ) : null}
+          </>
         ) : null}
       </td>
     </tr>
@@ -839,8 +879,22 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [planFor, setPlanFor] = useState<string | null>(null);
+  // A failed read taken off the list leaves no row to say so: this sentence stands in its
+  // place for four seconds (a timer, no motion), then is gone. The file is kept.
+  // Keyed by the removal, not a boolean: a second removal inside the window must restart the timer.
+  const [taken, setTaken] = useState<string | null>(null);
+  useEffect(() => {
+    if (!taken) return;
+    const t = window.setTimeout(() => setTaken(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [taken]);
   const { house, q } = useKeptMenus();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  const takenSaid = taken ? (
+    <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-removed-said">
+      Taken off the list.
+    </p>
+  ) : null;
   const zone = q.data?.timezone ?? null;
   const labels = versionLabels(q.data?.versions ?? [], zone);
   const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v, false, zone);
@@ -917,6 +971,11 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       zone={zone}
                       planning={planFor === v.menuId}
+                      onRemoved={() => {
+                        setTaken(v.menuId);
+                        refresh();
+                      }}
+                      onStale={refresh}
                       onPlan={(id) => {
                         setSaid(null);
                         setPlanFor(id);
@@ -961,11 +1020,15 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                 {said}
               </p>
             ) : null}
+            {takenSaid}
             </>
           ) : (
+            <>
+            {takenSaid}
             <p className="cl-said" style={{ marginTop: 10 }}>
               No menu has been read yet.
             </p>
+            </>
           )}
         </>
       )}
