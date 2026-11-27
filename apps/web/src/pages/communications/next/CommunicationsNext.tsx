@@ -55,7 +55,7 @@ import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
-import { CODE_HOLD_STRIP_PX, CodeHold, loaders } from './mail-code';
+import { CodeHold, loaders, whoHoldPx } from './mail-code';
 import { mailTabLabel, type MailAnswer } from './mail-format';
 import { tabMove } from './mail-keys';
 import { useMailSummary } from './useMailData';
@@ -495,7 +495,7 @@ export default function CommunicationsNext() {
             // strangers are mail, not money. Drawn in the Mail tab since r21
             // (2026-11-13), so Mail reaches every person who writes.
             whoIsWriting={
-              <Suspense fallback={<CodeHold testId="who-is-writing-opening" height={CODE_HOLD_STRIP_PX}>Opening who is writing…</CodeHold>}>
+              <Suspense fallback={<CodeHold testId="who-is-writing-opening" height={whoHoldPx()}>Opening who is writing…</CodeHold>}>
                 <WhoIsWriting />
               </Suspense>
             }
