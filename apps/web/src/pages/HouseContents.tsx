@@ -156,8 +156,6 @@ export default function HouseContents() {
   // null = not read (or the read failed): never counted as unset (ADR 0020).
   const [moneySet, setMoneySet] = useState<boolean | null>(null)
   const moneyUnset = moneySet === false
-  // Whether the setup read itself failed: then the vendor and the menu are unknown, not unset.
-  const [progressFailed, setProgressFailed] = useState(false)
   const [readCount, setReadCount] = useState(0)
   useEffect(() => {
     let live = true
@@ -171,7 +169,6 @@ export default function HouseContents() {
     getOnboardingProgress()
       .then((progress) => {
         if (!live) return
-        setProgressFailed(false)
         setVendorRead(progress?.vendor_added ? 'on-book' : 'ask')
         setMenuStanding(menuKept(progress))
         const moneySet = moneySetIn(progress)
@@ -180,7 +177,6 @@ export default function HouseContents() {
       })
       .catch(() => {
         if (!live) return
-        setProgressFailed(true)
         setVendorRead((now) => (now === 'on-book' ? now : 'ask'))
         setMenuStanding('unread')
         void askMoney()
@@ -229,7 +225,7 @@ export default function HouseContents() {
 
   // The four the house counts. The invoice is this visit's own fact (the page
   // holds no read of an earlier send), so an unanswered ask is "not yet".
-  const vendorSet = saved || vendorRead === 'on-book' ? true : vendorRead === 'reading' || progressFailed ? null : false
+  const vendorSet = saved || vendorRead === 'on-book' ? true : vendorRead === 'reading' ? null : false
   const menuSet =
     menuStanding === 'current' ? true : menuStanding === 'draft' || menuStanding === 'none' ? false : null
   const standingNow = houseStanding([menuSet, vendorSet, paper === 'sent' || paper === 'skipped', moneySet])
