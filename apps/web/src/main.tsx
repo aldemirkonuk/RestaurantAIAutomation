@@ -9,6 +9,7 @@ import { startReminderScheduler } from './lib/reminder-scheduler'
 import { registerServiceWorker } from './lib/register-sw'
 import { applyDevAuthBypass } from './lib/devAuthBypass'
 import { offlineStorage } from './lib/offline-storage'
+import { captureInstallPrompt } from './lib/installPrompt'
 
 // Initialize global error handler
 initGlobalErrorHandler()
@@ -22,6 +23,9 @@ initErrorTracking()
 
 // Start reminder scheduler
 startReminderScheduler()
+
+// Keep the browser's install prompt for the row on /house (it fires once, early).
+captureInstallPrompt()
 
 // PWA service worker (production builds)
 registerServiceWorker()

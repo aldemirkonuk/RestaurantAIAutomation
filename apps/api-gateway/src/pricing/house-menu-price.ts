@@ -124,26 +124,42 @@ export async function setHouseMenuPrice(
     p_menu_id: change.menuId ?? null,
   });
 
-  if (error) {
-    const code = (error as { code?: string }).code;
-    if (code === "P0002") {
-      throw new NotFoundException(
-        "No wine of this house by that id. Nothing was changed.",
-      );
-    }
-    if (code === "22023") {
-      throw new BadRequestException(`${error.message}`);
-    }
-    if (code === "HPL01") {
-      // The database guard (a write that reached a locked column). This
-      // function never aims at a held kind, so it is said, never swallowed.
-      throw new ConflictException(`${error.message}`);
-    }
-    throw new InternalServerErrorException(
-      `The price was not saved: ${error.message}`,
+  if (error) throw housePriceError(error);
+  return housePriceResultOf(data, setBottle, setGlass);
+}
+
+/** The writer's refusal as the exception every caller has always seen. */
+export function housePriceError(error: { code?: string | null; message?: string | null }) {
+  const code = error.code ?? undefined;
+  const message = error.message ?? "no reason was given";
+  if (code === "P0002") {
+    return new NotFoundException(
+      "No wine of this house by that id. Nothing was changed.",
     );
   }
+  if (code === "22023") {
+    return new BadRequestException(`${message}`);
+  }
+  if (code === "HPL01") {
+    // The database guard (a write that reached a locked column). This
+    // function never aims at a held kind, so it is said, never swallowed.
+    return new ConflictException(`${message}`);
+  }
+  return new InternalServerErrorException(
+    `The price was not saved: ${message}`,
+  );
+}
 
+/**
+ * One answer of `set_house_menu_price`, read the one way: an outcome this
+ * writer does not recognise, or a lock it does not name, is an error, never a
+ * success.
+ */
+export function housePriceResultOf(
+  data: unknown,
+  setBottle: boolean,
+  setGlass: boolean,
+): HousePriceResult {
   const r = (data ?? {}) as Record<string, unknown>;
   const outcome = r.outcome;
   if (
@@ -185,6 +201,108 @@ export async function setHouseMenuPrice(
     held,
     kinds: { bottle: kindOf("bottle", setBottle), glass: kindOf("glass", setGlass) },
   };
+}
+
+/** One wine's price change inside a batch; `key` is the caller's own name for it (a menu line id). */
+export interface HousePriceRow {
+  key: string;
+  inventoryId: string;
+  /** Omit to leave the bottle price as it is. */
+  bottle?: number | null;
+  /** Omit to leave the glass price as it is. */
+  glass?: number | null;
+}
+
+/** What one row of a batch did: the writer's answer, or the sentence for why it did not write. */
+export type HousePriceRowAnswer =
+  | { ok: true; result: HousePriceResult }
+  | { ok: false; error: string };
+
+/** Rows per call: one statement each, so a long menu stays well inside a statement timeout. */
+export const HOUSE_PRICE_BATCH = 250;
+
+/**
+ * Many price changes of one house in one call per HOUSE_PRICE_BATCH rows
+ * (r28 G1). A menu of 485 priced lines was 485 round trips of about a third
+ * of a second each, past the page's 30 s limit, AFTER the switch had already
+ * committed. `set_house_menu_prices` (migration 20270913140000) runs
+ * `set_house_menu_price` -- still the one lock-holding writer (L4, L27) -- for
+ * each row in order inside the database, each row in its own savepoint, so
+ * one refusal fails its own row and never the rest.
+ *
+ * Answers `null` when the batch writer is not in this database yet (the
+ * gateway deployed before the migration): the caller writes per row as
+ * before. Any other refusal of the call fails every row of that call, said on
+ * each. An answer that cannot be read leaves each row "unknown", never
+ * "changed".
+ */
+export async function setHouseMenuPrices(
+  client: SupabaseClient,
+  common: Pick<HousePriceChange, "restaurantId" | "source" | "changedBy" | "effectiveFrom" | "reason" | "menuId">,
+  rows: HousePriceRow[],
+): Promise<Map<string, HousePriceRowAnswer> | null> {
+  const answers = new Map<string, HousePriceRowAnswer>();
+  for (let at = 0; at < rows.length; at += HOUSE_PRICE_BATCH) {
+    const chunk = rows.slice(at, at + HOUSE_PRICE_BATCH);
+    const { data, error } = await client.rpc("set_house_menu_prices", {
+      p_restaurant_id: common.restaurantId,
+      p_rows: chunk.map((r) => ({
+        id: r.key,
+        inventory_id: r.inventoryId,
+        ...(r.bottle !== undefined ? { bottle: r.bottle } : {}),
+        ...(r.glass !== undefined ? { glass: r.glass } : {}),
+      })),
+      p_change_source: common.source,
+      p_changed_by: common.changedBy,
+      p_effective_from: common.effectiveFrom ?? null,
+      p_reason: common.reason ?? null,
+      p_menu_id: common.menuId ?? null,
+    });
+    if (error) {
+      const code = (error as { code?: string }).code;
+      // PostgREST's "no such function" (PGRST202) or Postgres's (42883): only
+      // the FIRST call can meet it, so nothing was written by this writer yet.
+      if (at === 0 && (code === "PGRST202" || code === "42883")) return null;
+      const why = `The price was not saved: ${(error as { message?: string }).message ?? "no reason was given"}`;
+      for (const r of chunk) answers.set(r.key, { ok: false, error: why });
+      continue;
+    }
+    const byKey = new Map<string, unknown>();
+    if (Array.isArray(data)) {
+      for (const e of data as Array<Record<string, unknown>>) {
+        if (e && typeof e.id === "string") byKey.set(e.id, e.result);
+      }
+    }
+    for (const r of chunk) {
+      if (!byKey.has(r.key)) {
+        answers.set(r.key, {
+          ok: false,
+          error: "The price writer's answer did not name this line; whether its price changed is unknown.",
+        });
+        continue;
+      }
+      const res = (byKey.get(r.key) ?? {}) as Record<string, unknown>;
+      if (res.outcome === "failed") {
+        answers.set(r.key, {
+          ok: false,
+          error: housePriceError({
+            code: typeof res.code === "string" ? res.code : null,
+            message: typeof res.error === "string" ? res.error : null,
+          }).message,
+        });
+        continue;
+      }
+      try {
+        answers.set(r.key, {
+          ok: true,
+          result: housePriceResultOf(res, r.bottle !== undefined, r.glass !== undefined),
+        });
+      } catch (err) {
+        answers.set(r.key, { ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
+  return answers;
 }
 
 /** The `held` list as the SQL returns it; an entry that is not a lock is an error, never dropped. */

@@ -673,7 +673,7 @@ export interface CellarLive {
   lastApplyMs: number | null;
 }
 
-export function useCellarLive(): CellarLive {
+export function useCellarLive(listen = true): CellarLive {
   const { activeRestaurantId } = useAuth();
   const queryClient = useQueryClient();
   const [touched, setTouched] = useState<Record<string, number>>({});
@@ -725,9 +725,10 @@ export function useCellarLive(): CellarLive {
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     };
 
+    if (!listen) return undefined;
     window.addEventListener('inventory_change', onChange);
     return () => window.removeEventListener('inventory_change', onChange);
-  }, [queryClient]);
+  }, [queryClient, listen]);
 
   return { touched, lastApplyMs };
 }
@@ -1005,7 +1006,8 @@ export interface CocktailInput {
   method?: string;
   glass?: string;
   garnish?: string;
-  price?: number;
+  /** Absent: not sent. null (amend only): the price is taken off. */
+  price?: number | null;
   description?: string;
 }
 
@@ -1304,11 +1306,29 @@ export function useCocktailRegister(enabled: boolean) {
   };
 }
 
-export function useCellarNextData() {
+/**
+ * Whether the page draws the wine book: the overview and the wine register do;
+ * every other register (cocktails, beer, spirits…) reads only its own rows and
+ * `registers`. Exported for the test that counts what each register reads.
+ */
+export function drawsTheBook(open: RegisterId | null): boolean {
+  return open === null || open === 'wines';
+}
+
+/**
+ * `open` is the register the page shows (null for the overview). The wine
+ * library (up to 500 rows of every column), the house inventory (re-read every
+ * minute) and the vendors are read only where the book is drawn: /cocktails
+ * used to pay for all three and show none of them (r41 recipes audit, gap 1).
+ * The live stock listener follows the same rule, so a sale during service no
+ * longer re-renders a register that shows no stock (gap 10, for /cocktails).
+ */
+export function useCellarNextData(open: RegisterId | null = null) {
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const registers = useCellarRegisters();
-  const live = useCellarLive();
+  const book = drawsTheBook(open);
+  const live = useCellarLive(book);
 
   /**
    * The book's pagination (cellar confirmer BLOCKER, fixed). "Load 500 more"
@@ -1325,6 +1345,7 @@ export function useCellarNextData() {
    */
   const winesQ = useInfiniteQuery({
     queryKey: [...queryKeys.wines.all, 'book', BOOK_READ_LIMIT] as const,
+    enabled: book,
     initialPageParam: 0,
     queryFn: async ({ pageParam }): Promise<WireWine[]> => {
       const r = await apiClient.get('/wines', {
@@ -1340,8 +1361,9 @@ export function useCellarNextData() {
         ? undefined
         : allPages.reduce((sum, page) => sum + page.length, 0),
   });
-  const inventoryQ = useInventory();
-  const providersQ = useProviders(activeRestaurantId ?? '');
+  const inventoryQ = useInventory({ enabled: book });
+  // `useProviders` reads nothing for an empty id (its own `enabled`).
+  const providersQ = useProviders(book ? (activeRestaurantId ?? '') : '');
 
   // Live catalogue edits arrive as a `wine_update` window event from the
   // websocket bridge (RealtimeContext) — the book re-reads itself rather than

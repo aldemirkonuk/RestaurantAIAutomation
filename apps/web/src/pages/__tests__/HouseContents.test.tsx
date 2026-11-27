@@ -15,6 +15,7 @@ const { addCustomProvider, updateOnboardingProgress, getOnboardingProgress } = v
 vi.mock('../../services/api/vendors', () => ({ addCustomProvider }))
 vi.mock('../../services/api/menus', () => ({ updateOnboardingProgress, getOnboardingProgress }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }))
 
 import HouseContents from '../HouseContents'
 

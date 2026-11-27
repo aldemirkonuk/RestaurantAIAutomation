@@ -7,7 +7,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { importMenu } = vi.hoisted(() => ({ importMenu: vi.fn() }))
-vi.mock('../../services/api/menus', () => ({ importMenu }))
+vi.mock('../../services/api/menus', () => ({ importMenu, readRefusalWords: (_e: unknown, fallback: string) => fallback }))
 vi.mock('../scanner/CameraCapture', () => ({
   CameraCapture: ({ onCapture }: { onCapture: (image: string) => void }) => (
     <button type="button" onClick={() => onCapture('data:image/jpeg;base64,AAAA')}>
@@ -33,8 +33,8 @@ describe('MenuScanUpload sends the same photo again', () => {
     fireEvent.click(again)
     await waitFor(() => expect(importMenu).toHaveBeenCalledTimes(2))
     // The reader gets bare base64 (r28 gap 12); the page keeps a data URL.
-    expect(importMenu.mock.calls[0]).toEqual(['scan', { imageBase64: 'AAAA' }])
-    expect(importMenu.mock.calls[1]).toEqual(['scan', { imageBase64: 'AAAA' }])
+    expect(importMenu.mock.calls[0]).toEqual(['scan', { imageBase64: 'AAAA' }, expect.objectContaining({ onReading: expect.any(Function) })])
+    expect(importMenu.mock.calls[1]).toEqual(['scan', { imageBase64: 'AAAA' }, expect.objectContaining({ onReading: expect.any(Function) })])
     await waitFor(() =>
       expect(onSuccess).toHaveBeenCalledWith({ menuId: 'm-1', items: [] }, { image: 'data:image/jpeg;base64,AAAA' }),
     )

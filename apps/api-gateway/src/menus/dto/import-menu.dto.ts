@@ -1,4 +1,4 @@
-import { IsIn, IsObject, IsOptional, IsUUID, Matches } from "class-validator";
+import { IsBoolean, IsIn, IsObject, IsOptional, IsUUID, Matches } from "class-validator";
 import { WineExtractItem } from "../wine-extract-item.interface";
 
 /** The optional cadence tag a person may give a menu (ADR 0193, menu versions). */
@@ -11,7 +11,13 @@ export class ImportMenuDto {
 
   @IsObject()
   data: {
-    imageBase64?: string; // for scan
+    imageBase64?: string; // for scan: one photo or one PDF
+    /**
+     * For scan: several photos of ONE menu, in page order (founder 2026-11-07,
+     * "One upload = one version"). Joined into one PDF by the gateway, at most
+     * MAX_MENU_PAGES (parsers/pages-to-pdf.ts).
+     */
+    images?: string[];
     csvContent?: string; // for csv (text)
     fileBase64?: string; // for csv (binary .xlsx/.xls workbook)
     items?: WineExtractItem[]; // for manual
@@ -38,4 +44,12 @@ export class ImportMenuDto {
     message: "menuDate is a day (YYYY-MM-DD) or a month (YYYY-MM).",
   })
   menuDate?: string;
+
+  /**
+   * OPTIONAL: read these bytes again even though this house already read the
+   * same file. Without it, a resend reopens the earlier read (not billed twice).
+   */
+  @IsOptional()
+  @IsBoolean()
+  readAgain?: boolean;
 }

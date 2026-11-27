@@ -323,6 +323,7 @@ export default {
         'slide-in-right': 'slide-in-right 0.3s ease-out',
         'slide-in-up': 'slide-in-up 0.3s ease-out',
         'fade-in': 'fade-in 0.2s ease-out',
+        'popover-in': 'fade-in 120ms ease-out',
         'scale-in': 'scale-in 0.2s ease-out',
         'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',

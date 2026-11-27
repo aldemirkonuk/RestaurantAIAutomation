@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
-import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import { importMenu, readRefusalWords, type MenuImportSuccess } from '../../services/api/menus'
 import { fitPhotoForReading } from '../../lib/fitPhoto'
+import { isPhoto } from '../../lib/menuPhotos'
 import {
   DOCUMENT_ACCEPT,
   MAX_UPLOAD_BYTES,
@@ -120,10 +121,21 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
     // Validate size/type/count up front. Without this an oversized file is
     // only rejected at the server as a bare 413 — which arrives before the
     // auth guard and reads as a generic network error in the UI.
-    const { accepted, errors } = validateSelection(files, {
-      accept: (f) => isScannable(f) || isTabular(f),
+    // A photo is redrawn smaller before it is sent (importOne), so its raw
+    // weight is no reason to turn it away (r106: a 14 MB phone photo dropped
+    // with others was refused); a PDF or a sheet is sent as it is and keeps
+    // the limit.
+    const options = {
+      accept: (f: File) => isScannable(f) || isTabular(f),
       kindLabel: 'a spreadsheet, CSV, PDF, or image',
-    })
+    }
+    const photos = validateSelection(files.filter(isPhoto), { ...options, maxBytes: Number.POSITIVE_INFINITY })
+    const others = validateSelection(files.filter((f) => !isPhoto(f)), options)
+    const kept = new Set([...photos.accepted, ...others.accepted])
+    const accepted = files.filter((f) => kept.has(f)).slice(0, MAX_UPLOAD_FILES)
+    const errors = [...photos.errors, ...others.errors]
+    if (kept.size > accepted.length)
+      errors.push(`Only ${MAX_UPLOAD_FILES} files at a time — the rest were skipped.`)
 
     if (errors.length) setError(errors.join(' '))
     else setError(null)
@@ -234,7 +246,7 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
           result = (await importOne(await readFile(f))).result
         } catch (err: any) {
           failures.push(
-            `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
+            `${f.name}: ${readRefusalWords(err, 'import failed')}`,
           )
         }
       }
@@ -246,7 +258,7 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
       }
       onSuccess(result, { image: first.image })
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
+      setError(readRefusalWords(e, 'Import failed. Please try again.'))
     } finally {
       setLoading(false)
       setProgress(null)

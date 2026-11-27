@@ -4,7 +4,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { heldWords, setHouseMenuPrice } from "./house-menu-price";
+import { HOUSE_PRICE_BATCH, heldWords, setHouseMenuPrice, setHouseMenuPrices } from "./house-menu-price";
 
 /**
  * ADR 0193 round 3 (L4, L5, L11): the one gateway writer of a house price
@@ -102,5 +102,71 @@ describe("setHouseMenuPrice -- what a lock held, said per kind (ADR 0193 round 3
     const { c, calls } = client({ outcome: "changed" });
     await expect(setHouseMenuPrice(c, { ...BASE })).rejects.toBeInstanceOf(BadRequestException);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("setHouseMenuPrices -- many prices of one house in one call (r28 G1)", () => {
+  const COMMON = { restaurantId: "rest-1", source: "import" as const, changedBy: "user-1", effectiveFrom: "2026-09-21T12:00:00Z", menuId: "menu-1", reason: "menu line" };
+  const answered = (rows: Array<Record<string, unknown>>, result: (r: Record<string, unknown>) => unknown) =>
+    rows.map((r) => ({ id: r.id, result: result(r) }));
+  function batchClient(result: (r: Record<string, unknown>) => unknown) {
+    const calls: Array<Record<string, unknown>> = [];
+    return {
+      calls,
+      c: {
+        rpc: async (fn: string, args: Record<string, unknown>) => {
+          calls.push({ fn, ...args });
+          return { data: answered(args.p_rows as Array<Record<string, unknown>>, result), error: null };
+        },
+      } as any,
+    };
+  }
+
+  it("names each kind to set and leaves an unnamed kind out, in one call per batch of rows", async () => {
+    const { c, calls } = batchClient(() => ({ outcome: "changed", held: [] }));
+    const rows = Array.from({ length: HOUSE_PRICE_BATCH + 1 }, (_, i) => ({ key: `l${i}`, inventoryId: `inv-${i}`, bottle: 10 + i }));
+    rows[0] = { key: "l0", inventoryId: "inv-0", glass: 7 } as any;
+    const out = await setHouseMenuPrices(c, COMMON, rows);
+    expect(calls.map((x) => x.fn)).toEqual(["set_house_menu_prices", "set_house_menu_prices"]);
+    expect((calls[0].p_rows as unknown[]).length).toBe(HOUSE_PRICE_BATCH);
+    expect((calls[0].p_rows as unknown[])[0]).toEqual({ id: "l0", inventory_id: "inv-0", glass: 7 });
+    expect(calls[0]).toMatchObject({ p_restaurant_id: "rest-1", p_change_source: "import", p_changed_by: "user-1", p_effective_from: "2026-09-21T12:00:00Z", p_menu_id: "menu-1", p_reason: "menu line" });
+    expect(out!.get("l0")).toEqual({ ok: true, result: expect.objectContaining({ outcome: "changed", kinds: { bottle: null, glass: "changed" } }) });
+    expect(out!.size).toBe(HOUSE_PRICE_BATCH + 1);
+  });
+
+  it("a row the writer refused says the writer's own sentence, the rest stand", async () => {
+    const { c } = batchClient((r) =>
+      r.id === "bad" ? { outcome: "failed", code: "P0002", error: "no inventory item" } : { outcome: "unchanged", held: [] },
+    );
+    const out = await setHouseMenuPrices(c, COMMON, [
+      { key: "ok", inventoryId: "inv-1", bottle: 10 },
+      { key: "bad", inventoryId: "inv-x", bottle: 11 },
+    ]);
+    expect(out!.get("ok")).toMatchObject({ ok: true, result: { outcome: "unchanged" } });
+    expect(out!.get("bad")).toEqual({ ok: false, error: "No wine of this house by that id. Nothing was changed." });
+  });
+
+  it("an answer it cannot read (an unknown outcome, a missing row) is never 'changed'", async () => {
+    const missing = { rpc: async () => ({ data: [{ id: "odd", result: { outcome: "maybe" } }], error: null }) } as any;
+    const out = await setHouseMenuPrices(missing, COMMON, [
+      { key: "odd", inventoryId: "inv-1", bottle: 10 },
+      { key: "gone", inventoryId: "inv-2", bottle: 11 },
+    ]);
+    expect(out!.get("odd")).toEqual({ ok: false, error: expect.stringMatching(/whether the price changed is unknown/) });
+    expect(out!.get("gone")).toEqual({ ok: false, error: expect.stringMatching(/did not name this line; whether its price changed is unknown/) });
+  });
+
+  it("a database without the function answers null, so the caller writes per line; any other refusal fails every row of the call", async () => {
+    const none = { rpc: async () => ({ data: null, error: { code: "PGRST202", message: "Could not find the function" } }) } as any;
+    expect(await setHouseMenuPrices(none, COMMON, [{ key: "a", inventoryId: "inv-1", bottle: 1 }])).toBeNull();
+    const pg = { rpc: async () => ({ data: null, error: { code: "42883", message: "function does not exist" } }) } as any;
+    expect(await setHouseMenuPrices(pg, COMMON, [{ key: "a", inventoryId: "inv-1", bottle: 1 }])).toBeNull();
+    const down = { rpc: async () => ({ data: null, error: { code: "57014", message: "statement timeout" } }) } as any;
+    const out = await setHouseMenuPrices(down, COMMON, [{ key: "a", inventoryId: "inv-1", bottle: 1 }, { key: "b", inventoryId: "inv-2", glass: 2 }]);
+    expect([...out!.values()]).toEqual([
+      { ok: false, error: "The price was not saved: statement timeout" },
+      { ok: false, error: "The price was not saved: statement timeout" },
+    ]);
   });
 });

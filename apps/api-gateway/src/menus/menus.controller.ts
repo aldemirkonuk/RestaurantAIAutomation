@@ -3,11 +3,14 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Header,
   HttpCode,
   HttpException,
   HttpStatus,
   Param,
+  Query,
   ParseUUIDPipe,
+  NotFoundException,
   Patch,
   Post,
   UseGuards,
@@ -19,6 +22,8 @@ import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { MenusService } from "./menus.service";
 import { seesRawLine } from "./menu-line-view";
+import { blankMenuSheet, menuSheet } from "./menu-sheet";
+import { withheldRawText } from "./import-reply-view";
 import { ImportMenuDto } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
@@ -52,18 +57,66 @@ export class MenusController {
     return this.menusService.getMenu(restaurantId, { rawLine: false });
   }
 
+  @Get(":restaurantId/export.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="menu.csv"')
+  @ApiOperation({
+    summary: "The current menu as the sheet the menu reader accepts (owner or manager)",
+    description:
+      "Written with the reader's own column words, so the same sheet read back with no edits is the same menu. A cell that starts with = + - or @ is written as plain text. 404 with its sentence when no menu is current.",
+  })
+  async exportSheet(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user: { userId?: string },
+    @Query("decimal") decimal?: string,
+  ) {
+    await this.assertSheetRole(user, restaurantId, "download the menu as a sheet");
+    const menu = await this.menusService.getMenu(restaurantId, { rawLine: false });
+    if (!menu.menuId) {
+      throw new NotFoundException("There is no current menu to download yet. Make a menu current first.");
+    }
+    // ?decimal=comma: semicolons between cells and a comma in a price, as a tr-TR/de-DE Excel saves it.
+    return menuSheet(menu.items, { decimal: decimal === "comma" ? "," : "." });
+  }
+
+  @Get(":restaurantId/sample.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="menu-sample.csv"')
+  @ApiOperation({
+    summary: "A blank menu sheet in the shape the menu reader accepts (owner or manager)",
+  })
+  async sampleSheet(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user: { userId?: string },
+  ) {
+    await this.assertSheetRole(user, restaurantId, "download the sample menu sheet");
+    return blankMenuSheet();
+  }
+
+  private async assertSheetRole(user: { userId?: string }, restaurantId: string, what: string) {
+    if (!user?.userId) {
+      throw new ForbiddenException(`To ${what} this session must name a person, and it names nobody. Nothing was sent.`);
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, what);
+  }
+
   @Post("import")
   @ApiOperation({
     summary:
       "Read a menu (scan, CSV or manual) and keep it as its own version, in draft",
     description:
-      "ADR 0193 (menu versions): every read is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A scan's AI spend ceiling fails CLOSED: if the spend record cannot be read, the read waits (503) and says why.",
+      "ADR 0193 (menu versions): every read with a line is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A SCAN is read in the background (founder 2026-11-07): the file and a draft version are kept at once and the reply says reading: true; poll GET /menu-versions/:menuId/read. Several photos in data.images are one menu, one version. The same bytes sent again reopen the read they made (reopened, its lines as they are now), unless readAgain is true, the upload names a cadence or menu date the earlier version does not carry, or that version is retired; two sends of the same file at once make one read. A scan that finds no line, or whose AI spend record cannot be read, ends as a failed read with its sentence. A spreadsheet or typed lines are read at once; one with no line is refused (422) and nothing is kept.",
   })
   async importMenu(
     @Body() dto: ImportMenuDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ) {
-    return this.menusService.importMenu(dto, user.userId);
+    const read = await this.menusService.importMenu(dto, user.userId);
+    // ADR 0358 D2: any member may read a menu in, but a line's raw text is the
+    // row as the file had it -- for a spreadsheet, the cost and supplier cells
+    // too -- so only a role that sees money and suppliers is sent it (the same
+    // ROLE_POLICY rule GET /menu-versions/:id follows, menu-line-view.ts).
+    return withheldRawText(read, seesRawLine(user.role));
   }
 
   @Post("items")
@@ -132,12 +185,26 @@ export class MenusController {
   @Patch(":restaurantId/items/:id/discard")
   @ApiOperation({
     summary:
-      "Discard one line from the active menu (ADR 0160 sec110 item 7). Soft remove — status becomes 'discarded', the row is kept",
+      "Discard one line from the active menu (ADR 0160 sec110 item 7) -- owner or manager only (ADR 0358 D2). Soft remove — status becomes 'discarded', the row is kept",
   })
   async discardMenuItem(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId?: string },
   ) {
+    // ADR 0358 D2: taking a line off the menu is an owner's or a manager's.
+    // Checked before anything is read or written. The path's house is the
+    // session's own (JwtAuthGuard asserts the tenant match).
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Discarding a menu line names the person, and this session names nobody. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      restaurantId,
+      "discard a line from the menu",
+    );
     return this.menusService.discardMenuItem(restaurantId, id);
   }
 }
@@ -194,16 +261,37 @@ export class MenuVersionsController {
     return this.menusService.getVersion(this.house(restaurantId), menuId, { rawLine: seesRawLine(role) });
   }
 
+  @Get(":menuId/read")
+  @ApiOperation({
+    summary: "Where a background menu read stands, and what it found once done",
+    description:
+      "state is reading, done or failed (failure says why, in words). When done, reply is what POST /menus/import would have answered had it waited; a line's raw text is sent only to a role that sees money and suppliers (ADR 0358 D2). A read the server stopped hearing from for half an hour is said to have failed.",
+  })
+  async read(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("role") role: string | null,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const status = await this.menusService.readStatus(this.house(restaurantId), menuId);
+    return status.reply ? { ...status, reply: withheldRawText(status.reply, seesRawLine(role)) } : status;
+  }
+
   @Get(":menuId/source")
   @ApiOperation({
-    summary: "A five-minute link to the kept source file (photo, PDF or CSV)",
-    description: "404 with the stored reason when the source was not kept.",
+    summary: "A five-minute link to the kept source file (photo, PDF or CSV) -- owner or manager only",
+    description: "403 for anyone but an owner or a manager of the house (ADR 0358 D2). 404 with the stored reason when the source was not kept.",
   })
   async source(
     @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
-    return this.menusService.sourceUrl(this.house(restaurantId), menuId);
+    // ADR 0358 D2: the kept file is the whole menu as sent -- a spreadsheet
+    // carries cost and supplier columns -- so a link to it is an owner's or a
+    // manager's.
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "open a kept menu file");
+    return this.menusService.sourceUrl(house, menuId);
   }
 
   @Get(":menuId/plan")
@@ -217,6 +305,25 @@ export class MenuVersionsController {
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
     return this.menusService.planFor(this.house(restaurantId), menuId);
+  }
+
+  @Post(":menuId/remove")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Take a failed read off the kept list - owner or manager only",
+    description:
+      "r105 menu-6. A read whose state is failed is retired (archived with who and when, the file kept), not deleted, and the list leaves it out. 409 for any other read (nothing changed), 404 for another house's menu, 403 for staff.",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The read did not fail. Nothing was changed." })
+  async removeFailedRead(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "take a failed read off the list");
+    return this.menusService.removeFailedRead(house, menuId, userId);
   }
 
   @Post(":menuId/make-current")

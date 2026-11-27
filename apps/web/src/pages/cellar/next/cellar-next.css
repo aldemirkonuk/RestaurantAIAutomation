@@ -860,3 +860,169 @@ textarea.cl-field {
 .cl-unplaced-list > li:first-child {
   border-top: 0;
 }
+
+/* ── a recipe line and the shelf picker (pages/cellar/next/recipe/) ─────────
+   A people page: one column on a phone, one line per ingredient on a desk.
+   Tokens only from mudavym.css: --seal for linked and costed, --warn for not
+   linked and no price yet. */
+.cl-rcp-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cl-rcp-line {
+  padding: 8px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.cl-rcp-line[data-role='untracked'] { background: var(--paper-0); }
+.cl-rcp-read { display: flex; gap: 10px; font-size: 12.5px; color: var(--ink-1); }
+.cl-rcp-amt { min-width: 64px; color: var(--ink-2); }
+.cl-rcp-edit {
+  display: grid;
+  grid-template-columns: 1fr 72px 92px;
+  grid-template-areas: 'what what what' 'qty unit unit' 'switch switch remove';
+  gap: 6px;
+  align-items: center;
+}
+.cl-rcp-what { grid-area: what; min-width: 0; }
+.cl-rcp-qty { grid-area: qty; width: 100%; text-align: right; }
+.cl-rcp-unit { grid-area: unit; width: 100%; }
+.cl-rcp-switch { grid-area: switch; justify-content: center; }
+.cl-rcp-remove { grid-area: remove; justify-self: end; }
+@media (min-width: 720px) {
+  .cl-rcp-edit {
+    grid-template-columns: minmax(0, 1fr) 72px 92px 170px 34px;
+    grid-template-areas: 'what qty unit switch remove';
+  }
+}
+.cl-rcp-qty[aria-invalid='true'],
+.cl-rcp-unit[aria-invalid='true'] { border-color: var(--warn); }
+.cl-rcp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-link[data-linked='true'] svg { color: var(--seal); }
+.cl-rcp-link[data-linked='false'] { color: var(--warn); }
+.cl-rcp-flag { color: var(--warn); }
+.cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
+.cl-rcp-note-warn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-tint);
+  color: var(--ink-1);
+  border-left: 3px solid var(--warn);
+}
+.cl-rcp-picker { margin-top: 8px; padding: 8px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-0); }
+.cl-rcp-picks { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.cl-rcp-pick {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-pick:hover { background: var(--seal-tint); }
+.cl-rcp-pick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── the drink's recipe sheet around its lines ──────────────────────────────
+   --seal-deep for a cost that is whole and a save that happened, --alarm only
+   for a save that did not happen or a newer version waiting. */
+.cl-rcp { margin-top: 12px; }
+.cl-rcp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 8px; }
+.cl-rcp-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 12.5px; }
+.cl-rcp-facts div { display: flex; gap: 6px; }
+.cl-rcp-facts dt { color: var(--ink-4); }
+.cl-rcp-facts dd { margin: 0; color: var(--ink-1); }
+.cl-rcp-legacy { margin-top: 10px; }
+/* The opened drink's cards, then its nutrition card, above its lines. */
+.cl-rcp-kpis { margin-bottom: 10px; }
+.cl-rcp-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.cl-rcp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-0);
+}
+.cl-rcp-card-label { font-size: 11px; color: var(--ink-4); }
+/* .cl-num is nowrap; a figure such as "at least 110.5 kcal" wraps inside its card, never out of it. */
+.cl-rcp-card-fig { font-size: 18px; line-height: 1.25; color: var(--ink-1); white-space: normal; overflow-wrap: break-word; }
+.cl-rcp-card[data-known='false'] .cl-rcp-card-fig { color: var(--ink-4); font-size: 15px; }
+.cl-rcp-card[data-warn='true'] { border-color: var(--warn); }
+.cl-rcp-card-said { font-size: 11.5px; line-height: 1.4; color: var(--ink-4); }
+.cl-rcp-nutrition {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+}
+@media (max-width: 480px) {
+  .cl-rcp-cards { grid-template-columns: 1fr 1fr; }
+}
+.cl-rcp-foot {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.cl-rcp-foot[data-complete='true'] { color: var(--seal-deep); }
+.cl-rcp-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.cl-rcp-save { margin-left: auto; }
+.cl-rcp-said { margin: 8px 0 0; font-size: 12.5px; color: var(--seal-deep); }
+.cl-rcp-said-alarm { color: var(--alarm-deep); }
+.cl-rcp-versions { margin: 6px 0 0 18px; padding: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); }
+.cl-rcp-proposed,
+.cl-rcp-paste { margin-top: 10px; padding: 10px; border: 1px dashed var(--warn); border-radius: 8px; background: var(--paper-0); }
+.cl-rcp-paste { border-color: var(--paper-2); }
+.cl-rcp-proposed .cl-rcp-line { background: var(--warn-tint); border-color: transparent; }
+.cl-rcp-proposed .cl-rcp-lines { margin-bottom: 8px; }
+
+/* Round 17 D10: on a bar phone every control on the recipe sheet is a 44 px
+   target, and inputs use 16 px type so iOS does not zoom the page on focus. */
+.cl-rcp-meta { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
+.cl-rcp-meta label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--ink-3); }
+.cl-rcp-meta textarea.cl-field { height: auto; padding: 6px 8px; line-height: 1.45; }
+@media (min-width: 720px) {
+  .cl-rcp-meta { grid-template-columns: 120px 1fr 1fr; }
+  .cl-rcp-meta .cl-rcp-method { grid-column: 1 / -1; }
+}
+.cl-rcp-proposed .cl-rcp-read { align-items: center; }
+.cl-rcp-leave { margin-left: auto; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-rcp .cl-field,
+  .cl-rcp .cl-btn,
+  .cl-rcp .cl-linkish,
+  .cl-rcp-link,
+  .cl-rcp-pick { min-height: 44px; }
+  .cl-rcp .cl-field { font-size: 16px; }
+  .cl-rcp .cl-btn { font-size: 14px; }
+  .cl-rcp-edit { grid-template-columns: 1fr 88px 108px; }
+  .cl-rcp-remove { min-width: 44px; justify-content: center; }
+}

@@ -467,54 +467,14 @@ export async function scanWineText(
 }
 
 /**
- * Scan a full menu image through the backend.
- * Returns all detected wines with 25 fields each.
- */
-export async function scanMenuImage(
-  imageBase64: string,
-  restaurantId?: string,
-): Promise<{
-  wines: DetectedWine[];
-  regionsDetected: number;
-  sectionHeaders: string[];
-}> {
-  try {
-    const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/scan/menu`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_base64: imageBase64,
-        source_type: "menu",
-        restaurant_id: restaurantId,
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        wines: (data.wines || []).map((w: any, i: number) =>
-          mapBackendWineToDetected(w, i),
-        ),
-        regionsDetected: data.regions_detected || 0,
-        sectionHeaders: data.section_headers || [],
-      };
-    }
-  } catch (error) {
-    console.error("Menu image scan failed:", error);
-  }
-
-  return { wines: [], regionsDetected: 0, sectionHeaders: [] };
-}
-
-/**
  * Photograph one bottle's label and read it as a single wine — ADR 0160
- * sec110 item 5 ("Photograph the label"). A DIFFERENT orchestrator route from
- * `scanMenuImage`: `POST /api/v1/scan/wine` with `source_type: "label"` routes
+ * sec110 item 5 ("Photograph the label"). A different orchestrator route from
+ * the retired menu scan (menus are read by `POST /menus/import`): `POST /api/v1/scan/wine` with `source_type: "label"` routes
  * through the same field-parser + matcher pipeline but returns one
  * `WineParsedResponse`, not an array — the right shape for "one bottle in
  * frame", not "however many a menu page holds" (`scan_routes.py:350-397`).
  *
- * Unlike `scanMenuImage` above, a failed read THROWS rather than resolving to
+ * Unlike the retired menu scan, a failed read THROWS rather than resolving to
  * an empty result: this is a single deliberate act (aim, capture, read), so
  * "nothing came back" and "the read failed" are different facts and the
  * caller (`PhotographLabel.tsx`) shows a different sentence for each.
