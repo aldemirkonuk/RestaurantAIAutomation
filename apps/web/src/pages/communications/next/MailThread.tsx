@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
@@ -44,11 +45,13 @@ import {
   seenMarkFor,
   type MailAnswer,
   type MailMessage,
+  type MailThreadsPage,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
 import { FadeAway, MailMotionStyles, useArriveFocus } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
-import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
+import { mailKeys, useHouse, useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
+import { hasModifier, inOverlay, isTypingTarget, nextWaiting, threadKey as threadKeyOf } from './mail-keys';
 import { RetryRead, useReadAgain } from './MailRetry';
 
 const QUIET = { fontSize: 12, color: 'var(--ink-4, #665D50)' } as const;
@@ -207,6 +210,7 @@ export function MailThread({
   draftedOrderIds,
   onOpenReply,
   onAnswer,
+  onOpenThread,
   bookFacts,
 }: {
   threadKey: string;
@@ -222,6 +226,8 @@ export function MailThread({
   onOpenReply: (orderId: string) => void;
   /** Opens the composer on a reply to this thread's newest letter (gap 3). */
   onAnswer?: (answer: MailAnswer) => void;
+  /** Opens another thread of the same person (the `n` key). */
+  onOpenThread?: (key: string) => void;
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey, withKey);
@@ -241,6 +247,39 @@ export function MailThread({
   // Any thread with a vendor can be answered by hand, order or not; the
   // drafted reply, when there is one, stays the first act.
   const answer = canReply && onAnswer ? answerFor(head, letters) : null;
+  // r108 mail-r108-8: `n` opens the next thread waiting on the house, `r` writes
+  // a reply. They read the person's thread list the page already holds; with no
+  // list held, or nothing else waiting, `n` does nothing. Typing, a dialog or a
+  // modifier makes the key the reader's. No motion of its own: the view change
+  // is the page's existing cross-fade, none under reduced motion.
+  const qc = useQueryClient();
+  const house = useHouse();
+  const keyAct = useRef<(e: KeyboardEvent) => void>(() => {});
+  // `g` then a letter is the app's go-to (the provider's own 1.2 s window): the
+  // second key is its, not ours.
+  const gAt = useRef(0);
+  keyAct.current = (e) => {
+    if (e.defaultPrevented || hasModifier(e) || isTypingTarget(e.target) || inOverlay(e.target) || inOverlay(document.activeElement)) return;
+    const afterG = Date.now() - gAt.current < 1200;
+    gAt.current = e.key === 'g' || e.key === 'G' ? Date.now() : 0;
+    if (afterG) return;
+    const act = threadKeyOf(e.key);
+    if (act === 'reply' && answer && onAnswer) {
+      e.preventDefault();
+      onAnswer(answer);
+    } else if (act === 'next' && withKey && onOpenThread) {
+      const held = qc.getQueryData<InfiniteData<MailThreadsPage>>(mailKeys.threads(house, withKey));
+      const next = nextWaiting(held?.pages.flatMap((p) => p.threads) ?? [], threadKey);
+      if (!next) return;
+      e.preventDefault();
+      onOpenThread(next);
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyAct.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const noReply = useNoReplyMark();
   const settleId = canReply ? noReplyTarget(head, letters) : null;
   // Only the newest marked letter offers to take its mark back: an older

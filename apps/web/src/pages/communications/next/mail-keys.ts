@@ -65,3 +65,28 @@ export function tabMove(key: string, current: number, count: number): number | n
       return null;
   }
 }
+
+/**
+ * The thread's own bare keys (r108 mail-r108-8): `n` goes to the next thread
+ * waiting on the house, `r` writes a reply. Anything else is not ours, and
+ * Escape stays the page's Back.
+ */
+export function threadKey(key: string): 'next' | 'reply' | null {
+  if (key === 'n') return 'next';
+  if (key === 'r') return 'reply';
+  return null;
+}
+
+/**
+ * The next waiting thread after the open one, in the order the person's thread
+ * list is held (newest first), wrapping at the end. The open thread is never
+ * its own answer, and null means nothing else is waiting.
+ */
+export function nextWaiting(threads: ReadonlyArray<{ key: string; waiting: boolean }>, current: string): string | null {
+  const at = threads.findIndex((t) => t.key === current);
+  for (let i = 1; i <= threads.length; i++) {
+    const t = threads[(Math.max(at, -1) + i + threads.length) % threads.length];
+    if (t && t.key !== current && t.waiting) return t.key;
+  }
+  return null;
+}
