@@ -379,6 +379,35 @@ describe('MenuNext — add', () => {
   });
 });
 
+describe('MenuNext — the kept source beside the lines (r107 menu-8)', () => {
+  afterEach(() => {
+    role = 'manager';
+  });
+  const keptVersions = () =>
+    mockVersions.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [{ menuId: 'm1', status: 'current', source: { kept: true, mime: 'application/pdf', bytes: 10, failure: null }, linesExtracted: 1 }],
+    } as never);
+
+  it('offers a manager the kept source of the current menu, closed until asked for', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm1', items: [line({ name: 'Raki' })] }));
+    keptVersions();
+    mount();
+    expect(await screen.findByRole('button', { name: 'Show the kept menu with the lines' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: 'The kept menu' })).not.toBeInTheDocument();
+  });
+
+  it('offers staff nothing, and a menu with no kept file offers nothing either', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm1', items: [line({ name: 'Raki' })] }));
+    keptVersions();
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-source-pane')).not.toBeInTheDocument();
+  });
+});
+
 describe('MenuNext — discard', () => {
   afterEach(() => {
     role = 'manager';

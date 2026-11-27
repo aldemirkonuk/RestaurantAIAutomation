@@ -888,6 +888,17 @@ export function useKeptMenuName(menuId: string | null): { pending: boolean; name
   return { pending: false, name: versionLabels(versions, q.data?.timezone ?? null).get(menuId) ?? null };
 }
 
+/**
+ * The kept source of one menu, for the pane beside the current menu's lines (r107 menu-8):
+ * null until the list has been read, and null for a menu with no kept file.
+ */
+export function useKeptMenuSource(menuId: string | null): { kept: boolean; mime: string | null } | null {
+  const { q } = useKeptMenus();
+  if (!menuId) return null;
+  const v = q.data?.versions.find((x) => x.menuId === menuId);
+  return v ? { kept: v.source.kept, mime: v.source.mime } : null;
+}
+
 export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; retryAbove?: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
