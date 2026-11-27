@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { saveProofItems } from '../lib/firstProof'
-import { useAuth } from '../contexts/AuthContext'
+import { AuthContext } from '../contexts/AuthContext'
 import { BrandMark } from '../components/brand/BrandMark'
 import { NoProofInThisTab } from '../components/onboarding/NoProofInThisTab'
 import {
@@ -118,7 +118,7 @@ function useHouseMoney(): HouseMoney {
  * pointer, not a fact about the house.
  */
 function InviteYourPeople() {
-  const auth = useAuth() as { activeRole?: string | null; user?: { role?: string | null } | null } | null
+  const auth = useContext(AuthContext) as { activeRole?: string | null; user?: { role?: string | null } | null } | null
   const role = auth?.activeRole ?? auth?.user?.role ?? null
   const mayInvite = role === 'owner' || role === 'manager'
   const [invited, setInvited] = useState<boolean | null>(null)
