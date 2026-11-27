@@ -431,6 +431,19 @@ describe('RowDropdown says an open bottle or zones it could not read (G15)', () 
     expect(fact('Where')).toBe('could not be read');
   });
 
+  it('a failed rollup read says the cost and the margin could not be read, not "no cost yet" (r103)', () => {
+    renderDrop({ row: row({ rollupReadable: false, openMl: null, wac: null, value: null, costProvenance: null, bottle: 92 }) });
+    expect(fact('Weighted average cost')).toBe('could not be read');
+    const text = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(text).toContain('the lot costs could not be read');
+    expect(text).not.toContain('no cost yet');
+  });
+
+  it('a read house with no cost still says "no cost yet" on the margin (r103)', () => {
+    renderDrop({ row: row({ rollupReadable: true, wac: null, value: null, costProvenance: null, bottle: 92 }) });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('no cost yet');
+  });
+
   it('a read, empty open bottle is not mentioned at all', () => {
     renderDrop({ row: row({ rollupReadable: true, openMl: 0 }) });
     expect(within(screen.getByTestId('row-dropdown')).queryByText('Open bottle')).toBeNull();

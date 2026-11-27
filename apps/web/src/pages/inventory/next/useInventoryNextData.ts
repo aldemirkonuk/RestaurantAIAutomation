@@ -262,7 +262,10 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const cover = analyticsReadable ? num(r.daysOfCover) : null;
   const runway =
     cover !== null ? cover : velocity !== null && velocity > 0 && stock !== null ? stock / velocity : null;
-  const wac = num(r.wac);
+  // G15: the lot rollup carries the cost too (inventory.service.ts:174-179), so
+  // when it failed the cost is unread, never "no cost yet".
+  const rollupReadable = r.rollupReadable !== false;
+  const wac = rollupReadable ? num(r.wac) : null;
   // `wineName` is the house's alias when it set one; `libraryName` is the
   // library's own name, carried beside it (inventory.service.ts:95-103).
   // A food or supply has no library wine, so its name is the house's own
@@ -275,14 +278,14 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
   // G15: the normaliser fills 0 and [], so only the flags tell failed from empty.
-  const rollupReadable = r.rollupReadable !== false;
   const locationsReadable = r.locationsReadable !== false;
   const zones = locationsReadable && Array.isArray(r.locations)
     ? (r.locations as Raw[])
         .map((l) => ({ locationId: text(l.locationId), qty: num(l.qty) }))
         .filter((l): l is ZoneQty => l.qty !== null)
     : null;
-  const provenance = r.costProvenance === 'invoice' || r.costProvenance === 'estimated' ? r.costProvenance : null;
+  const provenance =
+    rollupReadable && (r.costProvenance === 'invoice' || r.costProvenance === 'estimated') ? r.costProvenance : null;
   return {
     id: String(r.id),
     wineId: text(r.wineId),
@@ -652,7 +655,15 @@ export function readSentence(
   }
 
   const priced = rows.filter((r) => r.value !== null);
-  if (priced.length === 0) {
+  // A failed lot read is not a house without costs: say so, never "no cost yet".
+  const costUnread = rows.filter((r) => !r.rollupReadable).length;
+  if (priced.length === 0 && costUnread > 0) {
+    parts.push(
+      costUnread === n
+        ? `The lot costs could not be read, so the value at cost is not known.`
+        : `The lot costs of ${fmtCount(costUnread)} ${costUnread === 1 ? words.one : words.many} could not be read, so the value at cost is not known.`,
+    );
+  } else if (priced.length === 0) {
     parts.push(`No ${words.one} has a cost on the books yet, so the value at cost reads —, not 0.`);
   } else {
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
@@ -660,7 +671,7 @@ export function readSentence(
     parts.push(
       `At cost the ${words.place} holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} ${words.many} priced${
         missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
-      }.`,
+      }${costUnread > 0 ? `, ${fmtCount(costUnread)} of them because their lot costs could not be read` : ''}.`,
     );
   }
   // No market figure is read at all (`retail_price_avg` is not selected), so
@@ -833,6 +844,7 @@ export function useInventoryNextData() {
   const openUnread = (rows ?? []).some((r) => !r.rollupReadable);
   const whereUnread = (rows ?? []).some((r) => !r.locationsReadable);
   if (openUnread) unread.push('the open bottles, so open ml says it could not be read');
+  if (openUnread) unread.push('the lot costs, so cost, value and margin say they could not be read');
   if (whereUnread) unread.push('where each title sits, so its zones say they could not be read');
   if (wines.isError) unread.push('the wine library, so type shows —, the type filter is off, and grapes are left out of details and search');
   if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');
