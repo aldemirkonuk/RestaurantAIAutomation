@@ -15,6 +15,7 @@ const { addCustomProvider, updateOnboardingProgress, getOnboardingProgress } = v
 vi.mock('../../services/api/vendors', () => ({ addCustomProvider }))
 vi.mock('../../services/api/menus', () => ({ updateOnboardingProgress, getOnboardingProgress }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }))
 
 import HouseContents from '../HouseContents'
 
@@ -222,7 +223,7 @@ describe('HouseContents: the vendor address and the invoice', () => {
     expect(screen.getByText('Next · for your costs')).toBeInTheDocument()
     expect(screen.getByText(/Costs come from the invoices you check\./)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
-    const row = screen.getByText('Next · for your costs').closest('p')!
+    const row = screen.getByText('Next · for your costs').closest('div')!
     expect(row.textContent).not.toMatch(/not required/)
   })
 })

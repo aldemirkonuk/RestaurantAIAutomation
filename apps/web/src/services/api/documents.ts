@@ -132,7 +132,34 @@ export interface OrderCurrencyBlock {
   failure: string | null
 }
 
+/** What `POST /procurement/documents` answers that a caller here reads. */
+export interface UploadedPaper {
+  documentId: string
+  duplicate?: boolean
+  storageError?: string
+}
+
 export const documentsApi = {
+  /**
+   * The one web upload of a paper (DD-r108-24; /house's folio 0 reuses it,
+   * DD-r108-10). `POST /procurement/documents` stores it for review against
+   * the SESSION's house, which the gateway reads from the token, never from
+   * the body. It writes no stock, cost or order. Identical bytes are kept once
+   * per house.
+   */
+  async upload(params: {
+    contentBase64: string
+    filename?: string
+    mimeType?: string
+    source?: 'upload' | 'photo'
+  }): Promise<UploadedPaper> {
+    const { data } = await apiClient.post('/procurement/documents', {
+      ...params,
+      source: params.source ?? 'upload',
+    })
+    return data
+  },
+
   /** Documents linked to one order. Empty when none are attached yet. */
   async forOrder(orderId: string): Promise<ProcurementDocument[]> {
     const { data } = await apiClient.get('/procurement/documents', {
