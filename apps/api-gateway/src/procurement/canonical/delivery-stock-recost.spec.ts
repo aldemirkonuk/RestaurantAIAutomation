@@ -180,6 +180,9 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
     expect(r).toMatchObject({ ok: false, status: 404 });
     expect(posted()).toEqual([]);
   });
+
+  it("a failed read of the corrections re-costs nothing (ADR 0067)", async () => {
+    given({});
     db.answers.document_corrections = { data: null, error: { message: "boom" } };
     const r = await recost();
     expect(r).toMatchObject({ ok: false, status: 500 });
