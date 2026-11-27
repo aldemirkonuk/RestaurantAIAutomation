@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { assertCocktailBelongsToRestaurant, cocktailIdOf } from "./cocktail-link";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
@@ -1833,6 +1834,10 @@ export class PosHubService {
       saleVolumeMl = n;
     }
 
+    // A till button may name its drink recipe instead of a shelf item
+    // (inventory r28 gap 1, slice 2): one or the other, never both.
+    const cocktailId = cocktailIdOf(mapping);
+
     const row = {
       restaurant_id: restaurantId,
       source: mapping.source || "*",
@@ -1842,6 +1847,7 @@ export class PosHubService {
       is_wine: mapping.is_wine === true,
       master_wine_id: mapping.master_wine_id ?? null,
       inventory_id: mapping.inventory_id ?? null,
+      cocktail_id: cocktailId,
       sale_unit: saleUnit,
       sale_volume_ml: saleVolumeMl,
       updated_at: new Date().toISOString(),
@@ -1862,6 +1868,14 @@ export class PosHubService {
         restaurantId,
         row.inventory_id,
         "upsertItemMapping",
+        this.logger,
+      );
+    }
+    if (row.cocktail_id) {
+      await assertCocktailBelongsToRestaurant(
+        this.dbService.getClient(),
+        restaurantId,
+        row.cocktail_id,
         this.logger,
       );
     }
