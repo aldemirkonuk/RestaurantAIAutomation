@@ -215,13 +215,7 @@ describe('CanonicalDocumentPage', () => {
     const r = response()
     r.canonical.layer3.lines = []
     r.canonical.layer1.lines = r.canonical.layer1.lines.length ? r.canonical.layer1.lines : []
-    documentMock.mockResolvedValue(r)
-    priceMovesMock.mockResolvedValue({
-      thresholdPct: 10,
-      paperCurrency: 'TRY',
-      houseCurrency: 'USD',
-      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false, reason: 'currency_differs' }],
-    })
+    documentMock.mockResolvedValue({ ...r, money: { paperCurrency: 'TRY', houseCurrency: 'USD' } })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
       <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null } as never}>
@@ -246,13 +240,7 @@ describe('CanonicalDocumentPage', () => {
     const r = response()
     const l3 = r.canonical.layer3.lines as Array<Record<string, unknown>>
     expect(l3.some((l) => l.ordered != null || l.shipped != null || l.received !== 'not_counted')).toBe(true)
-    documentMock.mockResolvedValue(r)
-    priceMovesMock.mockResolvedValue({
-      thresholdPct: 10,
-      paperCurrency: 'TRY',
-      houseCurrency: 'USD',
-      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false, reason: 'currency_differs' }],
-    })
+    documentMock.mockResolvedValue({ ...r, money: { paperCurrency: 'TRY', houseCurrency: 'USD' } })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
       <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null } as never}>
@@ -268,8 +256,10 @@ describe('CanonicalDocumentPage', () => {
     expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
   })
 
-    it('a staff session is not asked for the price moves, and the verdict says only what it knew (r107)', async () => {
-    documentMock.mockResolvedValue(response())
+    it('a staff session is never asked for the price moves, and still hears the money cause (r110 F2)', async () => {
+    const r = response()
+    r.canonical.layer3.lines = []
+    documentMock.mockResolvedValue({ ...r, money: { paperCurrency: 'TRY', houseCurrency: 'USD' } })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
       <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'staff', user: null } as never}>
@@ -280,9 +270,34 @@ describe('CanonicalDocumentPage', () => {
         </QueryClientProvider>
       </AuthContext.Provider>,
     )
-    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    const verdict = await waitFor(() => {
+      const v = container.querySelector('.cd-verdict')
+      expect(v?.textContent).toMatch(/Prices are in TRY and the house costs in USD/)
+      return v as Element
+    })
+    // The cause, not "no order or door count" said as if it were the reason alone.
+    expect(verdict.textContent).toMatch(/so none were compared against earlier costs/)
     expect(priceMovesMock).not.toHaveBeenCalled()
-    expect(container.textContent).not.toMatch(/Prices are in/)
+  })
+
+  it('an unknown or same money says no money sentence, and nobody asks the price moves (r110 F2)', async () => {
+    for (const money of [{ paperCurrency: 'TRY', houseCurrency: null }, { paperCurrency: 'USD', houseCurrency: 'USD' }]) {
+      documentMock.mockResolvedValue({ ...response(), money })
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const { container, unmount } = render(
+        <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'owner', user: null } as never}>
+          <QueryClientProvider client={qc}>
+            <MemoryRouter initialEntries={['/orders']}>
+              <CanonicalDocumentPage documentId="doc-syn" embedded />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </AuthContext.Provider>,
+      )
+      await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+      expect(container.textContent).not.toMatch(/Prices are in/)
+      unmount()
+    }
+    expect(priceMovesMock).not.toHaveBeenCalled()
   })
 
 it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
