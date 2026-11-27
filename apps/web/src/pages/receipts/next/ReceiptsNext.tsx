@@ -174,35 +174,35 @@ function HeldCostNote({ docId }: { docId: string }) {
       </p>
     );
   if (!q.data || q.data.held.length === 0) return null;
-  // The tax sentence is for the holds the tax answer would release, and only
-  // those. Every other hold says its own reason, never the tax basis's.
-  const taxHeld = q.data.taxBasisKnown ? [] : q.data.held.filter((h) => h.cause === 'tax_basis');
-  const otherHeld = q.data.held.filter((h) => !taxHeld.includes(h));
-  const style = { fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' } as const;
+  // The tax sentence is for a hold that IS the tax basis (r108): a paper held
+  // for a missing exchange rate or an unreadable line says the server's own reason.
+  const taxHolds = q.data.held.filter((h) => h.cause === 'tax_basis');
+  const others = q.data.held.filter((h) => h.cause !== 'tax_basis');
+  const sentences: string[] = [];
+  // The gateway marks a hold `tax_basis` only once the house HAS answered (the
+  // hold is then the paper's: it shows tax and does not say if prices include
+  // it), so this is never gated on `taxBasisKnown`, which is true on every one.
+  if (taxHolds.length > 0)
+    sentences.push(
+      `Tax basis unknown \u2014 ${
+        taxHolds.length === 1
+          ? 'one item on this paper keeps a provisional cost'
+          : `${taxHolds.length} items on this paper keep a provisional cost`
+      }: the paper shows tax but does not say whether its prices include it.`,
+    );
+  if (others.length > 0) {
+    const why = others[0].why.replace(/\s*The lot stays provisional\.?$/, '').trim();
+    sentences.push(
+      `${why.charAt(0).toUpperCase()}${why.slice(1)}${/[.!?]$/.test(why) ? '' : '.'}${
+        others.length > 1 ? ` ${others.length - 1} more ${others.length - 1 === 1 ? 'item is' : 'items are'} held too.` : ''
+      }`,
+    );
+  }
+  if (sentences.length === 0) return null;
   return (
-    <>
-      {taxHeld.length > 0 && (
-        <p role="status" style={style}>
-          Tax basis unknown &mdash;{' '}
-          {taxHeld.length === 1
-            ? 'one item on this paper keeps a provisional cost'
-            : `${taxHeld.length} items on this paper keep a provisional cost`}{' '}
-          until the house says how it treats the tax it pays.
-        </p>
-      )}
-      {otherHeld.length > 0 && (
-        <div role="status" data-testid="held-cost-other" style={style}>
-          {otherHeld.length === 1
-            ? 'One item on this paper keeps a provisional cost:'
-            : `${otherHeld.length} items on this paper keep a provisional cost:`}
-          <ul style={{ margin: '2px 0 0', paddingLeft: 16 }}>
-            {otherHeld.map((h) => (
-              <li key={h.inventoryId}>{h.why.replace(/ The lot stays provisional.*$/, '')}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
+    <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+      {sentences.join(' ')}
+    </p>
   );
 }
 

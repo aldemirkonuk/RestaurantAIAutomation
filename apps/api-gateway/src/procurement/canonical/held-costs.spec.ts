@@ -185,4 +185,49 @@ describe("DeliveryStockService.heldCostsOfDocument", () => {
     const res = await service.heldCostsOfDocument(REST, DOC);
     expect(res.ok).toBe(false);
   });
+
+  describe("names the cause of each hold (r108)", () => {
+    it("a case price with no stated pack is a lines hold, not the tax basis", async () => {
+      const res = await service.heldCostsOfDocument(REST, DOC);
+      expect(res.ok && res.value.held[0].cause).toBe("lines");
+    });
+
+    it("a paper in another currency than the house's is a currency hold", async () => {
+      db.answers.restaurants = {
+        data: { currency: "USD", tax_basis: "unset", reclaims_input_tax: null },
+        error: null,
+      };
+      db.answers.procurement_documents = { data: [{ id: DOC, doc_number: "A-1", currency: "TRY" }], error: null };
+      const res = await service.heldCostsOfDocument(REST, DOC);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.held[0].cause).toBe("currency");
+      expect(res.value.held[0].why).toMatch(/no exchange rate is recorded/);
+    });
+
+    it("a paper that shows tax but not its basis is a tax_basis hold", async () => {
+      db.answers.restaurants = {
+        data: { currency: "USD", tax_basis: "prices_include_tax", reclaims_input_tax: true },
+        error: null,
+      };
+      db.answers.procurement_documents = {
+        data: [{ id: DOC, doc_number: "A-1", currency: "USD", subtotal: 100, tax: 8 }],
+        error: null,
+      };
+      db.answers.procurement_document_lines = {
+        data: [
+          {
+            document_id: DOC, line_no: 1, inventory_id: ITEM, qty: 24, qty_bottles: 24, uom: "bottle",
+            pack_size: 1, unit_price: 4, price_base_qty: 1, price_base_uom: "bottle", line_total: 96,
+            vat_rate_percent: 8, price_tax_basis: null,
+          },
+        ],
+        error: null,
+      };
+      const res = await service.heldCostsOfDocument(REST, DOC);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.value.held[0]?.cause).toBe("tax_basis");
+    });
+  });
 });

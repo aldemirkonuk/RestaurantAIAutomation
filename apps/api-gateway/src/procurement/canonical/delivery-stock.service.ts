@@ -13,6 +13,7 @@ import {
   PaperHeaderRow,
   PaperLine,
   PaperNote,
+  HeldCause,
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
@@ -1227,8 +1228,8 @@ export class DeliveryStockService {
         inventoryId: string;
         deliveryIds: string[];
         why: string;
-        /** `tax_basis`: the hold clears once the house answers its tax question. Else `other`. */
-        cause: "tax_basis" | "other";
+        /** The hold's own cause (r108 #2202): tax_basis, currency, lines or other. */
+        cause: HeldCause;
       }[];
     }>
   > {
@@ -1292,13 +1293,10 @@ export class DeliveryStockService {
     const deliveryIds = [
       ...new Set(((joins.data ?? []) as unknown as { delivery_id: string }[]).map((r) => r.delivery_id)),
     ];
-    // A hypothetical answer that reclaims: if a hold clears under it, the missing
-    // tax answer is what held it; any other hold would stay held.
-    const knownTax: HouseTax = { tax_basis: "prices_include_tax", reclaims_input_tax: true };
-    const byItem = new Map<
-      string,
-      { inventoryId: string; deliveryIds: string[]; why: string; cause: "tax_basis" | "other" }
-    >();
+    // One entry per item on THIS paper (r107 #2424): a sibling invoice's hold is
+    // not this paper's, and one item held on two deliveries counts once. The
+    // cause is the landed-cost read's own (r108 #2202).
+    const byItem = new Map<string, { inventoryId: string; deliveryIds: string[]; why: string; cause: HeldCause }>();
     for (const deliveryId of deliveryIds) {
       const delivery = await this.deliveryFor(restaurantId, deliveryId);
       if (!delivery.ok) return delivery;
@@ -1306,19 +1304,15 @@ export class DeliveryStockService {
       if (!booked.ok) return booked;
       const priced = await this.agreedPrices(restaurantId, deliveryId, booked.value);
       if (!priced.ok) return priced;
-      let ifKnown: Map<string, string> | null = null;
-      if (!taxBasisKnown && [...priced.value.held.keys()].some((id) => onPaper.has(id))) {
-        const what = await this.agreedPrices(restaurantId, deliveryId, booked.value, knownTax);
-        if (!what.ok) return what;
-        ifKnown = what.value.held;
-      }
       for (const [inventoryId, why] of priced.value.held) {
         if (!onPaper.has(inventoryId)) continue;
-        const cause = ifKnown && !ifKnown.has(inventoryId) ? "tax_basis" : "other";
+        const cause: HeldCause = priced.value.heldCause.get(inventoryId) ?? "other";
         const seen = byItem.get(inventoryId);
         if (seen) {
           if (!seen.deliveryIds.includes(deliveryId)) seen.deliveryIds.push(deliveryId);
-          if (cause === "other") seen.cause = "other";
+          // Two deliveries holding one item for different reasons: no single
+          // cause is true, so the page speaks the first hold's own words.
+          if (seen.cause !== cause) seen.cause = "other";
         } else byItem.set(inventoryId, { inventoryId, deliveryIds: [deliveryId], why, cause });
       }
     }
@@ -1393,6 +1387,8 @@ export class DeliveryStockService {
       refused: Map<string, string>;
       /** Items whose landed cost cannot be said, each with the sentence. */
       held: Map<string, string>;
+      /** Why each held item is held; an item with no entry is `other`. */
+      heldCause: Map<string, HeldCause>;
       /** Refusals of accepted proposals that name no item (QA 12b D1). */
       unattachedRefused: string[];
       /** Each held item's own per-bottle line price: a re-verify's repair only. */
@@ -1547,6 +1543,7 @@ export class DeliveryStockService {
     const landed = landDelivery({ papers, lines: fed, booked, houseCurrency, houseTax });
     const refused = landed.refused;
     const held = landed.held;
+    const heldCause = landed.heldCause;
     for (const [id, p] of [...lineOnly]) {
       const why = held.get(id);
       // A line price in another currency is no stand-in either (QA 15 (5)).
@@ -1609,6 +1606,7 @@ export class DeliveryStockService {
           byItem.delete(id);
           lineOnly.delete(id);
           held.set(id, `${reason}. The lot stays provisional.`);
+          heldCause.set(id, "currency");
         }
         continue;
       }
@@ -1623,6 +1621,7 @@ export class DeliveryStockService {
           lineOnly.delete(id);
           refused.set(id, reason);
           held.set(id, `the invoice prices this item, but not per bottle: ${reason}. The lot stays provisional.`);
+          heldCause.set(id, "lines");
         }
         continue;
       }
@@ -1639,6 +1638,7 @@ export class DeliveryStockService {
         byItem.set(id, agreed);
         refused.delete(id);
         held.delete(id);
+        heldCause.delete(id);
         lineOnly.delete(id);
       } else unattached.push(agreed);
     }
@@ -1651,6 +1651,7 @@ export class DeliveryStockService {
         refused,
         unattachedRefused,
         held,
+        heldCause,
         lineOnly,
         papers: landed.papers,
         printed,
