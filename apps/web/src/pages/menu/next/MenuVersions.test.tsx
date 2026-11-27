@@ -666,8 +666,9 @@ describe('MenuVersions', () => {
     expect(rows).toHaveLength(3);
     expect(rows[1]).toHaveTextContent('current since 2026-09-01, chosen by Bo');
     expect(rows[2]).toHaveTextContent('last one used, used until 2026-09-01');
-    // The current menu offers no "Make current"; the others do.
+    // The current menu offers "Carry its prices again" (a cut-off carry is finished there); the others "Make current".
     expect(screen.getAllByRole('button', { name: /^Make .* current$/ })).toHaveLength(2);
+    expect(within(rows[1]).getByRole('button', { name: /^Carry .* prices again$/ })).toBeInTheDocument();
   });
 
   it('a failed read of the kept menus says so -- not "none kept"', async () => {
@@ -735,6 +736,39 @@ describe('MenuVersions', () => {
     // Named, and said under the list it is about (menu walk 2026-11-12).
     expect(await screen.findByTestId('menu-list-choice-said')).toHaveTextContent(
       /^The menu read 2026-09-20 10:00 is now the current menu: 42 lines, 40 lines priced from this menu, 2 lines with a blank price, noted on the line/,
+    );
+  });
+
+  it('a cut-off carry is finished from the current menu\'s own row, and the sentence says what it carried', async () => {
+    const current = version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z' });
+    mockList.mockResolvedValue({ current, lastUsed: null, versions: [current] });
+    mockPlan.mockImplementation(async (id: string) => plan(id, { current: true }));
+    mockMake.mockResolvedValue({
+      outcome: 'already_current',
+      menuId: 'm2',
+      previousMenuIds: [],
+      lines: 5,
+      priceSync: { changed: 2, stale: 1, unchanged: 2 },
+      flagged: 0,
+      failed: [{ menuItemId: 'l3', name: 'Barolo', error: 'timeout' }],
+    });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: /^Carry .* prices again$/ }));
+    expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
+    expect(mockMake).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Carry its prices again' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m2', 'fp-m2'));
+    expect(await screen.findByText(/That menu was already the current one\. 2 lines had not reached the house's prices and were carried now\. 1 line kept its price/)).toBeInTheDocument();
+    expect(screen.getByText(/1 could not be priced: Barolo \(timeout\)\./)).toBeInTheDocument();
+  });
+
+  it('a re-carry that wrote or failed nothing says "Nothing changed" only when it had no lines', () => {
+    const base = { menuId: 'm2', previousMenuIds: [], flagged: 0, failed: [] };
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 0, priceSync: {} })).toBe(
+      'That menu was already the current one. Nothing changed.',
+    );
+    expect(makeCurrentSentence({ ...base, outcome: 'already_current', lines: 3, priceSync: { unchanged: 3 } })).toBe(
+      'That menu was already the current one. No line was carried.',
     );
   });
 

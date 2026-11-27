@@ -752,15 +752,15 @@ function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemov
         ) : null}
       </td>
       <td className="mdv-acts">
-        {!v.current && canManage && readState === 'done' ? (
+        {canManage && readState === 'done' ? (
           <button
             type="button"
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${label} current`}
+            aria-label={v.current ? `Carry ${label} prices again` : `Make ${label} current`}
           >
-            {planning ? 'See below' : 'Make current'}
+            {planning ? 'See below' : v.current ? 'Carry its prices again' : 'Make current'}
           </button>
         ) : null}
         {readState === 'failed' && canManage ? (
