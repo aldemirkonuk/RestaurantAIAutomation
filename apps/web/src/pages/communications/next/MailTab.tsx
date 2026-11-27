@@ -58,6 +58,9 @@ import {
   emptyListWords,
   headerSentence,
   waitingChipWords,
+  noAnswerWords,
+  NO_ANSWER_CHIP,
+  NO_ANSWER_EMPTY,
   waitingOn,
   type WaitingOn,
   lastWriterWords,
@@ -150,6 +153,28 @@ function NewChip({ on }: { on: boolean | null | undefined }) {
 }
 
 /** The newest letter to this person has not left; the row says so (r43 w3 finding 4). */
+/** "No answer · 4 days": quiet, still, and only when the house wrote last (r108 mail-gap g7). */
+function NoAnswerChip({ p }: { p: MailPersonRow }) {
+  const words = noAnswerWords(p, Date.now());
+  if (words === null) return null;
+  return (
+    <span
+      data-testid="mail-no-answer"
+      style={{
+        fontFamily: MONO,
+        fontSize: 11,
+        padding: '2px 7px',
+        borderRadius: 4,
+        border: '1px solid var(--paper-2, #EAE4D8)',
+        color: 'var(--ink-4, #665D50)',
+        alignSelf: 'center',
+      }}
+    >
+      {words}
+    </span>
+  );
+}
+
 function UnsentChip({ status }: { status: string | null | undefined }) {
   const words = unsentChipText(status);
   if (words === null) return null;
@@ -349,6 +374,7 @@ function PersonRow({
           )}
           {p.openThreads > 1 && <span style={QUIET}>{p.openThreads} open threads</span>}
           <UnsentChip status={p.unsentStatus} />
+          <NoAnswerChip p={p} />
         </span>
         <span
           style={{
@@ -482,6 +508,7 @@ function PersonThreads({
 function People({
   on,
   waitingOnly,
+  awaiting = false,
   kind,
   readsEverything,
   search,
@@ -500,6 +527,8 @@ function People({
   /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
   on: WaitingOn;
   waitingOnly: boolean;
+  /** Only the people the house wrote to who have not answered (r108 mail-gap g7). */
+  awaiting?: boolean;
   /** Which kind of conversation the list is narrowed to. */
   kind: MailKindFilter;
   /** The house said yes to reading every conversation. */
@@ -518,11 +547,11 @@ function People({
   /** What kinds the stored rows hold, handed up so the search hint can name them. */
   onStoredKinds: (kinds: readonly string[] | null) => void;
 }) {
-  const q = useMailPeople(waitingOnly, search, kind);
+  const q = useMailPeople(waitingOnly, search, kind, awaiting);
   const pages = q.data?.pages ?? [];
   // The gateway filters by kind; the same narrowing here keeps an older gateway, which ignores `kind`, right.
   const people = pages.flatMap((p) => p.people).filter((p) => kind === 'all' || mailKindOf(p) === kind);
-  const listIdentity = `${kind}|${waitingOnly ? 'w' : 'a'}|${search}`;
+  const listIdentity = `${kind}|${waitingOnly ? 'w' : awaiting ? 'n' : 'a'}|${search}`;
   const ready = Boolean(q.data) && !q.isPlaceholderData;
   const entering = useEnteringKeys(
     people.map((p) => p.key),
@@ -539,7 +568,7 @@ function People({
   }, [storedKey, onStoredKinds]);
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars.
-  const settled = Boolean(q.data) && !waitingOnly && !search;
+  const settled = Boolean(q.data) && !waitingOnly && !awaiting && !search;
   const firstPageCount = pages[0]?.people.length ?? 0;
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
@@ -582,6 +611,10 @@ function People({
         // More people are still to be read: not "none" (ADR 0020).
         <p data-testid="people-partial-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
           {kindPartialWords(kind)}
+        </p>
+      ) : people.length === 0 && awaiting ? (
+        <p data-testid="people-empty-awaiting" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
+          {NO_ANSWER_EMPTY}
         </p>
       ) : people.length === 0 && kind !== 'all' ? (
         <p data-testid="people-empty-kind" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
@@ -666,7 +699,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       aria-pressed={on}
       onClick={onClick}
-      className="max-md:inline-flex max-md:min-h-[44px] max-md:items-center"
+      className="mail-chip max-md:inline-flex max-md:min-h-[44px] max-md:items-center"
       style={{
         fontSize: 12,
         fontWeight: 600,
@@ -825,7 +858,11 @@ export function MailTab({
   // house, never "on you" (r36 mail gap 14).
   const on = waitingOn(canReply);
   const [params, setParams] = useSearchParams();
-  const [waitingOnly, setWaitingOnly] = useState(false);
+  // Which people the list shows: everyone, those waiting on the house, or (r108 mail-gap g7) those who
+  // have not answered the house. The last is the house's own letters, so owners and managers only.
+  const [show, setShow] = useState<'all' | 'waiting' | 'awaiting'>('all');
+  const waitingOnly = show === 'waiting';
+  const awaiting = show === 'awaiting' && canReply;
   const [kind, setKind] = useState<MailKindFilter>('all');
   const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
@@ -1098,12 +1135,17 @@ export function MailTab({
             )}
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Show">
-            <Chip on={!waitingOnly} onClick={() => setWaitingOnly(false)}>
+            <Chip on={!waitingOnly && !awaiting} onClick={() => setShow('all')}>
               All
             </Chip>
-            <Chip on={waitingOnly} onClick={() => setWaitingOnly(true)}>
+            <Chip on={waitingOnly} onClick={() => setShow('waiting')}>
               {waitingChipWords(on)}
             </Chip>
+            {canReply && (
+              <Chip on={awaiting} onClick={() => setShow('awaiting')}>
+                {NO_ANSWER_CHIP}
+              </Chip>
+            )}
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Who the mail is with" data-testid="kind-filter">
             {MAIL_KIND_FILTERS.map((f) => (
@@ -1116,6 +1158,7 @@ export function MailTab({
           <People
             on={on}
             waitingOnly={waitingOnly}
+            awaiting={awaiting}
             kind={kind}
             readsEverything={readAll.reads}
             search={search}

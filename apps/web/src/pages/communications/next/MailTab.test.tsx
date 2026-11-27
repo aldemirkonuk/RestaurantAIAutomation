@@ -177,10 +177,11 @@ describe('the list', () => {
     expect(within(rows[1]).queryByRole('img', { name: 'waiting on you' })).toBeNull();
     expect(within(rows[0]).getByRole('img', { name: 'mail' })).toBeInTheDocument();
     expect(screen.getByTestId('stored-kinds')).toHaveTextContent('is under Who is writing, below, only when it carries an attachment or reads as an offer');
-    // Two chips only: All and Waiting on you.
+    // Three chips: All, Waiting on you, and (r108 mail-gap g7, owner and manager only) No answer yet.
     expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((b) => b.textContent)).toEqual([
       'All',
       'Waiting on you',
+      'No answer yet',
     ]);
   });
 

@@ -38,6 +38,7 @@ function builder(q: Query): any {
     "select",
     "eq",
     "in",
+    "ilike",
     "or",
     "not",
     "order",
@@ -175,6 +176,36 @@ describe("listPeople", () => {
     expect(queries[0].payload).toMatchObject({
       p_withhold_house_letters: true,
     });
+  });
+
+  it("asks for the unanswered only when named, and says since when (r108 mail-gap g7)", async () => {
+    resolve = () => ({
+      data: [
+        { ...person(1), last_direction: "outbound", waiting: false, awaiting_since: "2026-11-03 09:00:00+00" },
+        person(2),
+      ],
+      error: null,
+    });
+    const page = await service().listPeople(HOUSE, "owner", { awaiting: true });
+    expect(queries[0].payload).toMatchObject({ p_awaiting: true, p_waiting_only: false });
+    expect(page.people.map((p) => p.awaitingSince)).toEqual(["2026-11-03 09:00:00+00", null]);
+    queries = [];
+    await service().listPeople(HOUSE, "owner", {});
+    expect(queries[0].payload).not.toHaveProperty("p_awaiting");
+  });
+
+  it("a search for the unanswered asks each named person's read for the unanswered too", async () => {
+    resolve = (q) => ({
+      data:
+        q.kind === "from" && q.calls.some((c) => c.method === "ilike")
+          ? [{ from_address: "ayse@g.example", from_header: "Ayşe <ayse@g.example>" }]
+          : [],
+      error: null,
+    });
+    await service().listPeople(HOUSE, "owner", { awaiting: true, query: "Ayşe", kind: "guest" });
+    const people = queries.filter((q) => q.name === "list_mail_people");
+    expect(people.map((q) => (q.payload as any).p_query)).toEqual(["Ayşe", "ayse@g.example"]);
+    for (const q of people) expect(q.payload).toMatchObject({ p_awaiting: true });
   });
 
   it("passes a cursor's time and key through untouched", async () => {
