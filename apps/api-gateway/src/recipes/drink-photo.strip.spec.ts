@@ -3,7 +3,7 @@
  * itself is kept, the type is read from the bytes, and a file that does not parse or is over 5 MB is refused.
  */
 import { PHOTO_MAX_BYTES, PHOTO_NOT_AN_IMAGE, PHOTO_TOO_BIG, cleanPhoto, photoPath, sniffPhoto } from "./drink-photo";
-import { hasGps, jpegWithGps, pngWithGps, webpWithGps } from "./drink-photo.testing";
+import { hasGps, jpegWithGps, pngChunk, pngWithGps, webpWithGps } from "./drink-photo.testing";
 
 const clean = (b: Buffer) => {
   const c = cleanPhoto(b);
@@ -44,6 +44,9 @@ describe("cleanPhoto", () => {
     expect(cleanPhoto(Buffer.from("GIF89a....", "latin1"))).toEqual({ refused: PHOTO_NOT_AN_IMAGE });
     expect(cleanPhoto(jpegWithGps().subarray(0, 40))).toEqual({ refused: PHOTO_NOT_AN_IMAGE });
     expect(cleanPhoto(pngWithGps().subarray(0, 60))).toEqual({ refused: PHOTO_NOT_AN_IMAGE });
+    // Whole chunks but no IEND: cut short, so not stored as if whole.
+    const noEnd = Buffer.concat([pngWithGps().subarray(0, 8), pngChunk("IHDR", Buffer.alloc(13, 1)), pngChunk("IDAT", Buffer.from([1]))]);
+    expect(cleanPhoto(noEnd)).toEqual({ refused: PHOTO_NOT_AN_IMAGE });
     expect(cleanPhoto(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(PHOTO_MAX_BYTES)]))).toEqual({ refused: PHOTO_TOO_BIG });
   });
 
