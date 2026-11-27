@@ -71,3 +71,29 @@ describe("priceMove", () => {
     }
   });
 });
+
+describe("perBottlePrinted + printedPriceMove (r108 g15)", () => {
+  const { perBottlePrinted, printedPriceMove } = jest.requireActual("./price-move");
+  it("divides the printed total by the bottles, case lines through qty x pack", () => {
+    expect(perBottlePrinted({ line_total: 132, qty_bottles: 12 })).toMatchObject({ cents: 13200n, milliBottles: 12000n, value: 11 });
+    expect(perBottlePrinted({ line_total: 132, qty_bottles: 0, qty: 1, pack_size: 12, uom: "case" })).toMatchObject({ value: 11 });
+    expect(perBottlePrinted({ line_total: 100, qty_bottles: 3 })).toMatchObject({ value: 33.3333 });
+  });
+  it("says why it has no price", () => {
+    expect(perBottlePrinted({ line_total: null, qty_bottles: 1 })).toBe("no_price");
+    expect(perBottlePrinted({ line_total: 0, qty_bottles: 1 })).toBe("no_price");
+    expect(perBottlePrinted({ line_total: 50, qty_bottles: 0, qty: 1, uom: "keg" })).toBe("unit_differs");
+  });
+  it("is exact at the threshold with thirds: 100.00/3 -> 110.00/3 is exactly 10 percent", () => {
+    const a = perBottlePrinted({ line_total: 100, qty_bottles: 3 });
+    const b = perBottlePrinted({ line_total: 110, qty_bottles: 3 });
+    expect(printedPriceMove(a, b, 10)).toMatchObject({ compared: true, moved: false });
+    const c = perBottlePrinted({ line_total: 110.01, qty_bottles: 3 });
+    expect(printedPriceMove(a, c, 10)).toMatchObject({ moved: true });
+  });
+  it("stays exact past 2^53 (a 10-billion paper of 999,999 bottles)", () => {
+    const a = perBottlePrinted({ line_total: 9999999999.99, qty_bottles: 999999.999 });
+    const b = perBottlePrinted({ line_total: 9999999999.99, qty_bottles: 999999.999 });
+    expect(printedPriceMove(a, b, 0)).toMatchObject({ moved: false });
+  });
+});
