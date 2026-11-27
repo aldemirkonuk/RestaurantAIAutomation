@@ -352,6 +352,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
+  const keptSource = useKeptMenuSource(result?.menuId ?? null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [replaced, setReplaced] = useState(false);
   const [planning, setPlanning] = useState(false);
@@ -549,6 +550,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               embedded
               result={result}
               canChoose={canManage}
+              source={canManage && keptSource?.kept ? { menuId: result.menuId, mime: keptSource.mime } : null}
               onSkip={() => setReviewed(true)}
               onConfirm={(madeCurrent) => {
                 setReviewed(true);

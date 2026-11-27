@@ -121,6 +121,20 @@ describe('the review between the read and the choice', () => {
     expect(mockMake).not.toHaveBeenCalled();
   });
 
+  it('a read of dishes is reviewed as dishes: no wine words, and its price is shown', async () => {
+    mockImport.mockResolvedValue(
+      read({ items: [{ ...line('d1', 'Adana Kebap', true), category: 'mains', bottlePrice: 450 }] }),
+    );
+    mount(true);
+    await readTheFile();
+    const review = await screen.findByTestId('menu-read-review');
+    expect(review).toHaveTextContent('Adana Kebap');
+    expect(review).not.toHaveTextContent('Wine name');
+    expect(review).not.toHaveTextContent('Producer');
+    expect(screen.getByTestId('review-line-meta')).toHaveTextContent('450');
+    expect(screen.getByText('Add a dish')).toBeInTheDocument();
+  });
+
   it('a corrected line is saved through the review', async () => {
     mockImport.mockResolvedValue(read());
     mockReview.mockResolvedValue({ menuItemId: 'i1', fieldName: 'name', newValue: 'Barolo Riserva' });
