@@ -69,6 +69,7 @@
 import { useContext, useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
+import { QueryClientContext } from '@tanstack/react-query';
 import { BrandMark } from '../brand/BrandMark';
 import { RestaurantBranchSwitcher } from '../layout/RestaurantBranchSwitcher';
 import { AuthContext } from '../../contexts/AuthContext';
@@ -76,6 +77,7 @@ import type { MudavymGround } from '../../lib/mudavym/shellGround';
 import type { MudavymPage } from '../../lib/mudavym/useMudavymDesign';
 import { NO_CHROME, pageNameFor } from '../../lib/mudavym/pageNames';
 import { useDocumentTitle } from '../../lib/seo/RouteHead';
+import { useMailWaiting } from '../../pages/communications/next/useMailWaiting';
 import { HouseBell } from './HouseBell';
 import { HouseUserMenu } from './HouseUserMenu';
 // `.mdv-kbd`, `.mdv-item`, `.mdv-link`, `.mdv-quiet` and `.mdv-note` are the
@@ -169,6 +171,30 @@ export interface HouseHeaderProps {
   shell?: boolean;
 }
 
+/**
+ * The tab title, with the count of people waiting on the house in front while
+ * anyone waits: '(6) Receipts · Mudavym' (DD-r108-9 / DD-r108-44). In front
+ * because a narrow tab cuts the end. Same cache entry as the rail's count, so it
+ * costs no request; zero, a failed read or an unread summary leave the plain
+ * title. Draws nothing.
+ */
+function WaitingTitle({ name }: { name: string | null }) {
+  // Like the missing identity above, a mount with no query client (an isolated
+  // test or sandbox) gets the plain title rather than a crash.
+  return useContext(QueryClientContext) ? <CountedTitle name={name} /> : <PlainTitle name={name} />;
+}
+
+function CountedTitle({ name }: { name: string | null }): null {
+  const n = useMailWaiting();
+  useDocumentTitle(name && n > 0 ? `(${n}) ${name}` : name);
+  return null;
+}
+
+function PlainTitle({ name }: { name: string | null }): null {
+  useDocumentTitle(name);
+  return null;
+}
+
 export function HouseHeader({ page, ground, name, trailing, shell = false }: HouseHeaderProps) {
   const { pathname } = useLocation();
   const auth = useContext(AuthContext);
@@ -179,7 +205,10 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
   // at cutover" item 1) — pages themselves never call document.title.
   // `page` is optional when the APP SHELL mounts this header (sketch 119 D);
   // then the room `name` is the title, same rule as the visible eyebrow below.
-  useDocumentTitle(page ? pageNameFor(page, pathname) : (name ?? null));
+  // With a signed-in person the title is WaitingTitle's, so it can carry the
+  // waiting count; without one (an isolated mount) it is set plainly here.
+  const titleName = page ? pageNameFor(page, pathname) : (name ?? null);
+  useDocumentTitle(auth ? null : titleName);
 
   /* The hairline hardens once the page has scrolled under the header — the
      only state this bar has, and it is a fact about the page, not a flourish. */
@@ -194,7 +223,7 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
   // house; outside an AuthProvider (an isolated mount, a sandbox) there is
   // nobody to speak for, and a header full of dead controls is worse than none.
   if (!auth) return null;
-  if (page && NO_CHROME.has(page)) return null;
+  if (page && NO_CHROME.has(page)) return <WaitingTitle name={titleName} />;
 
   const pageName = shell || !page ? (name ?? null) : pageNameFor(page, pathname);
 
@@ -212,6 +241,7 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
       role="banner"
       aria-label="House header"
     >
+      <WaitingTitle name={titleName} />
       <div className="mdv-hdr__in">
         <div className="mdv-hdr__left">
           <Link to="/" className="mdv-hdr__mark" aria-label="Mudavym — dashboard">
