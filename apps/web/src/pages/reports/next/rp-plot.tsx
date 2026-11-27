@@ -31,7 +31,7 @@
  * a screen reader without a second description.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -76,6 +76,22 @@ const RULE = { stroke: 'var(--ink-3)', strokeDasharray: '2 3' } as const;
 
 /** Room for the two axis labels. Kept in one place so every plot agrees. */
 const MARGIN = { top: 8, right: 8, bottom: 14, left: 2 } as const;
+/** Every value axis on this page is this wide, left or right. */
+const Y_AXIS_W = 52;
+
+/**
+ * The hover detail never runs past the plot's edge, where `.rp-plot` clips it
+ * (audit G16, r28 gap 18). recharts keeps a tooltip at or right of the
+ * plotting area's left edge (the margin and the value axis) and flips it left
+ * when it would pass the right edge; a tooltip wider than the room right of
+ * that edge still ran out of the box and lost its end. Bounding its width to
+ * that room, and letting a long name wrap (`.rp-tip`), keeps the whole of it
+ * on the plot at any cutting width.
+ */
+export const TIP_WRAPPER: CSSProperties = {
+  maxWidth: `calc(100% - ${MARGIN.left + Y_AXIS_W}px)`,
+  zIndex: 2,
+};
 
 /**
  * The frame every recharts drawing sits in. It names itself for a screen
@@ -307,6 +323,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   }`;
   const tip = (
     <Tooltip
+      wrapperStyle={TIP_WRAPPER}
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : { stroke: 'var(--seal-ring)' }}
       content={
         <Tip unit={unit} format={format} projectedLabel={projectedLabel} /> as unknown as never
@@ -319,7 +336,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
       <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26}>
         <Label value={xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
       </XAxis>
-      <YAxis {...AXIS} width={52} tickFormatter={(v: number) => format(v)}>
+      <YAxis {...AXIS} width={Y_AXIS_W} tickFormatter={(v: number) => format(v)}>
         <Label value={yLabel} angle={-90} position="insideLeft" offset={12} style={AXIS_LABEL} />
       </YAxis>
       {tip}
@@ -530,7 +547,7 @@ export function ComboPlot({
           <YAxis
             yAxisId="bars"
             {...AXIS}
-            width={52}
+            width={Y_AXIS_W}
             tickFormatter={(v: number) => bars.format(v)}
           >
             <Label
@@ -546,7 +563,7 @@ export function ComboPlot({
               yAxisId="line"
               orientation="right"
               {...AXIS}
-              width={52}
+              width={Y_AXIS_W}
               tickFormatter={(v: number) => line.format(v)}
             >
               <Label
@@ -559,6 +576,7 @@ export function ComboPlot({
             </YAxis>
           )}
           <Tooltip
+            wrapperStyle={TIP_WRAPPER}
             cursor={{ fill: 'var(--seal-tint)' }}
             content={<ComboTip plan={plan} /> as unknown as never}
           />
@@ -635,13 +653,14 @@ export function PointPlot({ series }: { series: PointSeries }) {
           type="number"
           dataKey="y"
           {...AXIS}
-          width={52}
+          width={Y_AXIS_W}
           tickFormatter={(v: number) => formatY(v)}
         >
           <Label value={yLabel} angle={-90} position="insideLeft" offset={12} style={AXIS_LABEL} />
         </YAxis>
         <ZAxis range={[36, 36]} />
         <Tooltip
+          wrapperStyle={TIP_WRAPPER}
           cursor={{ stroke: 'var(--seal-ring)' }}
           content={
             (({
