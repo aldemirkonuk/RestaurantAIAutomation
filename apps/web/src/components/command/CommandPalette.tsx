@@ -20,9 +20,11 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw } from "lucide-react";
+import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw, Mail as MailIcon } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
+import { managesHouse } from "../../pages/communications/next/cm-format";
+import { waitingChipWords, waitingOn } from "../../pages/communications/next/mail-format";
 import { LANDING_KEY } from "./CommandProvider";
 import {
   Command,
@@ -47,6 +49,7 @@ const SECTION_ORDER: CommandSection[] = [
   "On the counter",
   "Recent",
   "Rooms",
+  "Mail",
   "Insights",
   "Create",
   "Navigation",
@@ -78,7 +81,7 @@ export function CommandPalette({
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, activeRestaurantId, activeRole } = useAuth();
   const shell = useMudavymShell();
   const shellPalette = useShellPalette();
   const restaurantId = user?.restaurantId;
@@ -113,6 +116,50 @@ export function CommandPalette({
       cancelled = true;
     };
   }, [open, restaurantId]);
+
+  // r108 mail g10: people in the house's Mail, asked for once the query is 2+ chars. Debounced 200 ms, the
+  // previous request aborted, and quiet on failure (an unreadable search is no rows, never an error here).
+  // Who may read which kinds is the gateway's job; with no house or no known role nothing is asked.
+  const mailHouse = activeRestaurantId ?? restaurantId ?? "";
+  const mailRole = activeRole ?? user?.role ?? null;
+  // Mail's own rule for who a waiting person waits on: staff cannot answer, so it is the house.
+  const mailWaiting = waitingChipWords(waitingOn(managesHouse(activeRole, user?.role)));
+  const [mailRows, setMailRows] = useState<Command[]>([]);
+  const mailTerm = query.trim();
+  useEffect(() => {
+    if (!open || mailTerm.length < 2 || !mailHouse || !mailRole) {
+      setMailRows((r) => (r.length ? [] : r));
+      return;
+    }
+    const ctl = new AbortController();
+    const t = setTimeout(() => {
+      apiClient
+        .get<{ people?: Array<{ key: string; name: string | null; waiting: boolean }> }>("/mail/people", {
+          params: { q: mailTerm, limit: 5 },
+          signal: ctl.signal,
+        })
+        .then(({ data: body }) => {
+          if (ctl.signal.aborted) return;
+          setMailRows(
+            (body?.people ?? []).slice(0, 5).map<Command>((p) => {
+              const who = p.name?.trim() || p.key.slice(p.key.indexOf(":") + 1);
+              return {
+                id: `mail-${p.key}`,
+                title: p.waiting ? `${who} · ${mailWaiting}` : who,
+                section: "Mail",
+                icon: MailIcon,
+                href: `/communications?tab=mail&with=${encodeURIComponent(p.key)}`,
+              };
+            }),
+          );
+        })
+        .catch(() => {});
+    }, 200);
+    return () => {
+      clearTimeout(t);
+      ctl.abort();
+    };
+  }, [open, mailTerm, mailHouse, mailRole, mailWaiting]);
 
   // Reset + focus management on open/close.
   useEffect(() => {
@@ -232,9 +279,10 @@ export function CommandPalette({
       }
     } else {
       for (const { cmd } of ranked) (g[cmd.section] ||= []).push(cmd);
+      if (mailRows.length && mailTerm.length >= 2) g.Mail = mailRows;
     }
     return g;
-  }, [allCommands, query, recentIds]);
+  }, [allCommands, query, recentIds, mailRows, mailTerm]);
 
   // Flatten in display order for keyboard navigation.
   const flat = useMemo(() => {
@@ -254,7 +302,7 @@ export function CommandPalette({
       if (!cmd) return;
       // An act on the counter is not a place to return to: its id names one
       // record that is gone once it is sealed, so it is never a "recent".
-      if (cmd.section !== "On the counter") pushRecent(cmd.id);
+      if (cmd.section !== "On the counter" && cmd.section !== "Mail") pushRecent(cmd.id);
       onClose();
       if (cmd.action) cmd.action();
       else if (cmd.href) navigate(cmd.href);
