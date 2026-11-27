@@ -10,15 +10,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
-<<<<<<< HEAD
 const api = vi.hoisted(() => ({
   moves: vi.fn(),
   restate: vi.fn(),
   seal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
+  role: 'manager' as 'manager' | 'staff',
 }));
-=======
-const api = vi.hoisted(() => ({ moves: vi.fn(), role: 'manager' as 'manager' | 'staff' }));
->>>>>>> 1e0a3ff4daea43b1f3dc2a88e847474d5e1cf47b
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: api.role, user: null }),
@@ -138,7 +135,6 @@ const moved = {
 
 beforeEach(() => {
   api.moves.mockReset();
-<<<<<<< HEAD
   api.restate.mockReset();
   api.restate.mockResolvedValue({
     currency: 'TRY',
@@ -148,9 +144,7 @@ beforeEach(() => {
     linesRefiled: 1,
     lineFailures: [],
   });
-=======
   api.role = 'manager';
->>>>>>> 1e0a3ff4daea43b1f3dc2a88e847474d5e1cf47b
 });
 
 describe('the check card on a cost that moved', () => {

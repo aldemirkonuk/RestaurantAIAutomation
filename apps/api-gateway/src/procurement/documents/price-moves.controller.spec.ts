@@ -1,15 +1,10 @@
 import { DocumentsController } from "./documents.controller";
 
 /** A thenable fake db: one canned answer per table, every call chains. */
-<<<<<<< HEAD
 const PAPER_AT = "2099-01-01T00:00:00Z";
 const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD", created_at: PAPER_AT }, error: null }, restaurants: { data: { currency: "USD" }, error: null }, document_deliveries: { data: [{ document_id: "src", delivery_id: "D0", role: "invoice" }], error: null } };
 type Call = { table: string; method: string; args: unknown[] };
 function controllerWith(results: Record<string, { data: unknown; error: unknown }>, calls: Call[] = []) {
-=======
-const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null }, document_deliveries: { data: [], error: null } };
-function controllerWith(results: Record<string, { data: unknown; error: unknown }>) {
->>>>>>> 1e0a3ff4daea43b1f3dc2a88e847474d5e1cf47b
   results = { ...HOUSE, ...results };
   const db = {
     getClient: () => ({
@@ -74,11 +69,7 @@ const line = (over: Record<string, unknown>) => ({
   inventory_id: "g1",
   ...over,
 });
-<<<<<<< HEAD
 const lot = (cost: number, at: string, good = "g1", delivery_id: string | null = "D0") => ({ inventory_id: good, unit_cost: cost, received_at: at, delivery_id });
-=======
-const lot = (cost: number, at: string, good = "g1", delivery_id: string | null = null) => ({ inventory_id: good, unit_cost: cost, received_at: at, delivery_id });
->>>>>>> 1e0a3ff4daea43b1f3dc2a88e847474d5e1cf47b
 
 describe("DocumentsController.priceMoves — a cost that jumped with no PO to catch it (r104 g4)", () => {
   it("says what moved, against the good's NEWEST invoiced lot", async () => {
