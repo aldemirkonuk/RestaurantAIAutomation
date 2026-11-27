@@ -38,7 +38,7 @@ interface Props {
    * `onChallenge` supplied one; callers that do not seal keep the `() => void`
    * shape and get `null`.
    */
-  onConfirm: (challenge?: string | null) => void;
+  onConfirm: (challenge?: string | null, how?: { viaKeyboard: boolean }) => void;
   /** Mint the proof, at the moment the gesture BEGINS. See the header. */
   onChallenge?: () => Promise<string | null>;
 }
@@ -58,6 +58,12 @@ export function SwipeToConfirm({
   const startY = useRef<number | null>(null);
   const holdTimer = useRef<number | null>(null);
   const holdStart = useRef(0);
+  /**
+   * How THIS gesture was driven, set by the gesture itself. The caller used to
+   * ask `document.activeElement` inside `onConfirm`, but by then completing has
+   * disabled the handle and a real browser has already dropped focus to BODY.
+   */
+  const viaKeyboard = useRef(false);
   /** The in-flight mint, started when the gesture began. */
   const challengeRef = useRef<Promise<string | null> | null>(null);
   /** The pressed seal that lands in the handle when the gesture completes. */
@@ -81,7 +87,7 @@ export function SwipeToConfirm({
 
     // No proof was asked for: the original behaviour, unchanged.
     if (!challengeRef.current) {
-      onConfirm(null);
+      onConfirm(null, { viaKeyboard: viaKeyboard.current });
       return;
     }
 
@@ -90,7 +96,7 @@ export function SwipeToConfirm({
     void pending
       .then((token) => {
         if (!token) throw new Error('no seal');
-        onConfirm(token);
+        onConfirm(token, { viaKeyboard: viaKeyboard.current });
       })
       .catch(() => {
         // Not sealed, and said so. The gesture completed and the confirmation
@@ -117,6 +123,7 @@ export function SwipeToConfirm({
   const onPointerDown = (e: React.PointerEvent) => {
     if (disabled || doneRef.current) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    viaKeyboard.current = false;
     setSettling(false);
     setSealNote(null);
     beginChallenge();
@@ -147,6 +154,7 @@ export function SwipeToConfirm({
     if (e.key !== ' ' && e.key !== 'Enter') return;
     e.preventDefault();
     if (holdTimer.current !== null) return; // already holding
+    viaKeyboard.current = true;
     setSettling(false);
     setSealNote(null);
     beginChallenge();

@@ -1113,11 +1113,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
       onVerified(sealByKeyboard.current);
     },
   });
-  // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
-  // would fall to BODY). Taken when the gesture COMPLETES, while the control
-  // still holds focus; a pointer seal never moves focus.
-  const sealWrap = useRef<HTMLDivElement>(null);
-  const keyDown = useRef(false);
+  // r109: a keyboard seal hands its focus on (the swipe unmounts, and focus
+  // would fall to BODY). The gesture itself says it was a keyboard hold; the
+  // handle is already disabled by the time onConfirm runs, so focus is no
+  // witness. A pointer seal never moves focus.
   const sealByKeyboard = useRef(false);
 
   /**
@@ -1642,23 +1641,17 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
-            <div
-              ref={sealWrap}
-              onKeyDownCapture={(e) => { if (e.key === ' ' || e.key === 'Enter') keyDown.current = true; }}
-              onPointerDownCapture={() => { keyDown.current = false; }}
-            >
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-              onConfirm={(challenge) => {
-                sealByKeyboard.current = keyDown.current && !!sealWrap.current?.contains(document.activeElement);
+              onConfirm={(challenge, how) => {
+                sealByKeyboard.current = how?.viaKeyboard === true;
                 verify.mutate(challenge);
               }}
             />
-            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}

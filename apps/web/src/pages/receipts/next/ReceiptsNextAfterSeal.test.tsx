@@ -273,6 +273,31 @@ describe('where focus goes after a seal (r108)', () => {
     expect(document.activeElement).toBe(rowBtn('INV-90'));
   });
 
+  it('a keyboard seal still hands focus on when the handle lost focus before the confirm ran', async () => {
+    // A real browser drops focus to BODY the moment completing disables the
+    // handle, before onConfirm runs; the gesture, not activeElement, knows.
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    let release: (t: string) => void = () => {};
+    api.mintVerifySeal.mockImplementationOnce(() => new Promise<string>((r) => { release = r; }));
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    fireEvent.keyDown(swipe, { key: ' ' });
+    // The hold completes and disables the handle; only then does focus go.
+    await waitFor(() => expect(swipe).toBeDisabled(), { timeout: 3000 });
+    // jsdom keeps focus on a disabled button; park it on a node, then remove it.
+    const parked = document.body.appendChild(document.createElement('button'));
+    parked.focus();
+    parked.remove();
+    expect(document.activeElement).toBe(document.body);
+    release('seal-token');
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    await waitFor(() => expect(document.activeElement).toBe(rowBtn('INV-89')));
+    fireEvent.keyDown(rowBtn('INV-89'), { key: 'j' });
+    expect(document.activeElement).toBe(rowBtn('INV-90'));
+  });
+
   it('a pointer seal leaves focus alone, even though the press focused the handle', async () => {
     render(<ReceiptsNext />, { wrapper });
     fireEvent.click(await paperRow('INV-88'));
