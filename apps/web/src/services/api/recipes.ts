@@ -356,6 +356,47 @@ export const recipesApi = {
   },
 };
 
+/** One line of a dish as the dish PUT takes it back: the loose-lines read sends it whole (r109 g4). */
+export interface LooseSaveLine extends SaveRecipeLine {
+  usablePct: number | null;
+}
+
+/** A dish's whole current version, read so it can be re-saved version-checked. */
+export interface LooseDish {
+  dishId: string;
+  name: string;
+  versionId: string;
+  yieldServes: number;
+  method: string | null;
+  glass: string | null;
+  garnish: string | null;
+  lines: LooseSaveLine[];
+}
+
+/** Every dish line of one folded name that names no good; `proposed` only when every line shares one unit family. */
+export interface LooseDishGroup {
+  key: string;
+  label: string;
+  lines: Array<{ dishId: string; index: number }>;
+  dishCount: number;
+  proposed: 'g' | 'ml' | 'each' | null;
+  shelf: ShelfItem | null;
+  sameName: number;
+}
+
+export interface LooseDishAnswer {
+  lineCount: number;
+  dishCount: number;
+  groups: LooseDishGroup[];
+  dishes: LooseDish[];
+}
+
+/** GET /recipes/:rid/drinks/loose-lines?kind=dish (owner or manager); writes nothing. */
+export async function getLooseDishLines(restaurantId: string): Promise<LooseDishAnswer> {
+  const r = await apiClient.get<LooseDishAnswer>(`${base(restaurantId)}/drinks/loose-lines`, { params: { kind: 'dish' } });
+  return r.data;
+}
+
 export type AllergenStatus = 'contains' | 'may_contain' | 'free' | 'not_stated';
 
 /**

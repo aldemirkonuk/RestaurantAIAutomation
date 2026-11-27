@@ -58,6 +58,7 @@ import { useDataTermsSignInBusy } from '../../../hooks/queries/useDataTerms';
 import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
 import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
+import { LooseFoodsChip, LooseFoodsSheet, useLooseFoods } from './LooseFoods';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns, valueCell, wacCell } from './iv-export';
@@ -231,7 +232,7 @@ export default function InventoryNext() {
   useEffect(() => {
     if (openParam === null) openedHere.current = false;
   }, [openParam]);
-  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
+  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry' | 'loosefoods'>(null);
   // r108 g14: the goods the nutrition lane walks, fixed when it opens so a save does not reshuffle it.
   const [lane, setLane] = useState<Array<{ id: string; name: string; kind: string }> | null>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
@@ -482,6 +483,8 @@ export default function InventoryNext() {
     retry: false,
   });
   const posOpen = posQueue.data?.summary?.open_lines ?? 0;
+  // Dish lines naming no good (r109 g4): read only for an owner or a manager.
+  const looseFoods = useLooseFoods(data.rid, data.canManage);
 
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
@@ -760,6 +763,7 @@ export default function InventoryNext() {
           </button>
         ),
       )}
+      {data.canManage ? <LooseFoodsChip load={looseFoods} onOpen={() => setPanel('loosefoods')} /> : null}
     </div>
   );
   // r108 g14: "Fill what's in it" starts from the Nutrition not recorded chip; owners and managers only.
@@ -1388,6 +1392,9 @@ export default function InventoryNext() {
         <PanelSuspense onFail={failPanel}>
           <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
         </PanelSuspense>
+      ) : null}
+      {panel === 'loosefoods' && data.canManage && data.rid && looseFoods.data ? (
+        <LooseFoodsSheet rid={data.rid} answer={looseFoods.data} onClose={() => setPanel(null)} />
       ) : null}
       {panel === 'pos' && data.canManage ? (
         <PanelSuspense onFail={failPanel}>
