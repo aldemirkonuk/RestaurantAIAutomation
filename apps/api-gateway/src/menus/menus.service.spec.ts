@@ -1163,6 +1163,23 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
     });
 
+    it("choosing a current menu again finishes a carry that was cut off, and only for lines still to carry (r102 menu-func-2, restored r103)", async () => {
+      const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15 }]);
+      await choose(service, read.menuId);
+      const first = calls.filter(([fn]) => fn === "set_house_menu_price").length;
+      const again = await choose(service, read.menuId);
+      expect(again.outcome).toBe("already_current");
+      expect(again.lines).toBe(1);
+      expect(again.priceSync).toEqual({ changed: 1 });
+      const prices = calls.filter(([fn]) => fn === "set_house_menu_price");
+      expect(prices).toHaveLength(first + 1);
+      expect(prices[first][1]).toMatchObject({ p_bottle_price: 64, p_effective_from: "2026-09-21T12:00:00Z" });
+      Object.assign(tables.restaurant_inventory[0], { menu_price_current: 64, menu_price_glass: 15 });
+      const settled = await choose(service, read.menuId);
+      expect(settled).toMatchObject({ outcome: "already_current", lines: 0, priceSync: {} });
+      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(first + 1);
+    });
+
     it("the setup's menu step ticks when a menu is made current, not when one is read (r102 menu-func-5)", async () => {
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = {
