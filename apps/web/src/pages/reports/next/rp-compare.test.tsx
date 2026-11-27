@@ -7,7 +7,7 @@ import { cloneElement, type ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { CatPlot } from './rp-plot';
+import { CatPlot, MAX_DRAWN, thinCats } from './rp-plot';
 import Cutting, { TillWindowPicker } from './Cutting';
 import { ANALYSIS_IDS } from './rp-sheet';
 import type { ArrangeApi } from './rp-arrange';
@@ -100,10 +100,21 @@ describe('till: compare to the previous period', () => {
 
   it('says the change in One figure, and a dash when there is nothing before to measure against', () => {
     const fig = (raw: unknown) => view(raw, true).figures.find((f) => f.label === 'Against the prior window')!;
-    expect(fig(payload()).value).toBe('+34.5%');
+    // Whole days only: each window's last day is left out, (3900 - 130 - (2900 - 100)) / (2900 - 100).
+    expect(fig(payload()).value).toBe('+34.6%');
     const bare = payload();
     const noPrior = payload({ dailySeries: bare.dailySeries.filter((d) => d.date >= FROM) });
     expect(fig(noPrior).value).toBe('—');
+  });
+
+  it('[REVERT-FAILS] a flat window with today half-rung reads 0.0%, not a fall that has not happened', () => {
+    const dailySeries = [
+      ...daysBetween(P_FROM, P_TO).map((date) => ({ date, revenue: 100, checks: 1 })),
+      ...daysBetween(FROM, TO).map((date) => ({ date, revenue: date === TO ? 50 : 100, checks: 1 })),
+    ];
+    const raw = payload({ dailySeries, revenue: 59 * 100 + 50, checkCount: 60 });
+    const f = view(raw, true).figures.find((x) => x.label === 'Against the prior window')!;
+    expect(f.value).toBe('0.0%');
   });
 
   it('draws nothing of the prior when compare is off, or the read was too short to hold one', () => {
@@ -126,9 +137,9 @@ describe('till: compare to the previous period', () => {
     expect(splitTill(till.select(young) as never, 30).prior).toBeNull();
     // A till that had already rung by the start of the prior keeps its comparison.
     const old = payload({ firstCheckDay: P_FROM });
-    expect(view(old, true).figures.find((f) => f.label === 'Against the prior window')!.value).toBe('+34.5%');
+    expect(view(old, true).figures.find((f) => f.label === 'Against the prior window')!.value).toBe('+34.6%');
     // An older gateway names no first day: nothing changes for it.
-    expect(view(payload(), true).figures.find((f) => f.label === 'Against the prior window')!.value).toBe('+34.5%');
+    expect(view(payload(), true).figures.find((f) => f.label === 'Against the prior window')!.value).toBe('+34.6%');
   });
 
   it('a gateway that sends no per-day checks leaves Checks and Average check unstated when comparing, never the 2N count', () => {
@@ -184,6 +195,29 @@ describe('CatPlot with a prior', () => {
     const { container } = wrap('bars', true);
     expect(container.querySelectorAll('.recharts-bar')).toHaveLength(2);
     expect(wrap('bars', false).container.querySelectorAll('.recharts-bar')).toHaveLength(1);
+  });
+});
+
+describe('thinning a long window with a prior beside it', () => {
+  // Equal means by construction: the same spike, on a different weekday for each line.
+  const long = Array.from({ length: 365 }, (_, i) => ({
+    label: `D${i}`,
+    value: 1000 + (i % 7 === 0 ? 500 : 0),
+    prior: 1000 + (i % 7 === 3 ? 500 : 0),
+  }));
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  it.each([MAX_DRAWN, 90])('[REVERT-FAILS] draws equal lines at equal heights, within the cap of %i', (max) => {
+    const kept = thinCats(long, [], max);
+    expect(kept.length).toBeLessThanOrEqual(max);
+    const now = mean(kept.map((d) => d.value));
+    const before = mean(kept.map((d) => d.prior));
+    expect(Math.abs(now - before) / before).toBeLessThan(0.02);
+  });
+
+  it('keeps the old rule, one row per stretch, when nothing is drawn beside it', () => {
+    const bare = long.map(({ label, value }) => ({ label, value }));
+    expect(thinCats(bare, [], 90).length).toBe(75);
   });
 });
 

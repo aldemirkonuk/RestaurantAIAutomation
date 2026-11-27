@@ -517,6 +517,7 @@ const till = analysis<TillWindow>({
     const counted = w.dailySeries.every((d) => d.checks != null);
     const shown = span.length > 0 ? span : w.dailySeries.map((d) => d.date);
     const prior = ctx.compare ? priorSlots(w, shown) : null;
+    const notes: string[] = [];
     if (ctx.compare && w.priorBeganAt)
       figures.push({
         label: 'Against the prior window',
@@ -524,16 +525,21 @@ const till = analysis<TillWindow>({
         note: `The till's first check is on ${shortDay(w.priorBeganAt)}, inside the window before this one, so there is no whole window to read against`,
       });
     if (ctx.compare && w.prior) {
-      const pct =
-        w.revenue != null && w.prior.revenue != null && w.prior.revenue > 0
-          ? ((w.revenue - w.prior.revenue) / w.prior.revenue) * 100
-          : null;
+      // Today is part-rung, and the prior's matching slot is a whole day: set against each other they read as
+      // a fall that has not happened. The percent is worked over the days both windows have complete, so the
+      // window's last day and the prior's last day are left out of it. A prior the till only partly covers
+      // never reaches here: `splitTill` holds it back as `priorBeganAt` (above).
+      const lastOf = (series: Array<{ date: string; revenue: number | null }>, day: string) =>
+        series.find((d) => d.date === day)?.revenue ?? 0;
+      const now = w.revenue != null ? w.revenue - lastOf(w.dailySeries, w.to) : null;
+      const before = w.prior.revenue != null ? w.prior.revenue - lastOf(w.prior.dailySeries, w.prior.to) : null;
+      const pct = now != null && before != null && before > 0 ? ((now - before) / before) * 100 : null;
       figures.push(
         { label: `Prior ${w.days} days`, value: money(w.prior.revenue), note: 'No POS revenue recorded' },
         {
           label: 'Against the prior window',
           value: pct == null ? EM : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`,
-          note: 'Needs takings in both windows, and takings before to measure against',
+          note: 'Whole days only (today and its matching prior day are left out), and it needs takings in both windows',
         },
       );
     }
@@ -647,7 +653,7 @@ const till = analysis<TillWindow>({
         return getTable();
       },
       figures,
-      notes: [],
+      notes,
       basis,
     };
   },
