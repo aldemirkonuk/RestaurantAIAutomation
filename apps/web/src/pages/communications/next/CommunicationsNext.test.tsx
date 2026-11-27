@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 
+const mockAuth = vi.hoisted(() => ({ current: { user: { role: 'staff' }, activeRole: 'staff' } as Record<string, unknown> }));
+vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => mockAuth.current }));
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
 // Only the HOOK is replaced. `COMMS_SERVER_WINDOWS` passes through from the real
@@ -228,6 +230,7 @@ const base = {
 };
 
 beforeEach(() => {
+  mockAuth.current = { user: { role: 'staff' }, activeRole: 'staff' };
   mockData.current = { ...base };
   mockLetters.current = { data: { requests: [] }, isError: false, dataUpdatedAt: 0, refetch: () => {} };
   mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
@@ -266,6 +269,19 @@ describe('CommunicationsNext', () => {
     // D6: replies are the server's exact count, never a floor of the book.
     expect(screen.queryByText('≥3')).toBeNull();
     expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('labels the 30-day figure by who reads it: owners and managers see every kind, staff vendor replies only (r105 mail-1)', () => {
+    mockData.current = { ...base, glance: { draftsPending: 1, sentLast30: null, repliesLast30: 90 } };
+    mockAuth.current = { user: { role: 'staff' }, activeRole: 'owner' };
+    const { unmount } = render(<CommunicationsNext />);
+    expect(screen.getByText('Letters in · 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Vendor replies · 30 days')).toBeNull();
+    unmount();
+    mockAuth.current = { user: { role: 'owner' }, activeRole: 'staff' };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Letters in · 30 days')).toBeNull();
   });
 
   it('a failed count of letters in fails the replies figure alone (D6)', () => {
