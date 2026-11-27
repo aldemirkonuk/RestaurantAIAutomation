@@ -17,7 +17,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import type { TableExportFormat } from '../../lib/tableExport'
+import { warmExportLibraries, type TableExportFormat } from '../../lib/tableExport'
 
 interface FormatOption {
   id: TableExportFormat
@@ -140,6 +140,8 @@ export function ExportMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        onPointerEnter={warmExportLibraries}
+        onFocus={warmExportLibraries}
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
