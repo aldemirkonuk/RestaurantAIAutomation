@@ -252,6 +252,14 @@
   min-height: 23px;
   max-height: 23px;
 }
+/* The answered foot line is 44 px where its button is (phone width, or a coarse pointer such as a house tablet),
+   so the held slot is too; this stays above the collapsing rule so the give-back still wins. */
+@media (max-width: 767px), (pointer: coarse) {
+  .tc-line--foot.tc-line--hold {
+    min-height: 44px;
+    max-height: 44px;
+  }
+}
 .tc-line--hold {
   overflow: hidden;
   transition: min-height 200ms ease-in-out, max-height 200ms ease-in-out, margin 200ms ease-in-out;
