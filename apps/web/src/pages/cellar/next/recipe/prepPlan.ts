@@ -127,6 +127,15 @@ export function makeWords(m: MakeRow): string {
   return `${m.name}: ${m.batches} ${m.batches === 1 ? 'batch' : 'batches'} (${need} needed, one makes ${pullWords(m.yieldBase, m.baseUnit)})`;
 }
 
+/** One id per row, the same one a row carries as `data-row`: the lists' order is these, never their figures. */
+export function rowIds(plan: PrepPlan): { pull: string[]; make: string[]; notLinked: string[] } {
+  return {
+    pull: plan.pull.map((r) => `${r.inventoryId}|${r.baseUnit}`),
+    make: plan.make.map((m) => `${m.componentId}|${m.baseUnit}`),
+    notLinked: plan.notLinked.map((r) => r.label),
+  };
+}
+
 /** Serves kept per house and day in this browser: a convenience. */
 export const planKey = (houseId: string | null | undefined, day: string) => `mudavym.prepPlan.v1:${houseId ?? '-'}:${day}`;
 
