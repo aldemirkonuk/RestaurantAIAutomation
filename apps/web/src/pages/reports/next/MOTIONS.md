@@ -86,6 +86,12 @@ to those would put a moving cutting somewhere the announcement says it is not.
   it, and a bar that slid in would delay the first arrow key behind an animation.
 - **Cuttings do not stagger in.** A report is a reference you return to, not an
   arrival — and eight blocks cascading would fight the ruling's stillness.
+- **A stretch is marked, not drawn in.** "Read a stretch" (r108 g3) lays the
+  seal tint behind the days under the pointer and says them in the reserved
+  20 px line below the drawing. The band follows the pointer 1:1 and has no
+  transition in or out, and the readout swaps its words outright: a band that
+  eased after the finger would mark days the reader has already left, and a
+  line that faded would read as the figure still being worked out.
 - **Reduced motion**: the ruling, the lift, the ink states and the working
   expansion have their transitions removed outright; the skeleton sheen stops
   and the static bar remains; the two WAAPI motions land on their end state

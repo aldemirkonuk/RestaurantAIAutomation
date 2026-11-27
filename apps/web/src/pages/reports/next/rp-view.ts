@@ -79,6 +79,14 @@ export interface CatSeries {
   projectedLabel?: string;
   /** The reader's words for the `prior` series ("the prior 30 days"); present only when one is drawn. */
   priorLabel?: string;
+  /**
+   * "Read a stretch" (r108 g3): the slots `a..b` of `data`, either order, said
+   * in one line. Absent: the drawing offers no stretch (only the till does, and
+   * never on a withheld read). Undefined from it: nothing can be said.
+   */
+  stretch?: (a: number, b: number) => string | undefined;
+  /** The prompt once a first day is tapped on the single-pointer path. */
+  stretchFrom?: (a: number) => string;
 }
 
 export interface Point {
