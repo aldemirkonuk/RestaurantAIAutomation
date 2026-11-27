@@ -64,9 +64,13 @@ function sectionName(value: string) {
  * `bottlePrice`, and "24 bottle" beside grilled octopus says a thing that is
  * not so: a dish says its figure alone.
  */
-export function dishPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>) {
+export function dishPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>, money?: HouseMoney) {
   const n = item.bottlePrice ?? item.byGlassPrice
-  return n == null ? '' : String(n)
+  if (n == null) return ''
+  // In the house's money once its answer is in (r110: a lira house read a bare "145");
+  // before then, or with no money given, the figure stands alone.
+  if (!money) return String(n)
+  return money.read ? formatMoney(n, money.code) : formatHouseNumber(n, null, { digits: 2 })
 }
 
 /**
@@ -478,7 +482,7 @@ export default function HouseMenu() {
                   className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-[#211f1b]/15 py-4"
                 >
                   <span className="font-serif text-xl">{item.name || item.rawText}</span>
-                  <span className="font-mono text-sm">{dishPrice(item)}</span>
+                  <span className="font-mono text-sm">{dishPrice(item, money)}</span>
                 </li>
               ))}
             </ul>
