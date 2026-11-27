@@ -214,6 +214,35 @@ export const documentsApi = {
   },
 
   /**
+   * Another vendor's last price for each paired line (r108 g14). Owner and
+   * manager only: the gateway answers anyone else with a 403 in words.
+   */
+  async vendorPrices(id: string): Promise<{
+    paperCurrency: string | null
+    providerId: string | null
+    notCompared: 'currency_unknown' | 'vendor_unknown' | null
+    lines: Array<
+      | { lineId: string; lineNo: number; description: string | null; compared: false; reason: string }
+      | {
+          lineId: string
+          lineNo: number
+          description: string | null
+          compared: true
+          cheaper: boolean
+          thisPaper: number
+          sentence: string | null
+        }
+    >
+  }> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/vendor-prices`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
    * Mint the one-time seal a VERIFICATION has to carry back — at the moment the
    * confirm gesture BEGINS.
    *
