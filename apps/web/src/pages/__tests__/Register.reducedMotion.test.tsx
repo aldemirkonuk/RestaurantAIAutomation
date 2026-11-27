@@ -10,7 +10,7 @@ import { createElement } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({ registerAccount: vi.fn(), joinViaInvite: vi.fn(), error: null }),
@@ -73,7 +73,7 @@ describe('reduced motion on the way in', () => {
     for (const b of buttons) expect(b.slice(0, 300)).toContain('motion-reduce:transition-none')
   })
 
-  it('holds the invite card\'s room while its read is out, then gives it up', async () => {
+  it('holds the invite slot at the card\'s height until the next keystroke, whatever the answer', async () => {
     let settle: (v: unknown) => void = () => {}
     get.mockReturnValue(new Promise((r) => { settle = r }))
     render(
@@ -83,11 +83,19 @@ describe('reduced motion on the way in', () => {
         createElement(Routes, null, createElement(Route, { path: '/register', element: createElement(Register) })),
       ),
     )
-    expect(screen.queryByTestId('invite-card-room')).toBeNull()
+    const slot = () => screen.getByTestId('invite-card-room')
+    expect(slot().style.minHeight).toBe('')
     fireEvent.change(screen.getByLabelText('Invite Code'), { target: { value: 'ABCD2345' } })
-    expect(screen.getByTestId('invite-card-room')).toHaveStyle({ minHeight: '142px' })
-    settle({ data: { valid: false, reason: 'not_found' } })
-    await waitFor(() => expect(screen.queryByTestId('invite-card-room')).toBeNull())
+    expect(slot()).toHaveStyle({ minHeight: '142px' })
+    // r103 review: a used or unknown code puts a note of about 48 px in the slot;
+    // giving the room up then moved Continue up about 94 px with no input.
+    settle({ data: { valid: false, reason: 'used' } })
+    expect(await screen.findByText('This invite code has already been used.')).toBeInTheDocument()
+    expect(slot()).toHaveStyle({ minHeight: '142px' })
+    expect(slot()).toContainElement(screen.getByText('This invite code has already been used.'))
+    // The next keystroke gives the room up: that move follows an input.
+    fireEvent.change(screen.getByLabelText('Invite Code'), { target: { value: 'ABCD234' } })
+    expect(slot().style.minHeight).toBe('')
   })
 
   it('holds that room on the very first render of an invite link (not one effect later)', () => {
