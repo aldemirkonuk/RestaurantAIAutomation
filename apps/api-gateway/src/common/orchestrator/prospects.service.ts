@@ -190,7 +190,9 @@ export class ProspectsService {
       let existingQuery = this.databaseService.supabase
         .from("email_prospects")
         .select("id, message_count, status")
-        .eq("domain", domain);
+        .eq("domain", domain)
+        // A held letter is its own row (`holdLetter`), never the domain's.
+        .is("held_reason", null);
       existingQuery = isTriage
         ? existingQuery.is("restaurant_id", null)
         : existingQuery.eq("restaurant_id", restaurantId as string);
@@ -306,13 +308,90 @@ export class ProspectsService {
     });
   }
 
+  /**
+   * Keep one letter for a person, filed under no vendor (QA round 24): its
+   * From names nobody (`sender_unreadable`), or the receiving server could
+   * not confirm it came from the address it names (`sender_unconfirmed`).
+   * One row per letter (`held_reason` set), never folded into a domain's
+   * prospect row: folding keeps only the newest letter's words, and a held
+   * letter must not vanish under the next one. Shown in the house's "Who is
+   * writing" list, or the operator's when `restaurantId` is null. Idempotent
+   * on gmail_message_id. Never promoted to a vendor (`promote`).
+   */
+  async holdLetter(params: {
+    restaurantId: string | null;
+    heldReason: "sender_unreadable" | "sender_unconfirmed";
+    senderEmail: string | null;
+    senderName?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    attachments?: ProspectAttachmentRef[];
+    gmailMessageId?: string | null;
+    gmailThreadId?: string | null;
+  }): Promise<CaptureResult> {
+    const restaurantId = params.restaurantId ?? null;
+    const domain = params.senderEmail ? this.domainOf(params.senderEmail) : "";
+    if (params.gmailMessageId) {
+      const { data: dup, error } = await this.databaseService.supabase
+        .from("email_prospects")
+        .select("id")
+        .eq("gmail_message_id", params.gmailMessageId)
+        .limit(1);
+      if (!error && dup && dup.length)
+        return { captured: false, duplicate: true, restaurantId, domain };
+    }
+    const attachments = Array.isArray(params.attachments)
+      ? params.attachments
+      : [];
+    const body = (params.body ?? "").replace(/\s+/g, " ").trim();
+    const now = new Date().toISOString();
+    const { error } = await this.databaseService.supabase
+      .from("email_prospects")
+      .insert({
+        restaurant_id: restaurantId,
+        domain,
+        sender_email: params.senderEmail ?? null,
+        sender_name: params.senderName ?? null,
+        subject: params.subject ?? null,
+        snippet: body.slice(0, 280) || null,
+        body_preview: body.slice(0, 4000) || null,
+        capture_reason: params.heldReason,
+        held_reason: params.heldReason,
+        attachments,
+        gmail_message_id: params.gmailMessageId ?? null,
+        gmail_thread_id: params.gmailThreadId ?? null,
+        has_attachments: attachments.length > 0,
+        message_count: 1,
+        status: "new",
+        first_seen_at: now,
+        last_seen_at: now,
+      });
+    if (error) {
+      this.logger.error(
+        `HELD_LETTER_NOT_KEPT reason=${params.heldReason} restaurant=${restaurantId ?? "none"} — ${error.message}`,
+      );
+      return { captured: false, restaurantId, domain };
+    }
+    this.logger.warn(
+      `HELD_LETTER reason=${params.heldReason} restaurant=${restaurantId ?? "none (operator)"} domain=${domain || "-"}`,
+    );
+    return {
+      captured: true,
+      isNew: true,
+      isTriage: restaurantId === null,
+      restaurantId,
+      domain,
+      senderName: params.senderName ?? null,
+    };
+  }
+
   /** Open prospects (status='new') for the surface, newest outreach first. */
   async list(restaurantId: string): Promise<any[]> {
     try {
       const { data } = await this.databaseService.supabase
         .from("email_prospects")
         .select(
-          "id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
+          "id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, held_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
         )
         .eq("restaurant_id", restaurantId)
         .eq("status", "new")
@@ -333,7 +412,7 @@ export class ProspectsService {
       const { data } = await this.databaseService.supabase
         .from("email_prospects")
         .select(
-          "id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
+          "id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, held_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
         )
         .is("restaurant_id", null)
         .eq("status", "new")
@@ -382,7 +461,7 @@ export class ProspectsService {
       const { data } = await this.databaseService.supabase
         .from("email_prospects")
         .select(
-          "id, restaurant_id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
+          "id, restaurant_id, domain, sender_email, sender_name, subject, snippet, body_preview, capture_reason, held_reason, attachments, has_attachments, message_count, status, first_seen_at, last_seen_at",
         )
         .in("restaurant_id", restaurantIds)
         .eq("status", "new")
@@ -407,6 +486,7 @@ export class ProspectsService {
       snippet: r.snippet,
       body_preview: r.body_preview ?? null,
       capture_reason: r.capture_reason ?? null,
+      held_reason: r.held_reason ?? null,
       has_attachments: r.has_attachments === true || attachments.length > 0,
       attachments: attachments.map((a: any) => ({
         filename: a.filename,
@@ -481,7 +561,7 @@ export class ProspectsService {
     const { data: prospect, error: prospectError } =
       await this.databaseService.supabase
         .from("email_prospects")
-        .select("id, domain, sender_email, sender_name, status")
+        .select("id, domain, sender_email, sender_name, status, held_reason")
         .eq("restaurant_id", restaurantId)
         .eq("id", prospectId)
         .maybeSingle();
@@ -495,6 +575,10 @@ export class ProspectsService {
     }
     if (!prospect) return { promoted: false };
     const p = prospect as any;
+    // A held letter (QA round 24) is not an introduction: its sender could
+    // not be read, or could not be confirmed. Adding it as a vendor would
+    // make a forged or unreadable From a vendor's address.
+    if (p.held_reason) return { promoted: false };
 
     // Dedupe: an existing (non-deleted) provider with this email on this restaurant wins.
     let providerId: string | null = null;
