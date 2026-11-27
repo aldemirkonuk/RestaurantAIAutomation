@@ -16,6 +16,7 @@ import {
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
+import { splitPath } from "./correctable-paths";
 import { CorrectionRowLite, movesCost, overlayCorrections } from "./correction-overlay";
 
 /**
@@ -431,6 +432,21 @@ interface AgreedPrice {
 }
 
 /**
+ * The price an item is posted at. ONE item, ONE priced line: the pairing is
+ * not ambiguous, so it is not a guess. Any other shape is left alone rather
+ * than matched by description.
+ */
+function pickPrice(
+  inventoryId: string,
+  itemCount: number,
+  priced: { byItem: Map<string, AgreedPrice>; unattached: AgreedPrice[] },
+): AgreedPrice | null {
+  const price = priced.byItem.get(inventoryId) ?? null;
+  if (!price && itemCount === 1 && priced.unattached.length === 1) return priced.unattached[0];
+  return price;
+}
+
+/**
  * THE CONSOLIDATION GUARANTEE (ADR 0103 A5), as a free function so the two
  * legacy receiving paths can ask it without taking a dependency on this module.
  *
@@ -780,11 +796,7 @@ export class DeliveryStockService {
       // (4)) posts the items whose lots are still provisional and no other.
       // The pairing rules below still see every booked item.
       if (only && !only.has(inventoryId)) continue;
-      let price = priced.value.byItem.get(inventoryId) ?? null;
-      // ONE item, ONE priced line: the pairing is not ambiguous, so it is not a
-      // guess. Any other shape is left alone rather than matched by description.
-      if (!price && items.length === 1 && priced.value.unattached.length === 1)
-        price = priced.value.unattached[0];
+      const price = pickPrice(inventoryId, items.length, priced.value);
       if (!price) {
         // QA 12b D1, kept through lane 1.4: one item, and the one accepted
         // proposal on the delivery names no line, so its refusal is this item's.
@@ -886,7 +898,32 @@ export class DeliveryStockService {
       }
       const booked = await this.bookedSoFar(deliveryId);
       if (!booked.ok) return booked;
-      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, undefined, reason);
+      // A line's correction revalues that line's item and every item whose
+      // cost it moved, and no other: another item's lot may have been moved
+      // since verify (a hand revaluation, a credit), and re-posting it to the
+      // paper's cost would undo that. The invoice's freight and discount are
+      // shared over its lines by value, so one line's correction moves the
+      // others too: each item's cost is worked out before and after. A header
+      // field (currency, totals) can move every item, so it posts all.
+      const only = await this.itemOfCorrectedLine(restaurantId, documentId, path);
+      if (!only.ok) return only;
+      let posting = only.value;
+      if (posting) {
+        const after = await this.agreedPrices(restaurantId, deliveryId, booked.value);
+        if (!after.ok) return after;
+        const prior = await this.agreedPrices(restaurantId, deliveryId, booked.value, { documentId, revision });
+        if (!prior.ok) return prior;
+        const live = [...booked.value].filter(([, qty]) => qty !== 0).length;
+        const moved = new Set(posting);
+        for (const [inventoryId, qty] of booked.value) {
+          if (qty === 0) continue;
+          const was = pickPrice(inventoryId, live, prior.value)?.unitCost ?? null;
+          const now = pickPrice(inventoryId, live, after.value)?.unitCost ?? null;
+          if (was !== now) moved.add(inventoryId);
+        }
+        posting = moved;
+      }
+      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, posting, reason);
       if (!costed.ok) return costed;
       const kept = costed.value.stillProvisional.map((k) => ({
         inventoryId: k.inventoryId,
@@ -911,6 +948,33 @@ export class DeliveryStockService {
       out.deliveries.push({ deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore });
     }
     return { ok: true, value: out };
+  }
+
+  /**
+   * The item a `lines[n].*` correction is about: `lines[n]` is the n-th row of
+   * this paper by `line_no`, as the canonical read numbers them. Undefined (every
+   * booked item) for a header path, and for a line that names no item (it is
+   * priced through the delivery's sole item or a proposal, so which lot it moves
+   * is not the line's to say). A failed read stops the re-cost (ADR 0020).
+   */
+  private async itemOfCorrectedLine(
+    restaurantId: string,
+    documentId: string,
+    path: string,
+  ): Promise<StockResult<ReadonlySet<string> | undefined>> {
+    const at = splitPath(path);
+    if (!at || at.line == null) return { ok: true, value: undefined };
+    const read = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select("line_no, inventory_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("document_id", documentId)
+      .order("line_no", { ascending: true });
+    if (read.error)
+      return { ok: false, status: 500, error: `the lines of the paper ${documentId} could not be read to find the corrected item: ${read.error.message}. The correction stands; nothing was revalued.` };
+    const row = ((read.data ?? []) as { line_no: number | null; inventory_id: string | null }[])[at.line];
+    return { ok: true, value: row?.inventory_id ? new Set([row.inventory_id]) : undefined };
   }
 
   /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
@@ -1483,6 +1547,8 @@ export class DeliveryStockService {
     restaurantId: string,
     deliveryId: string,
     booked: Map<string, number>,
+    /** Cost the paper as it stood before this revision of this document (r100: what a correction moved). */
+    before?: { documentId: string; revision: number },
   ): Promise<
     StockResult<{
       byItem: Map<string, AgreedPrice>;
@@ -1566,6 +1632,10 @@ export class DeliveryStockService {
       const read = await this.correctionsOf(invoiceIds);
       if (!read.ok) return read;
       corrections = read.value;
+      if (before) {
+        const kept = (corrections.get(before.documentId) ?? []).filter((c) => c.revision < before.revision);
+        corrections = new Map(corrections).set(before.documentId, kept);
+      }
       papers = papers.map((h) => overlayCorrections(h as unknown as Record<string, unknown>, [], corrections.get(h.id) ?? []).header as unknown as PaperHeaderRow);
     }
     // QA 15 (5): an unreadable house is not "no currency named". ADR 0359
