@@ -307,6 +307,35 @@ export const documentsApi = {
   },
 
   /**
+   * Another vendor's last price for each paired line (r108 g14). Owner and
+   * manager only: the gateway answers anyone else with a 403 in words.
+   */
+  async vendorPrices(id: string): Promise<{
+    paperCurrency: string | null
+    providerId: string | null
+    notCompared: 'currency_unknown' | 'vendor_unknown' | null
+    lines: Array<
+      | { lineId: string; lineNo: number; description: string | null; compared: false; reason: string }
+      | {
+          lineId: string
+          lineNo: number
+          description: string | null
+          compared: true
+          cheaper: boolean
+          thisPaper: number
+          sentence: string | null
+        }
+    >
+  }> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/vendor-prices`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
    * Whether this session may take the verified CSV, in the gateway's own
    * money-role answer (r108). Anything but a plain yes reads as no, so a
    * failed or older gateway shows no link rather than one that refuses.
