@@ -33,7 +33,19 @@
  * a screen reader without a second description.
  */
 
-import { useEffect, useId, useReducer, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useReducer,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import {
   Area,
   AreaChart,
@@ -174,9 +186,49 @@ export function readingOf(
 }
 
 /**
+ * What the keyboard and a screen reader are told about the point the tooltip is on (r108 g2). A tooltip
+ * reports its sentence here (`useSpoken`); `Plot` speaks it in one polite line, and Escape hides the tip.
+ */
+const PlotTip = createContext<{ say: (sentence: string) => void; hidden: boolean } | null>(null);
+
+/** One line of a tooltip: a measure's figure, or `null` for a day that is not stated (never 0). */
+export interface TipLine {
+  name?: string;
+  value: string | null;
+  tail: string;
+}
+export interface TipModel {
+  head: string;
+  lines: TipLine[];
+}
+
+/** The tip as words, in the order the eye reads it. The visible tooltip and the live line both come from the model. */
+export function tipSentence(m: TipModel): string {
+  const lines = m.lines.map(
+    (l) => `${l.name ? `${l.name}: ` : ''}${l.value === null ? 'not stated' : `${l.value}${l.tail}`}`,
+  );
+  return `${m.head}. ${lines.join('; ')}`;
+}
+
+/** A tooltip's sentence to the plot's live line, and gone when the tip is. Returns whether Escape has hidden it. */
+function useSpoken(model: TipModel | null): boolean {
+  const k = useContext(PlotTip);
+  const say = k?.say;
+  const sentence = model ? tipSentence(model) : '';
+  useEffect(() => {
+    say?.(sentence);
+  }, [say, sentence]);
+  return k?.hidden ?? false;
+}
+
+/**
  * The frame every recharts drawing sits in. It names itself for a screen
- * reader in words (`label`), because the SVG inside is a picture: the same
- * register's table drawing is the readable form, one "Draw as" away.
+ * reader in words (`label`), and a drawing that can be walked by keyboard
+ * (`keys`) is a group the reader can arrow through: the chart's own surface is
+ * the one tab stop (recharts' `accessibilityLayer`), the tooltip follows
+ * Left and Right, one polite line says what it shows, and Escape hides it. A
+ * scatter has no order to walk, so it stays a picture with its table as the
+ * keyboard path.
  */
 function Plot({
   children,
@@ -184,6 +236,7 @@ function Plot({
   caption,
   held = false,
   stretch,
+  keys = true,
 }: {
   children: ReactNode;
   label: string;
@@ -193,25 +246,53 @@ function Plot({
   caption?: ReactNode;
   /** The till's "Read a stretch" (r108 g3): its readout slot, always reserved when offered. */
   stretch?: Stretch;
+  /** Arrow keys walk the points; false for a scatter. */
+  keys?: boolean;
 }) {
   const { ref, state } = useDrawIn();
+  const [said, setSaid] = useState('');
+  const [hidden, setHidden] = useState(false);
+  const tip = useMemo(() => ({ say: setSaid, hidden }), [hidden]);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setHidden(false);
+    else if (e.key === 'Escape' && said !== '' && !hidden) {
+      // The tip was showing: this Escape is for it. The full-screen view reads `defaultPrevented`, so it stays up.
+      e.preventDefault();
+      setHidden(true);
+    }
+  };
+  const stretchAttrs = stretch ? { 'data-stretch-id': stretch.id, 'data-stretching': stretch.span ? 'true' : 'false' } : {};
+  const drawing = !held && (
+    <ResponsiveContainer width="100%" height="100%" debounce={1}>
+      {children as never}
+    </ResponsiveContainer>
+  );
   return (
     <>
       {caption != null && <PlotCaption>{caption}</PlotCaption>}
-      <div
-        className="rp-plot"
-        role="img"
-        aria-label={label}
-        ref={ref}
-        data-draw={state}
-        {...(stretch ? { 'data-stretch-id': stretch.id, 'data-stretching': stretch.span ? 'true' : 'false' } : {})}
-      >
-        {!held && (
-          <ResponsiveContainer width="100%" height="100%" debounce={1}>
-            {children as never}
-          </ResponsiveContainer>
-        )}
-      </div>
+      {keys ? (
+        <div
+          className="rp-plot"
+          role="group"
+          aria-roledescription="chart"
+          aria-label={label}
+          ref={ref}
+          data-draw={state}
+          data-tip-hidden={hidden || undefined}
+          onKeyDown={onKeyDown}
+          onPointerMove={hidden ? () => setHidden(false) : undefined}
+          {...stretchAttrs}
+        >
+          <PlotTip.Provider value={tip}>{drawing}</PlotTip.Provider>
+          <p className="rp-sr-only" aria-live="polite" data-testid="rp-plot-live">
+            {hidden ? '' : said}
+          </p>
+        </div>
+      ) : (
+        <div className="rp-plot" role="img" aria-label={label} ref={ref} data-draw={state} {...stretchAttrs}>
+          {drawing}
+        </div>
+      )}
       {stretch && (
         <p className="rp-stretch" data-stretch-id={stretch.id} data-state={stretch.state} aria-live="polite" title={stretch.words}>
           {stretch.words}
@@ -339,25 +420,46 @@ function Tip({
   projectedLabel?: string;
   priorLabel?: string;
 }) {
-  if (!active || !payload || payload.length === 0) return null;
-  const row = payload[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
-  const rows = payload.filter((p) => typeof p.value === 'number');
-  if (rows.length === 0) return null;
+  const row = payload?.[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
+  const numeric = (payload ?? []).filter((p) => typeof p.value === 'number');
+  const model: TipModel | null =
+    !active || !payload || payload.length === 0
+      ? null
+      : {
+          head: row?.full ?? String(label ?? ''),
+          // A day with no figure says so; it is never drawn as 0 (ADR 0020).
+          lines:
+            numeric.length === 0
+              ? [{ value: null, tail: '' }]
+              : numeric.map((p) => {
+                  // A bar drawing carries one series, so a projected bar says so itself.
+                  const projected =
+                    p.dataKey === 'projected' || (p.dataKey === 'shown' && row?.isProjected === true);
+                  return {
+                    value: format(p.value as number),
+                    tail: ` ${unit}${projected && projectedLabel ? ` · ${projectedLabel}` : ''}${
+                      p.dataKey === 'prior' && priorLabel ? ` · ${priorLabel}` : ''
+                    }`,
+                  };
+                }),
+        };
+  const hidden = useSpoken(model);
+  if (!model || hidden) return null;
   return (
     <div className="rp-tip">
-      <span className="rp-tip__head">{row?.full ?? String(label ?? '')}</span>
-      {rows.map((p) => {
-        // A bar drawing carries one series, so a projected bar says so itself.
-        const projected =
-          p.dataKey === 'projected' || (p.dataKey === 'shown' && row?.isProjected === true);
-        return (
-          <span key={String(p.dataKey)} className="rp-tip__row">
-            <b>{format(p.value as number)}</b> {unit}
-            {projected && projectedLabel ? ` · ${projectedLabel}` : ''}
-            {p.dataKey === 'prior' && priorLabel ? ` · ${priorLabel}` : ''}
+      <span className="rp-tip__head">{model.head}</span>
+      {model.lines.map((l, i) =>
+        l.value === null ? (
+          <span key={i} className="rp-tip__row">
+            Not stated
           </span>
-        );
-      })}
+        ) : (
+          <span key={i} className="rp-tip__row">
+            <b>{l.value}</b>
+            {l.tail}
+          </span>
+        ),
+      )}
     </div>
   );
 }
@@ -512,6 +614,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     <Tooltip
       wrapperStyle={tipWrapper(gutter)}
       {...tipMotion()}
+      filterNull={false}
       cursor={kind === 'bars' ? { fill: 'var(--seal-tint)' } : CROSSHAIR}
       content={
         <Tip unit={unit} format={format} projectedLabel={projectedLabel} priorLabel={priorLabel} /> as unknown as never
@@ -571,7 +674,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
     const labelled = rows.length <= LABEL_BARS_MAX;
     return (
       <Plot label={label} caption={caption} held={held} stretch={stretch}>
-        <BarChart data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN} {...stretch?.on}>
+        <BarChart accessibilityLayer data={rows} margin={labelled ? { ...MARGIN, top: 20 } : MARGIN} {...stretch?.on}>
           {axes}
           <Bar dataKey="shown" radius={[3, 3, 0, 0]} isAnimationActive={false}>
             {labelled && valueLabels('shown', format)}
@@ -609,7 +712,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   if (kind === 'area')
     return (
       <Plot label={label} caption={caption} held={held} stretch={stretch}>
-        <AreaChart data={data} margin={MARGIN} {...stretch?.on}>
+        <AreaChart accessibilityLayer data={data} margin={MARGIN} {...stretch?.on}>
           {axes}
           <Area
             type="monotone"
@@ -654,7 +757,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 
   return (
     <Plot label={label} caption={caption} held={held} stretch={stretch}>
-      <LineChart data={data} margin={MARGIN} {...stretch?.on}>
+      <LineChart accessibilityLayer data={data} margin={MARGIN} {...stretch?.on}>
         {axes}
         <Line
           type="monotone"
@@ -792,6 +895,7 @@ export function ComboPlot({
         stretch={stretch}
       >
         <ComposedChart
+          accessibilityLayer
           data={rows}
           margin={{ ...MARGIN, ...(split ? { right: 2 } : {}), ...(rows.length <= LABEL_BARS_MAX ? { top: 20 } : {}) }}
           {...stretch?.on}
@@ -817,6 +921,7 @@ export function ComboPlot({
           <Tooltip
             wrapperStyle={tipWrapper(barGutter)}
             {...tipMotion()}
+            filterNull={false}
             cursor={{ fill: 'var(--seal-tint)' }}
             content={<ComboTip plan={plan} /> as unknown as never}
           />
@@ -862,17 +967,30 @@ function ComboTip({
   plan: ComboPlan;
 }) {
   const row = active ? payload?.[0]?.payload : undefined;
-  if (!row) return null;
-  const lines: Array<[string, number | null, ComboPlan['bars']]> = [
-    ['Bars', row.bar, plan.bars],
-    ['Line', row.line, plan.line],
-  ];
+  const model: TipModel | null = row
+    ? {
+        head: row.full ?? '',
+        lines: (
+          [
+            [row.bar, plan.bars],
+            [row.line, plan.line],
+          ] as Array<[number | null, ComboPlan['bars']]>
+        ).map(([v, m]) => ({
+          name: m.label,
+          value: v == null ? null : m.format(v),
+          tail: v == null ? '' : ` ${m.unit}`,
+        })),
+      }
+    : null;
+  const hidden = useSpoken(model);
+  if (!model || hidden) return null;
   return (
     <div className="rp-tip">
-      <span className="rp-tip__head">{row.full}</span>
-      {lines.map(([side, v, m]) => (
-        <span key={side} className="rp-tip__row">
-          {m.label}: {v == null ? <b>{EM}</b> : <b>{m.format(v)}</b>} {v == null ? '' : m.unit}
+      <span className="rp-tip__head">{model.head}</span>
+      {model.lines.map((l) => (
+        <span key={l.name} className="rp-tip__row">
+          {l.name}: {l.value === null ? <b>{EM}</b> : <b>{l.value}</b>}
+          {l.tail}
         </span>
       ))}
     </div>
@@ -892,6 +1010,7 @@ export function PointPlot({ series }: { series: PointSeries }) {
     <Plot
       label={`${yLabel} against ${xLabel}, one point each`}
       caption={`${titled(yLabel)} · against ${xLabel}`}
+      keys={false}
     >
       <ScatterChart margin={MARGIN}>
         <CartesianGrid {...GRID} />
