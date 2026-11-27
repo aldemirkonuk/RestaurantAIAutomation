@@ -403,6 +403,13 @@ describe("cost at sale (P9, D4)", () => {
       basis: "invoice_lot_wac",
       lotId: "old",
       orderId: "o1",
+      // r109 g1: the shelf the WAC was read over, oldest first; the sample
+      // and the spent lot are not on it.
+      parts: [
+        { order_id: "o1", lot_id: "old", qty: 2, unit_cost: 30, invoiced: true },
+        { order_id: "o2", lot_id: "new", qty: 3, unit_cost: 40, invoiced: true },
+      ],
+      partsCapped: false,
     });
     expect(
       pickSaleCostSource({ last_purchase_price: 99 }, null, lots),
