@@ -892,6 +892,53 @@ function PairedCell({
  * stacked the verdict, the order, the money, the lines and the confirm with no
  * line between them; each now sits under its own label and a rule.
  */
+/**
+ * A line whose cost moved against the good's last invoiced cost, said in words
+ * (r104 g4). Information only. A line with no earlier cost, or priced in a
+ * different unit, says nothing; a failed read says it failed rather than
+ * reading as "nothing moved".
+ */
+function PriceMovesNote({ docId }: { docId: string }) {
+  const q = useQuery({
+    queryKey: ['receipts-next', 'price-moves', docId],
+    queryFn: () => documentsApi.priceMoves(docId),
+    staleTime: 60_000,
+    retry: false,
+  });
+  if (q.isError)
+    return (
+      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+        The goods&rsquo; earlier costs could not be read, so no price was compared with them.
+      </p>
+    );
+  const all = q.data?.lines ?? [];
+  // r106: a paper in another money is not compared, and silence read as "nothing
+  // moved". When every line was held back for currency, say so, with both codes.
+  if (
+    all.length > 0 &&
+    all.every((l) => !l.compared && l.reason === 'currency_differs') &&
+    q.data?.paperCurrency &&
+    q.data?.houseCurrency
+  )
+    return (
+      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+        Prices are in {q.data.paperCurrency} and the house costs in {q.data.houseCurrency}, so none were compared against earlier costs.
+      </p>
+    );
+  const moved = all.flatMap((l) => (l.compared && l.moved && l.sentence ? [l] : []));
+  if (!moved.length) return null;
+  return (
+    <ul aria-label="Costs that moved" style={{ margin: '8px 0 0', paddingLeft: 16, fontSize: 11.5, color: 'var(--ink-1, #211C16)' }}>
+      {moved.map((l) => (
+        <li key={l.lineId}>
+          Line {l.lineNo}
+          {l.description ? `, ${l.description}` : ''}: {l.sentence}, against its last invoiced cost.
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function CardPart({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
   return (
     <div
@@ -1379,6 +1426,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
       <CardPart label="The money">
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+        <PriceMovesNote docId={doc.id} />
       </CardPart>
 
       {/*
