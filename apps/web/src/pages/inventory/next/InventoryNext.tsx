@@ -218,7 +218,7 @@ export default function InventoryNext() {
   }, [openParam]);
   const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
   // r108 g14: the goods the nutrition lane walks, fixed when it opens so a save does not reshuffle it.
-  const [lane, setLane] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [lane, setLane] = useState<Array<{ id: string; name: string; kind: string }> | null>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   // A panel's file that could not load: say so, close it (ADR 0020).
   const failPanel = useCallback(() => {
@@ -723,7 +723,7 @@ export default function InventoryNext() {
         <button
           type="button"
           className="iv-btn iv-focus"
-          onClick={() => setLane(visible.map((r) => ({ id: r.id, name: r.name ?? `Unnamed ${words.one}` })))}
+          onClick={() => setLane(visible.map((r) => ({ id: r.id, name: r.name ?? `Unnamed ${words.one}`, kind: goodOf(r) })))}
         >
           Fill what’s in it ({fmtCount(visible.length)})
         </button>
