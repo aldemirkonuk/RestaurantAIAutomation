@@ -3,6 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { DatabaseService } from "../database/database.service";
 
 const PAGE = 1000;
+const LEGACY_CHUNK = 100;
 
 export const USE_COUNTS_UNREAD =
   "How many recipes use each good could not be read just now, so none is shown as unused.";
@@ -29,8 +30,6 @@ export class ItemUseCountsService {
       const lines = await this.paged(client, "recipe_lines", "id, version_id, inventory_id", restaurantId, (q) =>
         q.not("inventory_id", "is", null),
       );
-      if (lines.length === 0) return { counts: {} };
-
       const ownerOfVersion = new Map<string, string>();
       for (const [table, owner] of [
         ["recipe_current", "cocktail_id"],
@@ -56,6 +55,7 @@ export class ItemUseCountsService {
         const key = String(l.inventory_id);
         (owners.get(key) ?? owners.set(key, new Set()).get(key)!).add(owner);
       }
+      await this.addLegacyCocktails(client, restaurantId, live, owners);
       const counts: Record<string, number> = {};
       for (const [id, set] of owners) counts[id] = set.size;
       return { counts };
@@ -64,19 +64,56 @@ export class ItemUseCountsService {
     }
   }
 
+  /**
+   * The drawer's Used in also counts the house's legacy cocktail_ingredients (a
+   * catalogue drink or wine named on a live house cocktail), so the column must
+   * too, or a good only such a drink uses reads 0 and gets the Unused chip. The
+   * owner key is the same `cocktail_id:<id>` the current versions use, so a drink
+   * with both a legacy list and a current version counts once.
+   */
+  private async addLegacyCocktails(
+    client: SupabaseClient,
+    restaurantId: string,
+    live: Set<string>,
+    owners: Map<string, Set<string>>,
+  ): Promise<void> {
+    const cocktailIds = [...live].filter((k) => k.startsWith("cocktail_id:")).map((k) => k.slice("cocktail_id:".length));
+    if (cocktailIds.length === 0) return;
+    const items = await this.paged(client, "restaurant_inventory", "id, beverage_id, master_wine_id", restaurantId);
+    const byBeverage = new Map<string, string[]>();
+    const byWine = new Map<string, string[]>();
+    for (const i of items) {
+      if (i.beverage_id) (byBeverage.get(String(i.beverage_id)) ?? byBeverage.set(String(i.beverage_id), []).get(String(i.beverage_id))!).push(String(i.id));
+      if (i.master_wine_id) (byWine.get(String(i.master_wine_id)) ?? byWine.set(String(i.master_wine_id), []).get(String(i.master_wine_id))!).push(String(i.id));
+    }
+    if (byBeverage.size === 0 && byWine.size === 0) return;
+    for (let at = 0; at < cocktailIds.length; at += LEGACY_CHUNK) {
+      const chunk = cocktailIds.slice(at, at + LEGACY_CHUNK);
+      // cocktail_ingredients carries no restaurant_id: the live house cocktails scope it.
+      const rows = await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", null, (q) =>
+        q.in("cocktail_id", chunk),
+      );
+      for (const r of rows) {
+        const ids = [...(byBeverage.get(String(r.beverage_id)) ?? []), ...(byWine.get(String(r.wine_id)) ?? [])];
+        for (const id of ids) (owners.get(id) ?? owners.set(id, new Set()).get(id)!).add(`cocktail_id:${r.cocktail_id}`);
+      }
+    }
+  }
+
   /** Every row of a house's table, a page at a time, ordered by `key` so no page is trusted to be the whole. */
   private async paged(
     client: SupabaseClient,
     table: string,
     columns: string,
-    restaurantId: string,
+    restaurantId: string | null,
     narrow?: (q: any) => any,
     key = "id",
   ): Promise<Row[]> {
     const out: Row[] = [];
     let after: string | null = null;
     for (;;) {
-      let q: any = client.from(table).select(columns).eq("restaurant_id", restaurantId);
+      let q: any = client.from(table).select(columns);
+      if (restaurantId !== null) q = q.eq("restaurant_id", restaurantId);
       if (narrow) q = narrow(q);
       if (after) q = q.gt(key, after);
       const { data, error } = await q.order(key, { ascending: true }).limit(PAGE);

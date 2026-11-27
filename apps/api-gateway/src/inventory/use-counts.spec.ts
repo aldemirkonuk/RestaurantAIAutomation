@@ -60,3 +60,63 @@ describe("ItemUseCountsService (r105 g5)", () => {
     await expect(svc.counts(A)).rejects.toThrow(USE_COUNTS_UNREAD);
   });
 });
+
+describe("ItemUseCountsService: legacy house cocktails count, as the drawer's Used in does", () => {
+  function legacySeed() {
+    const { db, svc } = seed();
+    db.tables.restaurant_inventory = [
+      { id: "gin", restaurant_id: A, beverage_id: "bev-gin", master_wine_id: null },
+      { id: "campari", restaurant_id: A, beverage_id: "bev-campari", master_wine_id: null },
+      { id: "vermouth", restaurant_id: A, beverage_id: null, master_wine_id: "wine-vermouth" },
+      { id: "lime", restaurant_id: A, beverage_id: null, master_wine_id: null },
+      { id: "campari-b", restaurant_id: B, beverage_id: "bev-campari", master_wine_id: null },
+    ];
+    db.tables.cocktails.push(
+      { id: "c-negroni", restaurant_id: A, deleted_at: null },
+      { id: "c-old", restaurant_id: A, deleted_at: "2026-11-01T00:00:00Z" },
+      { id: "c-b-legacy", restaurant_id: B, deleted_at: null },
+    );
+    db.tables.cocktail_ingredients = [
+      // a legacy-only drink: Campari (by beverage) and vermouth (by wine), no recipe version at all
+      { id: "i1", cocktail_id: "c-negroni", beverage_id: "bev-campari", wine_id: null },
+      { id: "i2", cocktail_id: "c-negroni", beverage_id: null, wine_id: "wine-vermouth" },
+      { id: "i3", cocktail_id: "c-negroni", beverage_id: null, wine_id: null, free_text: "orange peel" },
+      // c-sour has a current version AND a legacy list naming gin: still one drink
+      { id: "i4", cocktail_id: "c-sour", beverage_id: "bev-gin", wine_id: null },
+      // a deleted drink's legacy list, and another house's, count for nobody here
+      { id: "i5", cocktail_id: "c-old", beverage_id: "bev-campari", wine_id: null },
+      { id: "i6", cocktail_id: "c-b-legacy", beverage_id: "bev-campari", wine_id: null },
+    ];
+    return { db, svc };
+  }
+
+  it("a good only a legacy house cocktail uses counts 1, by beverage or by wine", async () => {
+    const { svc } = legacySeed();
+    const { counts } = await svc.counts(A);
+    expect(counts.campari).toBe(1);
+    expect(counts.vermouth).toBe(1);
+    expect(counts.lime).toBeUndefined();
+  });
+
+  it("a drink with both a current version and a legacy list counts once", async () => {
+    const { svc } = legacySeed();
+    expect((await svc.counts(A)).counts.gin).toBe(2); // c-sour (both lists) + d-plate
+  });
+
+  it("a house with legacy drinks and no recipe lines at all still counts them", async () => {
+    const { db, svc } = legacySeed();
+    db.tables.recipe_lines = [];
+    expect((await svc.counts(A)).counts).toEqual({ campari: 1, vermouth: 1, gin: 1 });
+  });
+
+  it("a failed read of the legacy lists is unread, not zero", async () => {
+    const { db, svc } = legacySeed();
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      if (t === "cocktail_ingredients") throw new Error("boom");
+      return real(t);
+    };
+    await expect(svc.counts(A)).rejects.toThrow(USE_COUNTS_UNREAD);
+  });
+});
+
