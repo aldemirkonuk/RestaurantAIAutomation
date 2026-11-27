@@ -1116,8 +1116,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
   // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
   // would fall to BODY). Taken when the gesture COMPLETES, while the control
   // still holds focus; a pointer seal never moves focus.
-  const sealWrap = useRef<HTMLDivElement>(null);
-  const keyDown = useRef(false);
   const sealByKeyboard = useRef(false);
 
   /**
@@ -1642,19 +1640,15 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
-            <div
-              ref={sealWrap}
-              onKeyDownCapture={(e) => { if (e.key === ' ' || e.key === 'Enter') keyDown.current = true; }}
-              onPointerDownCapture={() => { keyDown.current = false; }}
-            >
+            <div>
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-              onConfirm={(challenge) => {
-                sealByKeyboard.current = keyDown.current && !!sealWrap.current?.contains(document.activeElement);
+              onConfirm={(challenge, how) => {
+                sealByKeyboard.current = !!how?.viaKeyboard;
                 verify.mutate(challenge);
               }}
             />

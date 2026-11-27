@@ -273,6 +273,31 @@ describe('where focus goes after a seal (r108)', () => {
     expect(document.activeElement).toBe(rowBtn('INV-90'));
   });
 
+  it('a keyboard seal still lands focus on the next row when the browser blurs the disabled handle first', async () => {
+    // Chromium blurs a focused button the moment it becomes disabled, which is
+    // before the challenge resolves; jsdom does not, so the test does it: hold
+    // the mint open, wait for the handle to disable, blur it, then let the mint go.
+    let release: (t: string) => void = () => {};
+    api.mintVerifySeal.mockImplementation(() => new Promise<string>((r) => { release = r; }));
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    fireEvent.keyDown(swipe, { key: 'Enter' });
+    await waitFor(() => expect(swipe.disabled).toBe(true), { timeout: 3000 });
+    // jsdom's blur() ignores a disabled button, so focus something else instead:
+    // either way the focus is no longer inside the seal control.
+    const elsewhere = document.body.appendChild(document.createElement('input'));
+    elsewhere.focus();
+    expect(document.activeElement).toBe(elsewhere);
+    release('seal-token');
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    await waitFor(() => expect(document.activeElement).toBe(rowBtn('INV-89')));
+    fireEvent.keyDown(rowBtn('INV-89'), { key: 'j' });
+    expect(document.activeElement).toBe(rowBtn('INV-90'));
+  });
+
   it('a pointer seal leaves focus alone, even though the press focused the handle', async () => {
     render(<ReceiptsNext />, { wrapper });
     fireEvent.click(await paperRow('INV-88'));
