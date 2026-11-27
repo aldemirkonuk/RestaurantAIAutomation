@@ -1320,6 +1320,22 @@ export class DocumentsController {
     return out;
   }
 
+  /**
+   * MAY THIS SESSION TAKE THE VERIFIED CSV (r108, DD-r108-22)? The web shows
+   * the export link only on this answer, so the rule lives once, here, in
+   * `holdsHouseMoney` (the `money` row of ROLE_POLICY), and the web keeps no
+   * role list of its own. The export itself still refuses on the same rule.
+   */
+  @Get("export/verified.csv/allowed")
+  @ApiOperation({
+    summary: "Whether this session may take the verified-papers CSV",
+  })
+  exportVerifiedAllowed(@CurrentUser() user: AuthedUser): {
+    allowed: boolean;
+  } {
+    return { allowed: holdsHouseMoney(user.role ?? null) };
+  }
+
   @Get("export/verified.csv")
   @Header("Content-Type", "text/csv; charset=utf-8")
   @Header("Content-Disposition", 'attachment; filename="verified-papers.csv"')
