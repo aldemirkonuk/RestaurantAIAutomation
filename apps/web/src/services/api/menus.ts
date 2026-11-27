@@ -91,6 +91,9 @@ export interface MenuReadNote {
     | 'no_number'
     | 'two_readings'
     | 'unreadable'
+    | 'negative'
+    | 'more_cells_than_header'
+    | 'unclosed_quote'
   field?: string
   raw?: string
 }

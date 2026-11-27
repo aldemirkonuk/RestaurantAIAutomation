@@ -16,6 +16,12 @@ export function menuReadNoteText(n: MenuReadNote): string {
       return `Line ${n.row}: the ${field} ${raw} has no number, so it was left blank.`
     case 'unreadable':
       return `Line ${n.row}: the ${field} ${raw} could not be read as a price, so it was left blank.`
+    case 'negative':
+      return `Line ${n.row}: the ${field} ${raw} is below zero, so it was left blank.`
+    case 'more_cells_than_header':
+      return `Line ${n.row} has more cells than the header, so its prices were left blank. A price written 12,50 in a comma file needs quotes: "12,50".`
+    case 'unclosed_quote':
+      return `Line ${n.row} opens a quote that never closes, so that line was read on its own.`
     case 'cell_error':
       return `Line ${n.row}: the ${field} is a spreadsheet error (${n.raw ?? 'error'}), so it was left blank.`
     case 'no_name':

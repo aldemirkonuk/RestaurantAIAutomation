@@ -260,6 +260,9 @@ describe('MenuVersions', () => {
       notes: [
         { row: 2, reason: 'two_readings', field: 'bottle_price', raw: '1.250' },
         { row: 3, reason: 'cell_error', field: 'by_glass_price', raw: '#N/A' },
+        { row: 4, reason: 'negative', field: 'bottle_price', raw: '-45' },
+        { row: 5, reason: 'more_cells_than_header', raw: 'Kalecik,12,50,60' },
+        { row: 6, reason: 'unclosed_quote' },
       ],
     });
     mount(false);
@@ -269,6 +272,9 @@ describe('MenuVersions', () => {
     const notes = await screen.findByTestId('menu-read-notes');
     expect(notes).toHaveTextContent('Line 2: the bottle price "1.250" reads two ways, so it was left blank.');
     expect(notes).toHaveTextContent('Line 3: the glass price is a spreadsheet error (#N/A), so it was left blank.');
+    expect(notes).toHaveTextContent('Line 4: the bottle price "-45" is below zero, so it was left blank.');
+    expect(notes).toHaveTextContent('Line 5 has more cells than the header, so its prices were left blank.');
+    expect(notes).toHaveTextContent('Line 6 opens a quote that never closes, so that line was read on its own.');
   });
 
   it('an untagged read sends no cadence and no date -- never a default', async () => {
