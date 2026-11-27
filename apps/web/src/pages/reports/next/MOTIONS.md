@@ -92,6 +92,14 @@ to those would put a moving cutting somewhere the announcement says it is not.
   transition in or out, and the readout swaps its words outright: a band that
   eased after the finger would mark days the reader has already left, and a
   line that faded would read as the figure still being worked out.
+- **A zoom replaces the drawing; it does not travel to it.** Full screen's
+  "Draw only these N days" (r110 g1) draws the marked stretch alone and "All
+  365 days" (or Escape, with no stretch marked) draws the whole window again.
+  Both swap the drawing outright and paint it `settled`, so `rp-grow` does not
+  replay, and there is no x-domain tween: a bar that widened on its way in
+  would be a measurement in transit. The button and the chip live in a 44 px
+  row reserved under every full-screen till drawing, so offering one moves
+  nothing. Reduced motion: nothing to remove.
 - **Reduced motion**: the ruling, the lift, the ink states and the working
   expansion have their transitions removed outright; the skeleton sheen stops
   and the static bar remains; the two WAAPI motions land on their end state
