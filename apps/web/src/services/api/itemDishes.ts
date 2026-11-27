@@ -20,7 +20,7 @@ export interface ItemDishCost {
  * another way than the shelf counts it, the recipe makes no serve, or the
  * stock could not be read.
  */
-export type ServesWhy = 'size_not_known' | 'pack_size_not_known' | 'unit_mismatch' | 'no_yield' | 'stock_unread';
+export type ServesWhy = 'size_not_known' | 'pack_size_not_known' | 'unit_mismatch' | 'no_yield' | 'stock_unread' | 'never_counted';
 
 /** How many serves the stock on hand makes; a quantity, so every role is sent it. Absent from an older gateway. */
 export interface ItemServes {

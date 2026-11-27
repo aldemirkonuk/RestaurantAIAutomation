@@ -10,7 +10,7 @@
  */
 import { BaseUnit, CostItem, ShelfWhy, baseUnitsPerShelf, boughtPerUsed } from "./recipe-cost";
 
-export type ServesWhy = ShelfWhy | "no_yield" | "stock_unread";
+export type ServesWhy = ShelfWhy | "no_yield" | "stock_unread" | "never_counted";
 
 export interface ServesFromStock {
   servesFromStock: number | null;
@@ -24,7 +24,16 @@ export interface ServesLine {
 }
 
 /** The on-hand count of the good, in its own unit, beside what the cost reads. */
-export type StockItem = CostItem & { stock_live?: number | string | null };
+export type StockItem = CostItem & {
+  stock_live?: number | string | null;
+  /**
+   * stock_live is `integer DEFAULT 0 NOT NULL`, so a good never counted and
+   * never delivered reads 0, the same as a shelf counted empty. These two say
+   * which: a 0 with no count and no lot is "never counted", not "no stock".
+   */
+  last_counted_at?: string | null;
+  has_lots?: boolean;
+};
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 const unknown = (why: ServesWhy | null): ServesFromStock => ({ servesFromStock: null, servesWhy: why });
@@ -33,6 +42,8 @@ export function servesFromStock(item: StockItem | null, lines: ServesLine[], yie
   if (!item || item.stock_live === null || item.stock_live === undefined || item.stock_live === "") return unknown("stock_unread");
   const onHand = Number(item.stock_live);
   if (!Number.isFinite(onHand)) return unknown("stock_unread");
+  // The column's default 0 is not a count: no count and no lot is unknown, not an empty shelf.
+  if (onHand <= 0 && item.last_counted_at === null && item.has_lots === false) return unknown("never_counted");
   // Nothing on the shelf (a count below zero included) makes no serve, whatever the recipe says.
   if (onHand <= 0) return { servesFromStock: 0, servesWhy: null };
   const serves = Number(yieldServes);
