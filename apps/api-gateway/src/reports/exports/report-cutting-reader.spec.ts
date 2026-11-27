@@ -135,7 +135,7 @@ const PAGE: Record<ExportableCutting, PageRead> = {
   // compares, so it reads the plain-window branch of the same path.
   till: {
     path: "`/analytics/pos-revenue/${rid}?days=${ctx.compare && compareOffered(ctx.days) ? ctx.days * 2 : ctx.days}`",
-    call: (c, d) => c.getPosRevenue(RID, String(d), HOLDER),
+    call: (c, d) => c.getPosRevenue(RID, String(d), undefined, HOLDER),
   },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: {

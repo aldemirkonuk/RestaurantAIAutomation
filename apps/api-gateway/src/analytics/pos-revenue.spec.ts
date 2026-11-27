@@ -1402,7 +1402,9 @@ describe("AnalyticsService.getPosConsumptionBreakdown", () => {
   });
 });
 
-// A holder reads the till: staff are answered withheld (pos-revenue-withheld-from-staff.spec.ts).
+// Staff are answered "withheld" before any read (ADR 0348), so these reads are an owner's.
+const OWNER = { role: "owner" };
+
 describe("GET /analytics/pos-revenue/:restaurantId", () => {
   let controller: AnalyticsController;
   const goals = { getPosRevenueWindow: jest.fn() };
@@ -1466,7 +1468,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30", OWNER, "consumption");
+    const body = await controller.getPosRevenue("r1", "30", undefined, OWNER, "consumption");
 
     expect(body.posConnected).toBe(false);
     expect(body.revenue).toBeNull();
@@ -1490,7 +1492,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       { wineName: "Malbec", bottlesSold: 2 },
     ]);
 
-    const body = await controller.getPosRevenue("r1", undefined, OWNER, "consumption");
+    const body = await controller.getPosRevenue("r1", undefined, undefined, OWNER, "consumption");
 
     expect(body.revenue).toBe(4200);
     expect(body.consumption).toHaveLength(1);
@@ -1515,7 +1517,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    const body = await controller.getPosRevenue("r1", "30", OWNER, "consumption");
+    const body = await controller.getPosRevenue("r1", "30", undefined, OWNER, "consumption");
 
     expect(body.zoneUnset).toBe(true);
     expect(body.consumption).toBeNull();
@@ -1540,7 +1542,7 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
     ]);
 
     for (const include of [undefined, "", "daily", "consumptions"]) {
-      const body = await controller.getPosRevenue("r1", "365", include);
+      const body = await controller.getPosRevenue("r1", "365", undefined, OWNER, include);
       // What goes over the wire: the window, and nothing else.
       expect(JSON.parse(JSON.stringify(body))).toStrictEqual(window);
     }
@@ -1568,9 +1570,9 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       checkCount: null,
       dailySeries: [],
     });
-    await controller.getPosRevenue("r1", "30", "prior", { role: "manager" });
+    await controller.getPosRevenue("r1", "30", "prior", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30, "prior");
-    await controller.getPosRevenue("r1", "30", "year", { role: "manager" });
+    await controller.getPosRevenue("r1", "30", "year", OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
   });
 
@@ -1585,15 +1587,15 @@ describe("GET /analytics/pos-revenue/:restaurantId", () => {
       dailySeries: [],
     });
 
-    await controller.getPosRevenue("r1", "99999", OWNER);
+    await controller.getPosRevenue("r1", "99999", undefined, OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 365);
 
-    await controller.getPosRevenue("r1", "banana", OWNER);
+    await controller.getPosRevenue("r1", "banana", undefined, OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 30);
 
     // A parseable-but-tiny window clamps to the floor rather than snapping back
     // to the default — `?days=0` asking for today is a coherent request.
-    await controller.getPosRevenue("r1", "0", OWNER);
+    await controller.getPosRevenue("r1", "0", undefined, OWNER);
     expect(goals.getPosRevenueWindow).toHaveBeenLastCalledWith("r1", 1);
   });
 });

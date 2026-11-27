@@ -1318,9 +1318,9 @@ export class AnalyticsController {
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
+    @Query("compare") compare?: string,
     @CurrentUser() user?: { role?: string | null },
     @Query("include") include?: string,
-    @Query("compare") compare?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
