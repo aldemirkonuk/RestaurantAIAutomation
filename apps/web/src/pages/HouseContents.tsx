@@ -18,6 +18,7 @@ import { skipFolio } from '../services/api/arrival'
 import { useAuth } from '../contexts/AuthContext'
 import { readMenuReading } from '../lib/houseMenuReading'
 import { MenuReadingLine } from '../components/onboarding/MenuReadingLine'
+import { TillHistory } from '../components/onboarding/TillHistory'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
 const PAPER_MAX_BYTES = 10 * 1024 * 1024
@@ -553,6 +554,9 @@ export default function HouseContents() {
               </span>
             )}
           </div>
+
+          {/* r109 g3: owner or manager only, as the gateway route is. */}
+          {canSkip && <TillHistory houseId={user?.restaurantId} />}
 
           <KeepOnPhone />
 
