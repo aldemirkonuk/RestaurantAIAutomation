@@ -27,6 +27,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
   getMenuSourceUrl,
+  getMenuPlan,
   importMenu,
   listMenuVersions,
   removeFailedRead,
@@ -42,6 +43,7 @@ import {
 import { oneNounFor, type KindNoun } from './menu-line-kind';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { checkLinesFromPlan, menuReadChecks, showLineById, type CheckLine } from './menu-read-checks';
 import { formatMoney } from '../../../lib/currency';
 import { useHouseCurrencyCode } from '../../../hooks/queries/useHouseCurrencyCode';
 import { MenuReviewScreen } from '../../../components/onboarding/MenuReviewScreen';
@@ -557,6 +559,8 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
             <p className="cl-note">An owner or a manager chooses whether it becomes the current menu. It is kept either way.</p>
           )}
           {planning && chosen === null ? (
+            <>
+            <PlanChecks menuId={result.menuId} />
             <MenuPlan
               menuId={result.menuId}
               canManage={canManage}
@@ -573,6 +577,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
                 onChosen?.();
               }}
             />
+            </>
           ) : null}
           {chosen ? (
             <p role="status" className="cl-said mdv-settle" style={{ marginTop: 8 }} data-testid="menu-choice-said">
@@ -583,6 +588,45 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       ) : null}
     </div>
   );
+}
+
+/**
+ * "Worth a second look" (r108 menu-g12): a static list, in words, of what on a
+ * read looks odd. It never changes a value. Each item jumps to its line at
+ * once (no glide) and focuses it.
+ */
+export function MenuReadChecks({ lines, onShow, testId = 'menu-read-checks' }: {
+  lines: CheckLine[];
+  onShow: (lineId: string) => void;
+  testId?: string;
+}) {
+  const currency = useHouseCurrencyCode();
+  const found = menuReadChecks(lines, currency);
+  if (found.length === 0) return null;
+  return (
+    <section className="cl-note" style={{ marginTop: 12 }} aria-label="Worth a second look" data-testid={testId}>
+      <p className="cl-said" style={{ margin: 0 }}>
+        Worth a second look. Nothing here has been changed.
+      </p>
+      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+        {found.map((f) => (
+          <li key={`${f.kind}:${f.lineId}`} data-testid="menu-read-check">
+            {f.words}{' '}
+            <button type="button" className="cl-btn cl-focus" onClick={() => onShow(f.lineId)}>
+              Show the line
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The checks over a kept menu's plan, above that plan; shares the plan's own query. */
+function PlanChecks({ menuId }: { menuId: string }) {
+  const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
+  if (!q.data) return null;
+  return <MenuReadChecks lines={checkLinesFromPlan(q.data.lines)} onShow={(id) => showLineById(`plan-line-${id}`)} />;
 }
 
 function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan, onRemoved, zone }: {
@@ -1009,6 +1053,8 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
               <p className="cl-note">{q.data.namesReason ?? 'Who read or chose these menus could not be named.'}</p>
             ) : null}
             {planFor ? (
+              <>
+              <PlanChecks key={`checks-${planFor}`} menuId={planFor} />
               <MenuPlan
                 key={planFor}
                 menuId={planFor}
@@ -1021,6 +1067,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                   refresh();
                 }}
               />
+              </>
             ) : null}
             {/* Menu walk 2026-11-12: this sentence sat under the read form, right
                 below that form's line about a different read. It is about a
