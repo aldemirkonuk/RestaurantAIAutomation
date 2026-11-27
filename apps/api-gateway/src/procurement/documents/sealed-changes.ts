@@ -10,9 +10,12 @@
  * was not known is counted and LEFT OUT of the figure, never read as 0, which
  * would book the whole new cost as a change (ADR 0020).
  *
- * Rows written by one act share their transaction's `created_at`, so each
- * distinct stamp is one event: the first is the seal, later ones are dated
- * corrections (DD-r108-20) under it.
+ * ONE TOTAL, NOT EVENTS. Rows were grouped by `created_at` on the premise that
+ * one act shares one transaction stamp. No writer does: finalise_delivery_cost
+ * is called once per item and each call is its own transaction, and a receipt
+ * adjustment is two RPCs. Grouping by stamp called the first item "the seal" and
+ * the rest "corrections". Until the writers carry one act id (a batch uuid
+ * passed to each RPC), the figures are one sum with no split.
  */
 
 export const CHANGES_PAGE = 1000;
@@ -31,15 +34,6 @@ export interface RestatementRow {
   created_at: string;
 }
 
-export interface ChangeEvent {
-  at: string;
-  stockValueDelta: string;
-  bottles: number;
-  salesCostDelta: string;
-  sales: number;
-  notKnown: number;
-}
-
 export interface SealedChanges {
   stockValueDelta: string;
   bottles: number;
@@ -47,7 +41,6 @@ export interface SealedChanges {
   sales: number;
   /** Rows whose prior cost was not known: counted, left out of both figures. */
   notKnown: number;
-  events: ChangeEvent[];
 }
 
 /** Exact decimal text (or a number) to integer micro-units, half away from zero at the 7th place. */
@@ -85,60 +78,33 @@ export async function readEveryPage<T>(
 }
 
 export function summariseChanges(revaluations: RevaluationRow[], restatements: RestatementRow[]): SealedChanges {
-  const byAt = new Map<string, { stock: bigint; bottles: number; sales: bigint; saleIds: Set<string>; notKnown: number }>();
-  const ev = (at: string) => {
-    let e = byAt.get(at);
-    if (!e) byAt.set(at, (e = { stock: 0n, bottles: 0, sales: 0n, saleIds: new Set(), notKnown: 0 }));
-    return e;
-  };
   let stock = 0n;
   let sales = 0n;
   let bottles = 0;
   let notKnown = 0;
   const saleIds = new Set<string>();
   for (const r of revaluations) {
-    const e = ev(r.created_at);
     if (r.prior_unit_cost == null || r.prior_unit_cost === "") {
-      e.notKnown++;
       notKnown++;
       continue;
     }
     const qty = BigInt(Math.trunc(Number(r.qty_at_revaluation)));
-    const d = qty * (toMicro(r.new_unit_cost) - toMicro(r.prior_unit_cost));
-    e.stock += d;
-    stock += d;
-    e.bottles += Number(qty);
+    stock += qty * (toMicro(r.new_unit_cost) - toMicro(r.prior_unit_cost));
     bottles += Number(qty);
   }
   for (const r of restatements) {
-    const e = ev(r.created_at);
     if (r.prior_cost_at_sale == null || r.prior_cost_at_sale === "") {
-      e.notKnown++;
       notKnown++;
       continue;
     }
-    const d = toMicro(r.new_cost_at_sale) - toMicro(r.prior_cost_at_sale);
-    e.sales += d;
-    sales += d;
-    e.saleIds.add(r.consumption_id);
+    sales += toMicro(r.new_cost_at_sale) - toMicro(r.prior_cost_at_sale);
     saleIds.add(r.consumption_id);
   }
-  const events = [...byAt.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([at, e]) => ({
-      at,
-      stockValueDelta: microText(e.stock),
-      bottles: e.bottles,
-      salesCostDelta: microText(e.sales),
-      sales: e.saleIds.size,
-      notKnown: e.notKnown,
-    }));
   return {
     stockValueDelta: microText(stock),
     bottles,
     salesCostDelta: microText(sales),
     sales: saleIds.size,
     notKnown,
-    events,
   };
 }
