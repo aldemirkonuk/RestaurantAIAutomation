@@ -3,6 +3,8 @@
  * said as failed and never 0, no money for staff, a food in its own unit.
  * The page wiring (a row opens it, Back closes it) is in InventoryNext.test.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -346,6 +348,124 @@ describe('the item drawer', () => {
       fireEvent.click(card);
       expect(screen.queryByTestId('ivd-evidence')).toBeNull();
       expect(card.getAttribute('aria-controls')).toBeNull();
+    }
+  });
+
+  it('says how many dishes and drinks use the good in one line, and goes to them; says nothing while a read fails (r102 critic-4)', async () => {
+    const used = { section: null, price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null, uses: [{ label: 'Flour', qtyEntered: 5, unitCode: 'g' }] };
+    api.dishes.mockResolvedValue({ dishes: ['d1', 'd2', 'd3'].map((dishId) => ({ ...used, dishId, name: dishId })) });
+    api.drinks.mockResolvedValue({ drinks: ['k1', 'k2'].map((cocktailId) => ({ ...used, cocktailId, name: cocktailId })) });
+    // Two catalogue cocktail cards: k2 is also a recipe drink (counted once), k9 only a card (counted).
+    const group = (lines: unknown[], readable = true) => ({ readable, lines: readable ? lines : null, source: 's' });
+    const usedInData = (cards: unknown[], readable = true) => ({
+      item: { id: 'i1', kind: 'spirit', displayName: 'x' },
+      soldAs: group([]),
+      inCocktails: group(cards, readable),
+      inDrinkRecipes: group([]),
+      namedNotLinked: group([]),
+    });
+    const card = (cocktailId: string) => ({ cocktailId, name: cocktailId, quantity: 25, unit: 'ml' });
+    api.usedIn.mockResolvedValue(usedInData([card('k2'), card('k9')]));
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      const chip = await screen.findByTestId('ivd-used-chip');
+      expect(chip.textContent).toBe('Used in 3 dishes, 3 drinks');
+      fireEvent.click(chip);
+      expect(spy.mock.contexts.some((el) => (el as HTMLElement).id === 'ivd-used')).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+    cleanup();
+    api.drinks.mockRejectedValue(new Error('down'));
+    open(row());
+    await screen.findByTestId('ivd-used');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+    // The cocktail cards unread: the line would say fewer drinks than the block, so it says nothing.
+    cleanup();
+    api.drinks.mockResolvedValue({ drinks: ['k1'].map((cocktailId) => ({ ...used, cocktailId, name: cocktailId })) });
+    api.usedIn.mockResolvedValue(usedInData([], false));
+    open(row());
+    await screen.findByTestId('ivd-used');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+  });
+
+  it('holds the used-in line from first paint: the slot is there reading, and settles in place as the chip, a failure or none (r103)', async () => {
+    const used = { section: null, price: 10, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: null, uses: [{ label: 'Flour', qtyEntered: 5, unitCode: 'g' }] };
+    const none = { readable: true, lines: [], source: 's' };
+    const usedInNone = { item: { id: 'i1', kind: 'spirit', displayName: 'x' }, soldAs: none, inCocktails: none, inDrinkRecipes: none, namedNotLinked: none };
+    api.usedIn.mockResolvedValue(usedInNone);
+    api.dishes.mockResolvedValue({ dishes: [{ ...used, dishId: 'd1', name: 'd1' }] });
+    api.drinks.mockResolvedValue({ drinks: [] });
+    open(row());
+    // First paint: the three reads have not answered, and the line's room is already there.
+    const slot = screen.getByTestId('ivd-used-slot');
+    expect(slot.getAttribute('data-state')).toBe('reading');
+    expect(slot.textContent).toBe('Reading where it is used…');
+    expect(screen.getByTestId('ivd-cards').nextElementSibling).toBe(slot);
+    expect(screen.queryByTestId('ivd-used-chip')).toBeNull();
+    // The same element settles into the chip; it is not inserted above the cards later.
+    const chip = await screen.findByTestId('ivd-used-chip');
+    expect(screen.getByTestId('ivd-used-slot')).toBe(slot);
+    expect(slot.contains(chip)).toBe(true);
+    cleanup();
+    api.dishes.mockResolvedValue({ dishes: [] });
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-used-slot').getAttribute('data-state')).toBe('none'));
+    expect(screen.getByTestId('ivd-used-slot').textContent).toBe('Not used in a dish or drink');
+    cleanup();
+    api.drinks.mockRejectedValue(new Error('down'));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-used-slot').getAttribute('data-state')).toBe('unread'));
+    expect(screen.getByTestId('ivd-used-slot').textContent).toBe('Where it is used could not be read.');
+  });
+
+  it('the used-in slot holds 44 px in the stylesheet (r103)', () => {
+    const css = readFileSync(resolve(__dirname, 'item-drawer.css'), 'utf8');
+    expect(css).toMatch(/\.ivd-usedslot \{[^}]*min-height: 44px;/);
+  });
+
+  it('the detail card sits in a wrapper that stays mounted: data-open flips, the content mounts and goes at once (r102 motion-1)', () => {
+    open(row());
+    const wrap = screen.getByTestId('ivd-evwrap');
+    expect(wrap.getAttribute('data-open')).toBe('false');
+    expect(within(wrap).queryByTestId('ivd-evidence')).toBeNull();
+    const card = screen.getByTestId('ivd-card-onhand');
+    fireEvent.click(card);
+    expect(screen.getByTestId('ivd-evwrap')).toBe(wrap);
+    expect(wrap.getAttribute('data-open')).toBe('true');
+    expect(within(wrap).getByTestId('ivd-evidence')).toBeTruthy();
+    fireEvent.click(card);
+    expect(screen.getByTestId('ivd-evwrap')).toBe(wrap);
+    expect(wrap.getAttribute('data-open')).toBe('false');
+    expect(within(wrap).queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('brings the opened card into view only after its 200 ms open, and at once for reduced motion (r102 motion-1)', async () => {
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    const wasMq = window.matchMedia;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      expect(spy).not.toHaveBeenCalled();
+      await new Promise((r) => setTimeout(r, 100));
+      expect(spy).not.toHaveBeenCalled();
+      await waitFor(() => expect(spy.mock.contexts).toContain(screen.getByTestId('ivd-evidence')));
+      spy.mockClear();
+      cleanup();
+      window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+      open(row());
+      fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+      await waitFor(() => expect(spy).toHaveBeenCalled());
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      window.matchMedia = wasMq;
     }
   });
 
