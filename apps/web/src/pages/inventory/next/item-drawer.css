@@ -192,6 +192,10 @@ button.ivd-card:active {
   padding-top: 8px;
   border-top: 1px solid var(--paper-2);
 }
+/* While its reads are out the block changes height; it opts out of scroll anchoring until they answer. */
+.ivd-used[data-settling='true'] {
+  overflow-anchor: none;
+}
 .ivd-used-g {
   margin-top: 8px;
 }
