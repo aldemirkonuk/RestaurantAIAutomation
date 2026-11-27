@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
-import { MenuPriceReason, readMenuPrice } from "./menu-price";
+import { MenuPriceReason, priceDoesNotFit, readMenuPrice } from "./menu-price";
 import { cellMoneyMark, differentMoney, excelFormatMark, headerMoneyMark, oneMoneyOf } from "./price-mark";
 
 // Aliases by field, against `headerKey`: "Şişe Fiyatı (TL)" is `sise_fiyati`.
@@ -407,8 +407,11 @@ export class CsvParserService {
 
       let amount: number | null = null;
       if (typeof value === "number") {
-        if (Number.isFinite(value) && value >= 0) amount = value;
-        else if (Number.isFinite(value))
+        if (Number.isFinite(value) && value >= 0) {
+          const doesNot = priceDoesNotFit(value);
+          if (doesNot) found.push({ row, reason: doesNot, field, raw: String(value) });
+          else amount = value;
+        } else if (Number.isFinite(value))
           found.push({ row, reason: "negative", field, raw: String(value) });
       } else if (raw) {
         const price = readMenuPrice(raw);

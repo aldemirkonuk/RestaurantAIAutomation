@@ -13,7 +13,11 @@ export type MenuPriceReason =
   /** A minus in front (`-10`): a discount or a credit is not a price. */
   | "negative"
   /** Separators that fit no reading (`1.25.0`). */
-  | "unreadable";
+  | "unreadable"
+  /** More than the price column holds (numeric(10,2): 99,999,999.99). */
+  | "too_large"
+  /** More than two decimal places: the column would round it without saying. */
+  | "too_precise";
 
 export interface MenuPriceRead {
   amount: number | null;
@@ -36,7 +40,24 @@ const groupedBy = (s: string, sep: string): boolean => {
   );
 };
 
+/** The largest price the price columns (numeric(10,2)) can hold. */
+export const MAX_MENU_PRICE = 99999999.99;
+
+/** Why a number cannot be kept as a price as it stands, or null when it fits the column exactly. */
+export function priceDoesNotFit(amount: number): "too_large" | "too_precise" | null {
+  if (amount > MAX_MENU_PRICE) return "too_large";
+  if (Number(amount.toFixed(2)) !== amount) return "too_precise";
+  return null;
+}
+
 export function readMenuPrice(input: string): MenuPriceRead {
+  const read = readMenuPriceAsWritten(input);
+  if (read.amount === null) return read;
+  const doesNot = priceDoesNotFit(read.amount);
+  return doesNot ? none(read.raw, doesNot) : read;
+}
+
+function readMenuPriceAsWritten(input: string): MenuPriceRead {
   const raw = (input ?? "").trim();
   if (!raw) return none(raw, "empty");
 

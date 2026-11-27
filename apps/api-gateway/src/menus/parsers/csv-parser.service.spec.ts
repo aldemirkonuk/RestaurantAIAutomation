@@ -236,11 +236,27 @@ describe("CsvParserService.parseExcel", () => {
     ]);
   });
 
+  it("says a stored number too big or too fine for a price was left out, as it says a typed one", async () => {
+    const report = await parser().readExcel(
+      await xlsx([
+        ["Name", "Bottle"],
+        ["Huge", 100000000],
+        ["Fine", 45.5555],
+        ["Narince", 120],
+      ]),
+    );
+    expect(report.items.map((i) => i.bottle_price)).toEqual([undefined, undefined, 120]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "too_large", field: "bottle_price", raw: "100000000" },
+      { row: 3, reason: "too_precise", field: "bottle_price", raw: "45.5555" },
+    ]);
+  });
+
   it("maps Turkish headers, takes a stored number as is, reads a text price, and sets the raw row", async () => {
     const items = await parser().parseExcel(
       await xlsx([
         ["Şarap", "Üretici", "Şişe Fiyatı", "Kadeh Fiyatı"],
-        ["Narince", "Kayra", 1.125, "145,50"],
+        ["Narince", "Kayra", 1250, "145,50"],
         ["Emir", "Kocabağ", "1.250", 90],
       ]),
     );
@@ -248,9 +264,9 @@ describe("CsvParserService.parseExcel", () => {
       {
         name: "Narince",
         producer: "Kayra",
-        bottle_price: 1.125,
+        bottle_price: 1250,
         by_glass_price: 145.5,
-        raw_text: "Narince,Kayra,1.125,145,50",
+        raw_text: "Narince,Kayra,1250,145,50",
       },
       {
         name: "Emir",

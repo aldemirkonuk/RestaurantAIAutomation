@@ -20,6 +20,10 @@ function lineNoteText(n: MenuReadNote): string {
       return `Line ${n.row}: the ${field} ${raw} reads two ways, so it was left blank. Write 1250, 1.250,00 or 1,250.00.`
     case 'negative':
       return `Line ${n.row}: the ${field} ${raw} is below zero, so it was left blank.`
+    case 'too_large':
+      return `Line ${n.row}: the ${field} ${raw} is more than a price can be (99,999,999.99), so it was left blank.`
+    case 'too_precise':
+      return `Line ${n.row}: the ${field} ${raw} has more than two decimal places, so it was left blank, not rounded.`
     case 'no_number':
       return `Line ${n.row}: the ${field} ${raw} has no number, so it was left blank.`
     case 'unreadable':

@@ -699,6 +699,23 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     expect(tables.menu_items[0].bottle_price).toBe(60);
     expect(calls).toHaveLength(0);
   });
+
+  it.each([
+    ["100000000", /too large/],
+    ["45.5555", /two decimal places/],
+  ])("refuses the price %s in words (a 400, never a database 500), and touches nothing", async (newValue, words) => {
+    const calls: RpcCall[] = [];
+    const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    const service = makeService(tables, { rpc: changed, rpcCalls: calls });
+    const write = service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "bottle_price",
+      newValue,
+    } as any);
+    await expect(write).rejects.toBeInstanceOf(BadRequestException);
+    await expect(write).rejects.toThrow(words);
+    expect(tables.menu_items[0].bottle_price).toBe(60);
+    expect(calls).toHaveLength(0);
+  });
 });
 
 /**
@@ -896,7 +913,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const tables: Record<string, Row[]> = base();
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
     const first = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
-    expect(first.notes.some((n) => n.reason === "same_file")).toBe(false);
+    expect((first.notes ?? []).some((n) => n.reason === "same_file")).toBe(false);
 
     const second = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
     expect(second.notes).toEqual([{ row: 0, reason: "same_file", raw: "draft" }]);

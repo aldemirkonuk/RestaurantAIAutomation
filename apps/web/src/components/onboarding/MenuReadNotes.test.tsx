@@ -25,6 +25,19 @@ describe('menuReadNoteText: a price below zero', () => {
   })
 })
 
+describe('menuReadNoteText: a price the column cannot hold', () => {
+  it('says a price too large was left blank, with the most a price can be', () => {
+    expect(menuReadNoteText({ row: 3, reason: 'too_large', field: 'by_glass_price', raw: '100000000' })).toBe(
+      'Line 3: the glass price "100000000" is more than a price can be (99,999,999.99), so it was left blank.',
+    )
+  })
+  it('says a price with more than two decimals was left blank, not rounded', () => {
+    expect(menuReadNoteText({ row: 4, reason: 'too_precise', field: 'bottle_price', raw: '45.5555' })).toBe(
+      'Line 4: the bottle price "45.5555" has more than two decimal places, so it was left blank, not rounded.',
+    )
+  })
+})
+
 describe('menuReadNoteText: a workbook of several sheets', () => {
   it('names the sheet a line is on', () => {
     expect(
