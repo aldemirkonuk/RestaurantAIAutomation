@@ -57,6 +57,8 @@ import ItemDrawer from './ItemDrawer';
 import { CountBar, PhoneFilter, activeFilterCount, nextToCount } from './PhoneBook';
 import { useIsPhone } from '../../../hooks/useIsPhone';
 import CarryThis from './CarryThis';
+import CountMany from './CountMany';
+import CarryMany from './CarryMany';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, forHouse, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
@@ -394,6 +396,14 @@ export default function InventoryNext() {
   // it, so an action never reaches a row the person can no longer see.
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [removeSel, setRemoveSel] = useState<InvRow[] | null>(null);
+  // Count many (inventory r36 gap 6): the listed or the selected titles, one box each.
+  const [counting, setCounting] = useState<{ rows: InvRow[]; what: string } | null>(null);
+  // Carry many (inventory r40): a pasted list of goods, one a line.
+  const [carryingMany, setCarryingMany] = useState(false);
+  const uomOf = useMemo(() => {
+    const u = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).uom]));
+    return (r: InvRow) => u.get(r.id) ?? null;
+  }, [data.rawItems]);
   useEffect(() => {
     setSelected(new Set());
   }, [data.rid, activeChip, zone, type, query, view]);
@@ -1126,6 +1136,18 @@ export default function InventoryNext() {
                   <button type="button" className="iv-btn iv-focus" onClick={() => void copySelectedNames()}>
                     Copy names
                   </button>
+                  <button
+                    type="button"
+                    className="iv-btn iv-focus"
+                    onClick={() =>
+                      setCounting({
+                        rows: selectedRows,
+                        what: selectedRows.length === 1 ? 'the selected title' : `the ${fmtCount(selectedRows.length)} selected titles`,
+                      })
+                    }
+                  >
+                    Count selected
+                  </button>
                   {data.canManage ? (
                     <button
                       type="button"
@@ -1214,8 +1236,26 @@ export default function InventoryNext() {
                     Carry a food or supply
                   </button>
                 ) : null}
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setCarryingMany(true)}>
+                    Carry many at once
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
+                </button>
+                <button
+                  type="button"
+                  className="iv-btn iv-focus"
+                  disabled={visible.length === 0}
+                  onClick={() =>
+                    setCounting({
+                      rows: visible,
+                      what: visible.length === 1 ? 'the listed title' : `the ${fmtCount(visible.length)} listed titles`,
+                    })
+                  }
+                >
+                  Count the listed titles
                 </button>
                 {/* A mapping decides what a sale takes off the shelf: a manager's,
                     as the gateway now says too (inventory r28, gap 6). */}
@@ -1368,10 +1408,18 @@ export default function InventoryNext() {
           <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
         </PanelSuspense>
       ) : null}
+      {counting ? <CountMany rows={counting.rows} uomOf={uomOf} what={counting.what} onClose={() => setCounting(null)} /> : null}
+      {carryingMany ? (
+        <CarryMany restaurantId={data.rid} listedNames={(rows ?? []).map((r) => r.name)} onClose={() => setCarryingMany(false)} />
+      ) : null}
       {panel === 'carry' ? (
         <CarryThis
           restaurantId={data.rid}
           onClose={() => setPanel(null)}
+          onMany={() => {
+            setPanel(null);
+            setCarryingMany(true);
+          }}
           onCarried={(item) => {
             setPanel(null);
             refreshStock();
