@@ -29,7 +29,7 @@ function build(
     let ids: string[] = [];
     let columns = "";
     const b: any = {};
-    for (const m of ["eq", "is", "not", "order", "limit"]) b[m] = () => b;
+    for (const m of ["eq", "is", "not", "order", "limit", "range"]) b[m] = () => b;
     b.select = (c: string) => {
       columns = c;
       return b;

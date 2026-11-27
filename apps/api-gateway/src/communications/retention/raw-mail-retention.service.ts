@@ -83,6 +83,10 @@ export const RETENTION_SWEEP_CRON = "30 3 * * *";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ATTACHMENT_BUCKET = "vendor-attachments";
+/** Rows read per page, at the API cap (supabase/config.toml max_rows). */
+const REPLIES_PAGE = 1000;
+/** Ids per `.in()` call: one response is capped at max_rows and a long list makes a URL too long. */
+const ID_CHUNK = 50;
 
 export interface DerivedWindow {
   restaurantId: string;
@@ -567,11 +571,49 @@ export class RawMailRetentionService {
       });
     }
 
-    const candidates = rows ?? [];
+    const candidates = [...(rows ?? [])];
     const expired = candidates.filter((r) => {
       const at = (r.received_at as string | null) ?? (r.created_at as string | null);
       return typeof at === "string" && at < cutoff;
     });
+
+    // THE HOUSE'S OWN REPLIES TO A TEAM MEMBER OR A GUEST RUN OUT WITH THE
+    // WINDOW TOO, while the house has a wide reading on. They carry no grant
+    // stamp (revocation reaches them by house, ownRepliesToPeople), so the
+    // stamped read above never lists them, and the consent page says a team or
+    // guest message "is deleted whole ... when the window runs out". The clock
+    // is the letter's own: when it was sent, else when it was written. Without
+    // a live wide reading there is no consent for the window to be counted
+    // against, and the revoke sweep already took them.
+    const standing = await this.houseHasLiveWideGrant(restaurantId);
+    let standingNote: string | null = null;
+    if (standing.unreadable) {
+      standingNote = `Whether this house has a wide reading on could not be read (${standing.unreadable}), so its replies to team members and guests were not looked at in this run.`;
+    }
+    if (standing.live) {
+      const replies = await this.readOwnRepliesToPeople(restaurantId);
+      if (replies.error) {
+        return this.recordSweep({
+          restaurantId,
+          reason: "window_expired",
+          connectionId: null,
+          considered: candidates.length,
+          deleted: 0,
+          attachmentsDeleted: 0,
+          windowDays: figureDays,
+          notice: null,
+          archiveMode: archive.mode,
+          heldForExport: null,
+          error: `The house's replies to team members and guests could not be read: ${replies.error}`,
+          says: `Nothing was swept for this house: its replies to team members and guests could not be read (${replies.error}). No mail was deleted.`,
+        });
+      }
+      for (const r of replies.rows) {
+        const at = r.sent_at ?? r.created_at;
+        candidates.push({ id: r.id, received_at: r.sent_at, created_at: r.created_at });
+        if (typeof at === "string" && at < cutoff) expired.push({ id: r.id, received_at: r.sent_at, created_at: r.created_at });
+      }
+    }
 
     const expiredIds = expired.map((r) => String(r.id));
 
@@ -625,7 +667,7 @@ export class RawMailRetentionService {
       notice: null,
       archiveMode: archive.mode,
       heldForExport,
-      error: outcome.error,
+      error: [outcome.error, standingNote].filter(Boolean).join(" ") || null,
       says: `${candidates.length} mirrored repl${candidates.length === 1 ? "y" : "ies"} still holding raw mail were looked at against a ${figureDays}-day window; ${outcome.deleted} were past it and had their body, headers and attachment bytes deleted.${heldSentence} The order's own facts on all ${candidates.length} are untouched.`,
     });
   }
@@ -771,10 +813,14 @@ export class RawMailRetentionService {
     // vendor raw mail is deleted straight away too" (the consent page's words).
     let restampError: string | null = null;
     if (vendorOnlyGrantId && outcome.keptVendorIds?.length) {
-      const { error: restamp } = await this.db.supabase
-        .from("procurement_conversations")
-        .update({ mirrored_by_grant_id: vendorOnlyGrantId })
-        .in("id", outcome.keptVendorIds);
+      let restamp: { message: string } | null = null;
+      for (let i = 0; i < outcome.keptVendorIds.length && !restamp; i += ID_CHUNK) {
+        const { error } = await this.db.supabase
+          .from("procurement_conversations")
+          .update({ mirrored_by_grant_id: vendorOnlyGrantId })
+          .in("id", outcome.keptVendorIds.slice(i, i + ID_CHUNK));
+        restamp = error;
+      }
       if (restamp) {
         restampError = `The ${outcome.keptVendorIds.length} vendor repl${outcome.keptVendorIds.length === 1 ? "y" : "ies"} kept could NOT be handed to the vendor-only connection (${restamp.message}), so disconnecting it later will not delete ${outcome.keptVendorIds.length === 1 ? "that reply" : "those replies"}.`;
       }
@@ -805,15 +851,10 @@ export class RawMailRetentionService {
     });
   }
 
-  /**
-   * The house's own sent replies to team members and guests, unless another
-   * wide grant is still live. A failed read of either is said, not skipped
-   * (ADR 0020); an unreadable standing errs toward deleting, like the vendor
-   * rows above.
-   */
-  private async ownRepliesToPeople(
+  /** One live wide grant is enough: its reading is what these replies belong to. */
+  private async houseHasLiveWideGrant(
     restaurantId: string,
-  ): Promise<{ ids: string[]; error: string | null }> {
+  ): Promise<{ live: boolean; unreadable: string | null }> {
     const { data: wide, error: wideError } = await this.db.supabase
       .from("integration_oauth_connections")
       .select("id")
@@ -821,23 +862,75 @@ export class RawMailRetentionService {
       .eq("integration_id", "gmail_read_all")
       .is("revoked_at", null)
       .limit(1);
-    if (!wideError && (wide ?? []).length > 0) return { ids: [], error: null };
-    const { data, error } = await this.db.supabase
-      .from("procurement_conversations")
-      .select("id")
-      .eq("restaurant_id", restaurantId)
-      .in("kind", ["team", "guest"])
-      .eq("direction", "outbound")
-      .eq("status", "SENT")
-      .is("raw_deleted_at", null)
-      .is("mirrored_by_grant_id", null);
-    if (error) {
+    if (wideError) return { live: false, unreadable: wideError.message };
+    return { live: (wide ?? []).length > 0, unreadable: null };
+  }
+
+  /**
+   * Every reply this house wrote to a team member or a guest, whatever state
+   * the letter is in. The rows are read a page at a time and the loop stops on
+   * an empty page: the API caps one response (supabase/config.toml max_rows),
+   * and an unpaged read past the cap returns the first rows with no error.
+   */
+  private async readOwnRepliesToPeople(
+    restaurantId: string,
+  ): Promise<{
+    rows: Array<{ id: string; sent_at: string | null; created_at: string | null }>;
+    error: string | null;
+  }> {
+    const rows: Array<{ id: string; sent_at: string | null; created_at: string | null }> = [];
+    const seen = new Set<string>();
+    for (let from = 0; ; ) {
+      const { data, error } = await this.db.supabase
+        .from("procurement_conversations")
+        .select("id, sent_at, created_at")
+        .eq("restaurant_id", restaurantId)
+        .in("kind", ["team", "guest"])
+        .eq("direction", "outbound")
+        .is("raw_deleted_at", null)
+        .is("mirrored_by_grant_id", null)
+        .order("id")
+        .range(from, from + REPLIES_PAGE - 1);
+      if (error) return { rows, error: error.message };
+      const page = (data ?? []).filter((r) => !seen.has(String(r.id)));
+      if (!page.length) break;
+      for (const r of page) {
+        seen.add(String(r.id));
+        rows.push({
+          id: String(r.id),
+          sent_at: (r.sent_at as string | null) ?? null,
+          created_at: (r.created_at as string | null) ?? null,
+        });
+      }
+      from += REPLIES_PAGE;
+    }
+    return { rows, error: null };
+  }
+
+  /**
+   * The house's own replies to team members and guests, unless another wide
+   * grant is still live. EVERY state goes, not only SENT: a letter still
+   * queued or sending would be sent after the reading was withdrawn (the
+   * dispatcher never looks at the grant), and a failed or draft one still holds
+   * the guest's address and text. Deleting the row also cancels the send,
+   * because the dispatcher claims a row with status = QUEUED.
+   *
+   * A failed read of either is said, not skipped (ADR 0020); an unreadable
+   * standing errs toward deleting, like the vendor rows above.
+   */
+  private async ownRepliesToPeople(
+    restaurantId: string,
+  ): Promise<{ ids: string[]; error: string | null }> {
+    const standing = await this.houseHasLiveWideGrant(restaurantId);
+    if (standing.live) return { ids: [], error: null };
+    const read = await this.readOwnRepliesToPeople(restaurantId);
+    if (read.error) {
       return {
         ids: [],
-        error: `The house's sent replies to team members and guests could NOT be read (${error.message}), so they were not deleted. They are still in the book.`,
+        error: `The house's replies to team members and guests could NOT be read (${read.error}), so they were not deleted. They are still in the book.`,
       };
     }
-    return { ids: (data ?? []).map((r) => String(r.id)), error: null };
+    return { ids: read.rows.map((r) => r.id), error: null };
   }
 
   // =========================================================================
@@ -858,6 +951,47 @@ export class RawMailRetentionService {
     conversationIds: string[],
     reason: SweepReason,
     keepVendorRows = false,
+  ): Promise<{
+    deleted: number;
+    attachmentsDeleted: number;
+    error: string | null;
+    vendorKept?: number;
+    keptVendorIds?: string[];
+  }> {
+    // A few ids at a time: a house with hundreds of replies would otherwise
+    // hit the response cap on the kind read (an id it did not return is then
+    // treated as a vendor's) and a request URL too long for `.in()`.
+    const total = {
+      deleted: 0,
+      attachmentsDeleted: 0,
+      errors: [] as string[],
+      vendorKept: 0,
+      keptVendorIds: [] as string[],
+    };
+    for (let i = 0; i < conversationIds.length; i += ID_CHUNK) {
+      const one = await this.deleteRawChunk(
+        conversationIds.slice(i, i + ID_CHUNK),
+        reason,
+        keepVendorRows,
+      );
+      total.deleted += one.deleted;
+      total.attachmentsDeleted += one.attachmentsDeleted;
+      if (one.error) total.errors.push(one.error);
+      total.vendorKept += one.vendorKept ?? 0;
+      total.keptVendorIds.push(...(one.keptVendorIds ?? []));
+    }
+    return {
+      deleted: total.deleted,
+      attachmentsDeleted: total.attachmentsDeleted,
+      error: total.errors.length ? [...new Set(total.errors)].join(" ") : null,
+      ...(total.vendorKept ? { vendorKept: total.vendorKept, keptVendorIds: total.keptVendorIds } : {}),
+    };
+  }
+
+  private async deleteRawChunk(
+    conversationIds: string[],
+    reason: SweepReason,
+    keepVendorRows: boolean,
   ): Promise<{
     deleted: number;
     attachmentsDeleted: number;
