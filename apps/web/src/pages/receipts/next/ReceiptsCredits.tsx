@@ -40,6 +40,7 @@ import { VENDOR_UNNAMED } from '@/lib/mudavym/vendor';
 import type {
   CreditLetterOutcome,
   CreditLetterRef,
+  CreditRecost,
   CreditState,
   ProcurementCredit,
   RecoveryFigures,
@@ -649,6 +650,28 @@ function ClaimLetter({ claim, outcome }: { claim: ProcurementCredit; outcome: Cr
   );
 }
 
+/**
+ * r110 (DD-r109-29): ONE sentence on what a recorded credit did to the cost of
+ * the bottles it covers, in the house's words. Nothing when the gateway said
+ * nothing; a failure is said as a failure, never as "unchanged".
+ */
+export function recostWords(r: CreditRecost | undefined): string {
+  if (!r) return '';
+  if (!r.ok) return `The credit is recorded, but the cost of its bottles could not be changed: ${sentence(r.error)}`;
+  if (!r.costField) return r.note ? `The cost of its bottles does not change: ${sentence(r.note)}` : '';
+  const recosted = r.deliveries.reduce((n, d) => n + d.recosted.length, 0);
+  const sales = r.deliveries.reduce((n, d) => n + d.salesRestated, 0);
+  const kept = r.deliveries.flatMap((d) => d.kept);
+  if (kept.length) return `The cost of its bottles is held, not lowered: ${sentence(kept[0].reason)}`;
+  if (recosted === 0) {
+    const waiting = r.deliveries.find((d) => d.note);
+    return waiting ? 'Its delivery is not checked yet; checking it costs the credited price.' : '';
+  }
+  return sales > 0
+    ? `Its bottles now cost the credited price, and ${sales === 1 ? 'one sale' : `${sales} sales`} already made from them ${sales === 1 ? 'was' : 'were'} re-costed.`
+    : 'Its bottles now cost the credited price.';
+}
+
 function ClaimSheet({
   claim,
   vendor,
@@ -679,7 +702,7 @@ function ClaimSheet({
         onSuccess: (saved) => {
           setArmed(null);
           if (saved?.letter) setLetter(saved.letter);
-          setDone(`Recorded: ${STATE_WORDS[to]}.`);
+          setDone(`Recorded: ${STATE_WORDS[to]}. ${recostWords(saved?.recost)}`.trim());
         },
         onError: (e) =>
           setRefusal(

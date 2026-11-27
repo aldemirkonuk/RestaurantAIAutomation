@@ -79,6 +79,7 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
 
 import ReceiptsNext, { canSeeCreditLedger } from './ReceiptsNext';
 import { CREDIT_MOVES } from './useReceiptsNextData';
+import { recostWords } from './ReceiptsCredits';
 
 function claim(over: Partial<ProcurementCredit> = {}): ProcurementCredit {
   return {
@@ -435,6 +436,40 @@ describe('moves', () => {
         creditDocumentId: 'memo-1',
       }),
     );
+  });
+
+  it('says, in one sentence, what the recorded credit did to its bottles\' cost (r110, DD-r109-29)', async () => {
+    api.claims = [claim({ state: 'promised' })];
+    api.memos = [memo()];
+    api.transition.mockResolvedValue({
+      ...claim({ state: 'credited' }),
+      recost: { ok: true, costField: true, deliveries: [{ recosted: [{}], kept: [], salesRestated: 2 }] },
+    });
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Settle against a credit memo' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Credit memo CM-7/ }));
+    fireEvent.change(screen.getByPlaceholderText(/claimed/), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record the settlement' }));
+    expect(
+      (await screen.findByText(/Its bottles now cost the credited price, and 2 sales already made from them were re-costed\./)).getAttribute('role'),
+    ).toBe('status');
+  });
+
+  it('recostWords says a failure as a failure, a hold as a hold, and nothing when told nothing', () => {
+    expect(recostWords(undefined)).toBe('');
+    expect(recostWords({ ok: false, error: 'the lots could not be read' })).toBe(
+      'The credit is recorded, but the cost of its bottles could not be changed: the lots could not be read.',
+    );
+    expect(recostWords({ ok: true, costField: false, deliveries: [], note: 'a credit for bottles short does not change it' })).toMatch(
+      /^The cost of its bottles does not change: a credit/,
+    );
+    expect(
+      recostWords({ ok: true, costField: true, deliveries: [{ recosted: [], kept: [{ inventoryId: 'i', reason: 'Line 1 was credited 9, more than the 5 it billed' }], salesRestated: 0 }] }),
+    ).toBe('The cost of its bottles is held, not lowered: Line 1 was credited 9, more than the 5 it billed.');
+    expect(recostWords({ ok: true, costField: true, deliveries: [{ recosted: [], kept: [], salesRestated: 0, note: 'not verified' }] })).toMatch(/not checked yet/);
+    expect(recostWords({ ok: true, costField: true, deliveries: [{ recosted: [{}], kept: [], salesRestated: 1 }] })).toMatch(/one sale already made from them was re-costed/);
+    expect(recostWords({ ok: true, costField: true, deliveries: [{ recosted: [{}], kept: [], salesRestated: 0 }] })).toBe('Its bottles now cost the credited price.');
   });
 
   it('says when a memo already settles another claim, since the server allows reuse', async () => {

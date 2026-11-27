@@ -131,7 +131,7 @@ export const creditsApi = {
       creditDocumentId?: string
       notes?: string
     },
-  ): Promise<ProcurementCredit & { letter?: CreditLetterOutcome }> {
+  ): Promise<ProcurementCredit & { letter?: CreditLetterOutcome; recost?: CreditRecost }> {
     const { data } = await apiClient.post(`/procurement/credits/${id}/transition`, body)
     return data
   },
@@ -144,3 +144,21 @@ export const creditsApi = {
 }
 
 export default creditsApi
+
+/**
+ * r110 (DD-r109-29): what recording a credit did to the cost of the bottles it
+ * covers. `ok:false` is a re-cost that failed; the credit still stands.
+ */
+export type CreditRecost =
+  | { ok: false; error: string }
+  | {
+      ok: true
+      costField: boolean
+      note?: string
+      deliveries: {
+        recosted: unknown[]
+        kept: { inventoryId: string; reason: string }[]
+        salesRestated: number
+        note?: string
+      }[]
+    }
