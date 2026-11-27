@@ -19,6 +19,45 @@ import { apiClient } from './client'
  */
 import { sealed, rethrowSpoken } from './seal'
 
+export interface SealedChangeEvent {
+  at: string
+  stockValueDelta: string
+  bottles: number
+  salesCostDelta: string
+  sales: number
+  notKnown: number
+}
+export interface SealedChanges extends Omit<SealedChangeEvent, 'at'> {
+  status: string
+  currency: string | null
+  orders: string[]
+  otherPapers: number
+  events: SealedChangeEvent[]
+}
+
+/** r109 g2: how much of the till's drinks cost is exact, by basis, as exact decimal text. */
+export interface SaleCostCoverage {
+  days: number
+  currency: string | null
+  food: string
+  total: string
+  checked: string
+  partial: string
+  estimate: string
+  other: string
+  sales: number
+  notKept: number
+  voided: number
+  estimateDeliveries: {
+    orderId: string | null
+    vendor: string | null
+    deliveredAt: string | null
+    cost: string
+    sales: number
+    paper: { state: 'in_review' | 'checked' | 'none'; documentId: string | null }
+  }[]
+}
+
 export interface ProcurementDocument {
   id: string
   doc_type:
@@ -188,6 +227,29 @@ export const documentsApi = {
   }> {
     const { data } = await apiClient.get(`/procurement/documents/${id}`)
     return data
+  },
+
+  /**
+   * What sealing this paper changed (r108 g17): stock value and the till's
+   * cost of sales, as exact decimal text in the house's money. Owners and
+   * managers only; anyone else is refused in words.
+   */
+  async saleCostCoverage(days: 7 | 30): Promise<SaleCostCoverage> {
+    try {
+      const { data } = await apiClient.get('/procurement/documents/sale-cost-coverage', { params: { days } })
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  async sealedChanges(id: string): Promise<SealedChanges> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/changes`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**

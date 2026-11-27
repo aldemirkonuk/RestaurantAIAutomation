@@ -256,6 +256,44 @@ describe("CatalogMatcherService.pullAndMatch", () => {
     expect(summary.proposed).toHaveLength(0);
     expect(upsertItemMapping).not.toHaveBeenCalled();
   });
+
+  it("skips a button mapped to a drink recipe: auto-map never overwrites it with a shelf item (inventory r28 gap 1)", async () => {
+    const { service, upsertItemMapping } = makeService(
+      [inv({ pos_sku: "ext-1" })],
+      [posItem()],
+      {
+        pos_item_mappings: [
+          {
+            restaurant_id: RESTAURANT_ID,
+            source: "simpos",
+            external_item_id: "ext-1",
+            inventory_id: null,
+            cocktail_id: "c0c0c0c0-0000-4000-8000-000000000001",
+          },
+        ],
+      },
+    );
+    const summary = await service.pullAndMatch(RESTAURANT_ID, "simpos");
+
+    expect(summary.alreadyMapped).toBe(1);
+    expect(summary.autoMapped).toHaveLength(0);
+    expect(upsertItemMapping).not.toHaveBeenCalled();
+  });
+
+  it("still maps a button whose row names neither an item nor a recipe", async () => {
+    const { service, upsertItemMapping } = makeService(
+      [inv({ pos_sku: "ext-1" })],
+      [posItem()],
+      {
+        pos_item_mappings: [
+          { restaurant_id: RESTAURANT_ID, source: "simpos", external_item_id: "ext-1", inventory_id: null, cocktail_id: null },
+        ],
+      },
+    );
+    const summary = await service.pullAndMatch(RESTAURANT_ID, "simpos");
+    expect(summary.alreadyMapped).toBe(0);
+    expect(upsertItemMapping).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("CatalogMatcherService review queue", () => {

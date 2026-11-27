@@ -47,6 +47,30 @@ const cents = (v: unknown): number | null => {
 };
 
 /**
+ * Modifier ids or names on a line as one stable string: sorted, comma-joined,
+ * null when there are none. It tells two glasses of one wine apart when one
+ * carries a modifier (r57 D2). Accepts strings or objects naming themselves.
+ */
+const modifierKey = (
+  mods: unknown,
+  pick: (m: any) => unknown,
+): string | null => {
+  if (!Array.isArray(mods)) return null;
+  const names = mods
+    .map((m) => (typeof m === "string" ? m : pick(m)))
+    .map((v) => (v === null || v === undefined ? "" : String(v).trim()))
+    .filter(Boolean)
+    .sort();
+  return names.length ? names.join(",") : null;
+};
+/** A provider's line id as a string, or null when it sent none. */
+const lineIdOf = (v: unknown): string | null => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s ? s : null;
+};
+
+/**
  * Clover's `unitQty` is set only on a line priced per unit (by weight or
  * measure), as a fixed-point integer scaled by 1000: 2500 is 2.5 units, and
  * the line's total is price × unitQty / 1000. A fixed-price line has none,
@@ -72,9 +96,9 @@ const cloverQty = (v: unknown): number => {
  * line and changes only the arithmetic; the basis is OD-244's, an assumption
  * stated in tech-debt.d (fix-pos-lines-carry-unit-price), not an answer.
  */
-const toastUnitPrice = (s: any, qty: number): number => {
+const toastUnitPrice = (s: any, qty: number): number | null => {
   const total = num(s.price);
-  return total === null || qty === 0 ? 0 : total / qty;
+  return total === null || qty === 0 ? null : total / qty;
 };
 
 // ---------------------------------------------------------------------------
@@ -111,7 +135,10 @@ export const genericAdapter: PosAdapter = {
             externalItemId: it.externalItemId ?? it.external_item_id ?? null,
             category: it.category ?? null,
             qty: num(it.qty ?? it.quantity) ?? 1,
-            price: num(it.price) ?? 0,
+            price: num(it.price),
+            lineId: lineIdOf(it.lineId ?? it.line_id ?? it.id),
+            modifiers: modifierKey(it.modifiers, (m) => m?.id ?? m?.name),
+            comped: it.comped === true || it.is_comp === true,
             is_wine: typeof it.is_wine === "boolean" ? it.is_wine : undefined,
             master_wine_id: it.master_wine_id ?? null,
           }),
@@ -161,7 +188,12 @@ export const squareAdapter: PosAdapter = {
             qty: num(li.quantity) ?? 1,
             // base_price_money is "the base price for a single unit of the
             // line item" (Square, OrderLineItem).
-            price: cents(li.base_price_money?.amount) ?? 0,
+            price: cents(li.base_price_money?.amount),
+            lineId: lineIdOf(li.uid),
+            modifiers: modifierKey(
+              li.modifiers,
+              (m) => m?.catalog_object_id ?? m?.name,
+            ),
           }),
         ),
         raw: o,
@@ -217,7 +249,12 @@ export const cloverAdapter: PosAdapter = {
             category: null,
             qty: cloverQty(li.unitQty),
             // `price` is one unit's, before modifiers and discounts.
-            price: cents(li.price) ?? 0,
+            price: cents(li.price),
+            lineId: lineIdOf(li.id),
+            modifiers: modifierKey(
+              li.modifications?.elements,
+              (m) => m?.modifier?.id ?? m?.id ?? m?.name,
+            ),
           }),
         ),
         raw: o,
@@ -263,6 +300,11 @@ export const toastAdapter: PosAdapter = {
             category: s.salesCategory?.name ?? null,
             qty,
             price: toastUnitPrice(s, qty),
+            lineId: lineIdOf(s.guid),
+            modifiers: modifierKey(
+              s.modifiers,
+              (m) => m?.item?.guid ?? m?.guid ?? m?.displayName,
+            ),
           };
         }),
         raw: c,

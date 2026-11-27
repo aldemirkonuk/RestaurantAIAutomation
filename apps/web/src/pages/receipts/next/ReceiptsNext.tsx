@@ -70,6 +70,8 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { SealedChangesPart } from './ReceiptsSealedChanges';
+import { ReceiptsCoverage } from './ReceiptsCoverage';
 import { readLaneRows, writeLaneRows } from './laneMemory';
 import { ReceiptsStatementTieout } from './ReceiptsStatementTieout';
 import {
@@ -1462,6 +1464,12 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
       </CardPart>
 
       {doc.doc_type === 'statement' && <StatementTieoutPart docId={doc.id} />}
+      {/* r108 g17: what the seal did to the books, from the receipts it wrote */}
+      {doc.status === 'verified' && (
+        <CardPart label="What sealing changed">
+          <SealedChangesPart docId={doc.id} />
+        </CardPart>
+      )}
 
       {/*
         The paper is no longer beside these lines: the sheet above brings it on
@@ -2147,6 +2155,9 @@ export default function ReceiptsNext() {
             </div>
           </div>
         )}
+
+        {/* r109 g2: how much of the till's drinks cost is exact; owners and managers only. */}
+        {creditsOffered && <ReceiptsCoverage onOpen={select} />}
 
         {/*
           AN OPEN DOCUMENT TAKES THE WIDTH (walk-through W3, 2026-10-01). Beside

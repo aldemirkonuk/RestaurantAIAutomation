@@ -246,7 +246,7 @@ export class GoalsService {
        */
       sourceRuleKey?: string | null;
     },
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     if (!GoalsService.SUPPORTED_METRICS[input.metricKey]) {
       throw new Error(
@@ -276,6 +276,7 @@ export class GoalsService {
       input.metricKey,
       house.zone ? this.periodStart(input.period, house.zone) : null,
       house.zone,
+      gate,
     );
     const { data, error } = await this.dbService
       .getClient()
@@ -483,7 +484,7 @@ export class GoalsService {
     restaurantId: string,
     goalId: string,
     known?: HouseZone,
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     const [{ data: goal, error }, house] = await Promise.all([
       this.dbService
@@ -513,6 +514,7 @@ export class GoalsService {
       periodStart,
       undefined,
       zone,
+      gate,
     );
 
     // Refresh stored current_value (cheap side effect, keeps insights honest).
@@ -884,6 +886,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     metricKey: string,
     sinceDate: string | null,
     zone: string | null,
+    gate: SalesGate = {},
   ): Promise<number> {
     const { current } = await this.computeMetricWithSeries(
       restaurantId,
@@ -891,6 +894,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       sinceDate,
       undefined,
       zone,
+      gate,
     );
     return current;
   }
@@ -911,6 +915,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     sinceDate: string | null,
     untilDate: string | undefined,
     zone: string | null,
+    /**
+     * The caller's sales gate (ADR 0298 d9). Days of stock is the cost of
+     * what the till sold over today's stock at cost (cost-math lane 3.1), so
+     * it is read only for a caller who sees sales; anyone else gets the
+     * withheld sentence below.
+     */
+    gate: SalesGate = {},
   ): Promise<{
     current: number;
     dailySeries: number[];
@@ -948,11 +959,32 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     if (metricKey === "days_of_inventory") {
       const financial: any = await this.analyticsService.getFinancialSummary(
         restaurantId,
+        0,
+        { withSales: gate.withSales === true },
       );
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        // Still a refusal, not a number: a days-of-stock built on the costed
+        // part of what sold would be a guess under the goal's name. It is
+        // caught per goal (listGoalsWithProgress) and shown as "could not be
+        // scored (<reason>)", so the reason names which input is missing
+        // (batch review 2026-11-11, finding 2).
+        const missing: string[] = [];
+        const cov = financial?.cogsCoverage;
+        if (financial?.cogs == null && cov && cov.itemsMoved > 0)
+          missing.push(
+            `the cost of what the till sold is known for ${cov.itemsCosted} of ${cov.itemsMoved} items sold`,
+          );
+        if (financial?.inventoryValue == null)
+          missing.push("a bottle on hand carries no recorded cost");
+        const span = financial?.cogsWindow?.spanDays;
+        if (typeof span === "number" && span < 28)
+          missing.push(`the till covers ${span} of the 28 days it needs`);
         throw new Error(
-          "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
+          gate.withSales === true
+            ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost over the cost of what the till sold, so it is only known when every bottle on hand carries a recorded cost, every bottle sold carries its cost, and the till covers 28 days." +
+              (missing.length ? ` Here ${missing.join("; ")}.` : "")
+            : "Days of stock cannot be read here: it is read from the till's sales, which reach owners and managers only.",
         );
       }
       return { current: dio, dailySeries: [], dailyDates: [], rowCount: 1 };
