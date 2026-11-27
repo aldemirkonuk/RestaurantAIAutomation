@@ -23,6 +23,7 @@
  * is nothing to insert and nothing to invent.
  */
 
+import type { SendAtChosen } from './SendAtMenu';
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -110,6 +111,8 @@ export interface QueuedLetter {
   subject: string | null;
   to: string | null;
   dispatchAt: string | null;
+  /** A time on the house's clock (r110 g1); absent on an older gateway. */
+  sendAtChosen?: SendAtChosen | null;
 }
 
 export interface GuardrailHit {

@@ -21,6 +21,7 @@ import { procurementHistoryKeys } from '../../../hooks/queries/useConversationQu
 import { secondsLeft } from './Compose/compose-format';
 import { errText, useQueuedLetters } from './Compose/useComposeData';
 import { SANS } from './cm-format';
+import { leavesAt } from './Compose/SendAtMenu';
 
 const NOTE: CSSProperties = { margin: 0, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #665D50)' };
 
@@ -33,6 +34,9 @@ export function QueuedPullBack({ id }: { id: string }) {
 
   const letter = queued?.find((q) => q.id === id) ?? null;
   const remaining = letter ? secondsLeft(letter.dispatchAt) : null;
+  // A letter set for a time on the house's clock (r110 g1) says when, in the
+  // house's words; the seconds are counted only in its last minute.
+  const leaves = remaining !== null && remaining > 60 ? leavesAt(letter?.sendAtChosen) : null;
   void tick;
 
   useEffect(() => {
@@ -71,6 +75,7 @@ export function QueuedPullBack({ id }: { id: string }) {
   } else {
     body = (
       <div className="flex flex-wrap items-center gap-2">
+        {leaves && <span style={{ ...NOTE, color: 'var(--ink-2, #4F473C)' }}>Leaves {leaves} ·</span>}
         <button
           type="button"
           onClick={pull}
@@ -90,7 +95,7 @@ export function QueuedPullBack({ id }: { id: string }) {
           }}
         >
           <Undo2 size={13} strokeWidth={1.8} aria-hidden="true" />
-          Pull it back ({remaining}s)
+          {leaves ? 'Pull it back' : `Pull it back (${remaining}s)`}
         </button>
         <span style={NOTE}>Only the person who wrote it can pull it back.</span>
       </div>
