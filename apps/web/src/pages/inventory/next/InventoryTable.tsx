@@ -350,6 +350,7 @@ export default function InventoryTable(props: InventoryTableProps) {
         onSelect={props.onSelect}
         onSelectAll={props.onSelectAll}
         prefetch={prefetch}
+        onUsedIn={props.onUsedIn}
       />
     );
   }

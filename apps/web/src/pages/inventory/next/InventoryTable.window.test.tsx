@@ -268,7 +268,7 @@ describe("the phone's cards draw only the cards near the screen", () => {
 
   it('a scroll draws a late card', async () => {
     draw(many());
-    scrollTo('.ivc-list', 1000 * 72);
+    scrollTo('.ivc-list', 1000 * 109); // a card is 109 px (64 + the 44 px Used in row + the rule)
     await waitFor(() => expect(screen.getByTestId('inv-row-i1000')).toBeTruthy());
     expect(document.querySelectorAll('.ivc-card').length).toBeLessThanOrEqual(80);
   });
