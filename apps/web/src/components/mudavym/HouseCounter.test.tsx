@@ -4,6 +4,8 @@
  * pick of 2026-09-21).
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -227,5 +229,16 @@ describe('The house said — this sitting only', () => {
     houseSaid('sealed', 'Order to Kermit Lynch sealed');
     expect(window.localStorage.setItem).not.toHaveBeenCalledWith(expect.stringMatching(/said/i), expect.anything());
     expect(window.sessionStorage?.getItem?.('houseSaid') ?? null).toBeNull();
+  });
+});
+
+describe('the house said band holds one entry of room (perf-p9-4)', () => {
+  const css = readFileSync(resolve(__dirname, 'house-shell.css'), 'utf8');
+  const rule = (name: string) => css.match(new RegExp(`\\.${name} \\{[^}]*\\}`))?.[0] ?? '';
+
+  it('the quiet line and the list are the same height, so the first entry moves nothing', () => {
+    expect(rule('mdv-counter__quiet')).toMatch(/margin: 0;[\s\S]*min-height: 56px;/);
+    expect(rule('mdv-counter__saidlist')).toMatch(/min-height: 56px;/);
+    expect(rule('mdv-counter__quiet') + rule('mdv-counter__saidlist')).not.toMatch(/transition|animation/);
   });
 });
