@@ -982,11 +982,22 @@ export function lastWriterWords(
   direction: 'inbound' | 'outbound' | null,
   name: string | null,
   messageCount: number,
+  kind: MailKind = 'vendor',
 ): string {
   if (messageCount === 0) return 'Only automatic mail — a bounce or an auto-reply, nothing to answer';
-  if (direction === 'inbound') return `${name ?? 'The vendor'} wrote last`;
+  if (direction === 'inbound') return `${personWords(name, kind)} wrote last`;
   if (direction === 'outbound') return 'The house wrote last';
   return 'Nothing on it has been sent or received yet';
+}
+
+/**
+ * What a person is called when the gateway sent no name (r104 mail-gap g3): a
+ * guest or a team member is never "The vendor". Display only.
+ */
+export function personWords(name: string | null | undefined, kind: MailKind = 'vendor'): string {
+  const named = typeof name === 'string' ? name.trim() : '';
+  if (named) return named;
+  return kind === 'guest' ? 'The guest' : kind === 'team' ? 'The team member' : 'The vendor';
 }
 
 /**

@@ -401,7 +401,7 @@ function PersonThreads({
                   </span>
                   <span data-testid="mail-thread-count" style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
                     {threadCountWords(t) && <>{threadCountWords(t)} · </>}
-                    {lastWriterWords(t.lastDirection, person.name, t.messageCount)}
+                    {lastWriterWords(t.lastDirection, person.name, t.messageCount, mailKindOf(person))}
                   </span>
                 </button>
               </li>

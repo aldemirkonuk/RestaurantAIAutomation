@@ -33,6 +33,7 @@ import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './
 import {
   addressLine,
   answerFor,
+  personWords,
   letterAt,
   filedFromHeldWords,
   letterLook,
@@ -226,7 +227,7 @@ export function MailThread({
     .slice()
     .reverse()
     .flatMap((p) => p.messages);
-  const vendor = head?.person?.name ?? 'The vendor';
+  const vendor = personWords(head?.person?.name, mailKindOf(head?.person));
   const order = head?.order ?? null;
   const replyOrder = canReply && order && draftedOrderIds.has(order.id) ? order.id : null;
   // Any thread with a vendor can be answered by hand, order or not; the
