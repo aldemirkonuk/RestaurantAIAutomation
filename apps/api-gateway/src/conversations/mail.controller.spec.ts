@@ -252,6 +252,14 @@ describe("errors are said in words", () => {
     expect(reads).toHaveLength(0);
   });
 
+  it("?awaiting=1 reaches the people read as p_awaiting; no flag sends none (r108 mail-gap g7)", async () => {
+    expect((await get("/people?awaiting=1")).status).toBe(200);
+    expect(reads.find((r) => r.name === "list_mail_people")?.payload.p_awaiting).toBe(true);
+    reads = [];
+    expect((await get("/people?awaiting=0")).status).toBe(200);
+    expect(reads.find((r) => r.name === "list_mail_people")?.payload).not.toHaveProperty("p_awaiting");
+  });
+
   it("a page size that is not a whole number is a 400", async () => {
     const res = await get("/people?limit=ten");
     expect(res.status).toBe(400);

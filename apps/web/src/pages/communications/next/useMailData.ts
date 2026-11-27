@@ -54,8 +54,8 @@ export function useHouse(): string {
 
 export const mailKeys = {
   summary: (house: string) => ['mail-summary', house] as const,
-  people: (house: string, waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') =>
-    ['mail-people', house, waitingOnly, search, kind] as const,
+  people: (house: string, waitingOnly: boolean, search = '', kind: MailKindFilter = 'all', awaiting = false) =>
+    ['mail-people', house, waitingOnly, search, kind, awaiting] as const,
   threads: (house: string, withKey: string) => ['mail-threads', house, withKey] as const,
   thread: (house: string, key: string, withKey?: string | null) =>
     (withKey ? (['mail-thread', house, key, withKey] as const) : (['mail-thread', house, key] as const)),
@@ -120,15 +120,17 @@ export function useMailListsFollowSummary(summary: MailSummary | null | undefine
  * searches, so a person past the first page is found too. While a new term
  * is read, the last list stays on screen instead of "Reading the mail…".
  */
-export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindFilter = 'all') {
+export function useMailPeople(waitingOnly: boolean, search = '', kind: MailKindFilter = 'all', awaiting = false) {
   const house = useHouse();
   return useInfiniteQuery<MailPeoplePage>({
-    queryKey: mailKeys.people(house, waitingOnly, search, kind),
+    queryKey: mailKeys.people(house, waitingOnly, search, kind, awaiting),
     initialPageParam: null as string | null,
     placeholderData: (previous) => previous,
     queryFn: async ({ pageParam }) => {
       const params: Record<string, string> = {};
       if (waitingOnly) params.waiting = '1';
+      // r108 mail-gap g7: the people the house wrote to who have not answered.
+      if (awaiting) params.awaiting = '1';
       if (search) params.q = search;
       // The kind is asked for, so a page holds that kind and the next page is the next of that kind (r103 mail-1).
       if (kind !== 'all') params.kind = kind;

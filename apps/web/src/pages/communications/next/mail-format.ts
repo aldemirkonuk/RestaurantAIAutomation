@@ -154,6 +154,12 @@ export interface MailPersonRow {
    * gateway that predates it.
    */
   unsentStatus?: string | null;
+  /**
+   * When the house's newest letter to this person left, when nobody has
+   * answered it (r108 mail-gap g7). Null when there is an answer, or for a
+   * caller whose house letters are withheld; absent from an older gateway.
+   */
+  awaitingSince?: string | null;
 }
 
 export interface MailPeoplePage {
@@ -313,6 +319,26 @@ export function spanWords(ms: number): string {
   if (ms < HOUR) return plural(Math.floor(ms / MIN), 'minute', 'minutes');
   if (ms < DAY) return plural(Math.floor(ms / HOUR), 'hour', 'hours');
   return plural(Math.floor(ms / DAY), 'day', 'days');
+}
+
+/** No answer yet (r108 mail-gap g7): after 72 h, Gmail's three-day nudge. Elapsed time, never house days. */
+export const NO_ANSWER_AFTER_MS = 72 * HOUR;
+export const NO_ANSWER_CHIP = 'No answer yet';
+export const NO_ANSWER_EMPTY = 'Every letter the house sent has had an answer, or is less than 3 days old.';
+
+/**
+ * "No answer · 4 days" for a person the house wrote to last, whose letter
+ * left, who is not waiting on the house, with no letter still to leave, when
+ * the letter is 72 h old or more. Null otherwise: the row says nothing.
+ */
+export function noAnswerWords(
+  row: Pick<MailPersonRow, 'lastDirection' | 'waiting' | 'unsentStatus' | 'awaitingSince'>,
+  now: number,
+): string | null {
+  if (row.lastDirection !== 'outbound' || row.waiting || row.unsentStatus) return null;
+  const since = at(row.awaitingSince);
+  if (since === null || now - since < NO_ANSWER_AFTER_MS) return null;
+  return `No answer · ${spanWords(now - since)}`;
 }
 
 /** The short form for a line that is read at a glance: "4 min", "3 h", "2 days". */
