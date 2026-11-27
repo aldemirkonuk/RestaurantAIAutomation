@@ -510,7 +510,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     const fit = !editing && FIT_IDS.includes(c.id);
     // A cutting whose honest answer is a sentence folds to a strip while the
     // sheet is being READ; arranging gives every cutting its full paper back.
-    const strip = !editing && isStrip(c.id, data.registers[c.id], ctx);
+    const strip = !editing && isStrip(c.id, data.registers[c.id], ctx, c.graph);
     return {
     id: c.id,
     slot: strip
