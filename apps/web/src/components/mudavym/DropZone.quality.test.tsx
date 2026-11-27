@@ -98,7 +98,11 @@ describe('Retake on a phone', () => {
     const input = screen.getByLabelText('Page 2: retake') as HTMLInputElement;
     const fresh = page(9);
     fireEvent.change(input, { target: { files: [fresh] } });
-    expect(onFiles).toHaveBeenCalledWith([a, fresh, c], 'replace');
+    const [sent, mode] = onFiles.mock.calls[0] as [File[], string];
+    // Files compare equal by value in matchers: identity is what says which page was replaced.
+    expect(sent.map((f) => f === a || f === fresh || f === c)).toEqual([true, true, true]);
+    expect([sent[0] === a, sent[1] === fresh, sent[2] === c]).toEqual([true, true, true]);
+    expect(mode).toBe('replace');
     expect(btn).toBeTruthy();
   });
 
