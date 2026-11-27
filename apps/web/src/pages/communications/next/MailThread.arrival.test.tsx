@@ -85,8 +85,8 @@ beforeEach(() => {
     }
     unobserve() {}
   };
-  Element.prototype.scrollIntoView = function (arg?: unknown) {
-    scrolls.push([(this as HTMLElement).getAttribute('data-letter-id'), arg]);
+  Element.prototype.scrollIntoView = function (this: HTMLElement, arg?: unknown) {
+    scrolls.push([this.getAttribute('data-letter-id'), arg]);
   } as never;
 });
 afterEach(() => {
