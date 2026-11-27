@@ -424,7 +424,25 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
       data-state={discarding ? 'pending' : undefined}
       data-new={isNew ? 'true' : undefined}
     >
-      <td>{line.name}</td>
+      <td>
+        {line.name}
+        {/* r108 menu-g10: what the menu prints beside the line, in one line. */}
+        {line.description ? (
+          <span className="cl-note mdv-line-desc" title={line.description} data-testid="menu-line-description">
+            {line.description}
+          </span>
+        ) : null}
+        {line.printed_marks && line.printed_marks.length > 0 ? (
+          <span className="mdv-line-marks" aria-label={`Marks as printed on the menu: ${line.printed_marks.join(', ')}`} data-testid="menu-line-marks">
+            {line.printed_marks.map((m) => (
+              <span key={m} className="cl-chip" title="As printed on the menu">
+                {m}
+              </span>
+            ))}
+            <span className="cl-note">as printed on the menu</span>
+          </span>
+        ) : null}
+      </td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
       <td className="cl-num" data-label="Glass">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>

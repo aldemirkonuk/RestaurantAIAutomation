@@ -906,3 +906,31 @@ describe('MenuNext — a narrow screen gets cards, not a table to scroll (r106 m
     expect(narrow).not.toMatch(/animation|transition/);
   });
 });
+
+describe('MenuNext — a line shows what the menu prints beside it (r108 menu-g10)', () => {
+  it('the description in one line with its full text in the title, and the marks as printed', async () => {
+    const long = 'Red lentils, cumin and lemon, slow cooked the way the house has made it since the first winter';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ description: long, printed_marks: ['V', 'GF'] })] }));
+    mount();
+    const desc = await screen.findByTestId('menu-line-description');
+    expect(desc).toHaveTextContent(long);
+    expect(desc).toHaveAttribute('title', long);
+    expect(desc).toHaveClass('mdv-line-desc');
+    const marks = screen.getByTestId('menu-line-marks');
+    expect(marks).toHaveAttribute('aria-label', 'Marks as printed on the menu: V, GF');
+    expect(within(marks).getByText('as printed on the menu')).toBeInTheDocument();
+  });
+
+  it('a line with no description and no marks shows neither, and claims nothing', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ description: null, printed_marks: null })] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-line-description')).toBeNull();
+    expect(screen.queryByTestId('menu-line-marks')).toBeNull();
+  });
+
+  it('the description stays one line: menu-rows.css ellipsises it', () => {
+    const css = readFileSync(`${__dirname}/menu-rows.css`, 'utf8');
+    expect(css).toMatch(/\.mdv-line-desc\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
+  });
+});
