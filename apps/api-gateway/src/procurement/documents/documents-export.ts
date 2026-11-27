@@ -76,7 +76,8 @@ const MONEY_COLUMNS = ["subtotal", "freight", "tax", "total"] as const;
  * paper type (r106: an invoice is never added to its packing slip, the
  * vendor's statement of it or a credit memo). A paper that states no currency
  * is added to nothing: its money could be either, and one Total row says so in
- * words. An empty cell is never 0.
+ * words. An empty cell is never 0, and a column only SOME papers printed
+ * totals the ones that did and says how many printed none (r109, #2539).
  */
 export function verifiedCsv(rows: ExportRow[]): string {
   const lines: string[] = [EXPORT_COLUMNS.join(",")];
@@ -115,7 +116,7 @@ export function verifiedCsv(rows: ExportRow[]): string {
     // how many, so the total does not read as the book.
     const figures = s.sum.map((v, i) => (s.nulls[i] === s.n ? "" : formatCents(v)));
     const notes = MONEY_COLUMNS.flatMap((name, i) =>
-      s.nulls[i] > 0 && s.nulls[i] < s.n ? [`${s.nulls[i]} of ${s.n} papers printed no ${name}`] : [],
+      s.nulls[i] > 0 && s.nulls[i] < s.n ? [`${s.nulls[i]} of ${s.n} papers ${s.nulls[i] === 1 ? "prints" : "print"} no ${name}; not in this total`] : [],
     );
     lines.push(
       [`Total ${s.type || "unlabelled"}`, "", "", "", cell(s.cur), ...figures, cell(notes.join("; ") || null)].join(","),
