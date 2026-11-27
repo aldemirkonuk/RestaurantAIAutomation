@@ -119,11 +119,15 @@ describe("GET /procurement/documents/:id/statement-tieout (r109 g5)", () => {
   it("an unknown statement money lists no paper under it, and counts them all as left out", () => {
     const out = tieOutStatement(
       [{ docNumber: "1", docDate: "2026-11-01", amount: 1, kind: "invoice" }, { docNumber: "2", docDate: "2026-11-09", amount: 1, kind: "invoice" }],
-      [{ id: "a", doc_type: "invoice", doc_number: "5", doc_date: "2026-11-05", total: 3, currency: "USD", status: "verified" }],
+      [
+        { id: "a", doc_type: "invoice", doc_number: "5", doc_date: "2026-11-05", total: 3, currency: "USD", status: "verified" },
+        // No money on either side is still not one money: never listed.
+        { id: "b", doc_type: "invoice", doc_number: "6", doc_date: "2026-11-06", total: 4, currency: null, status: "verified" },
+      ],
       { vendorNamed: true, currency: null },
     );
     expect(out.notOnStatement).toEqual([]);
-    expect(out.notOnStatementOtherMoney).toBe(1);
+    expect(out.notOnStatementOtherMoney).toBe(2);
   });
 
   it("a statement with no vendor named compares nothing and reads no papers", async () => {
