@@ -28,4 +28,39 @@ describe("priceMove", () => {
     expect(priceMove(bottle(10), bottle(10.6), 5)).toMatchObject({ moved: true });
     expect(priceMove(bottle(10), bottle(10.6), 10)).toMatchObject({ moved: false });
   });
+
+  it.each([
+    [1.0, 1.1],
+    [2.0, 2.2],
+    [3.0, 3.3],
+    [20, 22],
+    [0.5, 0.45],
+  ])("exactly at the threshold is not moved: %s to %s", (p, n) => {
+    expect(priceMove(bottle(p), bottle(n))).toMatchObject({ compared: true, moved: false, sentence: null });
+  });
+
+  it("just past the threshold is moved", () => {
+    expect(priceMove(bottle(1), bottle(1.1001))).toMatchObject({ moved: true });
+  });
+
+  it("speaks a per-unit cost to its stored precision", () => {
+    const r = priceMove(bottle(0.0123), bottle(0.0150));
+    expect(r).toMatchObject({ moved: true, sentence: "was 0.0123, now 0.015, up 22 percent" });
+  });
+
+  it("speaks one decimal near the threshold", () => {
+    expect(priceMove(bottle(10), bottle(11.04))).toMatchObject({ sentence: "was 10.00, now 11.04, up 10.4 percent" });
+  });
+
+  it("moved agrees with integer cross-multiplication over many cent pairs", () => {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 3000; i++) {
+      const pc = 1 + Math.floor(rnd() * 5000);
+      const nc = 1 + Math.floor(rnd() * 6000);
+      const want = Math.abs(nc - pc) * 100 > 10 * pc;
+      const r = priceMove(bottle(pc / 100), bottle(nc / 100));
+      expect(r).toMatchObject({ compared: true, moved: want });
+    }
+  });
 });
