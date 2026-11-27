@@ -1184,16 +1184,25 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * which is the pattern that lets a broken query masquerade as "no sales";
    * here a failure must reach the caller so the UI can say "couldn't load"
    * rather than "no POS connected".
+   *
+   * It answers with the house's FIRST check (earliest opened, voided or not),
+   * so the window can also say on which house day the till began: a sparse
+   * series cannot tell a day that rang nothing from a day before the POS was
+   * wired, and a prior window cut from before the first check is not a window
+   * the house traded in.
    */
-  private async hasPosHistory(restaurantId: string): Promise<boolean> {
+  private async firstPosCheck(
+    restaurantId: string,
+  ): Promise<{ opened_at?: string | null; closed_at?: string | null } | null> {
     const { data, error } = await this.dbService
       .getClient()
       .from("pos_checks")
-      .select("id")
+      .select("id, opened_at, closed_at")
       .eq("restaurant_id", restaurantId)
+      .order("opened_at", { ascending: true })
       .limit(1);
     if (error) throw new Error(error.message);
-    return (data || []).length > 0;
+    return (data || [])[0] ?? null;
   }
 
   /**
@@ -1216,11 +1225,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
   ): Promise<PosRevenueWindow> {
     const span = Math.min(Math.max(Math.trunc(days) || 30, 1), 365);
     // Both reads are by key and independent; neither error is swallowed.
-    const [connected, house] = await Promise.all([
-      this.hasPosHistory(restaurantId),
+    const [first, house] = await Promise.all([
+      this.firstPosCheck(restaurantId),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
+    const connected = first !== null;
     const zone = house.zone;
+    const firstCheckDay = zone && first ? houseDayOf(first, zone) : null;
     const to = zone ? houseToday(zone) : null;
     const from = to ? shiftHouseDay(to, -(span - 1)) : null;
     const unread = {
@@ -1230,6 +1241,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       days: span,
       timezone: zone,
       zoneUnset: zone === null,
+      firstCheckDay,
       revenue: null,
       checkCount: null,
       dailySeries: [],
@@ -1255,6 +1267,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       timezone: zone,
       zoneUnset: false,
       posConnected: true,
+      firstCheckDay,
       revenue: current,
       checkCount: rowCount,
       dailySeries: dailyDates.map((date, i) => ({
@@ -1320,6 +1333,12 @@ export interface PosRevenueWindow {
   zoneUnset: boolean;
   /** False when this restaurant has never had a POS check. */
   posConnected: boolean;
+  /**
+   * The house day of the house's first POS check, YYYY-MM-DD, voided or not;
+   * null when there is none or the house has no zone. A day before it is not a
+   * day the till rang nothing: there was no till.
+   */
+  firstCheckDay: string | null;
   /** Sum of non-voided `pos_checks.total`. `null` when `posConnected` is false or `zoneUnset`. */
   revenue: number | null;
   /** Non-voided checks filed in the window. `null` when `posConnected` is false or `zoneUnset`. */

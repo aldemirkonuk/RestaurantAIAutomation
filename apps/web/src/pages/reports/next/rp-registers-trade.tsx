@@ -115,6 +115,8 @@ export interface TillWindow {
   timezone: string | null;
   /** True when the house has no time zone: no day can be filed, so nothing is stated. */
   zoneUnset: boolean;
+  /** The house day of its first POS check (YYYY-MM-DD); absent from an older gateway, null when there is none. */
+  firstCheckDay?: string | null;
   /**
    * Sparse; a `null` revenue is a day the server could not state. `checks` is
    * that day's count of checks; `null` from a gateway that does not send it,
@@ -128,6 +130,8 @@ export interface TillWindow {
     revenue: number | null;
     dailySeries: Array<{ date: string; revenue: number | null }>;
   } | null;
+  /** Set by `splitTill` when it held the prior back because the till's first check falls inside it: that day. */
+  priorBeganAt?: string | null;
 }
 
 /**
@@ -231,22 +235,28 @@ export function splitTill(w: TillWindow, days: number): TillWindow {
   const win = w.dailySeries.filter((d) => mine.has(d.date));
   const was = w.dailySeries.filter((d) => theirs.has(d.date));
   const from = span[span.length - days];
-  return {
+  const cut: TillWindow = {
     ...w,
     from,
     days,
     dailySeries: win,
     revenue: sumKnown(win.map((d) => d.revenue)),
     checkCount: win.length > 0 && win.every((d) => d.checks != null) ? win.reduce((a, d) => a + (d.checks ?? 0), 0) : win.length === 0 ? 0 : null,
-    prior:
-      before.length === days
-        ? {
-            from: before[0],
-            to: before[before.length - 1],
-            revenue: sumKnown(was.map((d) => d.revenue)),
-            dailySeries: was.map((d) => ({ date: d.date, revenue: d.revenue })),
-          }
-        : null,
+    prior: null,
+  };
+  if (before.length !== days) return cut;
+  // A prior that starts before the till's first check is not a window the house
+  // traded in: its early days are not days that rang nothing, there was no till.
+  // The series is sparse, so only the gateway's first-check day can tell them apart.
+  if (w.firstCheckDay && w.firstCheckDay > before[0]) return { ...cut, priorBeganAt: w.firstCheckDay };
+  return {
+    ...cut,
+    prior: {
+      from: before[0],
+      to: before[before.length - 1],
+      revenue: sumKnown(was.map((d) => d.revenue)),
+      dailySeries: was.map((d) => ({ date: d.date, revenue: d.revenue })),
+    },
   };
 }
 
@@ -291,6 +301,7 @@ const till = analysis<TillWindow>({
       days: num(d.days) ?? 0,
       timezone: str(d.timezone) || null,
       zoneUnset: d.zoneUnset === true,
+      firstCheckDay: str(d.firstCheckDay) || null,
       // A day the server sent with no figure stays unknown (null), never 0.
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
@@ -373,6 +384,12 @@ const till = analysis<TillWindow>({
     const counted = w.dailySeries.every((d) => d.checks != null);
     const shown = span.length > 0 ? span : w.dailySeries.map((d) => d.date);
     const prior = ctx.compare ? priorSlots(w, shown) : null;
+    if (ctx.compare && w.priorBeganAt)
+      figures.push({
+        label: 'Against the prior window',
+        value: EM,
+        note: `The till's first check is on ${shortDay(w.priorBeganAt)}, inside the window before this one, so there is no whole window to read against`,
+      });
     if (ctx.compare && w.prior) {
       const pct =
         w.revenue != null && w.prior.revenue != null && w.prior.revenue > 0

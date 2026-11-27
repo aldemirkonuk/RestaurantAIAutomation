@@ -20,8 +20,8 @@ import {
  * THE ONE RULE THIS PRODUCER IS BUILT AROUND
  * ------------------------------------------
  * **A restaurant with no POS gets NO ROW.** Not a zero, not an em dash, not a
- * "0 covers" summary. `GoalsService.hasPosHistory` (`analytics/goals.service.ts`,
- * `grep -n 'private async hasPosHistory'` — deliberately NO line number: that
+ * "0 covers" summary. `GoalsService.firstPosCheck` (`analytics/goals.service.ts`,
+ * `grep -n 'private async firstPosCheck'` — deliberately NO line number: that
  * file moved twice during this one session, and a stale number is worse than an
  * anchor a reader has to run)
  * already draws that line and says why in its own comment: an unwindowed,
