@@ -71,7 +71,9 @@ describe('LineRow', () => {
     fireEvent.click(screen.getByRole('switch'));
     expect(last).toMatchObject({ role: 'untracked', inventoryId: GIN, itemName: 'gin' });
     expect(screen.getByRole('switch')).toHaveTextContent('Not counted');
-    expect(screen.getByTestId('kept-link')).toHaveTextContent('Linked to gin');
+    expect(screen.getByTestId('kept-link')).toHaveTextContent(
+      'Linked to gin until you save; saving a line that is not counted drops its link.',
+    );
     fireEvent.click(screen.getByRole('switch'));
     expect(last).toMatchObject({ role: 'stocked', inventoryId: GIN });
     expect(screen.queryByTestId('kept-link')).toBeNull();
@@ -108,6 +110,19 @@ describe('LineRow', () => {
     const { readFileSync } = await import('node:fs');
     const css = readFileSync(`${__dirname}/../cellar-next.css`, 'utf8').replace(/\s+/g, ' ');
     expect(css).toMatch(/\.cl-rcp-undo\[data-spent='true'\] \{ visibility: hidden; animation: none; \}/);
+  });
+
+  it('editing the amount inside the 3 s window clears the undo, so Undo cannot put back the old amount\'s cost', () => {
+    const say = (n: number) => `₺${n.toFixed(2)}`;
+    mount(<Harness start={{ ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin', saved: { status: 'linked', costPerServe: 1.5, costBasis: 'lot_wac' } }} say={say} />);
+    fireEvent.click(screen.getByRole('switch'));
+    expect(screen.getByTestId('not-counted-undo')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '90' } });
+    expect(screen.queryByTestId('not-counted-undo')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    // Switching back by hand never carries the 30 ml cost onto 90 ml.
+    fireEvent.click(screen.getByRole('switch'));
+    expect(last).toMatchObject({ role: 'stocked', qtyText: '90', saved: null });
   });
 
   it('a linked line with no price says why, and a priced one says its cost', () => {

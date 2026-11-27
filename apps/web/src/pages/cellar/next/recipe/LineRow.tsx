@@ -370,6 +370,8 @@ export default function LineRow({
     setUndo(null);
     onChange(patch);
   };
+  // The kept `saved` figure is for the amount the line had when it was switched off: once the amount, unit or link changes it is stale, and Undo would put back a cost for a different line.
+  useEffect(() => setUndo(null), [row.qtyText, row.unit, row.inventoryId]);
   const stocked = row.role === 'stocked';
   // A made line draws a house-made mix: its amount and unit are edited here, what it is made from is not.
   const made = row.role === 'made';
@@ -433,7 +435,7 @@ export default function LineRow({
               />
               {row.inventoryId ? (
                 <span className="cl-dim cl-rcp-kept" data-testid="kept-link">
-                  Linked to {row.itemName ?? 'a shelf item'}; kept while it is not counted.
+                  Linked to {row.itemName ?? 'a shelf item'} until you save; saving a line that is not counted drops its link.
                 </span>
               ) : null}
             </>
