@@ -210,6 +210,102 @@ describe("loose lines: grouping", () => {
   });
 });
 
+function dishHouse(): Tables {
+  const dl = (over: Row) => line({ unit_code: "g", qty_entered: "120", base_unit: "mg", ...over });
+  return {
+    dishes: [
+      { id: "d-pasta", restaurant_id: A, name: "Pasta", deleted_at: null },
+      { id: "d-salad", restaurant_id: A, name: "Salad", deleted_at: null },
+      { id: "d-gone", restaurant_id: A, name: "Gone", deleted_at: "2026-01-01" },
+      { id: "d-b", restaurant_id: B, name: "Their dish", deleted_at: null },
+    ],
+    recipe_current_dish: [
+      { restaurant_id: A, dish_id: "d-pasta", version_id: "v-pasta2" },
+      { restaurant_id: A, dish_id: "d-salad", version_id: "v-salad1" },
+      { restaurant_id: A, dish_id: "d-gone", version_id: "v-gone1" },
+      { restaurant_id: B, dish_id: "d-b", version_id: "v-b1" },
+    ],
+    // A drink's pointer must never be read for dishes.
+    recipe_current: [{ restaurant_id: A, cocktail_id: "c-x", version_id: "v-salad1" }],
+    cocktails: [],
+    recipe_versions: [
+      { id: "v-pasta2", restaurant_id: A, dish_id: "d-pasta", cocktail_id: null, yield_serves: 4, method: "Boil", glass: null, garnish: null },
+      { id: "v-salad1", restaurant_id: A, dish_id: "d-salad", cocktail_id: null, yield_serves: 1, method: null, glass: null, garnish: null },
+      { id: "v-gone1", restaurant_id: A, dish_id: "d-gone", cocktail_id: null, yield_serves: 1, method: null, glass: null, garnish: null },
+      { id: "v-b1", restaurant_id: B, dish_id: "d-b", cocktail_id: null, yield_serves: 1, method: null, glass: null, garnish: null },
+    ],
+    recipe_lines: [
+      dl({ restaurant_id: A, version_id: "v-pasta2", position: 0, label: "Parmesan" }),
+      dl({ restaurant_id: A, version_id: "v-pasta2", position: 1, label: "Olive oil", unit_code: "ml", base_unit: "ml10" }),
+      dl({ restaurant_id: A, version_id: "v-pasta2", position: 2, label: "Spaghetti", inventory_id: "i-spag" }),
+      dl({ restaurant_id: A, version_id: "v-pasta1", position: 0, label: "Old cheese" }),
+      dl({ restaurant_id: A, version_id: "v-salad1", position: 0, label: "PARMESAN", unit_code: "kg", qty_entered: "0.02" }),
+      // Olive oil by weight in the salad: two families, so no unit is proposed.
+      dl({ restaurant_id: A, version_id: "v-salad1", position: 1, label: "olive oil" }),
+      dl({ restaurant_id: A, version_id: "v-gone1", position: 0, label: "Saffron" }),
+      dl({ restaurant_id: B, version_id: "v-b1", position: 0, label: "Truffle" }),
+    ],
+    restaurant_inventory: [
+      { id: "i-truf-b", restaurant_id: B, display_name: "Truffle", kind: "food", uom: "g", bottle_size_ml: null, is_active: true, deleted_at: null },
+    ],
+  };
+}
+
+describe("loose lines: kind=dish (r109 inventory g4)", () => {
+  it("groups the dishes' current loose lines by folded name; proposes a unit only when every line shares one family", async () => {
+    const out = await svc(dishHouse()).looseDishLines(A);
+    expect(out.lineCount).toBe(4);
+    expect(out.dishCount).toBe(2);
+    const byKey = Object.fromEntries(out.groups.map((g) => [g.key, g]));
+    expect(Object.keys(byKey).sort()).toEqual(["olive oil", "parmesan"]);
+    expect(byKey.parmesan.lines).toEqual([
+      { dishId: "d-pasta", index: 0 },
+      { dishId: "d-salad", index: 0 },
+    ]);
+    expect(byKey.parmesan.dishCount).toBe(2);
+    // g and kg are both weighed: g is proposed.
+    expect(byKey.parmesan.proposed).toBe("g");
+    // ml in one dish and g in the other: mixed units propose null, nothing guessed.
+    expect(byKey["olive oil"].proposed).toBeNull();
+    expect(byKey.parmesan.shelf).toBeNull();
+  });
+
+  it("refuses the other house: its dish, lines and goods are never read for this one", async () => {
+    const { db, reads } = fakeDb(dishHouse());
+    const out = await new LooseLinesService(db, new DishesService(db, null as any)).looseDishLines(A);
+    expect(out.dishes.map((d) => d.dishId)).not.toContain("d-b");
+    expect(out.groups.map((g) => g.key)).not.toContain("truffle");
+    expect(reads.filter((r) => r.house !== A)).toEqual([]);
+    // The dishes' own pointer, never the drinks'.
+    expect(new Set(reads.map((r) => r.table))).toEqual(
+      new Set(["recipe_lines", "recipe_current_dish", "dishes", "recipe_versions", "restaurant_inventory"]),
+    );
+    const theirs = await svc(dishHouse()).looseDishLines(B);
+    expect(theirs.dishes.map((d) => d.dishId)).toEqual(["d-b"]);
+    // Their own Truffle good is the one shelf match for their own line.
+    expect(theirs.groups[0]).toMatchObject({ key: "truffle", proposed: "g", sameName: 1 });
+    expect(theirs.groups[0].shelf?.id).toBe("i-truf-b");
+  });
+
+  it("counts only current versions of live dishes, and returns each dish whole in the PUT's shape", async () => {
+    const out = await svc(dishHouse()).looseDishLines(A);
+    expect(out.groups.map((g) => g.key)).not.toContain("old cheese");
+    expect(out.groups.map((g) => g.key)).not.toContain("saffron");
+    const pasta = out.dishes.find((d) => d.dishId === "d-pasta")!;
+    expect(pasta).toMatchObject({ name: "Pasta", versionId: "v-pasta2", yieldServes: 4, method: "Boil" });
+    expect(pasta.lines.map((l) => [l.label, l.inventoryId])).toEqual([
+      ["Parmesan", null],
+      ["Olive oil", null],
+      ["Spaghetti", "i-spag"],
+    ]);
+  });
+
+  it("the drink queue is unchanged by it: no dish line is in the drinks' answer", async () => {
+    const out = await svc(dishHouse()).looseLines(A);
+    expect(out.groups.flatMap((g) => g.lines).map((l) => l.cocktailId)).not.toContain("d-pasta");
+  });
+});
+
 describe("loose lines: who reads them", () => {
   let app: INestApplication;
   let base: string;
@@ -218,7 +314,15 @@ describe("loose lines: who reads them", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [LooseLinesController],
-      providers: [{ provide: LooseLinesService, useValue: { looseLines: async (r: string) => (calls.push(r), { lineCount: 0 }) } }],
+      providers: [
+        {
+          provide: LooseLinesService,
+          useValue: {
+            looseLines: async (r: string) => (calls.push(r), { lineCount: 0 }),
+            looseDishLines: async (r: string) => (calls.push(`dish:${r}`), { lineCount: 0 }),
+          },
+        },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
@@ -244,6 +348,16 @@ describe("loose lines: who reads them", () => {
     calls.length = 0;
     expect((await get("staff")).status).toBe(403);
     expect(calls).toEqual([]);
+  });
+
+  it("kind=dish reads the dishes; an unknown kind is refused 400; staff is refused either way", async () => {
+    calls.length = 0;
+    const r = await fetch(`${base}/recipes/${A}/drinks/loose-lines?kind=dish`, { headers: { "x-test-role": "manager" } });
+    expect(r.status).toBe(200);
+    expect(calls).toEqual([`dish:${A}`]);
+    expect((await fetch(`${base}/recipes/${A}/drinks/loose-lines?kind=prep`, { headers: { "x-test-role": "owner" } })).status).toBe(400);
+    expect((await fetch(`${base}/recipes/${A}/drinks/loose-lines?kind=dish`, { headers: { "x-test-role": "staff" } })).status).toBe(403);
+    expect(calls).toEqual([`dish:${A}`]);
   });
 
   it.each(["owner", "manager"])("answers a %s", async (role) => {
