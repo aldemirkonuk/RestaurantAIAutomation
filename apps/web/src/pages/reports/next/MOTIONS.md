@@ -92,6 +92,12 @@ to those would put a moving cutting somewhere the announcement says it is not.
   transition in or out, and the readout swaps its words outright: a band that
   eased after the finger would mark days the reader has already left, and a
   line that faded would read as the figure still being worked out.
+- **A goal's schedule tick does not rise.** Goals drawn as bullet bars (r110
+  g3) carry a 2 px tick where the schedule says each goal should be by now,
+  and a dashed rule at 100 for the target. `rp-grow` lifts the bars only; the
+  tick and the rule are marks on the paper, painted where they are from the
+  first frame, so a bar rising past its tick reads as the bar, never the
+  schedule, moving. Reduced motion: nothing to remove.
 - **Reduced motion**: the ruling, the lift, the ink states and the working
   expansion have their transitions removed outright; the skeleton sheen stops
   and the static bar remains; the two WAAPI motions land on their end state

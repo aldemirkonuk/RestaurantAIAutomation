@@ -36,6 +36,10 @@ export interface Cat {
   prior?: number | null;
   /** Long form for the tooltip when `label` is abbreviated for the axis. */
   full?: string;
+  /** A bullet bar's tick (r110 g3), on the same scale as `value`: where a schedule says the bar should be by now. `null`/absent: no tick. */
+  mark?: number | null;
+  /** One more sentence for the tooltip: why there is no tick, the projection, the figures behind the bar. */
+  note?: string;
 }
 
 /** A rule drawn across a plot, and the words for why it is there. */
@@ -75,6 +79,8 @@ export interface CatSeries {
   format: (v: number) => string;
   /** Reference lines the SERVER produced. Never one we computed here. */
   refs?: Ref[];
+  /** The words for `Cat.mark` ("where the schedule says it should be by now"); present when ticks are drawn. */
+  markLabel?: string;
   /** True when `projected` carries a second, dashed series. */
   projectedLabel?: string;
   /** The reader's words for the `prior` series ("the prior 30 days"); present only when one is drawn. */

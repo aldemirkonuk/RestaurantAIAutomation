@@ -59,6 +59,7 @@ import {
   ReferenceArea,
   ReferenceDot,
   ReferenceLine,
+  Customized,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
@@ -196,6 +197,8 @@ export interface TipLine {
 export interface TipModel {
   head: string;
   lines: TipLine[];
+  /** A sentence after the figures (a bullet bar's schedule, r110 g3). */
+  note?: string;
 }
 
 /** The tip as words, in the order the eye reads it. The visible tooltip and the live line both come from the model. */
@@ -203,7 +206,7 @@ export function tipSentence(m: TipModel): string {
   const lines = m.lines.map(
     (l) => `${l.name ? `${l.name}: ` : ''}${l.value === null ? 'not stated' : `${l.value}${l.tail}`}`,
   );
-  return `${m.head}. ${lines.join('; ')}`;
+  return `${m.head}. ${lines.join('; ')}${m.note ? `. ${m.note}` : ''}`;
 }
 
 /** A tooltip's sentence to the plot's live line, and gone when the tip is. Returns whether Escape has hidden it. */
@@ -422,13 +425,14 @@ function Tip({
   projectedLabel?: string;
   priorLabel?: string;
 }) {
-  const row = payload?.[0]?.payload as { full?: string; isProjected?: boolean } | undefined;
+  const row = payload?.[0]?.payload as { full?: string; isProjected?: boolean; note?: string } | undefined;
   const numeric = (payload ?? []).filter((p) => typeof p.value === 'number');
   const model: TipModel | null =
     !active || !payload || payload.length === 0
       ? null
       : {
           head: row?.full ?? String(label ?? ''),
+          ...(row?.note ? { note: row.note } : {}),
           // A day with no figure says so; it is never drawn as 0 (ADR 0020).
           lines:
             numeric.length === 0
@@ -462,7 +466,48 @@ function Tip({
           </span>
         ),
       )}
+      {model.note && <span className="rp-tip__row">{model.note}</span>}
     </div>
+  );
+}
+
+/**
+ * Bullet ticks (r110 g3): a 2 px rule across each bar at its `mark`, drawn
+ * from the chart's own scales so it sits on the bar's value axis. It is a
+ * mark on the paper, not a bar: `rp-grow` lifts `.recharts-bar-rectangle`
+ * only, so the tick never rises, under any motion setting.
+ */
+function MarkTicks(props: {
+  xAxisMap?: Record<string, { scale?: ((v: unknown) => number) & { bandwidth?: () => number } }>;
+  yAxisMap?: Record<string, { scale?: (v: number) => number }>;
+  data?: Array<{ label: string; mark?: number | null }>;
+}) {
+  const xs = props.xAxisMap ? Object.values(props.xAxisMap)[0]?.scale : undefined;
+  const ys = props.yAxisMap ? Object.values(props.yAxisMap)[0]?.scale : undefined;
+  if (!xs || !ys) return null;
+  const band = typeof xs.bandwidth === 'function' ? xs.bandwidth() : 0;
+  return (
+    <g className="rp-marks">
+      {(props.data ?? []).map((r, i) => {
+        if (r.mark == null || !Number.isFinite(r.mark)) return null;
+        const x = xs(r.label);
+        const y = ys(r.mark);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return (
+          <line
+            key={i}
+            className="rp-mark"
+            data-mark={r.mark}
+            x1={x + band * 0.02}
+            x2={x + band * 0.98}
+            y1={y}
+            y2={y}
+            stroke="var(--ink-1)"
+            strokeWidth={2}
+          />
+        );
+      })}
+    </g>
   );
 }
 
@@ -720,14 +765,21 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const hasPrior = all.some((d) => d.prior != null);
   const label = `${KIND_WORDS[kind]} of ${yLabel} by ${xLabel}${
     hasProjection ? `, the ${projectedLabel ?? 'projected'} part dashed` : ''
-  }${hasPrior ? `, ${priorLabel ?? 'the prior window'} dashed beside it` : ''}${readingOf(
+  }${hasPrior ? `, ${priorLabel ?? 'the prior window'} dashed beside it` : ''}${
+    series.markLabel ? `, a tick on each bar ${series.markLabel}` : ''
+  }${readingOf(
     all.map((d) => ({ label: d.full ?? d.label, v: d.value ?? d.projected })),
     format,
     unit,
   )}`;
-  const caption = `${titled(yLabel, unit)} · by ${xLabel}${
+  const markLabel = series.markLabel;
+  const caption = `${titled(yLabel, unit)} · by ${xLabel}${markLabel ? ` · the tick is ${markLabel}` : ''}${
     thinned ? ` · ${data.length} of ${all.length}, the highest of each stretch; the table has every one` : ''
   }`;
+  // Bullet bars: the value axis always takes in every tick and every rule, so none is cut off the top.
+  const markTop = markLabel
+    ? Math.max(...all.map((d) => d.mark ?? -Infinity), ...(refs ?? []).map((r) => r.y ?? -Infinity))
+    : -Infinity;
   const gutter = gutterFor(
     tickLabels(
       [...all.map((d) => d.value), ...all.map((d) => d.projected), ...all.map((d) => d.prior), ...(refs ?? []).map((r) => r.y)],
@@ -755,7 +807,14 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
         minTickGap={26}
         padding={kind === 'bars' ? undefined : X_ORIGIN_PAD}
       />
-      <YAxis {...AXIS} width={gutter} tickFormatter={(v: number) => format(v)} />
+      <YAxis
+        {...AXIS}
+        width={gutter}
+        tickFormatter={(v: number) => format(v)}
+        {...(Number.isFinite(markTop)
+          ? { domain: [(lo: number) => Math.min(0, lo), (hi: number) => Math.max(hi, markTop)] as [never, never] }
+          : {})}
+      />
       {band}
       {tip}
       {(refs ?? []).map((r) => (
@@ -828,6 +887,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
               data-prior="true"
             />
           )}
+          {markLabel && <Customized component={MarkTicks as never} />}
         </BarChart>
       </Plot>
     );
