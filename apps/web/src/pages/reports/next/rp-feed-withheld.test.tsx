@@ -169,7 +169,7 @@ describe('r108 — a purchasing goal kept from staff is counted, never drawn', (
   it('[REVERT-FAILS] the withheld stub is not a goal row, and the card says how many were kept', () => {
     const reg = goals.select({
       goals: [
-        { goal: { id: 'g1', name: 'Bottles', metric_key: 'bottles_sold', target_value: 40 }, current_value: 12 },
+        { goal: { id: 'g1', name: 'Bottles', metric_key: 'days_of_inventory', target_value: 20 }, current_value: 12 },
         { goal: { id: 'g2', withheldForRole: true }, withheldForRole: true },
       ],
       total: 2,
@@ -180,6 +180,6 @@ describe('r108 — a purchasing goal kept from staff is counted, never drawn', (
     expect(reg.total).toBe(1);
     expect(reg.withheld).toBe(1);
     const view = goals.view(reg, { days: 30 });
-    expect(view.notes.join(' ')).toMatch(/1 goal is about money and suppliers, kept to owners and managers/);
+    expect(view.notes.join(' ')).toMatch(/1 goal is about the till, money or suppliers, kept to owners and managers/);
   });
 });

@@ -934,7 +934,7 @@ export const goals = analysis<GoalsRegister>({
           ? null
           : 'The desk is not wired on this rendering, so this cutting is read-only here.',
         reg.withheld > 0
-          ? `${countOf(reg.withheld, 'goal is', 'goals are')} about money and suppliers, kept to owners and managers. Nothing about ${reg.withheld === 1 ? 'it' : 'them'} is claimed here.`
+          ? `${countOf(reg.withheld, 'goal is', 'goals are')} about the till, money or suppliers, kept to owners and managers. Nothing about ${reg.withheld === 1 ? 'it' : 'them'} is claimed here.`
           : null,
         'Every figure is this house against its own baseline. No other restaurant’s books are in it.',
       ].filter((n): n is string => n !== null),
