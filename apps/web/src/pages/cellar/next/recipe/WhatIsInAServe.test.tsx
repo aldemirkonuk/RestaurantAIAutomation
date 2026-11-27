@@ -101,4 +101,42 @@ describe('WhatIsInAServe', () => {
     expect(screen.getByTestId('recipe-whatisin-allergens-free')).toBeInTheDocument();
     expect(screen.queryByTestId('recipe-whatisin-allergens-unstated')).toBeNull();
   });
+
+  it('says a made line is counted through House orgeat, and why its figures are not when there is no yield (r110 g2)', () => {
+    const { unmount } = render(
+      <WhatIsInAServe
+        data={recipe(
+          readable({
+            allergens: { tree_nuts: 'contains' },
+            through: [{ label: 'House orgeat', componentName: 'House orgeat' }],
+            notCounted: [{ label: 'House orgeat', why: 'House orgeat has no yield set, so its figures are not counted; its allergens are' }],
+          }),
+        )}
+        unsaved={false}
+      />,
+    );
+    expect(screen.getByTestId('recipe-whatisin-through').textContent).toBe('Counted through House orgeat, as the house makes it.');
+    expect(screen.getByTestId('recipe-whatisin-allergens').textContent).toContain('Contains tree nuts');
+    expect(screen.getByTestId('recipe-whatisin-notcounted').textContent).toBe(
+      'Not counted: House orgeat (House orgeat has no yield set, so its figures are not counted; its allergens are).',
+    );
+    unmount();
+    render(
+      <WhatIsInAServe
+        data={recipe(readable({ through: [{ label: 'House syrup', componentName: 'Simple syrup' }, { label: 'House orgeat', componentName: 'House orgeat' }] }))}
+        unsaved={false}
+      />,
+    );
+    expect(screen.getByTestId('recipe-whatisin-through').textContent).toBe(
+      'Counted through Simple syrup (for House syrup); House orgeat, as the house makes them.',
+    );
+  });
+
+  it('says nothing of a component when no line is made, or the gateway is older', () => {
+    const { unmount } = render(<WhatIsInAServe data={recipe(readable({ through: [] }))} unsaved={false} />);
+    expect(screen.queryByTestId('recipe-whatisin-through')).toBeNull();
+    unmount();
+    render(<WhatIsInAServe data={recipe(readable())} unsaved={false} />);
+    expect(screen.queryByTestId('recipe-whatisin-through')).toBeNull();
+  });
 });
