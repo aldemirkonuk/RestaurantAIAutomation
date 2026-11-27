@@ -10,7 +10,8 @@ import {
   type MenuImportReviewItem,
   type PlanLine,
 } from '../../services/api/menus'
-import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
+import { makeCurrentSentence, MenuReadChecks } from '../../pages/menu/next/MenuVersions'
+import { checkLinesFromReview, showLineById } from '../../pages/menu/next/menu-read-checks'
 import { MenuPlan } from '../../pages/menu/next/MenuPlan'
 import { useHouseCurrencyCode } from '../../hooks/queries/useHouseCurrencyCode'
 import { formatMoney } from '../../lib/currency'
@@ -278,6 +279,16 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
             </p>
           )}
         </div>
+
+        <MenuReadChecks
+          lines={checkLinesFromReview(items)}
+          testId="review-read-checks"
+          onShow={(id) => {
+            // A line in the folded "look good" group is opened first, then shown.
+            if (clean.some((c) => c.menuItemId === id)) setShowClean(true)
+            window.setTimeout(() => showLineById(`review-line-${id}`), 0)
+          }}
+        />
 
         {flagged.length > 0 && (
           <div className="mb-4">
