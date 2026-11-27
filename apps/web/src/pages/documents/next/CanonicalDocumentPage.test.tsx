@@ -224,11 +224,13 @@ describe('CanonicalDocumentPage', () => {
     })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/orders']}>
-          <CanonicalDocumentPage documentId="doc-syn" embedded />
-        </MemoryRouter>
-      </QueryClientProvider>,
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
     )
     const verdict = await waitFor(() => {
       const v = container.querySelector('.cd-verdict')
@@ -253,18 +255,37 @@ describe('CanonicalDocumentPage', () => {
     })
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { container } = render(
-      <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/orders']}>
-          <CanonicalDocumentPage documentId="doc-syn" embedded />
-        </MemoryRouter>
-      </QueryClientProvider>,
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
     )
     await waitFor(() => expect(container.textContent).toMatch(/Prices are in TRY and the house costs in USD/))
     expect(container.querySelector('.cd-verdict h2')?.textContent).not.toMatch(/no order or door count/)
     expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
   })
 
-  it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
+    it('a staff session is not asked for the price moves, and the verdict says only what it knew (r107)', async () => {
+    documentMock.mockResolvedValue(response())
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <AuthContext.Provider value={{ activeRestaurantId: 'rest-A', activeRole: 'staff', user: null } as never}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={['/orders']}>
+            <CanonicalDocumentPage documentId="doc-syn" embedded />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </AuthContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    expect(priceMovesMock).not.toHaveBeenCalled()
+    expect(container.textContent).not.toMatch(/Prices are in/)
+  })
+
+it('keys every read by the house, so a house switch reads afresh (ADR 0051, RECEIPTS-W47)', async () => {
     documentMock.mockResolvedValue(response())
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     // Only the house fields are read; the rest of the auth value is not.

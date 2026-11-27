@@ -144,6 +144,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const auth = useContext(AuthContext)
   const rid = auth?.activeRestaurantId || auth?.user?.restaurantId || null
+  const role = (auth?.activeRole ?? auth?.user?.role ?? '').toLowerCase()
+  const mayReadCosts = role === 'owner' || role === 'manager'
 
   const q = useQuery({
     queryKey: ['canonical-document', rid, id],
@@ -175,7 +177,9 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const heldQ = useQuery({
     queryKey: ['receipts-next', 'price-moves', id],
     queryFn: () => documentsApi.priceMoves(id as string),
-    enabled: !!id && embedded,
+    // The route speaks the house's landed cost, which it keeps from staff; an
+    // unknown role is treated as staff, as the server does.
+    enabled: !!id && embedded && mayReadCosts,
     staleTime: 60_000,
     retry: false,
   })
