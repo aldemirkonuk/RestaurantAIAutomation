@@ -31,7 +31,24 @@ export type PriceMove =
       sentence: string | null;
     };
 
-const money = (v: number) => v.toFixed(2);
+/** Spoken to the stored precision (up to 6 places), never fewer than 2. */
+const money = (v: number) => {
+  const t = v.toFixed(6).replace(/0+$/, "");
+  const [i, f = ""] = t.split(".");
+  return `${i}.${f.padEnd(2, "0")}`;
+};
+
+/** Whole percent, but one decimal near the threshold so "up 10 percent" never names a moved 10.4. */
+const speakPct = (pct: number, thresholdPct: number) => {
+  const a = Math.abs(pct);
+  if (Math.abs(a - thresholdPct) >= 1) return String(Math.round(a));
+  // A flagged move must never be spoken as the threshold itself: add decimals
+  // until the figure no longer rounds onto it (10.04 says 10.04, not 10.0).
+  for (let d = 1; d < 6; d++) if (Number(a.toFixed(d)) !== thresholdPct) return a.toFixed(d);
+  return a.toFixed(6);
+};
+
+const MICRO = 1e6;
 
 export function priceMove(
   prev: CostSeen | null | undefined,
@@ -46,14 +63,19 @@ export function priceMove(
   if (!a || !b || a !== b) return { compared: false, reason: "unit_differs" };
   if (prev.cost === 0) return { compared: false, reason: "previous_is_zero" };
 
-  const pct = ((next.cost - prev.cost) / prev.cost) * 100;
-  const moved = Math.abs(pct) > thresholdPct;
+  // Compare in integer micro-units with a cross-multiplied test: dividing in
+  // binary floats made 1.00 -> 1.10 (exactly 10 percent) read 10.000000000000009.
+  const a0 = Math.round(prev.cost * MICRO);
+  const b0 = Math.round(next.cost * MICRO);
+  if (a0 === 0) return { compared: false, reason: "previous_is_zero" };
+  const pct = ((b0 - a0) / a0) * 100;
+  const moved = Math.abs(b0 - a0) * 100 > thresholdPct * Math.abs(a0);
   return {
     compared: true,
     pct,
     moved,
     sentence: moved
-      ? `was ${money(prev.cost)}, now ${money(next.cost)}, ${pct > 0 ? "up" : "down"} ${Math.round(Math.abs(pct))} percent`
+      ? `was ${money(prev.cost)}, now ${money(next.cost)}, ${pct > 0 ? "up" : "down"} ${speakPct(pct, thresholdPct)} percent`
       : null,
   };
 }

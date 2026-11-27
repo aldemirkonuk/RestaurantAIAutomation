@@ -807,12 +807,18 @@ function PairedCell({
  * reading as "nothing moved".
  */
 function PriceMovesNote({ docId }: { docId: string }) {
+  // "was 11.20" is the house's landed cost: desk work, asked of and shown to
+  // owners and managers only (the gateway refuses anyone else in words).
+  const { activeRole, user } = useAuth();
+  const mayRead = canSeeCreditLedger(activeRole, user?.role);
   const q = useQuery({
     queryKey: ['receipts-next', 'price-moves', docId],
     queryFn: () => documentsApi.priceMoves(docId),
+    enabled: mayRead,
     staleTime: 60_000,
     retry: false,
   });
+  if (!mayRead) return null;
   if (q.isError)
     return (
       <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>

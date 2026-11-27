@@ -1463,6 +1463,13 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
     @Query("thresholdPct") thresholdPct?: string,
   ) {
+    // The previous cost is the house's landed cost per bottle: the owner's own
+    // number, the same kind of figure the held-costs route keeps from staff.
+    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
+      throw new HttpException(
+        "What a cost moved from is desk work, so it is an owner's or a manager's to read. Ask a manager or an owner of this house.",
+        HttpStatus.FORBIDDEN,
+      );
     const parsed = Number(thresholdPct);
     const threshold =
       thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
@@ -1528,10 +1535,22 @@ export class DocumentsController {
     }[];
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
     const last = new Map<string, number>();
+    // A paper is never compared with the cost it landed itself: its own
+    // deliveries' lots (and anything received after them) are not "before".
+    const { data: joins, error: joinErr } = await client
+      .from("document_deliveries")
+      .select("delivery_id")
+      .eq("document_id", id);
+    if (joinErr)
+      throw new HttpException(
+        `The deliveries of this paper could not be read, so no price was compared: ${joinErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const ownDeliveries = new Set(((joins ?? []) as { delivery_id: string }[]).map((r) => r.delivery_id));
     if (goods.length) {
       const { data: lots, error: lotErr } = await client
         .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
+        .select("inventory_id, unit_cost, received_at, delivery_id")
         .eq("restaurant_id", user.restaurantId)
         .eq("cost_provenance", "invoice")
         .in("inventory_id", goods)
@@ -1543,9 +1562,25 @@ export class DocumentsController {
           `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
+      const all = (lots ?? []) as {
+        inventory_id: string;
+        unit_cost: number | string;
+        received_at: string | null;
+        delivery_id?: string | null;
+      }[];
+      const isOwn = (l: { delivery_id?: string | null }) => !!l.delivery_id && ownDeliveries.has(l.delivery_id);
+      // When this paper has landed a lot of a good, only lots received before it count.
+      const landedAt = new Map<string, string>();
+      for (const l of all)
+        if (isOwn(l) && l.received_at && (!landedAt.has(l.inventory_id) || l.received_at < landedAt.get(l.inventory_id)!))
+          landedAt.set(l.inventory_id, l.received_at);
       // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+      for (const lot of all) {
+        if (last.has(lot.inventory_id) || isOwn(lot)) continue;
+        const bound = landedAt.get(lot.inventory_id);
+        if (bound && !(lot.received_at && lot.received_at < bound)) continue;
+        last.set(lot.inventory_id, Number(lot.unit_cost));
+      }
     }
     const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
     return {

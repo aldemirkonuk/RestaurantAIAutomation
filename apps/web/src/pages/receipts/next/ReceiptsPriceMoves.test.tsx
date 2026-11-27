@@ -10,10 +10,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
-const api = vi.hoisted(() => ({ moves: vi.fn() }));
+const api = vi.hoisted(() => ({ moves: vi.fn(), role: 'manager' as 'manager' | 'staff' }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null }),
+  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: api.role, user: null }),
   AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 vi.mock('../../../services/api/documents', async (importOriginal) => {
@@ -128,6 +128,7 @@ const moved = {
 
 beforeEach(() => {
   api.moves.mockReset();
+  api.role = 'manager';
 });
 
 describe('the check card on a cost that moved', () => {
@@ -183,5 +184,18 @@ describe('the check card on a cost that moved', () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(await screen.findByText(/earlier costs could not be read, so no price was compared/)).toBeTruthy();
+  });
+});
+
+describe('who is shown a landed cost', () => {
+  it('a staff session is not asked for, and is not shown, what a cost moved from (r107)', async () => {
+    api.role = 'staff';
+    api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.moves).not.toHaveBeenCalled();
+    expect(screen.queryByText(/was 10\.00/)).toBeNull();
+    expect(screen.queryByText(/could not be read, so no price was compared/)).toBeNull();
   });
 });
