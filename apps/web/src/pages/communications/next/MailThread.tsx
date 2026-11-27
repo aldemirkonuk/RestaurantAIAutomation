@@ -48,7 +48,7 @@ import {
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
 import { LetterText } from './LetterText';
-import { FadeAway, MailMotionStyles } from './mail-motion';
+import { FadeAway, MailMotionStyles, useArriveFocus } from './mail-motion';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
 import { RetryRead, useReadAgain } from './MailRetry';
@@ -221,8 +221,9 @@ export function MailThread({
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey, withKey);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const again = useReadAgain(q, headingRef);
+  const arrive = useArriveFocus();
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
   // Pages are held newest-first; the reader joins them oldest-first.
@@ -285,7 +286,10 @@ export function MailThread({
         <>
           <header className="grid gap-1">
             <h2
-              ref={headingRef}
+              ref={(el) => {
+                headingRef.current = el;
+                arrive(el);
+              }}
               tabIndex={-1}
               style={{
                 outline: 'none',

@@ -32,7 +32,7 @@ import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
-import { FadeAway, MailMotionStyles, enterDelay, useEnteringKeys } from './mail-motion';
+import { FadeAway, MailMotionStyles, enterDelay, useArriveFocus, useEnteringKeys, useViewPlace } from './mail-motion';
 import type { LetterFacts } from './MailThread';
 import { CODE_HOLD_PANEL_PX, CodeHold, loaders, warmMailSetup, warmMailThread } from './mail-code';
 
@@ -280,6 +280,7 @@ function PersonRow({
       <button
         type="button"
         data-testid="mail-person"
+        data-mail-key={p.key}
         onClick={onOpen}
         onPointerEnter={onLook}
         onFocus={onLook}
@@ -365,8 +366,9 @@ function PersonThreads({
   const pages = q.data?.pages ?? [];
   const person = pages[0]?.person ?? null;
   const threads = pages.flatMap((p) => p.threads);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const again = useReadAgain(q, headingRef);
+  const arrive = useArriveFocus();
   return (
     <section aria-label="Threads" className="grid gap-3" style={{ fontFamily: SANS }}>
       <button type="button" onClick={onBack} style={{ ...LINK_BUTTON, justifySelf: 'start' }}>
@@ -385,7 +387,12 @@ function PersonThreads({
         </p>
       ) : (
         <>
-          <h2 ref={headingRef} tabIndex={-1} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere', outline: 'none' }}>
+          <h2
+            ref={(el) => {
+              headingRef.current = el;
+              arrive(el);
+            }}
+            tabIndex={-1} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere', outline: 'none' }}>
             {person.name ?? 'A vendor with no name on file'} <span style={QUIET}>{KIND_WORD[mailKindOf(person)]}</span>
           </h2>
           {onWriteTo && mailKindOf(person) === 'vendor' && person.providerId ? (
@@ -404,6 +411,7 @@ function PersonThreads({
                 <button
                   type="button"
                   data-testid="mail-thread-row"
+                  data-mail-key={t.key}
                   onClick={() => onOpenThread(t.key)}
                   onPointerEnter={() => lookAhead.thread(t.key, withKey)}
                   onFocus={() => lookAhead.thread(t.key, withKey)}
@@ -871,10 +879,14 @@ export function MailTab({
   };
 
   const openSetup = () => go({ setup: '1', with: null, thread: null });
+  // One name per view, so a view change keeps the place (g2): deeper = further from the list.
+  const view = setup ? 'setup' : threadKey ? `thread:${threadKey}` : withKey ? `with:${withKey}` : 'list';
+  const place = useViewPlace(view, setup || threadKey ? 2 : withKey ? 1 : 0);
   const tone = status.tone === 'warn' ? 'var(--warn, #96601A)' : status.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
 
   return (
-    <div className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
+    <div ref={place.root} className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
+      <MailMotionStyles />
       <header className={`grid gap-1 content-start ${MAIL_HEADER_RESERVE}`} data-testid="mail-header-block">
         <p data-testid="mail-header" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
           {headerSentence(summary, {
@@ -954,6 +966,7 @@ export function MailTab({
         )}
       </header>
 
+      <div key={view} className={`grid gap-4 ${place.fade ?? ''}`.trim()}>
       {setup ? (
         <Suspense fallback={<CodeHold testId="setup-opening" height={CODE_HOLD_PANEL_PX}>Opening the setup…</CodeHold>}>
           <MailSetup
@@ -986,7 +999,10 @@ export function MailTab({
           on={on}
           withKey={withKey}
           onBack={() => back({ with: null })}
-          onOpenThread={(key) => go({ thread: key })}
+          onOpenThread={(key) => {
+            place.remember(key);
+            go({ thread: key });
+          }}
           onWriteTo={canReply ? onWriteTo : undefined}
         />
       ) : (
@@ -1053,7 +1069,10 @@ export function MailTab({
             reader={reader}
             summary={summary}
             reading={{ reader: senderQ.isPending, summary: summaryQ.isPending }}
-            onOpenPerson={(key) => go({ with: key })}
+            onOpenPerson={(key) => {
+              place.remember(key);
+              go({ with: key });
+            }}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
             onStoredKinds={setStoredKinds}
@@ -1062,6 +1081,7 @@ export function MailTab({
           {whoIsWriting}
         </>
       )}
+      </div>
 
       <IntakeHealthSheet
         open={sheet}
