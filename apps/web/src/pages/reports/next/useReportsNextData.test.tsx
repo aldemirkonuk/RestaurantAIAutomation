@@ -9,9 +9,9 @@
  * that says it is held back, with no retry. These run the real hook and the
  * real catalogue; only the HTTP boundary and the role are doubled.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const auth = vi.hoisted(() => ({ rid: 'r1' as string | null, role: 'staff' as string | null }));
@@ -202,5 +202,73 @@ describe('useReportsNextData — a till window is read before the click (perf-p6
     const before = paths().length;
     act(() => result.current.warmTillWindow(30));
     expect(paths().length).toBe(before);
+  });
+});
+
+describe('useReportsNextData — the other till windows are read when idle (perf-p7-2)', () => {
+  const TILL = (d: number) => `/analytics/pos-revenue/r1?days=${d}`;
+  const rows = (d: number) => ({ data: { posConnected: true, days: d } });
+  let idle: Array<() => void>;
+  function arrange() {
+    auth.role = 'owner';
+    idle = [];
+    (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = (fn: () => void) => idle.push(fn);
+    (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback = () => {};
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      const m = /pos-revenue\/r1\?days=(\d+)/.exec(path);
+      if (m) return rows(Number(m[1]));
+      throw new Error(`unexpected GET ${path}`);
+    });
+  }
+  const runIdle = async () => {
+    const fn = idle.shift();
+    await act(async () => fn?.());
+  };
+  afterEach(() => {
+    cleanup(); // unmount while the idle stubs still exist
+    delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
+    delete (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback;
+    Object.defineProperty(navigator, 'connection', { value: undefined, configurable: true });
+  });
+
+  it('reads 7d then 90d, one at a time, under the key the click uses, and the click reads nothing', async () => {
+    arrange();
+    const { result, rerender } = renderHook(
+      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['till']),
+      { wrapper: wrapper(), initialProps: { days: 30 } },
+    );
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    await waitFor(() => expect(idle).toHaveLength(1));
+    expect(paths()).not.toContain(TILL(7)); // nothing before the browser is idle
+    expect(paths()).not.toContain(TILL(90));
+
+    await runIdle();
+    await waitFor(() => expect(paths()).toContain(TILL(7)));
+    expect(paths()).not.toContain(TILL(90)); // one window at a time
+    await waitFor(() => expect(idle).toHaveLength(1));
+    await runIdle();
+    await waitFor(() => expect(paths()).toContain(TILL(90)));
+
+    api.get.mockClear();
+    rerender({ days: 90 }); // the click
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    expect(paths()).toEqual([]); // render-only
+    // The figures drawn from the warmed window equal those of a direct read.
+    const prefetched = result.current.registers.till?.data;
+    const direct = renderHook(() => useReportsNextData(90, () => {}, ['till']), { wrapper: wrapper() });
+    await waitFor(() => expect(direct.result.current.registers.till?.loading).toBe(false));
+    expect(prefetched).toEqual(direct.result.current.registers.till?.data);
+  });
+
+  it('reads nothing ahead on a data-saver connection', async () => {
+    arrange();
+    Object.defineProperty(navigator, 'connection', { value: { saveData: true }, configurable: true });
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till']), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(idle).toHaveLength(0);
+    expect(paths().filter((p) => p !== READING)).toEqual([TILL(30)]);
   });
 });
