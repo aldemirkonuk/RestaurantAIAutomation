@@ -31,7 +31,7 @@ import tempfile
 
 FIRST = "20270421143700"
 ROLES = {"public", "anon", "authenticated"}
-LEASE = "20271223100000_check_now_reads_the_house_mailbox_once_a_minute_at_most.sql"
+LEASE_SLUG = "_check_now_reads_the_house_mailbox_once_a_minute_at_most.sql"  # by slug: versions change at merge
 SIG = "public.house_inbox_claim_read(UUID, UUID, INTEGER, INTEGER)"
 
 
@@ -50,10 +50,14 @@ def self_test():
         try:
             for f in glob.glob("supabase/migrations/*.sql"):
                 shutil.copy(f, d)
-            q = os.path.join(d, LEASE)
+            found = glob.glob(os.path.join(d, "*" + LEASE_SLUG))
+            if len(found) != 1:
+                bad.append(f"{label}: no single migration ends in {LEASE_SLUG}")
+                continue
+            q = found[0]
             s = open(q).read()
             if s.count(a) != 1:
-                bad.append(f"{label}: the line to break is not in {LEASE} exactly once")
+                bad.append(f"{label}: the line to break is not in {os.path.basename(q)} exactly once")
                 continue
             open(q, "w").write(s.replace(a, b))
             if not run(d).startswith("FAIL -- "):
