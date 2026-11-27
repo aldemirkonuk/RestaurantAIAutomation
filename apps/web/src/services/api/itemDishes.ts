@@ -36,6 +36,9 @@ export interface ItemDishes {
 /** Where a dish opens: its own card on /dishes. */
 export const dishHref = (dishId: string) => `/dishes?open=${encodeURIComponent(dishId)}`;
 
+/** Where a good opens: its drawer on /inventory (the way back from a recipe line; iv-url.ts reads `open`). */
+export const inventoryHref = (inventoryId: string) => `/inventory?open=${encodeURIComponent(inventoryId)}`;
+
 export async function getItemDishes(itemId: string, restaurantId?: string): Promise<ItemDishes> {
   const id = restaurantId || getActiveRestaurantId();
   if (!id) throw new Error('No restaurant ID available');
