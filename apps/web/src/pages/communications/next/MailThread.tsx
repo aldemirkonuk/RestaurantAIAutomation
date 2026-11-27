@@ -283,7 +283,16 @@ export function MailThread({
   const [opened, setOpened] = useState<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
   const unfoldedIds = opened.key === threadKey ? opened.ids : new Set<string>();
   const focusAfter = useRef<string | null>(null);
-  const open = openLettersOf(letters, head);
+  // A letter that arrives never folds the letter being read (r109 mail g8): what was open at the previous
+  // render of this thread stays open, so a letter can only unfold while its thread stays open.
+  const wasOpen = useRef<{ key: string; ids: ReadonlySet<string> }>({ key: threadKey, ids: new Set() });
+  const open = new Set(openLettersOf(letters, head));
+  if (wasOpen.current.key === threadKey) {
+    for (const m of letters) if (wasOpen.current.ids.has(m.id)) open.add(m.id);
+  }
+  useLayoutEffect(() => {
+    wasOpen.current = { key: threadKey, ids: open };
+  });
   const unfold = (ids: string[]) => {
     focusAfter.current = ids[0] ?? null;
     setOpened({ key: threadKey, ids: new Set([...unfoldedIds, ...ids]) });
@@ -465,7 +474,7 @@ export function MailThread({
                   m={r.m}
                   vendor={vendor}
                   facts={bookFacts?.get(r.m.id)}
-                  unfolded={unfoldedIds.has(r.m.id)}
+                  unfolded={unfoldedIds.has(r.m.id) || entering.has(r.m.id)}
                   onTakeBack={r.m.id === undoId ? () => noReply.mutate({ id: r.m.id, marked: false }) : undefined}
                   takingBack={noReply.isPending && noReply.variables?.marked === false}
                 />
