@@ -23,7 +23,7 @@
 /* ── the reading stand: the drawer opens at its full height at once and its content settles in ──
    The height is not animated (r108 walk N5: grid-template-rows over 320 ms is a layout property, and the page under the
    drawer re-flowed on every frame). The drawer takes its room in one step, its content is clipped by the box and moves
-   8 px down into place over 280 ms, ease-out, a transform. Closing is at once (ADR 0112: no exit animation). Switching
+   8 px down into place over the `settle` token (motion.ts: the house curve, 320 ms), a transform. Closing is at once (ADR 0112: no exit animation). Switching
    from one open drink to another does not settle again, as the content stays mounted. Under reduced motion there is no
    animation at all, no opacity fade either. */
 .cl-stand {
@@ -38,7 +38,7 @@
   overflow: hidden;
 }
 .cl-stand[data-open='true'] > * > * {
-  animation: cl-stand-settle 280ms ease-out;
+  animation: cl-stand-settle 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes cl-stand-settle {
   from { transform: translateY(-8px); }
