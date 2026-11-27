@@ -75,6 +75,10 @@ export interface SaleCostCoverage {
 
 export interface ProcurementDocument {
   id: string
+  /** The rate the paper was filed at (newest conversion on its audit trail); null when never converted. */
+  filedAt?: { from: string; to: string; rate: number; rateDate: string; sentence: string } | null
+  /** Says so when that rate could not be read; a failed read is not "never converted". */
+  filedAtReason?: string | null
   doc_type:
     | 'invoice'
     | 'packing_slip'
@@ -475,6 +479,12 @@ export const documentsApi = {
     currency: string,
     reason?: string,
     challenge?: string | null,
+    /**
+     * A CONVERSION (r104 g1): the paper's own currency, the manager's rate
+     * (house units per one unit of it) and the day it is from. All three or
+     * none; the gateway refuses half of them in words.
+     */
+    fx?: { fromCurrency: string; rate: number; rateDate: string } | null,
   ): Promise<{
     currency: string
     previousCurrency: string | null
@@ -482,16 +492,33 @@ export const documentsApi = {
     moneyRefiled: boolean
     linesRefiled: number
     lineFailures: string[]
+    filedAt?: { sentence: string } | null
   }> {
     try {
       const { data } = await apiClient.patch(
         `/procurement/documents/${id}/currency`,
-        { currency, reason },
+        { currency, reason, ...(fx ?? {}) },
         sealed(challenge),
       )
       return data
     } catch (error) {
       return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * The house's own currency code, for the rate field. `null` when it is not
+   * stated or could not be read: the rate field is then not offered, and the
+   * restatement stays the plain relabel.
+   */
+  async houseCurrency(): Promise<string | null> {
+    try {
+      const { data } = await apiClient.get<{ code?: string | null; readable?: boolean }>(
+        '/settings/currency',
+      )
+      return data?.readable !== false && data?.code ? data.code : null
+    } catch {
+      return null
     }
   },
 

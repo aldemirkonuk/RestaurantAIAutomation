@@ -1,6 +1,7 @@
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { applyTieOut, CurrencySeen, ParsedDocument } from "./parsed-document";
 import { readSnapshot } from "../canonical/from-document-rows";
+import { convertMoney } from "./fx-convert";
 
 export type { CurrencySeen };
 
@@ -685,6 +686,8 @@ export function planRefile(args: {
   lines: ReadonlyArray<DocumentLineRow> | null | undefined;
   /** `procurement_documents.extracted`, read ONLY for `moneyWithheld`. */
   extracted: unknown;
+  /** A manager's rate: every recovered figure is converted before the tie-out (`fx-convert.ts`). */
+  fx?: { rate: number } | null;
 }): RefilePlan | null {
   const row = args.row ?? {};
   const rows = (args.lines ?? []).map((l, i) => ({
@@ -870,22 +873,34 @@ export function planRefile(args: {
     linesWithout,
   };
 
+  const conv = args.fx ? convertMoney(header, lineMoney, args.fx.rate) : null;
+  const filedHeader = conv?.header ?? header;
+  const filedLines = conv?.lines ?? lineMoney;
+
   const rebuilt = applyTieOut({
-    subtotal: header.subtotal,
-    freight: header.freight,
-    fuelSurcharge: header.fuel_surcharge,
-    splitCaseFee: header.split_case_fee,
-    deliveryFee: header.delivery_fee,
-    depositTotal: header.deposit_total,
-    tax: header.tax,
+    subtotal: filedHeader.subtotal,
+    freight: filedHeader.freight,
+    fuelSurcharge: filedHeader.fuel_surcharge,
+    splitCaseFee: filedHeader.split_case_fee,
+    deliveryFee: filedHeader.delivery_fee,
+    depositTotal: filedHeader.deposit_total,
+    tax: filedHeader.tax,
     // Same rule as intake and editLine: a tax read only in the printed VAT
     // breakdown still counts (RECEIPTS-W5).
-    taxBreakdown: readSnapshot(args.extracted).taxBreakdown,
-    otherCharges: header.other_charges,
-    discountTotal: header.discount_total,
-    total: header.total,
+    taxBreakdown: args.fx
+      ? readSnapshot(args.extracted).taxBreakdown?.map((r) => ({
+          ...r,
+          amount:
+            r.amount != null && Number.isFinite(r.amount)
+              ? Math.round(r.amount * args.fx!.rate * 100) / 100
+              : r.amount,
+        }))
+      : readSnapshot(args.extracted).taxBreakdown,
+    otherCharges: filedHeader.other_charges,
+    discountTotal: filedHeader.discount_total,
+    total: filedHeader.total,
     lines: rows.map((l, i) => {
-      const m = lineMoney[i];
+      const m = filedLines[i];
       return {
         qty: l.qty,
         uom: l.uom,
@@ -930,12 +945,12 @@ export function planRefile(args: {
                 : "neither reading, because neither states a header figure"),
     provenance,
     document: {
-      ...header,
+      ...filedHeader,
       computed_lines_total: rebuilt.computedLinesTotal,
       tie_out_delta: rebuilt.tieOutDelta,
       ties_out: rebuilt.tiesOut,
     },
-    lines: lineMoney,
+    lines: filedLines,
   };
 }
 
