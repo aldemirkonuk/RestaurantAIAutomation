@@ -24,6 +24,7 @@ import {
 const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const FIN = { inventoryValue: 41200, cogs: 18800, grossMargin: 0.62 };
 const CASH = { spendLast30d: 9100, committedOpenOrders: 3300 };
+const MENU = { items: [{ id: "w1", marginPerBottle: 31.77 }], medians: { marginPerBottle: 28.5 }, counts: {} };
 const GOALS = [
   { id: "g1", name: "Spend under 8,000", metric_key: "purchase_spend", target_value: 8000 },
   { id: "g2", name: "Keep 20 days of stock", metric_key: "days_of_inventory", target_value: 20 },
@@ -34,7 +35,8 @@ function controller() {
   const analyticsService = { getFinancialSummary: jest.fn().mockResolvedValue(FIN) };
   const advanced = {
     getCashflow: jest.fn().mockResolvedValue(CASH),
-    getOverview: jest.fn().mockResolvedValue({ financial: FIN, cashflow: CASH, insights: [], activeGoals: [] }),
+    getMenuEngineering: jest.fn().mockResolvedValue(MENU),
+    getOverview: jest.fn().mockResolvedValue({ financial: FIN, cashflow: CASH, menuEngineering: { counts: {}, top: MENU.items }, insights: [], activeGoals: [] }),
   };
   const c = Object.create(AnalyticsController.prototype) as AnalyticsController;
   Object.assign(c, { analyticsService, advanced });
@@ -111,13 +113,31 @@ describe("financial and cashflow routes", () => {
     expect(await c.getCashflow(HOUSE, { role } as never)).toEqual(CASH);
   });
 
+  it.each([["staff"], [undefined], ["waiter"]])(
+    "[REVERT-FAILS] role %p is told menu-engineering is withheld: no margin per bottle, no read",
+    async (role) => {
+      const { c, advanced } = controller();
+      const out = await c.getMenuEngineering(HOUSE, { role } as never);
+      expect(out).toEqual({ withheldForRole: true, register: "menu-engineering" });
+      expect(JSON.stringify(out)).not.toMatch(/31\.77|28\.5|marginPerBottle/);
+      expect(advanced.getMenuEngineering).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([["manager"], ["owner"]])("role %p still reads menu-engineering", async (role) => {
+    const { c } = controller();
+    expect(await c.getMenuEngineering(HOUSE, { role } as never)).toEqual(MENU);
+  });
+
   it("[REVERT-FAILS] the overview carries neither register to staff, and both to a manager", async () => {
     const staff: any = await controller().c.getOverview(HOUSE, { role: "staff" } as never);
     expect(staff.financial).toEqual({ withheldForRole: true, register: "financial" });
     expect(staff.cashflow).toEqual({ withheldForRole: true, register: "cashflow" });
+    expect(staff.menuEngineering).toEqual({ withheldForRole: true, register: "menu-engineering" });
     const mgr: any = await controller().c.getOverview(HOUSE, { role: "manager" } as never);
     expect(mgr.financial).toEqual(FIN);
     expect(mgr.cashflow).toEqual(CASH);
+    expect(mgr.menuEngineering.top).toEqual(MENU.items);
   });
 });
 

@@ -151,6 +151,22 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
     expect(result.current.registers.service!.failure).toBeNull();
   });
 
+  it('[REVERT-FAILS] staff: Margin against movement is held back and its path is never asked (margin per bottle is supplier cost)', async () => {
+    auth.role = 'staff';
+    const QUAD = '/analytics/menu-engineering/r1';
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['quadrants']), { wrapper: wrapper() });
+    await waitFor(() => expect(paths()).toContain(READING));
+    expect(paths()).not.toContain(QUAD);
+    expect(result.current.registers.quadrants!.failure?.heldBack).toEqual({
+      readers: ['owner', 'manager'],
+      known: true,
+    });
+  });
+
   it('the feed has no readers list, so it is never held back', async () => {
     auth.role = 'staff';
     const { result } = mount();

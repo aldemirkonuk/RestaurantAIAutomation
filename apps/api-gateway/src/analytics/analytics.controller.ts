@@ -1170,7 +1170,14 @@ export class AnalyticsController {
     description:
       "Stars / Plowhorses / Puzzles / Dogs from margin (unit_price − WAC) × velocity, with a concrete action per quadrant.",
   })
-  async getMenuEngineering(@Param("restaurantId") restaurantId: string) {
+  async getMenuEngineering(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    // Margin per bottle is menu price less lot WAC: the house's cost by
+    // another door. Staff are answered before the books are read (r108).
+    if (!registerReadable("menu-engineering", readerSees(user)))
+      return withheldRegister("menu-engineering");
     return this.advanced.getMenuEngineering(restaurantId);
   }
 
@@ -1338,6 +1345,9 @@ export class AnalyticsController {
       cashflow: registerReadable("cashflow", sees)
         ? overview.cashflow
         : withheldRegister("cashflow"),
+      menuEngineering: registerReadable("menu-engineering", sees)
+        ? overview.menuEngineering
+        : withheldRegister("menu-engineering"),
     };
   }
 

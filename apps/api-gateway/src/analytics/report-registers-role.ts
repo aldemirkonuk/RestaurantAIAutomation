@@ -9,6 +9,8 @@
  *                  suppliers (the cost is what the house paid a vendor).
  *   - `cashflow`   Spend pacing and the "Against ourselves" spend half: what
  *                  was bought and what is committed. Money and suppliers.
+ *   - `menu-engineering`  "Margin against movement": margin per bottle is the
+ *                  menu price less what the house paid. Money and suppliers.
  *   - a goal whose metric is purchase spend (money and suppliers), or one
  *     read off the till (sales; money too where it is a currency).
  * A key this table does not know fails closed: only a role that sees every
@@ -20,6 +22,9 @@ import { DATA_CLASSES, DataClass, policyFor } from "../ask-readings/reading-data
 const REGISTER_CLASSES: Readonly<Record<string, readonly DataClass[]>> = {
   financial: ["money", "suppliers"],
   cashflow: ["money", "suppliers"],
+  // marginPerBottle is menu price minus lot WAC: against the price staff
+  // already know it is the house's cost per bottle (r108 reports review).
+  "menu-engineering": ["money", "suppliers"],
 };
 
 /**
