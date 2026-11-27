@@ -44,6 +44,7 @@ export type CommandSection =
   | "Navigation"
   | "Create"
   | "Insights"
+  | "Mail"
   | "Recent"
   | "On the counter"
   | "Rooms";
@@ -76,6 +77,8 @@ export const GOTO_MAP: Record<string, { href: string; label: string }> = {
   v: { href: "/vendors", label: "Vendors" },
   p: { href: "/vendors", label: "Vendors" },
   c: { href: "/calendar", label: "Calendar" },
+  // r108 mail g10: `m` is unclaimed and reads as Mail; `e` reads as "edit", and `c` is Calendar.
+  m: { href: "/communications?tab=mail", label: "Mail" },
   t: { href: "/team", label: "Team" },
   n: { href: "/notifications", label: "Notifications" },
   s: { href: "/settings", label: "Settings" },
@@ -98,7 +101,7 @@ const NAVIGATION: Command[] = [
   { id: "nav-catalog", title: "Insight Catalog", section: "Navigation", icon: Layers, href: "/recommendations/catalog", keywords: "browse types dimension measure comparator" },
   { id: "nav-calendar", title: "Calendar", section: "Navigation", icon: Calendar, href: "/calendar", shortcut: "g c", keywords: "events schedule" },
   { id: "nav-team", title: "Team", section: "Navigation", icon: Users, href: "/team", shortcut: "g t", keywords: "staff shifts labor" },
-  { id: "nav-comms", title: "Communications", section: "Navigation", icon: Mail, href: "/communications", keywords: "email sms templates" },
+  { id: "nav-comms", title: "Communications", section: "Navigation", icon: Mail, href: "/communications", shortcut: "g m", keywords: "email sms templates mail inbox letters" },
   { id: "nav-docs", title: "Documents & Reports", section: "Navigation", icon: FileText, href: "/documents-reports", keywords: "files pdf" },
   { id: "nav-notifications", title: "Notifications", section: "Navigation", icon: Bell, href: "/notifications", shortcut: "g n", keywords: "alerts" },
   { id: "nav-ask", title: "Ask Mudavym", section: "Navigation", icon: Sparkles, href: "/ask", keywords: "ask assistant question reading sommelier pairing" },
