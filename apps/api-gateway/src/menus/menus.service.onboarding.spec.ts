@@ -1,108 +1,119 @@
+import { InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { MenusService } from "./menus.service";
 
 /**
- * GET /onboarding/progress is asked on every page's cold load. Once the
- * progress row is in, the active-menu read and the restaurant-threshold read
- * need only its restaurant_id, so they start together (two waits, not three).
+ * GET /onboarding/progress is asked on every page's cold load. The house's
+ * setup is read from the house's own tables (#770/#1089), and those reads need
+ * only the session's restaurant_id, so they all start together: one wait, not
+ * one per table (the intent of the earlier "menu read and threshold read
+ * together" change, now that the setup is the house's and not the person's row).
+ *
+ * Every read here is gated: it logs its start, and answers only when released.
+ * If a read were awaited before the next began, it would never start before the
+ * first was released, and the count of reads in flight would stay at one.
  */
-type Row = Record<string, unknown> | null;
-function build(opts: {
-  progress: Row;
-  menu?: Row;
-  restaurant?: Row;
-  menuReadFails?: boolean;
-}) {
-  const log: string[] = [];
-  const pending: Array<() => void> = [];
-  const gated = (name: string, result: unknown) =>
-    new Promise((resolve) => {
-      log.push(`start:${name}`);
-      pending.push(() => {
-        log.push(`end:${name}`);
-        resolve(result);
-      });
+type Reply = { data: unknown; error: { message: string } | null };
+
+function build(opts: { failTable?: string } = {}) {
+  const started: string[] = [];
+  const release: Array<() => void> = [];
+  const writes: unknown[] = [];
+  const answer = (table: string): Reply =>
+    table === opts.failTable
+      ? { data: null, error: { message: "boom" } }
+      : { data: table === "restaurants" ? { threshold_configured: true } : [], error: null };
+  const gated = (table: string) =>
+    new Promise<Reply>((resolve) => {
+      started.push(table);
+      release.push(() => resolve(answer(table)));
     });
-  const updates: unknown[] = [];
   const supabase = {
     from(table: string) {
       const chain: any = {
         select: () => chain,
         eq: () => chain,
-        update: (patch: unknown) => {
-          updates.push(patch);
-          return chain;
-        },
-        maybeSingle: () => {
-          if (table === "user_onboarding_progress")
-            return Promise.resolve({ data: opts.progress, error: null });
-          if (table === "restaurant_menus")
-            return gated(
-              "menu",
-              opts.menuReadFails
-                ? { data: null, error: { message: "boom" } }
-                : { data: opts.menu ?? null, error: null },
-            );
-          return gated("threshold", { data: opts.restaurant ?? null, error: null });
-        },
-        then: (res: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(res),
+        neq: () => chain,
+        is: () => chain,
+        in: () => chain,
+        not: () => chain,
+        or: () => chain,
+        gt: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        insert: (v: unknown) => (writes.push(v), chain),
+        update: (v: unknown) => (writes.push(v), chain),
+        upsert: (v: unknown) => (writes.push(v), chain),
+        delete: () => (writes.push("delete"), chain),
+        maybeSingle: () => gated(table),
+        single: () => gated(table),
+        then: (res: (v: Reply) => unknown, rej?: (e: unknown) => unknown) =>
+          gated(table).then(res, rej),
       };
       return chain;
     },
   };
   const svc = new MenusService({ supabase } as any, {} as any, {} as any, {} as any);
-  return { svc, log, pending, updates };
+  return { svc, started, release, writes };
 }
 
-const ROW = { id: "p1", restaurant_id: "r1", menu_uploaded: false, vendor_added: false, team_member_invited: false };
+const flush = async () => {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+};
 
-async function settle(p: Promise<unknown>, pending: Array<() => void>) {
-  // let the progress row resolve, then release whatever reads have started
-  for (let i = 0; i < 10; i++) await Promise.resolve();
-  const started = [...pending];
-  started.forEach((f) => f());
-  return { value: await p, startedBeforeRelease: started.length };
-}
-
-describe("getOnboardingProgress", () => {
-  it("starts the menu read and the threshold read together", async () => {
-    const { svc, log, pending } = build({ progress: ROW, menu: { id: "m1" }, restaurant: { threshold_configured: true } });
-    const { startedBeforeRelease } = await settle(svc.getOnboardingProgress("u1"), pending);
-    expect(startedBeforeRelease).toBe(2);
-    expect(log.slice(0, 2).sort()).toEqual(["start:menu", "start:threshold"]);
+describe("getOnboardingProgress (the house's setup)", () => {
+  it("starts every house read together before any one has answered", async () => {
+    const { svc, started, release } = build();
+    const read = svc.getOnboardingProgress("u1", "r1");
+    await flush();
+    // the person's row, the two menu reads, supplier, invite, settings and the
+    // next-steps reads are all in flight; nothing has been released yet
+    expect(started.length).toBeGreaterThanOrEqual(6);
+    expect(started).toEqual(
+      expect.arrayContaining([
+        "user_onboarding_progress",
+        "menu_items",
+        "providers",
+        "organization_invites",
+        "restaurants",
+      ]),
+    );
+    release.forEach((f) => f());
+    await read;
   });
 
-  it("answers the same when the menu exists (and heals the row once)", async () => {
-    const { svc, pending, updates } = build({ progress: ROW, menu: { id: "m1" }, restaurant: { threshold_configured: true } });
-    const { value } = await settle(svc.getOnboardingProgress("u1"), pending);
-    expect(value).toMatchObject({ menu_uploaded: true, threshold_configured: true, activated: true });
-    expect(updates).toEqual([{ menu_uploaded: true }]);
+  it("answers without writing anything (a GET heals nothing)", async () => {
+    const { svc, release, writes } = build();
+    const read = svc.getOnboardingProgress("u1", "r1");
+    await flush();
+    release.forEach((f) => f());
+    const value = await read;
+    expect(value).toMatchObject({
+      restaurant_id: "r1",
+      menu_uploaded: false,
+      menu_current: false,
+      threshold_configured: true,
+      activated: false,
+    });
+    expect(writes).toEqual([]);
   });
 
-  it("answers the same when there is no menu", async () => {
-    const { svc, pending, updates } = build({ progress: ROW, menu: null, restaurant: { threshold_configured: true } });
-    const { value } = await settle(svc.getOnboardingProgress("u1"), pending);
-    expect(value).toMatchObject({ menu_uploaded: false, threshold_configured: true, activated: false });
-    expect(updates).toEqual([]);
+  it("a failed menu read fails the read; it is never taken for 'no menu yet'", async () => {
+    const { svc, release } = build({ failTable: "menu_items" });
+    const read = svc.getOnboardingProgress("u1", "r1");
+    const settled = read.then(
+      () => null,
+      (e) => e,
+    );
+    await flush();
+    release.forEach((f) => f());
+    expect(await settled).toBeInstanceOf(InternalServerErrorException);
   });
 
-  it("answers the same when the threshold read gives nothing", async () => {
-    const { svc, pending } = build({ progress: ROW, menu: { id: "m1" }, restaurant: null });
-    const { value } = await settle(svc.getOnboardingProgress("u1"), pending);
-    expect(value).toMatchObject({ menu_uploaded: true, threshold_configured: false, activated: false });
-  });
-
-  it("a failed menu read is not a healed menu and writes nothing", async () => {
-    const { svc, pending, updates } = build({ progress: ROW, menuReadFails: true, restaurant: { threshold_configured: true } });
-    const { value } = await settle(svc.getOnboardingProgress("u1"), pending);
-    expect(value).toMatchObject({ menu_uploaded: false });
-    expect(updates).toEqual([]);
-  });
-
-  it("reads no menu when the row already says a menu was uploaded", async () => {
-    const { svc, log, pending } = build({ progress: { ...ROW, menu_uploaded: true }, restaurant: { threshold_configured: false } });
-    const { value, startedBeforeRelease } = await settle(svc.getOnboardingProgress("u1"), pending);
-    expect(startedBeforeRelease).toBe(1);
-    expect(log).not.toContain("start:menu");
-    expect(value).toMatchObject({ menu_uploaded: true, activated: false });
+  it("a session in no house reads nothing and says so", async () => {
+    const { svc, started } = build();
+    await expect(svc.getOnboardingProgress("u1", null)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(started).toEqual([]);
   });
 });
