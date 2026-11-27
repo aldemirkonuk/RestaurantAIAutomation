@@ -210,6 +210,9 @@ const ledger = analysis<LedgerRegister>({
   answers: 'What sold, what it cost, what was kept, and how hard the cellar works',
   window: () => '365 days of the till; the cellar as it stands today',
   path: (rid) => `/analytics/financial/${rid}`,
+  // The register's cost and margin are the house's money (ADR 0348, r108):
+  // staff keep the page, not these figures, and the card says so.
+  readers: ['owner', 'manager'],
   graphs: ['table', 'figure'],
   graphNote:
     'No bars, line or area: these figures are in four different units — money, a ratio, a count of turns, a count of days — and one axis across them would compare dollars with days.',
