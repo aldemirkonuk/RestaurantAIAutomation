@@ -60,18 +60,18 @@ export class DatabaseService implements OnModuleInit {
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
+        .eq("is_active", true)
+        .is("deleted_at", null),
     );
   }
 
   async getLowStockItems(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("v_low_stock_items")
-      .select("*")
-      .eq("restaurant_id", restaurantId);
-
-    if (error) throw error;
-    return data;
+    return readWholeWindow<any>("The house's low-stock wines", () =>
+      this.supabase
+        .from("v_low_stock_items")
+        .select("*", { count: "exact" })
+        .eq("restaurant_id", restaurantId),
+    );
   }
 
   /**
