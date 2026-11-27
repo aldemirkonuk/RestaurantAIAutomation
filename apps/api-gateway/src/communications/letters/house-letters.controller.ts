@@ -24,9 +24,11 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  Optional,
   Param,
   ParseUUIDPipe,
   Post,
+  ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
@@ -42,7 +44,8 @@ import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersCron } from "./house-letters.cron";
 import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
-import { DeclineLetterRequestDto, QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
+import { DeclineLetterRequestDto, QueueLetterDto, UploadLetterFilesDto, UpsertLetterTemplateDto } from "./house-letters.dto";
+import { HouseLetterFilesService } from "./house-letter-files.service";
 import { houseActor, type TokenUser } from "./house-letters.actor";
 
 @ApiTags("Communications")
@@ -55,6 +58,7 @@ export class HouseLettersController {
     private readonly cron: HouseLettersCron,
     private readonly inboxCron: HouseInboxCron,
     private readonly inbox: HouseInboxService,
+    @Optional() private readonly files?: HouseLetterFilesService,
   ) {}
 
   @Get("sender")
@@ -189,6 +193,30 @@ export class HouseLettersController {
   async issueQueueSeal(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
     const { userId, restaurantId } = houseActor(user);
     return this.letters.issueQueueSeal({ restaurantId, userId, dto });
+  }
+
+  /**
+   * Files for a letter not yet written (g6b, DD-r107-11). Owner or manager;
+   * bytes only. The server computes each file's sha-256 and size and stores it
+   * at `<restaurant_id>/<uuid>` in the private bucket; the ids go back in
+   * `fileIds` on the seal and the queue (g6b step 1b).
+   */
+  @Post("files")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "Upload up to 3 files (5 MB in all) for a letter; owner or manager only" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or a manager" })
+  @ApiResponse({ status: 422, description: "Over 3 files or 5 MB, or an empty file" })
+  async uploadFiles(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: UploadLetterFilesDto,
+    @CurrentUser("role") role?: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    if (!this.files) {
+      throw new ServiceUnavailableException("Files could not be stored (not wired into the composer). Nothing was uploaded.");
+    }
+    return { files: await this.files.upload({ restaurantId, userId, role, files: dto.files }) };
   }
 
   /**
