@@ -15,6 +15,7 @@ import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { RecommendationDigestModule } from "./analytics/digest/recommendation-digest.module";
+import { SetupReminderModule } from "./house/setup-reminder.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { SeoModule } from "./seo/seo.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
@@ -101,6 +102,7 @@ import { HouseModule } from "./house/house.module";
     // Feature modules
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
+    SetupReminderModule, // DD-r108-57
     RecommendationDigestModule, // The recommendations digest sender: opted-in members, house clock, one send per period (ADR 0149 row 26)
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     SeoModule, // Sitemaps and the /v/:slug served head (ADR 0158)
