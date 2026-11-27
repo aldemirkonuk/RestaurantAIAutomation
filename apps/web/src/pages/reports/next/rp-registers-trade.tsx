@@ -105,6 +105,8 @@ const reading = analysis<ReadingRow[]>({
 
 export interface TillWindow {
   posConnected: boolean;
+  /** True when the gateway kept the till's money from this reader (staff): nothing is stated, and nothing is "none". */
+  salesWithheld: boolean;
   /** null — never 0 — when no POS has ever landed a check. */
   revenue: number | null;
   checkCount: number | null;
@@ -281,6 +283,7 @@ const till = analysis<TillWindow>({
     const d = obj(raw);
     return {
       posConnected: d.posConnected === true,
+      salesWithheld: d.salesWithheld === true,
       revenue: num(d.revenue),
       checkCount: num(d.checkCount),
       from: str(d.from),
@@ -300,6 +303,9 @@ const till = analysis<TillWindow>({
   view: (read, ctx) => {
     const w = ctx.compare ? splitTill(read, ctx.days) : read;
     const money = moneyIn(ctx.currency);
+    // The server kept the money from this reader: say so, never "none rang".
+    if (w.salesWithheld)
+      return { say: 'Takings are kept to the owner and managers.', figures: [], notes: [], basis: [] };
     if (!w.posConnected)
       return {
         say: (
