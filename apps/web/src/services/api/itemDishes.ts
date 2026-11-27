@@ -14,7 +14,21 @@ export interface ItemDishCost {
   partial: number;
 }
 
-export interface ItemDish {
+/**
+ * Why the serves the stock on hand makes are not known (r108 g11):
+ * the bottle size or pack size is not recorded, the recipe measures the good
+ * another way than the shelf counts it, the recipe makes no serve, or the
+ * stock could not be read.
+ */
+export type ServesWhy = 'size_not_known' | 'pack_size_not_known' | 'unit_mismatch' | 'no_yield' | 'stock_unread';
+
+/** How many serves the stock on hand makes; a quantity, so every role is sent it. Absent from an older gateway. */
+export interface ItemServes {
+  servesFromStock?: number | null;
+  servesWhy?: ServesWhy | null;
+}
+
+export interface ItemDish extends ItemServes {
   dishId: string;
   name: string;
   section: string | null;
@@ -47,7 +61,7 @@ export async function getItemDishes(itemId: string, restaurantId?: string): Prom
  * The house's drinks whose current recipe uses one good, each with the same
  * figures a dish has. GET /recipes/:rid/items/:itemId/drinks.
  */
-export interface ItemDrink {
+export interface ItemDrink extends ItemServes {
   cocktailId: string;
   name: string;
   section: string | null;
