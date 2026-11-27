@@ -8,7 +8,7 @@ import {
   matchVendorCatalogue,
   type VendorMatchCandidate,
 } from '../services/api/vendors'
-import { getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
+import { getActiveRestaurantId, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
 import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
@@ -21,6 +21,8 @@ import { countryByName } from '../lib/countries'
 import { InvoiceProposal } from '../components/onboarding/InvoiceProposal'
 import { readLastInvoice, writeLastInvoice } from '../lib/houseLastInvoice'
 import { TillHistory } from '../components/onboarding/TillHistory'
+import { readMenuReading } from '../lib/houseMenuReading'
+import { MenuReadingLine } from '../components/onboarding/MenuReadingLine'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
 const PAPER_MAX_BYTES = 10 * 1024 * 1024
@@ -95,6 +97,9 @@ export default function HouseContents() {
   const [hoursUnsaved] = useState(() => readHoursUnsaved(user?.restaurantId))
   const proof = readProof()
   const standing = proof ? proofStanding(proof.items) : null
+  // r109 g4: the menu the owner left reading on get-started, for this house
+  // only (a note another house left is never read as this one's).
+  const [menuReading] = useState(() => readMenuReading(user?.restaurantId || getActiveRestaurantId()))
   const [supplier, setSupplier] = useState('')
   const vendorInput = useRef<HTMLInputElement>(null)
   const [supplierEmail, setSupplierEmail] = useState('')
@@ -297,7 +302,9 @@ export default function HouseContents() {
         <div className="mt-12 divide-y divide-[#211f1b]/15 border-y border-[#211f1b]/15">
           <div className="py-6">
             <p className="text-xs uppercase tracking-wider text-[#6d685f]">Menu</p>
-            {proof ? (
+            {menuReading ? (
+              <MenuReadingLine note={menuReading} />
+            ) : proof ? (
               <button
                 type="button"
                 onClick={() => navigate('/house/menu')}
