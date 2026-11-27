@@ -345,26 +345,69 @@ describe('MenuVersions', () => {
     expect(await screen.findByTestId('menu-version-row')).toBeInTheDocument();
   });
 
-  it('says the gateway\'s words when the read cannot be put back, and nothing is pretended', async () => {
+  it('says the gateway\'s words when the read cannot be put back, and the button to try again stays', async () => {
     const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'No line could be read from this file.' });
     mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
     mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
     mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
-    mockRestore.mockRejectedValue({ response: { status: 409, data: { message: 'This read is no longer off the list, so nothing was put back. Nothing was changed.' } } });
+    mockRestore.mockRejectedValueOnce({ response: { status: 503, data: { message: 'The read could not be put back just now. Try again.' } } });
+    mockRestore.mockResolvedValue({ menuId: 'm-bad', restored: true });
     mount(true);
     fireEvent.click(await screen.findByTestId('menu-version-remove'));
     // The list is read again and the row leaves; the sentence stands where it was (it remounts in the empty list).
     await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
     fireEvent.click(await screen.findByTestId('menu-removed-restore'));
-    expect(await screen.findByTestId('menu-restored-said')).toHaveTextContent(/no longer off the list/);
+    const alert = await screen.findByTestId('menu-restore-failed');
+    expect(alert).toHaveTextContent(/could not be put back just now/);
+    expect(alert).toHaveAttribute('role', 'alert');
+    // The read is nowhere else on the page: the way back is still there, and works on the next try.
+    fireEvent.click(screen.getByTestId('menu-removed-restore'));
+    expect(await screen.findByTestId('menu-restored-said')).toHaveTextContent('Back on the list.');
+    expect(screen.queryByTestId('menu-restore-failed')).not.toBeInTheDocument();
+  });
+
+  it('a put-back that failed is not taken away by the four-second timer', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
+      mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+      mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
+      mockRestore.mockRejectedValue(new Error('network'));
+      mount(true);
+      fireEvent.click(await screen.findByTestId('menu-version-remove'));
+      await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+      fireEvent.click(await screen.findByTestId('menu-removed-restore'));
+      await screen.findByTestId('menu-restore-failed');
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByTestId('menu-restore-failed')).toBeInTheDocument();
+      expect(screen.getByTestId('menu-removed-restore')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('offers staff no way back: it is an owner\'s or a manager\'s', async () => {
     const failed = version({ menuId: 'm-bad', readState: 'failed', readFailure: 'x' });
-    mockList.mockResolvedValue({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
-    mount(false);
-    await screen.findByTestId('menu-version-row');
-    expect(screen.queryByTestId('menu-version-remove')).not.toBeInTheDocument();
+    mockList.mockResolvedValueOnce({ versions: [failed], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockList.mockResolvedValue({ versions: [], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mockRemove.mockResolvedValue({ menuId: 'm-bad', removed: true });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (canManage: boolean) => (
+      <QueryClientProvider client={client}>
+        <MenuVersions canManage={canManage} />
+      </QueryClientProvider>
+    );
+    // A manager takes the read off, which stands the sentence and its button up; the same page then reads as staff.
+    const view = render(tree(true));
+    fireEvent.click(await screen.findByTestId('menu-version-remove'));
+    await waitFor(() => expect(screen.queryByTestId('menu-version-row')).not.toBeInTheDocument());
+    expect(await screen.findByTestId('menu-removed-restore')).toBeInTheDocument();
+    view.rerender(tree(false));
+    expect(screen.getByTestId('menu-removed-said')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-removed-restore')).not.toBeInTheDocument();
   });
 
   it('the taken-off sentence is gone after four seconds, by a timer and not an animation', async () => {

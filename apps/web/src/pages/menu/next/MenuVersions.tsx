@@ -898,11 +898,15 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   const [taken, setTaken] = useState<string | null>(null);
   const [backSaid, setBackSaid] = useState<string | null>(null);
   const [putting, setPutting] = useState(false);
+  // A put-back that failed: the sentence and its button stay, with the reason, until a try works
+  // or another read is taken off. The read is nowhere else on the page, so no timer takes it away.
+  const [backFailed, setBackFailed] = useState<{ menuId: string; text: string } | null>(null);
+  const holdTaken = putting || backFailed?.menuId === taken;
   useEffect(() => {
-    if (!taken) return;
+    if (!taken || holdTaken) return;
     const t = window.setTimeout(() => setTaken(null), 4000);
     return () => window.clearTimeout(t);
-  }, [taken]);
+  }, [taken, holdTaken]);
   useEffect(() => {
     if (!backSaid) return;
     const t = window.setTimeout(() => setBackSaid(null), 4000);
@@ -910,14 +914,15 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   }, [backSaid]);
   const putBack = async (menuId: string) => {
     setPutting(true);
+    setBackFailed(null);
     try {
       await restoreFailedRead(menuId);
       setTaken(null);
       setBackSaid('Back on the list.');
       refresh();
     } catch (err) {
-      setTaken(null);
-      setBackSaid(reasonOf(err));
+      // Kept: `taken` stays, so the button to try again stays with it.
+      setBackFailed({ menuId, text: reasonOf(err) });
     } finally {
       setPutting(false);
     }
@@ -926,6 +931,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
   const currency = useHouseCurrencyCode();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
   const takenSaid = taken ? (
+    <>
     <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-removed-said">
       Taken off the list.{' '}
       {canManage ? (
@@ -934,6 +940,12 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
         </button>
       ) : null}
     </p>
+    {backFailed?.menuId === taken ? (
+      <p role="alert" className="cl-said" style={{ marginTop: 6 }} data-testid="menu-restore-failed">
+        {backFailed.text}
+      </p>
+    ) : null}
+    </>
   ) : backSaid ? (
     <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-restored-said">
       {backSaid}
@@ -1017,6 +1029,7 @@ export function MenuVersions({ canManage, retryAbove }: { canManage: boolean; re
                       planning={planFor === v.menuId}
                       onRemoved={() => {
                         setBackSaid(null);
+                        setBackFailed(null);
                         setTaken(v.menuId);
                         refresh();
                       }}

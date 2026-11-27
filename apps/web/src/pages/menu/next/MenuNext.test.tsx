@@ -25,8 +25,9 @@ import { settingsApi, type HouseCurrency } from '../../../services/api/settings'
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
 // offers it only to them. A manager reads by default; one case reads as staff.
 let role: string | null = 'manager';
+let house = 'r1';
 vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'r1', loading: false, activeRole: role }),
+  useAuth: () => ({ activeRestaurantId: house, loading: false, activeRole: role }),
 }));
 
 vi.mock('../../../services/api/menus', async () => {
@@ -140,6 +141,7 @@ beforeEach(() => {
   mockAdd.mockReset();
   mockReview.mockReset();
   role = 'manager';
+  house = 'r1';
   mockCurrency.mockReset();
   mockCurrency.mockResolvedValue(currency());
 });
@@ -438,6 +440,40 @@ describe('MenuNext — discard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(said);
+  });
+
+  it("a put-back that settles late does not wipe the way back of a line taken off since", async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    let settle: (v: { menuItemId: string; status: 'approved' }) => void = () => {};
+    mockRestoreLine.mockReturnValue(new Promise((r) => (settle = r)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Efes' }));
+    await screen.findByRole('button', { name: /Put Efes back|Putting back/ });
+    settle({ menuItemId: 'l9', status: 'approved' });
+    await waitFor(() => expect(mockRestoreLine).toHaveBeenCalledWith('r1', 'l9'));
+    expect(await screen.findByRole('button', { name: 'Put Efes back' })).toBeInTheDocument();
+  });
+
+  it("after a house switch the old house's way back is not offered, so it is never sent to the new house", async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Rose' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    const view = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Rose' }));
+    expect(await screen.findByRole('button', { name: 'Put Rose back' })).toBeInTheDocument();
+    house = 'r2';
+    view.rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MenuNext />
+      </QueryClientProvider>,
+    );
+    // The other house's menu has been read and shown; only then is the old way back checked.
+    await waitFor(() => expect(mockGetMenu).toHaveBeenCalledWith('r2'));
+    await screen.findByRole('button', { name: 'Discard Rose' });
+    expect(screen.queryByRole('button', { name: 'Put Rose back' })).not.toBeInTheDocument();
+    expect(mockRestoreLine).not.toHaveBeenCalled();
   });
 
   it('discards on click, and reports a failure without pretending the line is gone', async () => {

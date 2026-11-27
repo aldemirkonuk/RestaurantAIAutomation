@@ -548,20 +548,27 @@ export default function MenuNext() {
   const kept = useKeptMenuName(q.data?.menuId ?? null);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   // The line just taken off, until the next discard or a restore: its way back (r107 menu-4).
-  const [offList, setOffList] = useState<{ id: string; name: string } | null>(null);
+  // It carries the house it was taken off in: the page stays mounted across a house switch.
+  const [offList, setOffList] = useState<{ id: string; name: string; house: string | null } | null>(null);
+  const houseNow = useRef(activeRestaurantId);
+  houseNow.current = activeRestaurantId;
+  const offHere = offList && offList.house === activeRestaurantId ? offList : null;
   const [backSaid, setBackSaid] = useState<{ tone: 'alert' | 'said'; text: string } | null>(null);
   const [putting, setPutting] = useState(false);
-  const putBack = async (off: { id: string; name: string }) => {
+  const putBack = async (off: { id: string; name: string; house: string | null }) => {
     setPutting(true);
     setBackSaid(null);
+    // Only this line's way back is cleared when it settles: another line may have been taken off since.
+    // And a sentence about a house is said only while that house is the one on the page.
+    const here = () => houseNow.current === off.house;
     try {
-      await restoreMenuItem(activeRestaurantId as string, off.id);
-      setOffList(null);
-      setBackSaid({ tone: 'said', text: `${off.name} is back on the menu.` });
+      await restoreMenuItem(off.house as string, off.id);
+      setOffList((cur) => (cur?.id === off.id ? null : cur));
+      if (here()) setBackSaid({ tone: 'said', text: `${off.name} is back on the menu.` });
       void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
-      await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
+      await queryClient.invalidateQueries({ queryKey: ['menu', 'active', off.house] });
     } catch (err) {
-      setBackSaid({ tone: 'alert', text: gatewaySaid(err) ?? `${off.name} was not put back. Nothing was changed.` });
+      if (here()) setBackSaid({ tone: 'alert', text: gatewaySaid(err) ?? `${off.name} was not put back. Nothing was changed.` });
     } finally {
       setPutting(false);
     }
@@ -615,7 +622,7 @@ export default function MenuNext() {
         setDiscardingId(line.id);
         setBackSaid(null);
         discard.mutate(line.id, {
-          onSuccess: () => setOffList({ id: line.id, name: line.name }),
+          onSuccess: () => setOffList({ id: line.id, name: line.name, house: activeRestaurantId }),
           onSettled: () => setDiscardingId(null),
         });
       }}
@@ -753,19 +760,19 @@ export default function MenuNext() {
               })()}
             </div>
 
-            {offList || backSaid ? (
+            {offHere || backSaid ? (
               <p
                 role={backSaid?.tone === 'alert' ? 'alert' : 'status'}
                 className="cl-said"
                 style={{ marginTop: 10 }}
                 data-testid="menu-off-list-said"
               >
-                {offList ? (
+                {offHere ? (
                   <>
                     Taken off the list.{' '}
                     {canManage ? (
-                      <button type="button" className="cl-btn cl-focus" disabled={putting} onClick={() => void putBack(offList)}>
-                        {putting ? 'Putting back…' : `Put ${offList.name} back`}
+                      <button type="button" className="cl-btn cl-focus" disabled={putting} onClick={() => void putBack(offHere)}>
+                        {putting ? 'Putting back…' : `Put ${offHere.name} back`}
                       </button>
                     ) : null}{' '}
                   </>
