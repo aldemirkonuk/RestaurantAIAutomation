@@ -3,7 +3,7 @@
  * (prepPlan.ts). No money, no on-hand stock. The house Sheet carries the motion (ADR 0112); paper
  * under html[data-print-prep]. An editor gets a link into a drink to link a line naming no good.
  */
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardList, Printer } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -12,22 +12,26 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { dishesApi, type CardComponent, type DrinkCard } from '../../../../services/api/recipes';
 import { useCanEditRecipe } from './useRecipe';
 import { useHouseDate, useHouseZone } from './useHouseDate';
+import { useSortFlip } from '../useSortFlip';
 import {
-  SERVES_SAID, houseDay, keepPlan, localDay, makeWords, planKey, planPrep, pullWords, readPlan, readServes, type PrepPlan,
+  SERVES_SAID, houseDay, keepPlan, localDay, makeWords, planKey, planPrep, pullWords, readPlan, readServes, rowIds, type PrepPlan,
 } from './prepPlan';
 
 const FLAG = 'data-print-prep';
 export const PREP_UNREAD = 'The recipes could not be read just now, so no prep is planned rather than a shorter list.';
 
-function PlanSaid({ plan, canEdit }: { plan: PrepPlan; canEdit: boolean }) {
+type ListRefs = { pull: RefObject<HTMLUListElement>; make: RefObject<HTMLUListElement>; notLinked: RefObject<HTMLUListElement> };
+
+function PlanSaid({ plan, canEdit, refs }: { plan: PrepPlan; canEdit: boolean; refs?: ListRefs }) {
+  const ids = rowIds(plan);
   if (plan.planned === 0) return <p className="cl-note">Type the serves you expect, and the pull list appears here.</p>;
   return (
     <>
       <h3 className="cl-sec">Pull from the shelf</h3>
       {plan.pull.length ? (
-        <ul className="cl-prep-list" data-testid="prep-pull">
-          {plan.pull.map((r) => (
-            <li key={`${r.inventoryId}|${r.baseUnit}`}>
+        <ul className="cl-prep-list" data-testid="prep-pull" ref={refs?.pull}>
+          {plan.pull.map((r, i) => (
+            <li key={ids.pull[i]} data-row={ids.pull[i]}>
               <b className="cl-num">{pullWords(r.base, r.baseUnit)}</b> {r.name} <span className="cl-dim">· {r.drinks.join(', ')}</span>
             </li>
           ))}
@@ -38,9 +42,9 @@ function PlanSaid({ plan, canEdit }: { plan: PrepPlan; canEdit: boolean }) {
       {plan.make.length ? (
         <>
           <h3 className="cl-sec">Make in the house</h3>
-          <ul className="cl-prep-list" data-testid="prep-make">
-            {plan.make.map((m) => (
-              <li key={`${m.componentId}|${m.baseUnit}`}>
+          <ul className="cl-prep-list" data-testid="prep-make" ref={refs?.make}>
+            {plan.make.map((m, i) => (
+              <li key={ids.make[i]} data-row={ids.make[i]}>
                 {makeWords(m)} <span className="cl-dim">· {m.drinks.join(', ')}</span>
               </li>
             ))}
@@ -48,9 +52,9 @@ function PlanSaid({ plan, canEdit }: { plan: PrepPlan; canEdit: boolean }) {
         </>
       ) : null}
       {plan.notLinked.length ? (
-        <ul className="cl-prep-list" data-testid="prep-not-linked">
-          {plan.notLinked.map((r) => (
-            <li key={r.label}>
+        <ul className="cl-prep-list" data-testid="prep-not-linked" ref={refs?.notLinked}>
+          {plan.notLinked.map((r, i) => (
+            <li key={ids.notLinked[i]} data-row={ids.notLinked[i]}>
               {`not linked: ${r.label} (${r.drinks.join(', ')})`}
               {canEdit ? (
                 <>
@@ -72,6 +76,15 @@ function PlanSaid({ plan, canEdit }: { plan: PrepPlan; canEdit: boolean }) {
     </>
   );
 }
+
+const servesOf = (texts: Record<string, string>): Record<string, number> => {
+  const out: Record<string, number> = {};
+  for (const [k, t] of Object.entries(texts)) {
+    const n = readServes(t);
+    if (n != null) out[k] = n;
+  }
+  return out;
+};
 
 export default function PlanPrep() {
   const id = useId();
@@ -123,17 +136,23 @@ export default function PlanPrep() {
   };
 
   const drinks = useMemo(() => (read && typeof read === 'object' ? [...read.drinks].sort((a, b) => a.name.localeCompare(b.name)) : []), [read]);
-  const serves = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const [k, t] of Object.entries(texts)) {
-      const n = readServes(t);
-      if (n != null) out[k] = n;
-    }
-    return out;
-  }, [texts]);
+  const serves = useMemo(() => servesOf(texts), [texts]);
   const plan = read && typeof read === 'object' ? planPrep(read.drinks, read.components, serves) : null;
+  // The lists move when a typed serve inserts or drops a row (the id order changes), never when only a figure does (ADR 0112).
+  const lists: ListRefs = { pull: useRef<HTMLUListElement>(null), make: useRef<HTMLUListElement>(null), notLinked: useRef<HTMLUListElement>(null) };
+  const order = plan ? rowIds(plan) : { pull: [], make: [], notLinked: [] };
+  const FLIP = { selector: 'li[data-row]', enter: true } as const;
+  const flips = {
+    pull: useSortFlip(lists.pull, order.pull.join('\n'), FLIP),
+    make: useSortFlip(lists.make, order.make.join('\n'), FLIP),
+    notLinked: useSortFlip(lists.notLinked, order.notLinked.join('\n'), FLIP),
+  };
   const type = (cid: string, t: string) => {
     const next = { ...texts, [cid]: t };
+    if (read && typeof read === 'object') {
+      const after = rowIds(planPrep(read.drinks, read.components, servesOf(next)));
+      for (const k of ['pull', 'make', 'notLinked'] as const) if (after[k].join('\n') !== order[k].join('\n')) flips[k].before();
+    }
     setTexts(next);
     keepPlan(key, next);
   };
@@ -187,7 +206,7 @@ export default function PlanPrep() {
                   );
                 })}
               </ol>
-              {plan ? <PlanSaid plan={plan} canEdit={canEdit} /> : null}
+              {plan ? <PlanSaid plan={plan} canEdit={canEdit} refs={lists} /> : null}
             </div>
           )
         ) : null}
