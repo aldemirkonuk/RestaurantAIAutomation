@@ -388,6 +388,25 @@ describe("GoalsService.getPosRevenueWindow — checks per house day (r100 check 
     expect(countsOf(eight)).toEqual({ "2026-08-25": 1, "2026-08-26": 1 });
   });
 
+  it("[REVERT-FAILS] a check with no total is counted, but is not priced: the day's average divides by the priced ones", async () => {
+    const at = (total: number | null) => ({
+      total,
+      opened_at: "2026-09-01T19:00:00Z",
+      closed_at: "2026-09-01T20:00:00Z",
+      items: [],
+    });
+    const { service } = makeGoals({
+      pos_checks: probeThen([at(100), at(0), at(null)]),
+    });
+
+    const result = await service.getPosRevenueWindow("r1", 7);
+
+    // Two priced checks (100 and a comp at 0), one that carries no total.
+    expect(result.dailySeries).toEqual([
+      { date: "2026-09-01", revenue: 100, checks: 3, pricedChecks: 2 },
+    ]);
+  });
+
   it("counts a zero-total check the till did book, and never invents a day with no check", async () => {
     const comp = {
       total: 0,
@@ -406,8 +425,8 @@ describe("GoalsService.getPosRevenueWindow — checks per house day (r100 check 
     const result = await service.getPosRevenueWindow("r1", 7);
 
     expect(result.dailySeries).toEqual([
-      { date: "2026-08-30", revenue: 0, checks: 1 },
-      { date: "2026-09-01", revenue: 80, checks: 1 },
+      { date: "2026-08-30", revenue: 0, checks: 1, pricedChecks: 1 },
+      { date: "2026-09-01", revenue: 80, checks: 1, pricedChecks: 1 },
     ]);
     // 31 Aug had no check at all: absent, not a 0 the page would draw.
     expect(countsOf(result)["2026-08-31"]).toBeUndefined();
@@ -488,7 +507,7 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.revenue).toBeCloseTo(200);
     expect(result.checkCount).toBe(2);
     expect(result.dailySeries).toEqual([
-      { date: LA_TODAY, revenue: 200, checks: 2 },
+      { date: LA_TODAY, revenue: 200, checks: 2, pricedChecks: 2 },
     ]);
 
     // The void filter is not optional: a voided check never happened.
