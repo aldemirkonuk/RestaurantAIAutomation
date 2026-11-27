@@ -1,12 +1,13 @@
 /**
  * The till by week or month (r109 g3): the register buckets its days for the
- * bars, the line and the area; the table and the heat map keep every day; a
- * grain the window does not offer draws days. (The pill is the next PR.)
+ * bars, the line and the area; the table and the heat map keep every day; the
+ * pill offers Week from 30 days and Month from 90, and nothing at 7.
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { till, daysBetween, type TillWindow } from './rp-registers-trade';
+import { TillWindowPicker } from './Cutting';
 import { moneyIn } from './rp-format';
 import { planCombo } from './rp-combo';
 import { CatPlot, PART_OPACITY } from './rp-plot';
@@ -94,5 +95,32 @@ describe('the till drawn by week or month', () => {
     expect(data[0].prior).toBe(10);
     expect(data[1].prior).toBe(70);
     expect(data[13].prior).toBe(50);
+  });
+});
+
+describe('the grain pill', () => {
+  const pill = () => screen.queryByRole('group', { name: 'Till bars by' });
+
+  it('[REVERT-FAILS] is not offered at 7 days', () => {
+    render(<TillWindowPicker days={7} onChange={() => {}} grain="day" onGrain={() => {}} />);
+    expect(pill()).toBeNull();
+  });
+
+  it('[REVERT-FAILS] offers Day and Week at 30, and Month too at 90, holding the grain picked', () => {
+    const onGrain = vi.fn();
+    const { rerender } = render(<TillWindowPicker days={30} onChange={() => {}} grain="day" onGrain={onGrain} />);
+    expect(within(pill()!).getAllByRole('button').map((b) => b.textContent)).toEqual(['Day', 'Week']);
+    rerender(<TillWindowPicker days={90} onChange={() => {}} grain="month" onGrain={onGrain} />);
+    const g = pill()!;
+    expect(within(g).getAllByRole('button').map((b) => b.textContent)).toEqual(['Day', 'Week', 'Month']);
+    expect(within(g).getByRole('button', { name: 'Month' })).toHaveAttribute('aria-pressed', 'true');
+    expect((g as HTMLElement).style.getPropertyValue('--rp-i')).toBe('2');
+    fireEvent.click(within(g).getByRole('button', { name: 'Week' }));
+    expect(onGrain).toHaveBeenCalledWith('week');
+  });
+
+  it('is absent where the page offers no grain', () => {
+    render(<TillWindowPicker days={90} onChange={() => {}} />);
+    expect(pill()).toBeNull();
   });
 });

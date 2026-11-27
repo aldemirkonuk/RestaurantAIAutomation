@@ -249,7 +249,9 @@ describe('a cutting laid flat', () => {
     const dialog = screen.getByRole('dialog', { name: 'Through the till' });
     const group = within(dialog).getByRole('group', { name: 'Till window' });
     expect(
-      within(dialog).getByText(/The window you pick is kept in the page link, so a reload or a shared link opens on it\./),
+      within(dialog).getByText(
+        /The window and the day, week or month you pick are kept in the page link, so a reload or a shared link opens on them\./,
+      ),
     ).toBeInTheDocument();
     fireEvent.click(within(group).getByRole('button', { name: '90 days' }));
     expect(onDays).toHaveBeenCalledWith(90);
