@@ -353,16 +353,16 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
 
   it("a house with no goods, no mailbox and no invoice says so, and its setup still answers", async () => {
     const a = await serviceOn(twoHouses()).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none", money_set: false });
+    expect(a.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, mailbox_reads: false, invoice: "none", money_set: false });
     expect(a.menu_current).toBe(true);
   });
 
   it("house A's good, grant and checked invoice count for A and never for B", async () => {
     const { service } = serviceOn(withValue());
     const a = await service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked", money_set: true });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, mailbox_reads: false, invoice: "checked", money_set: true });
     const b = await service.getOnboardingProgress("u-1", houseB);
-    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, invoice: "none", money_set: false });
+    expect(b.next_steps).toEqual({ goods_listed: false, goods_counted: false, mailbox_connected: false, mailbox_sends: false, mailbox_reads: false, invoice: "none", money_set: false });
   });
 
   it("a good put away or deleted is not on the list", async () => {
@@ -441,6 +441,86 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     expect((await sends()).mailbox_sends).toBe(true);
   });
 
+  // r36 mail gap 4 / onboarding gap 2: orders never leave from the house's
+  // mailbox, and an answer reaches Mail only when the house's mailbox is
+  // read: a reading grant AND the house's switch, as the sender line and the
+  // reader both require.
+  describe("mailbox_reads: the house's own mailbox is read", () => {
+    const READ = "https://www.googleapis.com/auth/gmail.readonly";
+    const SEND = "https://www.googleapis.com/auth/gmail.send";
+    const reads = async (tables: Record<string, Row[]>, fails: Record<string, string> = {}) =>
+      (await serviceOn(tables, fails).service.getOnboardingProgress("u-1", houseA)).next_steps.mailbox_reads;
+    const readGrant = (over: Row = {}): Row => ({
+      id: "c-R", restaurant_id: houseA, integration_id: "gmail_read", revoked_at: null, scopes: [READ], ...over,
+    });
+    const switchRow = (over: Row = {}): Row => ({
+      id: "f-A", restaurant_id: houseA, flag_name: "restaurant_settings", enable_house_inbox_read: true, ...over,
+    });
+
+    it("is true only with a live reading grant held for this house and its switch on", async () => {
+      const tables = withValue();
+      tables.integration_oauth_connections = [readGrant()];
+      tables.restaurant_feature_flags = [switchRow()];
+      expect(await reads(tables)).toBe(true);
+      expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.mailbox_sends).toBe(false);
+    });
+
+    it("is false with a reading grant and the switch off, or no switch row", async () => {
+      const tables = withValue();
+      tables.integration_oauth_connections = [readGrant()];
+      tables.restaurant_feature_flags = [switchRow({ enable_house_inbox_read: false })];
+      expect(await reads(tables)).toBe(false);
+      tables.restaurant_feature_flags = [];
+      expect(await reads(tables)).toBe(false);
+    });
+
+    it("reads the house's settings row only, never another flag row or another house's switch", async () => {
+      const tables = withValue();
+      tables.integration_oauth_connections = [readGrant()];
+      tables.restaurant_feature_flags = [
+        switchRow({ id: "f-X", flag_name: "self_evolution_probe" }),
+        switchRow({ id: "f-B", restaurant_id: houseB }),
+      ];
+      expect(await reads(tables)).toBe(false);
+    });
+
+    it("is false with the switch on and no live reading grant held for this house", async () => {
+      const tables = withValue();
+      tables.restaurant_feature_flags = [switchRow()];
+      tables.integration_oauth_connections = [
+        { id: "c-S", restaurant_id: houseA, integration_id: "gmail_send", revoked_at: null, scopes: [SEND] },
+      ];
+      expect(await reads(tables)).toBe(false);
+      tables.integration_oauth_connections = [readGrant({ revoked_at: "2026-01-05T00:00:00+00:00" })];
+      expect(await reads(tables)).toBe(false);
+      tables.integration_oauth_connections = [readGrant({ restaurant_id: houseB })];
+      expect(await reads(tables)).toBe(false);
+      // The scope decides, as it does for the sender line: a reading row
+      // that holds no reading scope reads nothing.
+      tables.integration_oauth_connections = [readGrant({ scopes: [SEND] })];
+      expect(await reads(tables)).toBe(false);
+      tables.integration_oauth_connections = [readGrant({ scopes: null })];
+      expect(await reads(tables)).toBe(false);
+    });
+
+    it("is null when the switch read fails with a reading grant held; false when no grant is held", async () => {
+      const tables = withValue();
+      tables.integration_oauth_connections = [readGrant()];
+      tables.restaurant_feature_flags = [switchRow()];
+      expect(await reads(tables, { restaurant_feature_flags: "statement timeout" })).toBeNull();
+      tables.integration_oauth_connections = [];
+      expect(await reads(tables, { restaurant_feature_flags: "statement timeout" })).toBe(false);
+    });
+
+    it("a failed switch read touches no other step, and the setup still answers", async () => {
+      const tables = withValue();
+      tables.integration_oauth_connections.push(readGrant());
+      const a = await serviceOn(tables, { restaurant_feature_flags: "statement timeout" }).service.getOnboardingProgress("u-1", houseA);
+      expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, mailbox_reads: null, invoice: "checked", money_set: true });
+      expect(a.completed_at).not.toBeNull();
+    });
+  });
+
   it("an invoice in and not checked is waiting; a rejected one, or a checked credit memo, is no invoice", async () => {
     const tables = withValue();
     const invoice = async () =>
@@ -463,7 +543,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
   it("a failed read is null for that step only, never false, and the setup still answers", async () => {
     for (const [table, keys] of [
       ["restaurant_inventory", ["goods_listed", "goods_counted"]],
-      ["integration_oauth_connections", ["mailbox_connected", "mailbox_sends"]],
+      ["integration_oauth_connections", ["mailbox_connected", "mailbox_sends", "mailbox_reads"]],
       ["procurement_documents", ["invoice"]],
     ] as const) {
       const a = await serviceOn(withValue(), { [table]: "statement timeout" }).service.getOnboardingProgress("u-1", houseA);
@@ -495,6 +575,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     const a = await service.getOnboardingProgress("u-1", houseA);
     expect(a.next_steps.mailbox_connected).toBeNull();
     expect(a.next_steps.mailbox_sends).toBeNull();
+    expect(a.next_steps.mailbox_reads).toBeNull();
     expect(a.next_steps.goods_listed).toBe(true);
     expect(a.activated).toBe(true);
   });
@@ -590,7 +671,7 @@ describe("next steps lead past the menu to the house's costs (r28 gap 3)", () =>
     const tables = withValue();
     tables.providers = [];
     const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
-    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, invoice: "checked", money_set: true });
+    expect(a.next_steps).toEqual({ goods_listed: true, goods_counted: true, mailbox_connected: true, mailbox_sends: true, mailbox_reads: false, invoice: "checked", money_set: true });
     expect(a.completed_at).toBeNull();
     tables.menu_items = [];
     const b = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
