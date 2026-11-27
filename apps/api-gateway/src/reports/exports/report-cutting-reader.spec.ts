@@ -168,7 +168,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       }
       // A composed cutting: its own path is null, and its `sources` block names
       // exactly these keys, each with exactly this path.
-      const block = /path: null,\s*sources: \{([\s\S]*?)\n\s*\},/.exec(web)?.[1] ?? "";
+      const block = /path: null,(?:\s*\/\/[^\n]*|\s*readers: \[[^\]]*\],)*\s*sources: \{([\s\S]*?)\n\s*\},/.exec(web)?.[1] ?? "";
       const named = [...block.matchAll(/(\w+): \(rid\) => (`[^`]*`)/g)].map((m) => [m[1], m[2]]);
       expect([id, Object.fromEntries(named)]).toEqual([id, p.sources]);
     }
