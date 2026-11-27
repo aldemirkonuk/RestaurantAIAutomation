@@ -59,7 +59,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { failureLine } from './rp-format';
+import { READING, failureLine, type MoneyIn } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -328,10 +328,18 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
   placeRef.current = placeProposed;
 
-  const currencyCode = data.currency?.code ?? null;
+  // While the house's currency is still being read every money figure is the
+  // dash: never a `$`, and never a bare number that becomes "₺4,210" a moment
+  // later (r7, 2026-11-12; the dashboard's rule, #1181).
+  const currencyMark: MoneyIn =
+    data.currency?.state === 'stated'
+      ? data.currency.code
+      : data.currency?.state === 'unread' && data.currency.pending
+        ? READING
+        : null;
   const ctx = useMemo(
-    () => ({ days: tillDays, goals: data.goalsDesk, currency: currencyCode }),
-    [data.goalsDesk, tillDays, currencyCode],
+    () => ({ days: tillDays, goals: data.goalsDesk, currency: currencyMark }),
+    [data.goalsDesk, tillDays, currencyMark],
   );
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =

@@ -1034,6 +1034,46 @@ describe('ReportsNext — turns, days and GMROI read to the export\'s places (co
   });
 });
 
+describe('ReportsNext — money in the house’s currency (audit G5)', () => {
+  it('a Turkish house reads lira on the till, never dollars', () => {
+    hook.current = { ...base(), currency: { state: 'stated', code: 'TRY' } } as never;
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByText('₺4,210')).toBeInTheDocument();
+    expect(within(till).queryByText(/\$/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rp-money-line')).not.toBeInTheDocument();
+  });
+
+  it('a house with no recorded currency prints plain numbers and says so once', () => {
+    hook.current = { ...base(), currency: { state: 'unstated', code: null } } as never;
+    paint();
+    expect(within(screen.getByRole('region', { name: 'Through the till' })).getByText('4,210')).toBeInTheDocument();
+    const line = screen.getByTestId('rp-money-line');
+    expect(line).toHaveTextContent('This house has not recorded its currency');
+    expect(within(line).getByRole('link', { name: 'Record it in Settings' })).toHaveAttribute(
+      'href',
+      '/settings?tab=currency',
+    );
+  });
+
+  it('while the currency is still being read, money is the dash: never $, never a bare figure', () => {
+    hook.current = { ...base(), currency: { state: 'unread', code: null, pending: true } } as never;
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).queryByText('4,210')).not.toBeInTheDocument();
+    expect(within(till).queryByText(/\$/)).not.toBeInTheDocument();
+    expect(within(till).getAllByText('—').length).toBeGreaterThan(0);
+    // Not read yet is not "could not be read": no sentence until the read settles.
+    expect(screen.queryByTestId('rp-money-line')).not.toBeInTheDocument();
+  });
+
+  it('a currency that could not be read is said as unread, not as unrecorded', () => {
+    hook.current = { ...base(), currency: { state: 'unread', code: null, pending: false } } as never;
+    paint();
+    expect(screen.getByTestId('rp-money-line')).toHaveTextContent('could not be read');
+  });
+});
+
 describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   it('prints an em dash for a COGS the server withheld, never $0', () => {
     hook.current = withRegister(

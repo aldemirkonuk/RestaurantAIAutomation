@@ -34,22 +34,39 @@ function isoCode(c: unknown): string | null {
 }
 
 /**
+ * What a money figure on this page is printed in.
+ *
+ * - an ISO 4217 code (`GET /settings/currency` answered one): the house's mark;
+ * - `null` or absent (never stated, or the read failed): the figure prints
+ *   BARE, and the page says once, under its date line, why;
+ * - `READING` (the read has not answered yet): every figure is the dash. A
+ *   bare `4,210` that turns into `₺4,210` a moment later reads as two amounts,
+ *   and a `$` would be a claim about the money the page cannot yet make.
+ */
+export const READING = Object.freeze({ reading: true as const });
+export type MoneyIn = string | null | undefined | typeof READING;
+
+/**
  * Money of record in the HOUSE's currency, or the dash.
  *
- * `currency` is the code `GET /settings/currency` answers. With no code
- * (never stated, not read yet, or unreadable) the figure prints BARE — no
- * symbol at all. It never falls back to `$`: a currency mark is a claim about
- * the amount, and every house used to read as dollars (audit G5; the same
- * rule as `fmtMoney`, `lib/mudavym/format.ts`). The page says once, under its
- * date line, why the figures are plain numbers.
+ * It never falls back to `$`: a currency mark is a claim about the amount, and
+ * every house used to read as dollars (audit G5; the same rule as `fmtMoney`,
+ * `lib/mudavym/format.ts`).
+ *
+ * `currency` is REQUIRED on purpose (r7, 2026-11-12). Two /reports stacks edit
+ * this file; a register that calls `money(v)` without saying whose money it is
+ * would silently print bare figures on a house that has a currency. Without a
+ * default the compiler refuses that call, so a merge cannot hide it. Register
+ * views bind it once with `moneyIn(ctx.currency)`.
  */
 export function money(
   v: unknown,
-  mode: 'compact' | 'full' | 'table' = 'full',
-  currency?: string | null,
+  mode: 'compact' | 'full' | 'table',
+  currency: MoneyIn,
 ): string {
   const n = num(v);
   if (n === null) return EM;
+  if (typeof currency === 'object' && currency !== null) return EM;
   const code = isoCode(currency);
   if (!code)
     return mode === 'table'
@@ -73,7 +90,7 @@ export function money(
 }
 
 /** `money` bound to one house's currency — what every register view uses. */
-export function moneyIn(currency: string | null | undefined) {
+export function moneyIn(currency: MoneyIn) {
   return (v: unknown, mode: 'compact' | 'full' | 'table' = 'full') => money(v, mode, currency);
 }
 

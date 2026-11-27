@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EM, failureLine, failureOf, money, moneyIn, pct, shortLabels } from './rp-format';
+import { EM, READING, failureLine, failureOf, money, moneyIn, pct, shortLabels } from './rp-format';
 
 describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
   it('multiplies by 100: the measured trend reads +20.7%, not +0.21%', () => {
@@ -44,10 +44,17 @@ describe('money — in the house’s currency, never an assumed $ (audit G5)', (
   });
 
   it('prints a bare number when no currency is recorded or read', () => {
-    expect(money(1234)).toBe('1,234');
+    expect(money(1234, 'full', undefined)).toBe('1,234');
     expect(money(1234, 'full', null)).toBe('1,234');
     expect(money(12345, 'compact', 'not-a-code')).toBe('12.3K');
-    expect(money(4.5, 'table')).toBe('4.50');
+    expect(money(4.5, 'table', null)).toBe('4.50');
+  });
+
+  it('prints the dash, never $ or a bare figure, while the currency is still being read', () => {
+    expect(money(1234, 'full', READING)).toBe(EM);
+    expect(money(12345, 'compact', READING)).toBe(EM);
+    expect(moneyIn(READING)(4.5, 'table')).toBe(EM);
+    expect(moneyIn(READING)(0)).toBe(EM);
   });
 
   it('keeps an unknown as the dash', () => {
