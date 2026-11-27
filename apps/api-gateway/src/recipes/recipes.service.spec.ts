@@ -120,7 +120,7 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
         },
         restaurant_inventory: { data: [{ id: "g", display_name: "Gin", kind: "spirit", uom: "bottle", bottle_size_ml: 700 }] },
         inventory_lot_rollup: { data: [{ inventory_id: "g", has_invoice_cost: true, wac: 700, wac_qty: 1, live_qty: 1 }] },
-        item_nutrition: { data: [{ inventory_id: "g", basis: "100ml", energy_kcal: "222.0", fat_g: null, saturates_g: null, carbohydrate_g: "0.00", sugars_g: null, protein_g: null, salt_g: null, energy_from_abv: false }] },
+        item_nutrition: { data: [{ inventory_id: "g", basis: "100ml", energy_kcal: "222.0", fat_g: null, saturates_g: null, carbohydrate_g: "0.00", sugars_g: null, protein_g: null, salt_g: null, abv_pct: "40.0", energy_from_abv: false }] },
         item_allergens: { data: [{ inventory_id: "g", allergen: "milk", status: "free" }] },
         ...more,
       },
@@ -138,6 +138,8 @@ describe("RecipesService.getRecipe: money only for roles that see it", () => {
     expect(r.whatIsIn.figures.energyKcal).toEqual({ value: 66.6, atLeast: true, missing: ["Campari"] });
     expect(r.whatIsIn.figures.saltG).toEqual({ value: null, atLeast: false, missing: ["Campari", "Gin"] });
     expect(r.whatIsIn.notCounted).toEqual([{ label: "Campari", why: "it is not linked to anything on the shelf" }]);
+    // 30 ml at a stated 40% is 12 ml of pure alcohol; Campari states nothing, so at least.
+    expect(r.whatIsIn.figures.alcoholMl).toEqual({ value: 12, atLeast: true, missing: ["Campari"] });
     expect(r.whatIsIn.allergens.milk).toBe("not_stated");
     expect(t.calls).toContain("item_nutrition.eq");
     expect(t.calls).toContain("item_allergens.eq");

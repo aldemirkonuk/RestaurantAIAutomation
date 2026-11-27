@@ -31,6 +31,9 @@ const FIGURE_COLUMN: Record<(typeof FIGURE_KEYS)[number], string> = {
   sugarsG: "sugars_g",
   proteinG: "protein_g",
   saltG: "salt_g",
+  // ABV is ml of pure alcohol per 100 ml (the column is per-volume only,
+  // item_nutrition_abv_is_per_volume), so it sums like any per-100 figure.
+  alcoholMl: "abv_pct",
 };
 
 /** A failed read of what is in a serve is said, and never hides the recipe (ADR 0067). */
@@ -289,7 +292,7 @@ export class RecipesService {
       const [nutrition, allergens] = await Promise.all([
         client
           .from("item_nutrition")
-          .select("inventory_id, basis, energy_kcal, fat_g, saturates_g, carbohydrate_g, sugars_g, protein_g, salt_g, energy_from_abv")
+          .select("inventory_id, basis, energy_kcal, fat_g, saturates_g, carbohydrate_g, sugars_g, protein_g, salt_g, abv_pct, energy_from_abv")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", ids),
         client
