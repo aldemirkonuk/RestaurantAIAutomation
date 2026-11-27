@@ -31,7 +31,43 @@ type SessionPair = { accessToken: string; refreshToken: string }
 import { WrongAddress } from '../components/auth/WrongAddress'
 
 const POLL_FIRST_MS = 5_000
-const POLL_SLOWEST_MS = 30_000
+/**
+ * Reads in a row that may fail before the waiting tab says so (ADR 0020). A
+ * 429 is said on the first one: the sentence already says the page keeps trying.
+ */
+const POLL_TROUBLE_AFTER = 2
+const POLL_TROUBLE_SENTENCE =
+  'We cannot check just now whether this address was verified. This page keeps trying; you can also reload it.'
+/**
+ * Said instead, once the timer has stopped, whether or not the reads failed (r107:
+ * never "keeps trying" while it does not; r106: after ten healthy reads the tab
+ * still says "Check your email" for good if verified elsewhere with no focus). Shorter than the sentence above, so the hidden
+ * copy of that one still holds the room.
+ */
+const POLL_STOPPED_SENTENCE =
+  'This page has stopped checking. Reload it, or sign in, once you have verified.'
+
+/**
+ * The poll's line, with its room held from the first paint. The live region is
+ * always there and the words are put into it in place; a hidden copy of the
+ * sentence sets the height, so nothing below moves when it is said (r106).
+ */
+function PollSlot({ trouble, stopped, className }: { trouble: boolean; stopped: boolean; className: string }) {
+  return (
+    <div data-testid="verify-poll-slot" style={{ display: 'grid' }}>
+      <p aria-hidden="true" className={className} style={{ gridArea: '1 / 1', visibility: 'hidden' }}>
+        {POLL_TROUBLE_SENTENCE}
+      </p>
+      <p role="status" className={className} style={{ gridArea: '1 / 1' }}>
+        {stopped ? (
+          <span data-testid="verify-poll-stopped">{POLL_STOPPED_SENTENCE}</span>
+        ) : trouble ? (
+          <span data-testid="verify-poll-trouble">{POLL_TROUBLE_SENTENCE}</span>
+        ) : null}
+      </p>
+    </div>
+  )
+}const POLL_SLOWEST_MS = 30_000
 const POLL_GIVE_UP_MS = 10 * 60_000
 
 /**
@@ -162,19 +198,29 @@ export function VerifyEmail() {
   // first after 5 s, then slower (x1.5, never past 30 s), and it gives up the
   // timer after 10 minutes. A hidden tab asks nothing. No motion is added.
   const waiting = !token && !loading && Boolean(user) && user?.emailVerified !== true && !verified
+  const [pollTrouble, setPollTrouble] = useState(false)
+  const [pollStopped, setPollStopped] = useState(false)
   useEffect(() => {
     if (!waiting) return
+    setPollStopped(false)
     let live = true
     const began = Date.now()
     let delay = POLL_FIRST_MS
     let timer: number | undefined
+    let failures = 0
     const ask = async () => {
       if (!live || document.visibilityState === 'hidden') return
       try {
         const read = await apiClient.get<{ user?: { emailVerified?: boolean } }>('/auth/me')
+        failures = 0
+        if (live) setPollTrouble(false)
         if (live && read?.data?.user?.emailVerified === true) moveOnWithThisSession()
-      } catch {
-        // Not read just now: the tab keeps waiting, and says nothing new.
+      } catch (err) {
+        // Not read just now (a 429 reads the same): the tab keeps waiting. A
+        // run of failures is said in words, never left as a silent wait.
+        failures += 1
+        const status = (err as { response?: { status?: number } } | null)?.response?.status
+        if (live && (status === 429 || failures >= POLL_TROUBLE_AFTER)) setPollTrouble(true)
       }
     }
     const tick = () => {
@@ -183,7 +229,10 @@ export function VerifyEmail() {
       schedule()
     }
     const schedule = () => {
-      if (Date.now() - began + delay > POLL_GIVE_UP_MS) return
+      if (Date.now() - began + delay > POLL_GIVE_UP_MS) {
+        if (live) setPollStopped(true)
+        return
+      }
       timer = window.setTimeout(tick, delay)
     }
     const onShown = () => void ask()
@@ -493,6 +542,7 @@ export function VerifyEmail() {
                   {mailSentence}
                 </p>
               )}
+              {waiting && <PollSlot trouble={pollTrouble} stopped={pollStopped} className="mdv-note" />}
               {token ? (
                 linkGate ?? (
                   <>
@@ -546,12 +596,18 @@ export function VerifyEmail() {
                       {resending ? 'Requesting…' : 'Resend verification email'}
                     </button>
                   ) : (
-                    <Link
-                      className="mdv-btn mdv-btn--seal"
-                      to="/login?redirect=%2Fverify-email"
-                    >
-                      Sign in to resend
-                    </Link>
+                    <>
+                      <Link
+                        className="mdv-btn mdv-btn--seal"
+                        to="/login?redirect=%2Fverify-email"
+                      >
+                        Sign in to resend
+                      </Link>
+                      <p className="mdv-note">After you verify, sign in to continue.</p>
+                      <Link className="mdv-link mdv-pub__verified" to="/login">
+                        I verified it, sign in
+                      </Link>
+                    </>
                   )}
                   {user && (
                     <WrongAddress
@@ -648,6 +704,8 @@ export function VerifyEmail() {
             {mailSentence}
           </p>
         )}
+
+        {waiting && <PollSlot trouble={pollTrouble} stopped={pollStopped} className="mb-4 text-sm text-gray-600 text-center" />}
 
         <div className="space-y-3 my-6">
           {(mailState === 'not_sent' ? [] : [

@@ -140,3 +140,65 @@ describe('the check-your-email tab waits for a verify done elsewhere', () => {
     expect(h.get).not.toHaveBeenCalled()
   })
 })
+
+describe('a poll that cannot read says so (ADR 0020, r105)', () => {
+  const tooMany = { response: { status: 429 } }
+
+  it('a 429 on the first read puts one calm sentence on the page', async () => {
+    h.get.mockRejectedValue(tooMany)
+    mount()
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+    await advance(5_000)
+    expect(screen.getByTestId('verify-poll-trouble')).toHaveTextContent(
+      'We cannot check just now whether this address was verified.',
+    )
+  })
+
+  it('a refusal that is not a 429 is said on the second read, not the first', async () => {
+    h.get.mockRejectedValue(new Error('offline'))
+    mount()
+    await advance(5_000)
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+    await advance(8_000)
+    expect(screen.getByTestId('verify-poll-trouble')).toBeInTheDocument()
+  })
+
+  it('the sentence goes when a read comes back', async () => {
+    h.get.mockRejectedValueOnce(tooMany)
+    h.get.mockResolvedValue(said(false))
+    mount()
+    await advance(5_000)
+    expect(screen.getByTestId('verify-poll-trouble')).toBeInTheDocument()
+    await advance(12_000)
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+  })
+
+  it('once the timer has stopped, the words say so, not "keeps trying" (r107)', async () => {
+    h.get.mockRejectedValue(tooMany)
+    mount()
+    await advance(60_000)
+    expect(screen.getByTestId('verify-poll-trouble')).toHaveTextContent('keeps trying')
+    await advance(11 * 60_000)
+    const atEnd = h.get.mock.calls.length
+    await advance(30 * 60_000)
+    expect(h.get.mock.calls.length).toBe(atEnd)
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+    expect(screen.getByTestId('verify-poll-stopped')).toHaveTextContent('This page has stopped checking.')
+  })
+
+  it('after ten minutes of healthy reads the stopped line is said too (r106)', async () => {
+    mount()
+    await advance(60_000)
+    expect(screen.queryByTestId('verify-poll-stopped')).not.toBeInTheDocument()
+    await advance(11 * 60_000)
+    expect(screen.queryByTestId('verify-poll-trouble')).not.toBeInTheDocument()
+    expect(screen.getByTestId('verify-poll-stopped')).toHaveTextContent('This page has stopped checking.')
+  })
+
+  it('a timer that is still running never says it has stopped', async () => {
+    h.get.mockRejectedValue(tooMany)
+    mount()
+    await advance(60_000)
+    expect(screen.queryByTestId('verify-poll-stopped')).not.toBeInTheDocument()
+  })
+})

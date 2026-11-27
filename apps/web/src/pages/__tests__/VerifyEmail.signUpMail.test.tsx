@@ -10,6 +10,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
  * at sign-out and once the address is verified. A resend the mailer did
  * not confirm in time is said as such, never as sent.
  */
+const notSlot = (els: HTMLElement[]) => els.filter((e) => !e.closest('[data-testid="verify-poll-slot"]'))
+
 const h = vi.hoisted(() => ({
   post: vi.fn(),
   toastSuccess: vi.fn(),
@@ -94,7 +96,7 @@ describe("the sign-up's mail outcome", () => {
   it("t6: 'unconfirmed' says the mail may still arrive", () => {
     sessionStorage.setItem(KEY, kept('unconfirmed'))
     mount()
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(notSlot(screen.getAllByRole('status'))[0]).toHaveTextContent(
       'Sending is taking longer than usual. The email may still arrive',
     )
   })
@@ -132,9 +134,7 @@ describe("the sign-up's mail outcome", () => {
     })
     mount()
     fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'The email may still arrive',
-    )
+    expect(await screen.findByText(/The email may still arrive/)).toBeInTheDocument()
     expect(h.toastSuccess).not.toHaveBeenCalled()
     expect(screen.queryByText(/was sent at/)).not.toBeInTheDocument()
   })
@@ -149,7 +149,7 @@ describe("the sign-up's mail outcome", () => {
     await screen.findByRole('alert')
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.queryByText(/may still arrive/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(notSlot(screen.queryAllByRole('status'))).toHaveLength(0)
     expect(
       screen.queryByText(/Open the verification link in your inbox/),
     ).not.toBeInTheDocument()
