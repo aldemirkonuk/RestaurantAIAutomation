@@ -994,6 +994,14 @@ describe('MenuNext — the taken-off sentence is in view, and the controls are 4
     expect(spy).toHaveBeenCalledWith({ block: 'nearest', behavior: 'instant' });
   });
 
+  it('keeps the sentence clear of the sticky header and the phone bottom bar when it is jumped to (r108 walk: it landed under the 53 px header at 375)', () => {
+    const next = readFileSync('src/pages/menu/next/MenuNext.tsx', 'utf8');
+    const m = next.match(/scrollMarginTop: (\d+), scrollMarginBottom: (\d+) \}\}\s+data-testid="menu-off-list-said"/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThanOrEqual(64);
+    expect(Number(m![2])).toBeGreaterThanOrEqual(64);
+  });
+
   it('puts the controls on the 44 px rule, and the rule is static', () => {
     const next = readFileSync('src/pages/menu/next/MenuNext.tsx', 'utf8');
     expect(next).toMatch(/className="cl-btn cl-focus mdv-touch" disabled=\{putting\}/);

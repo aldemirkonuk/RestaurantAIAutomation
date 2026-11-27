@@ -779,7 +779,8 @@ export default function MenuNext() {
                 ref={offSaid}
                 role={backSaid?.tone === 'alert' ? 'alert' : 'status'}
                 className="cl-said"
-                style={{ marginTop: 10 }}
+                // scrollIntoView lands it on the nearest edge: the margins keep it clear of the sticky header (53 px) and the phone's bottom bar.
+                style={{ marginTop: 10, scrollMarginTop: 72, scrollMarginBottom: 72 }}
                 data-testid="menu-off-list-said"
               >
                 {offList ? (
