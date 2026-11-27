@@ -60,6 +60,12 @@ export interface MailPersonRow {
    * only such a letter, so it can still be pulled back (QA round 16, HARM 1).
    */
   unsentStatus: string | null;
+  /**
+   * When the house's newest letter to this person left, when it has had no
+   * answer for 72 h or more (r108 mail-gap g7); null otherwise, and always
+   * null for a caller whose house letters are withheld.
+   */
+  awaitingSince: string | null;
 }
 
 export interface MailPeoplePage {
