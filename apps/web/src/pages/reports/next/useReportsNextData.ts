@@ -432,28 +432,47 @@ export function useReportsNextData(
     }),
   });
 
+  /**
+   * The register handed out last time, per id, with what it was made from. A
+   * register whose read has not changed is the SAME object again, so a cutting
+   * memoised on it does not redraw for another cutting's read (perf-p4-5,
+   * r108): a till-window click changes the till's register and no other.
+   */
+  const kept = useRef<
+    Partial<Record<AnalysisId, { reg: Register<unknown>; from: readonly unknown[] }>>
+  >({});
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
+    const same = (id: AnalysisId, from: readonly unknown[], make: () => Register<unknown>) => {
+      const prev = kept.current[id];
+      if (prev && prev.from.length === from.length && prev.from.every((v, k) => v === from[k])) {
+        map[id] = prev.reg;
+        return;
+      }
+      const reg = make();
+      kept.current[id] = { reg, from };
+      map[id] = reg;
+    };
     active.forEach((id, i) => {
       const q = results[i];
       if (!q) return;
       const readers = CATALOGUE[id].readers;
       if (readers && heldBack.has(id)) {
         // Not in flight, not refused by the gateway, not empty: withheld.
-        map[id] = {
+        same(id, ['held', activeRole], () => ({
           data: undefined,
           loading: false,
           failure: heldBackFailure(readers, activeRole),
           refetch: () => {},
-        };
+        }));
         return;
       }
-      map[id] = {
+      same(id, ['read', q.data, q.isPending, q.error, q.refetch], () => ({
         data: q.data,
         loading: q.isPending,
         failure: q.isError ? failureOf(q.error) : null,
         refetch: () => void q.refetch(),
-      };
+      }));
     });
     return map;
     // `results` is a fresh array each render; the ids and their states are what
