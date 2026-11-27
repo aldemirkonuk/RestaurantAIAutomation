@@ -28,7 +28,7 @@ export const OPEN = new Set([
   "IN_TRANSIT",
   "PARTIALLY_RECEIVED",
 ]);
-/** The supplier has it: confirmed, on its way, or part delivered. */
+/** The supplier has it: confirmed, on its way, or part delivered (an APPROVED order whose letter went out joins them, see `letterSent`). */
 export const SENT = new Set(["CONFIRMED", "IN_TRANSIT", "PARTIALLY_RECEIVED"]);
 
 /** Rows per page: PostgREST answers at most 1000, so a long history is read by id, page after page. */
@@ -45,6 +45,13 @@ export interface OpenOrder {
   expected: string | null;
   /** openQty in the book's own unit, or null when the units differ (nothing is guessed). */
   inBookUnit: number | null;
+  /**
+   * An APPROVED order whose letter to the vendor went out (a SENT outbound
+   * conversation): approved means "we accepted the deal and are emailing the
+   * vendor", and the order waits there until the vendor confirms. It counts as
+   * sent. Absent for every other status.
+   */
+  letterSent?: boolean;
 }
 
 export type OnOrder =
@@ -274,8 +281,26 @@ export async function readOnOrder(
     }
   }
 
-  const sent = result.filter((r) => SENT.has(r.status));
-  const unsent = result.filter((r) => !SENT.has(r.status));
+  // An APPROVED order is not "not yet sent" once its letter has gone out.
+  const approvedIds = [...new Set(result.filter((r) => r.status === "APPROVED").map((r) => r.id))];
+  if (approvedIds.length) {
+    const letters = await readByIds(approvedIds, (chunk) =>
+      client
+        .from("procurement_conversations")
+        .select("id, order_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("direction", "outbound")
+        .eq("status", "SENT")
+        .in("order_id", chunk),
+    );
+    if (letters.error) return unread(letters.error);
+    const lettered = new Set(letters.rows.map((l) => String(l.order_id)));
+    for (const r of result) if (r.status === "APPROVED" && lettered.has(r.id)) r.letterSent = true;
+  }
+
+  const isSent = (r: OpenOrder) => SENT.has(r.status) || r.letterSent === true;
+  const sent = result.filter(isSent);
+  const unsent = result.filter((r) => !isSent(r));
   const arrivingInBookUnit = sent.some((r) => r.inBookUnit === null)
     ? null
     : sent.reduce((s, r) => s + (r.inBookUnit as number), 0);

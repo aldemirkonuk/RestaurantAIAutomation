@@ -15,6 +15,7 @@ function seed(uom: string | null = null) {
   db.tables.procurement_orders = [];
   db.tables.procurement_order_items = [];
   db.tables.procurement_receipt_events = [];
+  db.tables.procurement_conversations = [];
   return { db, svc: new ItemFiguresService({ supabase: db } as any) };
 }
 
@@ -115,6 +116,28 @@ describe("ItemFiguresService on order (r109 g1)", () => {
     expect(onOrder.unsent!.map((o) => o.id)).toEqual(["o2", "o3"]);
     // Only what the supplier has is arriving: the unsent orders are not added.
     expect(onOrder.arrivingInBookUnit).toBe(2);
+  });
+
+  it("an APPROVED order whose letter went out is sent and arriving; one with no letter stays not yet sent", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "APPROVED", 6), head("o2", "APPROVED", 4), head("o3", "APPROVED", 2)];
+    db.tables.procurement_conversations = [
+      { id: "c1", restaurant_id: H, order_id: "o1", direction: "outbound", status: "SENT" },
+      { id: "c2", restaurant_id: H, order_id: "o2", direction: "outbound", status: "PENDING_APPROVAL" },
+      { id: "c3", restaurant_id: OTHER, order_id: "o3", direction: "outbound", status: "SENT" },
+    ];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => [o.id, o.letterSent])).toEqual([["o1", true]]);
+    expect(onOrder.unsent!.map((o) => o.id)).toEqual(["o2", "o3"]);
+    expect(onOrder.arrivingInBookUnit).toBe(6);
+  });
+
+  it("a letter read that fails is unread, not a guess that nothing was sent", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "APPROVED", 6)];
+    db.failures.procurement_conversations = "timeout";
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.readable).toBe(false);
   });
 
   it("a line naming another house fails the whole read closed, never a figure", async () => {
