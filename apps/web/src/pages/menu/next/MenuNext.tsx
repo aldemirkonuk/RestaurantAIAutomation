@@ -42,6 +42,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
+import { MenuSheetButton } from './MenuSheetButton';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
@@ -403,7 +404,10 @@ export default function MenuNext() {
           <>
             <p className="cl-standing" style={{ fontSize: 15.5 }}>
               {q.data.items.length} {q.data.items.length === 1 ? 'line' : 'lines'} on{' '}
-              {q.data.name ?? 'the active menu'}.
+              {q.data.name ?? 'the active menu'}.{' '}
+              {canManage ? (
+                <MenuSheetButton kind="export" label="Download this menu as a sheet" filename="menu.csv" testId="menu-export" />
+              ) : null}
             </p>
 
             <div style={{ marginTop: 16 }}>
