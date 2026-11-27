@@ -350,7 +350,8 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
         uom={house.uom}
         kind={house.kind ?? row.kind}
         sections={[]}
-        onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
+        // An older gateway sends no onOrder: that is unread, not a sheet handed no orders (r110 g5).
+        onOrder={figures.status === 'ready' ? (figures.data.onOrder ?? 'failed') : figures.status}
         sheet={sheet}
         onSheet={setSheet}
       />
@@ -408,7 +409,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
               sections={CARD_EVIDENCE[evidence]}
               actions={false}
               settled={figures.status === 'ready' ? (figures.data.costTrend.points ?? null) : figures.status}
-              onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
+              onOrder={figures.status === 'ready' ? (figures.data.onOrder ?? 'failed') : figures.status}
               sheet={sheet}
               onSheet={setSheet}
             />

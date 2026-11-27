@@ -38,7 +38,7 @@ import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
-import { OnOrderEvidence, openOrderCount, type OnOrderLoad } from './OnOrder';
+import { OnOrderEvidence, openOrderCount, toParNote, type OnOrderLoad } from './OnOrder';
 import { amountUnit, isPoured } from './iv-amount';
 import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
@@ -392,7 +392,7 @@ export default function RowDropdown(props: RowDropdownProps) {
       {has('where') || has('pace') || has('cost') || (has('orders') && 'onOrder' in props) ? (
         <div className="iv-drop-cols">
           {has('orders') && 'onOrder' in props ? <OnOrderEvidence load={props.onOrder} /> : null}
-          {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
+          {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onOrder={props.onOrder} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? (
           <WhatItHasCost
@@ -561,6 +561,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           restaurantId={props.restaurantId}
           uom={props.uom}
           alreadyOpen={openOrderCount(props.onOrder)}
+          onOrder={props.onOrder}
         />
       ) : null}
       {acts && sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
@@ -596,13 +597,18 @@ export default function RowDropdown(props: RowDropdownProps) {
 function WhereTheCountComesFrom({
   row,
   zoneName,
+  onOrder,
   onCount,
 }: {
   row: InvRow;
   zoneName: (id: string | null) => string;
+  /** The same load the Order more sheet reads, so the two figures never disagree (r110 g5). */
+  onOrder?: OnOrderLoad;
   onCount: () => void;
 }) {
-  const toPar = suggestedToPar(row);
+  const toPar = suggestedToPar(row, onOrder);
+  const plain = suggestedToPar(row);
+  const note = toParNote(onOrder);
   const zones = row.zones?.filter((z) => z.qty > 0) ?? null;
   return (
     <section className="iv-col">
@@ -623,8 +629,15 @@ function WhereTheCountComesFrom({
           {/* — is kept for a figure that could not be read (the footer's
               promise). A title at or above par, or with no par, is read and
               says so. */}
-          {toPar !== null ? (
-            <span className="iv-num">{fmtCount(toPar)}</span>
+          {onOrder === 'reading' && plain !== null ? (
+            'reading what is on order'
+          ) : toPar !== null ? (
+            <>
+              <span className="iv-num">{fmtCount(toPar)}</span>
+              {note ? ` (${note})` : null}
+            </>
+          ) : plain !== null ? (
+            'none, with what is on its way'
           ) : row.stock === null ? (
             <span className="iv-num">{EM}</span>
           ) : row.par === null || row.par <= 0 ? (

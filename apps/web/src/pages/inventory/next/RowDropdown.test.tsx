@@ -356,6 +356,40 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
   });
 });
 
+describe('Suggested to par reads what is on its way, as the Order more sheet does (r110 g5)', () => {
+  const toPar = () => {
+    const k = within(screen.getByTestId('row-dropdown')).getByText('Suggested to par');
+    return k.parentElement!.textContent!.replace('Suggested to par', '').trim();
+  };
+  const sent = (qty: number, unit: string, inBookUnit: number | null) => ({
+    id: 'a', orderNumber: null, status: 'IN_TRANSIT', openQty: qty, unit, expected: null, inBookUnit,
+  });
+  const gin = row({ stock: 4, par: 10 });
+
+  it('takes off what is on its way, keeps par - stock for an unread or other-unit order, and waits while reading', () => {
+    const a = renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(3, 'bottle', 3)], unsent: [], arrivingInBookUnit: 3 } });
+    expect(toPar()).toBe('3 (less 3 on its way)');
+    a.unmount();
+    const b = renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(2, 'case', null)], unsent: [], arrivingInBookUnit: null } });
+    expect(toPar()).toBe('6 (an order in another unit is not counted)');
+    b.unmount();
+    const c = renderDrop({ row: gin, onOrder: 'failed' });
+    expect(toPar()).toBe('6 (what is on order could not be read)');
+    c.unmount();
+    const d = renderDrop({ row: gin, onOrder: 'reading' });
+    expect(toPar()).toBe('reading what is on order');
+    d.unmount();
+    renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(6, 'bottle', 6)], unsent: [], arrivingInBookUnit: 6 } });
+    expect(toPar()).toBe('none, with what is on its way');
+  });
+
+  it('hands the Order more sheet the same load, so the sheet suggests the same 3', async () => {
+    renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(3, 'bottle', 3)], unsent: [], arrivingInBookUnit: 3 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Order more' }));
+    expect((await screen.findByTestId('iv-order-to-par')).textContent).toBe('3 bring it to par (10): 3 more are on their way on 1 order.');
+  });
+});
+
 describe('RowDropdown counts read with grouped digits, as money does (INV-W33)', () => {
   it('groups par, the suggestion, zones, the open bottle, the 30-day sales and the runway', () => {
     renderDrop({
