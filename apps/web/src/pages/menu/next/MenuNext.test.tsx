@@ -934,3 +934,17 @@ describe('MenuNext — a line shows what the menu prints beside it (r108 menu-g1
     expect(css).toMatch(/\.mdv-line-desc\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
   });
 });
+
+describe('Print the menu (r110 menu-g3)', () => {
+  it('any member, staff too, opens the print page in its own tab from the current menu', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu());
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    mount();
+    const btn = await screen.findByRole('button', { name: 'Print the menu' });
+    expect(btn.style.minHeight).toBe('44px');
+    fireEvent.click(btn);
+    expect(open).toHaveBeenCalledWith('/menu/print', '_blank');
+    open.mockRestore();
+  });
+});

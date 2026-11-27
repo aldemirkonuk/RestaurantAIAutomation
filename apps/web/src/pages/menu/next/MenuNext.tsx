@@ -50,7 +50,7 @@ import { housePriceNote, priceChangeNote, type PriceChange } from './menu-price-
 import { MenuSheetButton } from './MenuSheetButton';
 import { MenuVersions, useKeptMenuName } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
-import { settingsApi } from '../../../services/api/settings';
+import { useHouseCurrency } from './house-currency';
 import { formatMoney } from '@/lib/currency';
 import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
@@ -95,22 +95,6 @@ function money(v: number | null, currency: string | null): string {
   return formatMoney(v, currency);
 }
 
-/**
- * The house's reporting currency, read the same way `ReceivingWorkspace`
- * reads it (`GET /settings/currency`, 5-minute staleTime) — a failed or
- * unanswered read resolves to `null`, which `formatMoney` renders as
- * "currency not recorded" rather than a silent dollar-sign default.
- */
-function useHouseCurrency(restaurantId: string | null): string | null {
-  const { data } = useQuery({
-    // The house is in the key: one house's currency never prices another's
-    // menu (MENU-01).
-    queryKey: ['settings', 'currency', restaurantId],
-    queryFn: () => settingsApi.houseCurrency(),
-    staleTime: 5 * 60_000,
-  });
-  return data?.readable ? (data.code ?? null) : null;
-}
 
 /**
  * The gateway's own sentence for a failed call (it throws typed errors that
@@ -723,7 +707,17 @@ export default function MenuNext() {
               .{' '}
               {canManage ? (
                 <MenuSheetButton kind="export" label="Download this menu as a sheet" filename="menu.csv" testId="menu-export" />
-              ) : null}
+              ) : null}{' '}
+              {/* r110 menu-g3: any member may print the menu for the guests; it opens in its own tab. */}
+              <button
+                type="button"
+                className="cl-btn cl-focus"
+                style={{ minHeight: 44 }}
+                data-testid="menu-print"
+                onClick={() => window.open('/menu/print', '_blank')}
+              >
+                Print the menu
+              </button>
             </p>
 
             <div style={{ marginTop: 16 }}>
