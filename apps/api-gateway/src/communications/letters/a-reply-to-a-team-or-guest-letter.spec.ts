@@ -308,7 +308,7 @@ describe("what it may not do, refused before anything is queued", () => {
       to: "mailer-daemon@x.example",
       thread: [bounce],
     });
-    const auto = theirLetter({ email_headers: { transport: { autoSubmitted: "true" } } });
+    const auto = theirLetter({ email_headers: { transport: { autoSubmitted: true } } });
     await refused([auto], UnprocessableEntityException, /only automatic mail/, {
       thread: [auto],
     });

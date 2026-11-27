@@ -1238,6 +1238,7 @@ export class HouseLettersService {
     }
     const fromHeader = (r: Record<string, any>) => String(r.email_headers?.from ?? "");
     const automatic = (r: Record<string, any>) =>
+      r.email_headers?.transport?.autoSubmitted === true ||
       r.email_headers?.transport?.autoSubmitted === "true" ||
       /(^|[<\s"'])(mailer-daemon|postmaster)@/i.test(fromHeader(r)) ||
       /^(mailer-daemon|postmaster)@/i.test(String(r.from_address ?? ""));
