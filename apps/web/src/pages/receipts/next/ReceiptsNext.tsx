@@ -30,7 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { readLaneRows, writeLaneRows } from './laneMemory';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -718,6 +719,37 @@ const EDITABLE_FIELDS = [
 
 type EditableKey = (typeof EDITABLE_FIELDS)[number]['key'];
 
+/**
+ * The place a lane holds while its read is on the way (r41 invoices gap P8).
+ * Rows are the height of a queue row (two lines in 9px padding) and a heading
+ * the height of a lane heading, so a lane that lands fills the place and the
+ * lane under it stays where it was. Drawn for the eye only: the header line
+ * already says "Reading the queue…", and a read that failed draws none of this
+ * (the failure sentence stands in its place).
+ */
+function LaneOutline({ rows, heading = false, slot }: { rows: number; heading?: boolean; slot: string }) {
+  const bar = { background: 'var(--paper-2, #EAE4D8)', borderRadius: 2 } as const;
+  return (
+    <div aria-hidden="true" data-lane-outline="" data-testid={`lane-slot-${slot}`}>
+      {heading && <div style={{ ...bar, width: 120, height: 14, margin: '4px 0' }} />}
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          style={{
+            height: 52,
+            boxSizing: 'border-box',
+            padding: '9px 8px',
+            borderBottom: '1px solid var(--paper-2, #EAE4D8)',
+          }}
+        >
+          <div style={{ ...bar, width: '55%', height: 12 }} />
+          <div style={{ ...bar, width: '35%', height: 10, marginTop: 8, opacity: 0.6 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** The vendor the list endpoint names for a row (walk-through W8), if any. */
 function vendorOf(d: ProcurementDocument): string | null {
   const name = (d as ProcurementDocument & { vendorName?: string | null }).vendorName;
@@ -800,6 +832,50 @@ function PairedCell({
  * stacked the verdict, the order, the money, the lines and the confirm with no
  * line between them; each now sits under its own label and a rule.
  */
+/**
+ * A line whose cost moved against the good's last invoiced cost, said in words
+ * (r104 g4). Information only. A line with no earlier cost, or priced in a
+ * different unit, says nothing; a failed read says it failed rather than
+ * reading as "nothing moved".
+ */
+function PriceMovesNote({ docId }: { docId: string }) {
+  const q = useQuery({
+    queryKey: ['receipts-next', 'price-moves', docId],
+    queryFn: () => documentsApi.priceMoves(docId),
+    staleTime: 60_000,
+    retry: false,
+  });
+  if (q.isError)
+    return (
+      <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+        The goods&rsquo; earlier costs could not be read, so no price was compared with them.
+      </p>
+    );
+  const all = q.data?.lines ?? [];
+  // r106/r108: a paper in another money is not compared, and the verdict above
+  // already says so, with both codes (CanonicalDocumentPage). The money card does
+  // not say it a second time on the same paper.
+  if (
+    all.length > 0 &&
+    all.every((l) => !l.compared && l.reason === 'currency_differs') &&
+    q.data?.paperCurrency &&
+    q.data?.houseCurrency
+  )
+    return null;
+  const moved = all.flatMap((l) => (l.compared && l.moved && l.sentence ? [l] : []));
+  if (!moved.length) return null;
+  return (
+    <ul aria-label="Costs that moved" style={{ margin: '8px 0 0', paddingLeft: 16, fontSize: 11.5, color: 'var(--ink-1, #211C16)' }}>
+      {moved.map((l) => (
+        <li key={l.lineId}>
+          Line {l.lineNo}
+          {l.description ? `, ${l.description}` : ''}: {l.sentence}, against its last invoiced cost.
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function CardPart({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
   return (
     <div
@@ -827,7 +903,7 @@ function CardPart({ label, first = false, children }: { label: string; first?: b
   );
 }
 
-function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: () => void }) {
+function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (viaKeyboard: boolean) => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
@@ -838,9 +914,11 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    * document disagreeing on screen. Every write that touches lines refreshes it.
    */
   const refreshSheet = () => {
-    for (const k of ['canonical-document', 'canonical-document-items', 'canonical-document-mappings']) {
+    for (const k of ['canonical-document', 'canonical-document-mappings']) {
       void qc.invalidateQueries({ queryKey: [k, rid, doc.id] });
     }
+    // The goods list is the house's, shared by every paper (r41 gap 1).
+    void qc.invalidateQueries({ queryKey: ['canonical-document-items', rid] });
   };
   const detailQ = useQuery({
     queryKey: detailKey,
@@ -1032,9 +1110,15 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     mutationFn: (challenge?: string | null) => documentsApi.verify(doc.id, challenge),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
-      onVerified();
+      onVerified(sealByKeyboard.current);
     },
   });
+  // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
+  // would fall to BODY). Taken when the gesture COMPLETES, while the control
+  // still holds focus; a pointer seal never moves focus.
+  const sealWrap = useRef<HTMLDivElement>(null);
+  const keyDown = useRef(false);
+  const sealByKeyboard = useRef(false);
 
   /**
    * ONE VERDICT ON ONE SCREEN (walk-through W6, 2026-10-01). The sheet above
@@ -1285,6 +1369,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
       <CardPart label="The money">
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+        <PriceMovesNote docId={doc.id} />
       </CardPart>
 
       {/*
@@ -1557,14 +1642,23 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
+            <div
+              ref={sealWrap}
+              onKeyDownCapture={(e) => { if (e.key === ' ' || e.key === 'Enter') keyDown.current = true; }}
+              onPointerDownCapture={() => { keyDown.current = false; }}
+            >
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-              onConfirm={(challenge) => verify.mutate(challenge)}
+              onConfirm={(challenge) => {
+                sealByKeyboard.current = keyDown.current && !!sealWrap.current?.contains(document.activeElement);
+                verify.mutate(challenge);
+              }}
             />
+            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
@@ -1580,6 +1674,23 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
+  const laneRid = useActiveRestaurantId();
+  // What each lane held last time, so the outlines of a warm reload are as tall
+  // as the lists that land (r105). Read once per house; written when all three
+  // reads have landed.
+  const remembered = useMemo(() => readLaneRows(laneRid), [laneRid]);
+  const allLanesKnown = data.queueKnown && data.cleanKnown && data.verifiedKnown;
+  const rememberedQueue = data.queue.length;
+  const rememberedClean = data.clean.length;
+  const rememberedVerified = data.verified.length;
+  useEffect(() => {
+    if (!allLanesKnown || data.isError) return;
+    writeLaneRows(laneRid, {
+      queue: rememberedQueue,
+      clean: rememberedClean,
+      verified: rememberedVerified,
+    });
+  }, [allLanesKnown, data.isError, laneRid, rememberedQueue, rememberedClean, rememberedVerified]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
@@ -1622,6 +1733,49 @@ export default function ReceiptsNext() {
     null;
 
   /*
+   * THE NEXT PAPER, NOT THE EMPTY PAGE (r107, DD-r106-25). A seal used to send
+   * the reader back to nothing, so a reviewer of forty papers re-found their
+   * place forty times. After a seal the next paper in the review lanes opens;
+   * the last one falls back to the empty state. j and k move through the review
+   * lanes, Enter opens the one in focus (a button's own Enter), and only one row
+   * is a Tab stop. No scroll animation, no fade: focus lands where it lands.
+   */
+  const reviewRows = [...data.queue, ...data.clean];
+  const nextAfter = (id: string) => {
+    const at = reviewRows.findIndex((d) => d.id === id);
+    return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
+  };
+  // r108: after a keyboard seal the next row takes focus, so j/k work without a Tab back.
+  const focusAfterSeal = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusAfterSeal.current;
+    if (!id || selectedId !== id) return;
+    focusAfterSeal.current = null;
+    (document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null)?.focus();
+  }, [selectedId]);
+  const [rovingId, setRovingId] = useState<string | null>(null);
+  const rovingRowId = reviewRows.some((d) => d.id === rovingId)
+    ? rovingId
+    : reviewRows.some((d) => d.id === selectedId)
+      ? selectedId
+      : (reviewRows[0]?.id ?? null);
+  // A seal being held (pointer down on the detail) must not have the paper
+  // swapped under it by a stray key.
+  const sealHeld = useRef(false);
+  const onReviewKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || sealHeld.current) return;
+    const t = e.target as HTMLElement;
+    if (t.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const from = reviewRows.findIndex((d) => d.id === rovingRowId);
+    const to = reviewRows[from + (e.key === 'j' ? 1 : -1)];
+    if (!to) return;
+    e.preventDefault();
+    setRovingId(to.id);
+    (e.currentTarget.closest('section')?.querySelector(`[data-rc-id="${to.id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  /*
    * ONE ROW, TWO GROUPS (walk-through RECEIPTS-W44, 2026-10-01). The papers
    * that need a look and the papers that read cleanly are drawn by the same
    * row, so the two groups differ only by the heading between them.
@@ -1630,6 +1784,9 @@ export default function ReceiptsNext() {
     <button
       key={d.id}
       type="button"
+      data-rc-id={d.id}
+      tabIndex={rovingRowId === d.id ? 0 : -1}
+      onFocus={() => setRovingId(d.id)}
       onClick={() => select(d.id)}
       aria-pressed={selectedId === d.id}
       className="rc-row block w-full text-left"
@@ -1865,8 +2022,13 @@ export default function ReceiptsNext() {
             An unanswered uncounted-deliveries query used to render exactly like
             a caught-up door: `[]`. It is now `null` until it answers, and the
             unknown says so instead of hiding behind the absent strip.
+
+            r106 (walk r105 finding 1): only a FAILED read draws the line. While
+            the read is merely PENDING it drew 36 px above the grid at ~110 ms
+            and shoved the whole page down (CLS 0.16-0.31 at 1440); the queue's
+            own "Reading…" already refuses to claim "caught up" meanwhile.
         */}
-        {data.deliveriesWithoutPaper === null && !data.noRestaurant && (
+        {data.deliveriesWithoutPaper === null && data.deliveriesFailed && !data.noRestaurant && (
           <p
             className="mb-4"
             style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}
@@ -1920,13 +2082,20 @@ export default function ReceiptsNext() {
           {/* the queue */}
           <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
             {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
+              <div
+                data-testid={data.lanesSettling ? 'lane-slot-queue' : undefined}
+                // While any read is on its way the empty queue keeps the height its
+                // outline held and says it is still reading; it settles once, when
+                // the last read lands (r104 g5).
+                style={{ minHeight: data.lanesSettling ? Math.max(156, (remembered?.queue ?? 0) * 52) : undefined }}
+              >
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 {/* Not "caught up" while clean papers still wait for a swipe (W44),
                     nor before their read has landed: an unread lane is not an
                     empty one (audit of #586, walk-through RECEIPTS-W48). Nor
                     while the door's count is still being read, which its own
                     line calls unknown (RECEIPTS-W50b). */}
-                {!data.cleanKnown
+                {data.lanesSettling || !data.cleanKnown
                   ? 'Reading…'
                   : data.clean.length > 0
                     ? 'Nothing needs a look.'
@@ -1934,9 +2103,20 @@ export default function ReceiptsNext() {
                       ? 'Reading…'
                       : 'Nothing awaits review — the paper trail is caught up.'}
               </p>
+              </div>
             ) : (
-              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+              <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }} onKeyDown={onReviewKey}>
                 {data.queue.map(queueRow)}
+                {data.queueReading && <LaneOutline rows={remembered?.queue || 3} slot="queue" />}
+              </div>
+            )}
+
+            {/* The lanes below the queue hold their place while their own reads
+                are on the way, so a lane landing late does not push the lane
+                under it (r41 invoices gap P8). A failed read draws none. */}
+            {(data.cleanReading || (data.lanesSettling && data.cleanKnown && data.clean.length === 0)) && (
+              <div style={{ marginTop: 16 }}>
+                <LaneOutline rows={remembered?.clean || 1} heading slot="clean" />
               </div>
             )}
 
@@ -1962,17 +2142,24 @@ export default function ReceiptsNext() {
                   Read cleanly · not yet confirmed · {data.cleanCapped ? GE : ''}
                   {data.clean.length}
                 </h3>
-                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }} onKeyDown={onReviewKey}>
                   {data.clean.map(queueRow)}
                 </div>
+              </div>
+            )}
+
+            {(data.verifiedReading || (data.lanesSettling && data.verifiedKnown && data.verified.length === 0)) && (
+              <div style={{ marginTop: 16 }}>
+                <LaneOutline rows={remembered?.verified ?? 0} heading slot="verified" />
               </div>
             )}
 
             {/* the verified lane — the record, one click away, read-only
                 (opus-fidelity R-1: "everything from all of the orders" must
                 not shrink the verified book to a header integer) */}
-            {data.verifiedKnown && data.verified.length > 0 && (
-              <div style={{ marginTop: 16 }}>
+            {data.verifiedKnown && (data.verified.length > 0 || data.verifiedTerm !== '') && (
+              <div style={{ marginTop: 16 }} data-testid="verified-lane">
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 16 }}>
                 <button
                   type="button"
                   onClick={() => setShowVerified((v) => !v)}
@@ -1987,13 +2174,52 @@ export default function ReceiptsNext() {
                     color: 'var(--ink-4, #665D50)',
                     border: 'none',
                     padding: '4px 0',
+                    minHeight: 44,
                     cursor: 'pointer',
                   }}
                 >
                   Verified · {data.verifiedCapped ? GE : ''}{data.verified.length} {showVerified ? '▾' : '▸'}
                 </button>
+                {showVerified && data.verifiedHasOlder && (
+                  <button
+                    type="button"
+                    onClick={data.loadOlderVerified}
+                    disabled={data.olderBusy}
+                    data-testid="older-papers"
+                    className="rc-ink"
+                    style={{ minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
+                  >
+                    {data.olderBusy ? 'Reading older papers' : 'Older papers'}
+                  </button>
+                )}
+                </div>
                 {showVerified && (
                   <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                    <form
+                      role="search"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        data.setVerifiedTerm(String(new FormData(e.currentTarget).get('q') ?? '').trim());
+                      }}
+                      style={{ display: 'flex', gap: 6, padding: '8px 0' }}
+                    >
+                      <input
+                        name="q"
+                        type="search"
+                        defaultValue={data.verifiedTerm}
+                        aria-label="Search verified papers by vendor or number"
+                        placeholder="Vendor or number"
+                        style={{ flex: 1, minWidth: 0, minHeight: 44, fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--line-control, #8F8674)', background: 'var(--paper-0, #FBF8F1)' }}
+                      />
+                      <button type="submit" className="rc-ink" style={{ minHeight: 44, minWidth: 44, fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}>
+                        Find
+                      </button>
+                    </form>
+                    {data.verified.length === 0 && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 8px' }}>
+                        No verified paper matches &ldquo;{data.verifiedTerm}&rdquo;.
+                      </p>
+                    )}
                     {data.verified.map((d) => (
                       <button
                         key={d.id}
@@ -2016,6 +2242,16 @@ export default function ReceiptsNext() {
                         </span>
                       </button>
                     ))}
+                    {data.verifiedHasOlder && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '8px 0 4px' }}>
+                        Showing the newest {data.verified.length} verified papers; older ones are not listed yet. Search by vendor or number, or use Older papers at the top of this lane.
+                      </p>
+                    )}
+                    {data.olderError && (
+                      <p role="alert" style={{ fontSize: 12, color: 'var(--ink-1, #211C16)', margin: '4px 0' }}>
+                        Older papers could not be read: {data.olderError}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -2023,7 +2259,16 @@ export default function ReceiptsNext() {
           </section>
 
           {/* the selected document */}
-          <section aria-label="Document detail">
+          <section
+            aria-label="Document detail"
+            data-testid="detail-placeholder"
+            onPointerDownCapture={() => { sealHeld.current = true; }}
+            onPointerUpCapture={() => { sealHeld.current = false; }}
+            onPointerCancelCapture={() => { sealHeld.current = false; }}
+            // With nothing open the section keeps its line, so the grid does not
+            // lose it when the lanes beside it land (r105).
+            style={selected ? undefined : { minHeight: 41 }}
+          >
             {selected ? (
               <>
                 <button
@@ -2068,7 +2313,12 @@ export default function ReceiptsNext() {
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => select(null)} />
+                <DocView key={selected.id} doc={selected} onVerified={(viaKeyboard) => {
+                    const next = nextAfter(selected.id);
+                    if (viaKeyboard && next) focusAfterSeal.current = next;
+                    select(next);
+                  }}
+                />
               </>
             ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
               /*

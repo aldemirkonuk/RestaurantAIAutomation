@@ -47,6 +47,7 @@ import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
+import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1328,14 +1329,37 @@ export class DocumentsController {
       "Only documents linked to this order. Resolved through procurement_document_links, which is many-to-many because one distributor invoice routinely covers several POs.",
   })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({
+    name: "q",
+    required: false,
+    description:
+      "Find papers by vendor name or document number (part of either, any case).",
+  })
+  @ApiQuery({
+    name: "before",
+    required: false,
+    description:
+      "ISO time: only papers created before it. Pass the last row's `nextBefore` to read the next older page.",
+  })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
     @Query("docType") docType?: string,
     @Query("orderId") orderId?: string,
     @Query("limit") limit?: string,
+    @Query("q") q?: string,
+    @Query("before") before?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
+    const beforeAt = before ? new Date(before) : null;
+    if (before && (!beforeAt || Number.isNaN(beforeAt.getTime())))
+      throw new HttpException(
+        "`before` has to be a date and time, such as 2026-11-01T00:00:00Z.",
+        HttpStatus.BAD_REQUEST,
+      );
+    // Letters, digits, space and . - # / only: the rest would break the filter
+    // grammar below, and no paper is found by a comma.
+    const term = (q ?? "").replace(/[^\p{L}\p{N} .\-#/]/gu, "").trim().slice(0, 60);
 
     let documentIds: string[] | null = null;
     if (orderId) {
@@ -1357,20 +1381,52 @@ export class DocumentsController {
       if (!documentIds.length) return { items: [] };
     }
 
-    let q = this.db
+    // One more than asked for, so "there are older papers" is KNOWN, not
+    // guessed from a full page.
+    let query = this.db
       .getClient()
       .from("procurement_documents")
       .select("*")
       .eq("restaurant_id", user.restaurantId)
       .order("created_at", { ascending: false })
-      .limit(n);
-    if (status) q = q.eq("status", status);
-    if (docType) q = q.eq("doc_type", docType);
-    if (documentIds) q = q.in("id", documentIds);
+      .limit(n + 1);
+    if (status) query = query.eq("status", status);
+    if (docType) query = query.eq("doc_type", docType);
+    if (documentIds) query = query.in("id", documentIds);
+    if (beforeAt) query = query.lt("created_at", beforeAt.toISOString());
+    if (term) {
+      // A vendor is named by the provider row or by what the paper itself
+      // carried (`vendorNamesFor` reads both), so the search reads both.
+      const { data: found, error: findErr } = await this.db
+        .getClient()
+        .from("providers")
+        .select("id")
+        .eq("restaurant_id", user.restaurantId)
+        .or(`name.ilike.%${term}%,company_name.ilike.%${term}%`)
+        .limit(200);
+      if (findErr)
+        throw new HttpException(
+          `The vendors could not be searched, so no papers were filtered: ${findErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const ids = ((found ?? []) as { id: string }[]).map((p) => p.id);
+      query = query.or(
+        [
+          `doc_number.ilike.%${term}%`,
+          `extracted->>vendorName.ilike.%${term}%`,
+          ...(ids.length ? [`provider_id.in.(${ids.join(",")})`] : []),
+        ].join(","),
+      );
+    }
 
-    const { data, error } = await q;
+    const { data: fetched, error } = await query;
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    const hasMore = (fetched ?? []).length > n;
+    const data = (fetched ?? []).slice(0, n);
+    const nextBefore = hasMore
+      ? ((data[data.length - 1] as { created_at?: string } | undefined)?.created_at ?? null)
+      : null;
 
     /*
      * B4 — THE INVOICE AND ITS ORDER, SIDE BY SIDE (founder, 2026-09-06 batch
@@ -1409,7 +1465,7 @@ export class DocumentsController {
       ),
     }));
 
-    if (!orderId) return { items };
+    if (!orderId) return { items, hasMore, nextBefore };
 
     const { data: order, error: orderError } = await this.db
       .getClient()
@@ -1447,6 +1503,126 @@ export class DocumentsController {
         orderNumber: orderRow?.order_number ?? null,
         failure: null,
       },
+    };
+  }
+
+  @Get(":id/price-moves")
+  @ApiOperation({
+    summary: "Lines whose cost moved against the good's last invoiced cost",
+    description:
+      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, the good has an invoiced lot, and both are costed per bottle; every other line is listed as not compared, with the reason.",
+  })
+  @ApiQuery({ name: "thresholdPct", required: false })
+  async priceMoves(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+    @Query("thresholdPct") thresholdPct?: string,
+  ) {
+    const parsed = Number(thresholdPct);
+    const threshold =
+      thresholdPct != null && Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : DEFAULT_MOVE_THRESHOLD_PCT;
+    const client = this.db.getClient();
+    // A paper that is not this house's is a 404 in words, never an empty list
+    // that reads as "nothing moved" (ADR 0020).
+    const { data: paper, error: paperErr } = await client
+      .from("procurement_documents")
+      .select("id, currency")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (paperErr)
+      throw new HttpException(
+        `The paper could not be read, so no price was compared: ${paperErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!paper)
+      throw new HttpException(
+        "This paper is not one of this house's, so no price was compared.",
+        HttpStatus.NOT_FOUND,
+      );
+    // A lot's cost is in the house's money. A paper priced in another money is
+    // not compared unconverted: 25 percent "up" between TRY and USD is no move.
+    const { data: house, error: houseErr } = await client
+      .from("restaurants")
+      .select("currency")
+      .eq("id", user.restaurantId)
+      .maybeSingle();
+    if (houseErr)
+      throw new HttpException(
+        `The house's own currency could not be read, so no price was compared: ${houseErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const paperCurrency = ((paper as { currency?: string | null }).currency ?? "").trim().toUpperCase();
+    const houseCurrency = ((house as { currency?: string | null } | null)?.currency ?? "").trim().toUpperCase();
+    const currencyReason: "currency_differs" | "currency_unknown" | null =
+      !paperCurrency || !houseCurrency
+        ? "currency_unknown"
+        : paperCurrency !== houseCurrency
+          ? "currency_differs"
+          : null;
+    const { data: lines, error } = await client
+      .from("procurement_document_lines")
+      .select("id, line_no, description, uom, unit_price, inventory_id")
+      .eq("document_id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .order("line_no", { ascending: true });
+    if (error)
+      throw new HttpException(
+        `The lines could not be read, so no price was compared: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const rows = (lines ?? []) as {
+      id: string;
+      line_no: number;
+      description: string | null;
+      uom: string | null;
+      unit_price: number | string | null;
+      inventory_id: string | null;
+    }[];
+    const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
+    const last = new Map<string, number>();
+    if (goods.length) {
+      const { data: lots, error: lotErr } = await client
+        .from("inventory_lots")
+        .select("inventory_id, unit_cost, received_at")
+        .eq("restaurant_id", user.restaurantId)
+        .eq("cost_provenance", "invoice")
+        .in("inventory_id", goods)
+        .not("unit_cost", "is", null)
+        .order("received_at", { ascending: false })
+        .limit(1000);
+      if (lotErr)
+        throw new HttpException(
+          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      // Newest first: the first lot seen for a good is its last invoiced cost.
+      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
+        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
+    }
+    const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
+    return {
+      thresholdPct: threshold,
+      // Carried so the page can say WHY nothing was compared (r106): the two
+      // codes are the whole reason when the reason is currency_differs.
+      paperCurrency: paperCurrency || null,
+      houseCurrency: houseCurrency || null,
+      lines: rows.map((l) => {
+        const prev = l.inventory_id ? last.get(l.inventory_id) : undefined;
+        const price = l.unit_price == null ? null : Number(l.unit_price);
+        // A lot's cost is per bottle. A line priced per case (or in a unit this
+        // does not know) is not converted here: it is not compared.
+        if (currencyReason)
+          return { lineId: l.id, lineNo: l.line_no, description: l.description, compared: false as const, reason: currencyReason };
+        const result = priceMove(
+          prev == null ? null : { cost: prev, unit: "bottle" },
+          { cost: price, unit: perBottle(l.uom) ? "bottle" : l.uom },
+          threshold,
+        );
+        return { lineId: l.id, lineNo: l.line_no, description: l.description, ...result };
+      }),
     };
   }
 
