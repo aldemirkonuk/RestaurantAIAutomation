@@ -996,6 +996,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
    * document disagreeing on screen. Every write that touches lines refreshes it.
    */
   const refreshSheet = () => {
+    // The price-move note reads the same lines and the paper's money, so it is
+    // stale after any write here too: a restated money kept saying "none were
+    // compared" and a newly paired line kept its old "no earlier cost" (r105).
+    void qc.invalidateQueries({ queryKey: ['receipts-next', 'price-moves', doc.id] });
     for (const k of ['canonical-document', 'canonical-document-mappings']) {
       void qc.invalidateQueries({ queryKey: [k, rid, doc.id] });
     }
@@ -1444,7 +1448,13 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
       <CardPart label="The money">
-        <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+        <CurrencyBlock
+          doc={shownDoc}
+          onChanged={() => {
+            void detailQ.refetch();
+            refreshSheet();
+          }}
+        />
         <PriceMovesNote docId={doc.id} />
       </CardPart>
 
