@@ -43,7 +43,7 @@ import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.serv
 import { OrganizationsService } from "../../organizations/organizations.service";
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
-import { filedAtSentence, rateProblem } from "./fx-convert";
+import { filedAtSentence, rateProblem, roundRate } from "./fx-convert";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
@@ -2236,7 +2236,7 @@ export class DocumentsController {
           "The exchange rate cannot be from a day that has not come yet. Nothing was changed.",
           HttpStatus.BAD_REQUEST,
         );
-      fx = { rate: rate as number, from, rateDate };
+      fx = { rate: roundRate(rate as number), from, rateDate };
     }
 
     /*
