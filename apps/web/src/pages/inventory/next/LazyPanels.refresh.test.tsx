@@ -4,6 +4,8 @@
  * instead of throwing to the app's error screen (r104 finding).
  */
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -45,8 +47,15 @@ afterEach(() => {
 });
 
 describe('the lazy files go through the one refresh helper', () => {
-  it('the seven panels and the command page are each built by lazyWithRefresh', () => {
-    expect(seam.calls).toBe(8);
+  it('every lazy panel and the command page are each built by lazyWithRefresh', () => {
+    // Counted from the file, not written down: another PR adds a lazy panel
+    // (the nutrition lane) and a fixed 8 would then fail on a correct merge.
+    const src = ['LazyPanels.tsx', 'InventoryRoute.tsx'].map((f) => readFileSync(resolve(__dirname, f), 'utf8')).join('\n');
+    const built = (src.match(/= lazyWithRefresh\(/g) ?? []).length;
+    expect(built).toBeGreaterThanOrEqual(8);
+    expect(seam.calls).toBe(built);
+    // None is left on React's bare lazy(), which has no refresh.
+    expect(src).not.toMatch(/(^|[^A-Za-z.])lazy\(/m);
   });
 
   it('a command page that cannot load says so in words, and the page does not throw', async () => {
