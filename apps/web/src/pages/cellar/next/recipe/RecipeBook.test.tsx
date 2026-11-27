@@ -170,3 +170,26 @@ describe('the spec book', () => {
     expect(block).not.toMatch(/animation|transition/);
   });
 });
+
+// r109 drinks fixer: the same race as Plan prep, where a late book of the house left behind must not print under the house now open.
+describe('the spec book across a house switch', () => {
+  it('a late read for the house switched away from prints nothing and frees the button', async () => {
+    const RID_B = '22222222-2222-4222-8222-222222222222';
+    let lateA!: (v: unknown) => void;
+    h.get.mockReset().mockImplementation((url: string) =>
+      url === '/settings/currency' ? Promise.resolve({ data: { readable: false } }) : new Promise((r) => { lateA = r; }),
+    );
+    const view = mount();
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    h.auth = { ...h.auth, activeRestaurantId: RID_B };
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <RecipeBook />
+      </QueryClientProvider>,
+    );
+    await act(async () => lateA({ data: { drinks: cards } }));
+    expect(window.print).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('recipe-book')).toBeNull();
+    expect(screen.getByTestId('book-print-button')).not.toBeDisabled();
+  });
+});
