@@ -3,7 +3,7 @@
  * review lanes. These fail with the old `select(null)`, with the keys removed,
  * and with a typing field or a held seal no longer guarded.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -219,6 +219,86 @@ describe('after a seal', () => {
     await sealOpenPaper();
     await waitFor(() => expect(screen.queryByRole('button', { pressed: true })).toBeNull());
     expect(screen.queryByLabelText('Quantity, line 1')).toBeNull();
+  });
+});
+
+describe('sealing the last paper (r110 F5)', () => {
+  const realH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  afterEach(() => {
+    if (realH) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', realH);
+  });
+
+  it('a keyboard seal of the last paper lands focus on All receipts, not on BODY', async () => {
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    fireEvent.keyDown(swipe, { key: 'Enter' });
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    const back = await screen.findByRole('button', { name: /All receipts/ });
+    await waitFor(() => expect(document.activeElement).toBe(back));
+    expect(screen.getByText('That was the last paper waiting for you.')).toBeTruthy();
+  });
+
+  it('where All receipts is hidden (2xl) the pane takes the focus', async () => {
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    const realCss = window.getComputedStyle.bind(window);
+    const css = vi.spyOn(window, 'getComputedStyle').mockImplementation((el, p) => {
+      const cs = realCss(el, p);
+      return (el as HTMLElement).textContent === '← All receipts' ? Object.create(cs, { display: { value: 'none' } }) : cs;
+    });
+    fireEvent.keyDown(swipe, { key: 'Enter' });
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    const pane = screen.getByRole('region', { name: 'Document detail' });
+    await waitFor(() => expect(document.activeElement).toBe(pane));
+    css.mockRestore();
+  });
+
+  it('All receipts hands the lane back, and the held frame goes', async () => {
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    await sealOpenPaper();
+    const back = await screen.findByRole('button', { name: /All receipts/ });
+    expect(screen.getByRole('region', { name: 'Awaiting review', hidden: true }).className).toContain('hidden');
+    fireEvent.click(back);
+    await waitFor(() => expect(screen.queryByText('That was the last paper waiting for you.')).toBeNull());
+    expect(screen.getByRole('region', { name: 'Awaiting review' }).className).not.toContain('hidden');
+  });
+
+  it('a pointer seal of the last paper does not move focus', async () => {
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.setPointerCapture = vi.fn();
+    fireEvent.pointerDown(swipe, { clientY: 600, pointerId: 1 });
+    fireEvent.pointerMove(swipe, { clientY: 0, pointerId: 1 });
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByLabelText('Quantity, line 1')).toBeNull());
+    expect(document.activeElement).not.toBe(screen.getByRole('region', { name: 'Document detail' }));
+  });
+
+  it('the pane keeps the height the paper had', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 654 });
+    api.queue = [DOC];
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    const pane = screen.getByRole('region', { name: 'Document detail' });
+    expect(pane.style.minHeight).toBe('');
+    await sealOpenPaper();
+    await waitFor(() => expect(screen.queryByLabelText('Quantity, line 1')).toBeNull());
+    expect(pane.style.minHeight).toBe('654px');
   });
 });
 
