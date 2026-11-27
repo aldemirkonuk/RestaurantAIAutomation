@@ -687,6 +687,7 @@ export function MailThread({
                 <button
                   type="button"
                   data-testid="open-thread-reply"
+                  className="max-sm:min-h-[44px]"
                   onClick={() => onOpenReply(replyOrder)}
                   style={{
                     fontSize: 12,
@@ -707,6 +708,7 @@ export function MailThread({
                   type="button"
                   data-testid="write-thread-reply"
                   ref={writeReplyRef}
+                  className="max-sm:min-h-[44px]"
                   onClick={() => onAnswer?.(answer, at)}
                   style={{
                     fontSize: 12,
@@ -726,6 +728,7 @@ export function MailThread({
                 <button
                   type="button"
                   data-testid="thread-no-reply"
+                  className="max-sm:min-h-[44px]"
                   onClick={() => noReply.mutate({ id: settleId, marked: true })}
                   disabled={noReply.isPending}
                   title="The newest letter and the ones before it stop waiting. A later letter waits again."
