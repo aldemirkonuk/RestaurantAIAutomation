@@ -42,7 +42,7 @@ import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.serv
 import { OrganizationsService } from "../../organizations/organizations.service";
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
-import { filedAtSentence, labelCorrectedSentence, rateProblem } from "./fx-convert";
+import { filedAtSentence, rateProblem } from "./fx-convert";
 import { DeliveryService } from "../canonical/delivery.service";
 import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
@@ -2313,7 +2313,7 @@ export class DocumentsController {
       sentence:
         kind === "confirmed"
           ? `Currency CONFIRMED as ${next}: it did not change, and a manager has now said it is right. That is what ends a hold — the receiving screen will accept a price on this document from here. ${refile.sentence}`
-          : `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${(fx && labelCorrectedSentence(previous, fx.from)) || ""}${fx && labelCorrectedSentence(previous, fx.from) ? " " : ""}${refile.sentence}`,
+          : `Currency restated ${previous ? `from ${previous}` : "from NOT RECORDED (its money was withheld)"} to ${next}. ${refile.sentence}`,
       moneyRefiled: refile.snapshotReadable,
       linesRefiled: refile.linesRefiled,
       lineFailures: refile.lineFailures,

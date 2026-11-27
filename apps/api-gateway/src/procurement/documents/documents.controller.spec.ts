@@ -472,14 +472,18 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     expect(fxSeen.map((f) => f.fx)).toEqual([null, null]);
   });
 
-  it("says when the label was corrected, and the rate-less 400 says a currency was missing, not 'no currency was sent'", async () => {
+  it("a conversion from a currency other than the filed label is refused, and the rate-less 400 says a currency was missing, not 'no currency was sent'", async () => {
+    // #2479 (r104b) refuses fx.from != the filed label (a converted paper is not
+    // relabelled in the same step), so the one-step label correction this PR
+    // first wrote can never be reached and its sentence is gone with it.
     const { controller } = harness({ doc: { ...DOC, currency: "TRY" } });
-    const out: any = await controller.restateCurrency(
-      "doc-9",
-      { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
-      user,
-    );
-    expect(out.sentence).toContain("The paper had been filed as TRY; its own figures are in EUR");
+    await expect(
+      controller.restateCurrency(
+        "doc-9",
+        { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
+        user,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
     const agree = harness({ doc: { ...DOC, currency: "EUR" } });
     const same: any = await agree.controller.restateCurrency(
       "doc-9",
