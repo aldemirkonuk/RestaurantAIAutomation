@@ -1146,7 +1146,11 @@ export class HouseInboxService {
 
       // Every letter listed reached the book, so the cursor may pass the
       // notices read too; a notice is read again only while this run fails.
-      if (notices.highest > highWater) highWater = notices.highest;
+      // Not when the wide listing was cut at the cap (listWide's horizon): wide
+      // mail newer than the horizon was never read, and a notice above it
+      // would carry the cursor past it for good. The notice is read again next
+      // tick; its mark is written once.
+      if (listing.horizonId === null && notices.highest > highWater) highWater = notices.highest;
       await this.saveCursor(connectionId, restaurantId, highWater, nowMs, {
         listed,
         admitted,
