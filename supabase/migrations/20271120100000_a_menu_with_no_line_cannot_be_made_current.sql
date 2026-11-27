@@ -54,7 +54,7 @@ BEGIN
                   WHERE menu_id = p_menu_id
                     AND restaurant_id = p_restaurant_id
                     AND status <> 'discarded') THEN
-    RAISE EXCEPTION 'This menu has no lines left, so it cannot become the current menu: that would retire the menu the house has and put nothing in its place. Nothing was changed.'
+    RAISE EXCEPTION 'A menu with no lines cannot be the current menu. Nothing was changed.'
       USING ERRCODE = '22023';
   END IF;
 

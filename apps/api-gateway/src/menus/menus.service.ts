@@ -56,6 +56,7 @@ interface ResolvedItem {
 interface InsertedMenuItem {
   id: string;
   wine_library_id: string | null;
+  inventory_item_id?: string | null;
   name: string;
   // The menu's own prices: ADR 0193 carries them to the house's price. Dated
   // by the moment the menu was CHOSEN (round 3, L11), never by the line.
@@ -479,13 +480,15 @@ export class MenusService {
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
-    // A failed resolve must not leave the draft behind: a version that says
-    // lines_extracted > 0 and holds none could be made current (r102 menu-func-3).
+    // A failed resolve keeps the version, its extraction and its source: the
+    // read was paid for and ADR 0193 keeps every extraction. The reason its lines
+    // are missing is written on the version, and a menu with no line cannot be
+    // made current (r102 menu-func-3), so the draft is harmless.
     let reviewItems: MenuImportReviewItem[];
     try {
       reviewItems = await this.resolveAndPersistItems(items, restaurantId, menu.id, userId, dto.method, false);
     } catch (err) {
-      await this.dropDraft(restaurantId, menu.id);
+      await this.noteMissingLines(restaurantId, menu.id, kept?.failure ?? null, err);
       throw err;
     }
 
@@ -591,17 +594,15 @@ export class MenusService {
     }
   }
 
-  /** Takes a draft and its stray lines away after a failed import; a failure to do so is logged, never hidden. */
-  private async dropDraft(restaurantId: string, menuId: string): Promise<void> {
-    const lines = await this.dbService.supabase.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
-    const menu = await this.dbService.supabase
+  /** Says on a kept version why its lines are missing; a failure to write it is logged, never hidden. */
+  private async noteMissingLines(restaurantId: string, menuId: string, earlier: string | null, cause: unknown): Promise<void> {
+    const why = `the lines could not be matched to wines: ${(cause as Error)?.message ?? "unknown error"}`;
+    const { error } = await this.dbService.supabase
       .from("restaurant_menus")
-      .delete()
+      .update({ source_failure: earlier ? `${earlier}; ${why}` : why })
       .eq("id", menuId)
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "draft");
-    const failure = lines.error?.message ?? menu.error?.message;
-    if (failure) this.logger.error(`menu ${menuId}: the draft of a failed import could not be removed: ${failure}`);
+      .eq("restaurant_id", restaurantId);
+    if (error) this.logger.error(`menu ${menuId}: why its lines are missing could not be written: ${error.message}`);
   }
 
   private async createVersion(
@@ -1519,7 +1520,7 @@ export class MenusService {
     // in its place (r102 menu-func-3). Said in words; nothing is changed.
     if (lines.length === 0 && version.status !== "active") {
       throw new BadRequestException(
-        "This menu has no lines left, so it cannot become the current menu: that would retire the menu the house has and put nothing in its place. Nothing was changed.",
+        "A menu with no lines cannot be the current menu. Nothing was changed.",
       );
     }
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
@@ -1580,16 +1581,18 @@ export class MenusService {
         lockedBy: string | null;
         lockedAt: string | null;
       }> = [];
+      let flagged = 0;
       for (const line of pending) {
         const entry = carried.priceSync.get(line.id);
         const outcome = entry?.outcome ?? "not_linked";
         counts[outcome] = (counts[outcome] ?? 0) + 1;
+        if (entry?.flag) flagged += 1;
         for (const h of entry?.held ?? []) held.push({ menuItemId: line.id, name: line.name, ...h });
         if (entry?.outcome === "failed" || entry?.flagError) {
           failed.push({ menuItemId: line.id, name: line.name, error: entry.error ?? entry.flagError ?? "" });
         }
       }
-      return { outcome: "already_current", ...empty, lines: pending.length, priceSync: counts, failed, held };
+      return { outcome: "already_current", ...empty, lines: pending.length, priceSync: counts, flagged, failed, held };
     }
 
     if (!madeCurrentAt) {
@@ -1680,7 +1683,10 @@ export class MenusService {
     };
     return linked.filter((l) => {
       const h = house.get(String(l.wine_library_id));
-      return !h || differs(l.bottle_price, h.bottle) || differs(l.by_glass_price, h.glass);
+      // A line never linked to its house row is unfinished even when its price
+      // already matches: the backfill runs after the price loop, so a cut-off
+      // carry leaves lines with the price and no link (r102 menu-func-2).
+      return !h || !l.inventory_item_id || differs(l.bottle_price, h.bottle) || differs(l.by_glass_price, h.glass);
     });
   }
 
