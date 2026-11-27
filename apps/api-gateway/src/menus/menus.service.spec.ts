@@ -1420,6 +1420,21 @@ describe("MenusService — every menu read is kept as its own version", () => {
       for (const size of sizes) expect(JSON.stringify(price[0][1])).not.toContain(String(size.price));
     });
 
+    it("r110 menu-r110-5: no size enters the plan's fingerprint; a size read differently is the same plan, and the choice still goes through", async () => {
+      const sizes = [
+        { label: "20 cl", ml: 200, price: 450 },
+        { label: "35 cl", ml: 350, price: 700 },
+      ];
+      const x = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15, raw_text: "Opus One 20 cl 450 35 cl 700 70 cl 1200", sizes }]);
+      const before = await x.service.planFor("rest-1", x.read.menuId);
+      x.tables.menu_items[0].printed_sizes = [...sizes, { label: "70 cl", ml: 700, price: 1200 }];
+      const after = await x.service.planFor("rest-1", x.read.menuId);
+      expect(after.fingerprint).toBe(before.fingerprint);
+      x.tables.menu_items[0].printed_sizes = null;
+      expect((await x.service.planFor("rest-1", x.read.menuId)).fingerprint).toBe(before.fingerprint);
+      await expect(x.service.makeCurrent("rest-1", x.read.menuId, "user-2", before.fingerprint)).resolves.toMatchObject({ outcome: "made_current" });
+    });
+
     it("a kitchen line stays on the menu and is carried nowhere: not in the plan's prices, no house row, no price", async () => {
       const { calls, tables, service, read } = await readThenChoose([
         { name: "Opus One", bottle_price: 64, by_glass_price: 15 },

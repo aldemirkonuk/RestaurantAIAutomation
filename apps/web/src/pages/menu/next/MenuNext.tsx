@@ -52,6 +52,7 @@ import { MenuVersions, useKeptMenuName } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
+import { PrintedSizes } from './PrintedSizes';
 import { housePriceHint } from '@/lib/house-number';
 import { Wordmark } from '@/components/mudavym';
 import { isKitchenLine } from '../../../lib/firstProof';
@@ -442,6 +443,7 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
             <span className="cl-note">as printed on the menu</span>
           </span>
         ) : null}
+        <PrintedSizes sizes={line.printed_sizes} currency={currency} />
       </td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
