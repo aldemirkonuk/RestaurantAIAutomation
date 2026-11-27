@@ -26,7 +26,7 @@
  * read with the page, it says so, never that the letters carried none.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
@@ -36,6 +36,7 @@ import {
   personWords,
   letterAt,
   letterLook,
+  letterDetails,
   ARRIVED_ONLY,
   AUTOMATIC_LETTER_WORDS,
   mailKindOf,
@@ -71,9 +72,12 @@ function Letter({
   facts,
   onTakeBack,
   takingBack,
+  house,
 }: {
   m: MailMessage;
   vendor: string;
+  /** The house's Mudavym address and time zone, for the letter's Details (r108 mail-gap g8). */
+  house: { address?: string | null; zone?: string | null };
   facts: LetterFacts | undefined;
   /** Set only on the newest marked letter, for an owner or manager. */
   onTakeBack?: () => void;
@@ -82,6 +86,8 @@ function Letter({
   const look = letterLook(m);
   const addresses = addressLine(m);
   const inbound = m.direction === 'inbound';
+  const [open, setOpen] = useState(false);
+  const detailsId = `letter-details-${m.id}`;
   const held = facts?.constraintFlags?.hard ?? [];
   return (
     <li
@@ -142,9 +148,33 @@ function Letter({
         <p style={{ ...QUIET, margin: 0 }}>{look.removed ? '' : 'No text was recorded for this letter.'}</p>
       )}
       <LetterFiles files={m.attachments} />
-      <p data-testid="letter-provenance" style={{ ...QUIET, margin: 0 }}>
-        {look.line}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-2">
+        <p data-testid="letter-provenance" style={{ ...QUIET, margin: 0 }}>
+          {look.line}
+        </p>
+        {inbound && (
+          <button
+            type="button"
+            data-testid="letter-details-toggle"
+            aria-expanded={open}
+            aria-controls={detailsId}
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex items-center"
+            // A 44 px hit area that does not make the line 44 px tall.
+            style={{ minHeight: 44, margin: '-14px 0', background: 'none', border: 0, padding: '0 6px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+          >
+            Details
+          </button>
+        )}
+      </div>
+      {inbound && open && (
+        // In place, under the provenance line: one 160 ms opacity fade in, no exit, no height animation (ADR 0112).
+        <ul id={detailsId} data-testid="letter-details" className="mail-fade-in grid gap-0.5" style={{ ...QUIET, margin: 0, padding: 0, listStyle: 'none', overflowWrap: 'anywhere' }}>
+          {letterDetails(m, house).map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      )}
       {m.automatic === true && (
         // r103 mail-6: the gateway names an out-of-office or a bounce; the letter says so too, so it is not read as
         // a person's answer. Static text, no motion, 11.5px like the lines around it.
@@ -208,6 +238,8 @@ export function MailThread({
   onOpenReply,
   onAnswer,
   bookFacts,
+  houseAddress = null,
+  houseZone = null,
 }: {
   threadKey: string;
   /** The person the thread was opened from (`vendor:`, `team:` or `guest:`), when it was. */
@@ -223,7 +255,11 @@ export function MailThread({
   /** Opens the composer on a reply to this thread's newest letter (gap 3). */
   onAnswer?: (answer: MailAnswer) => void;
   bookFacts?: ReadonlyMap<string, LetterFacts>;
+  /** The house's Mudavym address and time zone, from the summary, for each letter's Details (r108 mail-gap g8). */
+  houseAddress?: string | null;
+  houseZone?: string | null;
 }) {
+  const house = { address: houseAddress, zone: houseZone };
   const q = useMailThread(threadKey, withKey);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const again = useReadAgain(q, headingRef);
@@ -370,6 +406,7 @@ export function MailThread({
                 facts={bookFacts?.get(m.id)}
                 onTakeBack={m.id === undoId ? () => noReply.mutate({ id: m.id, marked: false }) : undefined}
                 takingBack={noReply.isPending && noReply.variables?.marked === false}
+                house={house}
               />
             ))}
           </ul>

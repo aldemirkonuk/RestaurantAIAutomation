@@ -12,6 +12,7 @@
  */
 
 import { EM, sendState } from './cm-format';
+import { formatVenueTime } from '../../../lib/venueTime';
 
 /** The shapes GET /mail/* answers with (apps/api-gateway/src/conversations/mail.types.ts). */
 export type MailDoor = 'house_mailbox' | 'whatsapp' | 'mudavym_mail' | 'from_house';
@@ -228,6 +229,14 @@ export interface MailMessage {
    * that predates them: read as none known, never as "carried none".
    */
   attachments?: MailAttachment[];
+  /**
+   * Details (r108 mail-gap g8): the house mailbox a mirrored letter arrived in
+   * (its address for an owner or manager, "a connected mailbox" for staff),
+   * and the sender check it was stored with. Absent from an older gateway.
+   */
+  mailbox?: string | null;
+  senderCheck?: 'passed' | 'failed' | null;
+  signedBy?: string | null;
 }
 
 /** One file a letter carried, as GET /mail/thread lists it. */
@@ -763,6 +772,55 @@ export function doorWords(door: MailDoor): string {
     case 'from_house':
       return 'sent by the house';
   }
+}
+
+/**
+ * A received letter's Details, in order (r108 mail-gap g8): when it came, in
+ * the house's clock; how it came; and, for email, whether its sender was
+ * checked. A check that was never kept is said as not recorded, never as
+ * "not signed". The From/To line is already on the letter, so it is not
+ * said twice.
+ */
+export function letterDetails(
+  m: Pick<MailMessage, 'door' | 'receivedAt' | 'createdAt' | 'toAddresses' | 'mailbox' | 'senderCheck' | 'signedBy'>,
+  house: { address?: string | null; zone?: string | null },
+): string[] {
+  const when = formatVenueTime(m.receivedAt ?? m.createdAt, house.zone ?? null, { withDate: true });
+  const lines = [
+    when.inVenueZone
+      ? `Received ${when.text}`
+      : `Received ${when.text}, on this device's clock: the house's time zone is not set`,
+  ];
+  const address = house.address?.trim().toLowerCase() || null;
+  switch (m.door) {
+    case 'house_mailbox':
+      lines.push(
+        m.mailbox && m.mailbox.includes('@')
+          ? `Arrived in ${m.mailbox} (a connected Gmail mailbox)`
+          : 'Arrived in a connected mailbox',
+      );
+      break;
+    case 'mudavym_mail':
+      lines.push(
+        address && (m.toAddresses ?? []).some((a) => a.toLowerCase() === address)
+          ? `Arrived at ${address}`
+          : "Arrived at Mudavym's mailbox or your Mudavym address",
+      );
+      break;
+    case 'whatsapp':
+      lines.push('WhatsApp');
+      return lines;
+    case 'from_house':
+      return lines;
+  }
+  if (m.senderCheck === 'passed') {
+    lines.push(m.signedBy ? `Signed by ${m.signedBy}, checked` : 'Its sender was checked');
+  } else if (m.senderCheck === 'failed') {
+    lines.push('Its sender could not be confirmed');
+  } else {
+    lines.push('Its sender check was not recorded: this letter was stored before Mail kept it');
+  }
+  return lines;
 }
 
 const removedDay = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });

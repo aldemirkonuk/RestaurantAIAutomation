@@ -1051,6 +1051,8 @@ export function MailTab({
           onOpenReply={onOpenReply}
           onAnswer={onAnswer}
           bookFacts={bookFacts}
+          houseAddress={summary?.address?.address ?? null}
+          houseZone={summary?.zone?.zone ?? null}
         />
         </Suspense>
       ) : withKey ? (

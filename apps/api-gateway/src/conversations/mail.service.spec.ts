@@ -470,6 +470,78 @@ describe("getThread", () => {
   });
 });
 
+describe("getThread: a letter's Details (r108 mail-gap g8)", () => {
+  const GRANT = "e0000000-0000-4000-8000-000000000001";
+  const OTHER_GRANT = "e0000000-0000-4000-8000-000000000002";
+  const mirrored = { ...letter(0), mirrored_by_grant_id: GRANT };
+  const signed = { spf: true, dkim: true, dmarc: true, signedBy: "v.example" };
+  const details = (rows: unknown[], who: unknown[], grants: unknown[] | null) => (q: Query): Result =>
+    q.kind === "from" && q.name === "integration_oauth_connections"
+      ? grants === null
+        ? { data: null, error: { message: "down" } }
+        : { data: grants, error: null }
+      : threadResolver(rows, who)(q);
+
+  it("names the mailbox's address for an owner, read in this house only, with the sender check", async () => {
+    resolve = details(
+      [mirrored, letter(1)],
+      [{ id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed }],
+      [{ id: GRANT, account_email: "orders@house.example" }],
+    );
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    const read = queries.find((q) => q.name === "integration_oauth_connections")!;
+    expect(read.calls).toContainEqual({ method: "eq", args: ["restaurant_id", HOUSE] });
+    expect(read.calls).toContainEqual({ method: "in", args: ["id", [GRANT]] });
+    const inbound = page.messages.find((m) => m.id === mirrored.id)!;
+    expect(inbound).toMatchObject({ mailbox: "orders@house.example", senderCheck: "passed", signedBy: "v.example" });
+    // The house's own letter has no Details of this kind.
+    expect(page.messages.find((m) => m.id !== mirrored.id)).toMatchObject({ mailbox: null, senderCheck: null, signedBy: null });
+  });
+
+  it("tells staff 'a connected mailbox' and never reads whose it is", async () => {
+    resolve = details([mirrored], [{ id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed }], [
+      { id: GRANT, account_email: "owner.personal@gmail.example" },
+    ]);
+    const page = await service().getThread(HOUSE, "staff", { key: "t-1" });
+    expect(queries.some((q) => q.name === "integration_oauth_connections")).toBe(false);
+    expect(page.messages[0].mailbox).toBe("a connected mailbox");
+    expect(JSON.stringify(page)).not.toContain("owner.personal");
+  });
+
+  it("never resolves another house's grant: a grant this house does not hold is 'a connected mailbox'", async () => {
+    resolve = details(
+      [{ ...mirrored, mirrored_by_grant_id: OTHER_GRANT }],
+      [{ id: mirrored.id, kind: "vendor", mirrored_by_grant_id: OTHER_GRANT, auth: signed }],
+      // The house-scoped read finds no such grant here.
+      [],
+    );
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    expect(page.messages[0].mailbox).toBe("a connected mailbox");
+    resolve = details([mirrored], [{ id: mirrored.id, kind: "vendor", mirrored_by_grant_id: GRANT, auth: signed }], null);
+    expect((await service().getThread(HOUSE, "owner", { key: "t-1" })).messages[0].mailbox).toBe("a connected mailbox");
+  });
+
+  it("says a failed check failed, and a letter stored with none is not recorded, never 'failed'", async () => {
+    const a = letter(0);
+    const b = { ...letter(2), id: "d0000000-0000-4000-8000-000000000777" };
+    const c = { ...letter(4), id: "d0000000-0000-4000-8000-000000000778", channel: "whatsapp" };
+    resolve = details([a, b, c], [
+      { id: a.id, kind: "vendor", auth: { spf: true, dkim: false, dmarc: null, signedBy: null } },
+      { id: b.id, kind: "vendor", auth: null },
+      { id: c.id, kind: "vendor", auth: { spf: null, dkim: true, dmarc: null, signedBy: "x" } },
+    ], []);
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    const by = (id: string) => page.messages.find((m) => m.id === id)!;
+    expect(by(a.id)).toMatchObject({ senderCheck: "failed", signedBy: null, mailbox: null });
+    expect(by(b.id).senderCheck).toBeNull();
+    expect(by(c.id).senderCheck).toBeNull();
+    expect(queries.find((q) => q.name === "procurement_conversations")?.calls).toContainEqual({
+      method: "eq",
+      args: ["restaurant_id", HOUSE],
+    });
+  });
+});
+
 describe("getThread: one key, two vendors", () => {
   // One Gmail thread from the house mailbox to two vendors (a `gm:` key) is
   // two threads: (V1, gm:shared) and (V2, gm:shared). Which letters belong to
