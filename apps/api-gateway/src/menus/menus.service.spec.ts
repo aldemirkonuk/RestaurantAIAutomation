@@ -913,7 +913,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const tables: Record<string, Row[]> = base();
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
     const first = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
-    expect(first.notes.some((n) => n.reason === "same_file")).toBe(false);
+    expect((first.notes ?? []).some((n) => n.reason === "same_file")).toBe(false);
 
     const second = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
     expect(second.notes).toEqual([{ row: 0, reason: "same_file", raw: "draft" }]);
