@@ -18,12 +18,13 @@ A letter from Mail could carry words only. Both senders hand-build MIME, and bot
 
 ## Decision
 
-- g6a (built in this PR): one builder, `mime-attachments.ts`, used by both senders. Files make the message `multipart/mixed` with the text (or the text and html alternative) as the first part. At most 3 files and 5 MB in all (the raw bytes); a fourth file, an empty file or an over-size set is **refused**, never trimmed. Only an owner or a manager may attach (`assertMayAttach`); staff may still write plain letters.
+- g6a (built in this PR): one builder, `mime-attachments.ts`, used by both senders. Files make the message `multipart/mixed` with the text (or the text and html alternative) as the first part. At most 3 files and 5 MB in all (the raw bytes); a fourth file, an empty file or an over-size set is **refused**, never trimmed. Only an owner or a manager may attach: `assertMayAttach(role, files)` is the one function that returns a `CheckedAttachments`, and both builders take nothing else (a type, and a run-time check for a caller that casts around it). Staff may still write plain letters. The g6b caller must call it with the role the gateway resolved.
 - g6b (not built here): files are stored in a private bucket, keyed by house and letter, and the queued letter's row holds only name, type, size, key and a sha-256. The send reads the bytes back by key. The release seal must bind the sha-256 of each file, so a released letter cannot carry a file other than the one the manager saw. The seal binding is an auth rule and needs its own review before it is written.
 
 ## Consequences
 
-- No caller can send a fourth file or a staff member's file by forgetting a check: the limits are asked again inside the builder.
+- No caller can send a fourth file or a staff member's file by forgetting a check: a builder refuses any set `assertMayAttach` did not return, and asks the limits again.
+- Not verified: both senders post the message as JSON `raw` (base64url), so 5 MiB of files is about 9.6 million characters on the wire. Google's send reference and upload guide state no size limit for that path, so a refusal (413) is possible and would surface as a failed letter. The safe alternative, the upload endpoint with `message/rfc822`, cannot carry a thread id without a multipart upload and was not built unproven. Check against a real send before g6b.
 - A file name cannot start a header or name a path (control characters, quotes and slashes are cut; the value is RFC 2047 encoded by the same encoder as every other header).
 - Revisit if staff are to attach after a manager approves, or if the cap moves.
 

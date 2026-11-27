@@ -11,8 +11,11 @@
  *      and a refusal says which limit, in words a person can act on. A fourth
  *      file is refused, never dropped: a letter that left without the file the
  *      writer attached is a worse failure than one that did not leave.
- *   2. Who. Only an owner or a manager may attach (founder, DD-r104-25). Staff
- *      are refused here, so no caller can forget to ask.
+ *   2. Who. Only an owner or a manager may attach (founder, DD-r104-25). The
+ *      builders accept only a CheckedAttachments, a value that assertMayAttach
+ *      (role, files) alone returns, so a caller that forgot to ask the role has
+ *      nothing to hand them: the type refuses it, and so does a runtime check
+ *      for a caller that casts around the type.
  *   3. Only uploaded files. An attachment is bytes the person put into the
  *      composer. There is no field for a URL or a server path, so a letter can
  *      never be made to read a file off the gateway or fetch one on the writer's
@@ -40,7 +43,8 @@ export type AttachmentRefusal =
   | "staff"
   | "too_many"
   | "too_big"
-  | "empty_file";
+  | "empty_file"
+  | "unchecked";
 
 export class AttachmentRefusedError extends Error {
   constructor(
@@ -54,28 +58,40 @@ export class AttachmentRefusedError extends Error {
 
 const MAY_ATTACH = new Set(["owner", "manager"]);
 
+declare const checkedBrand: unique symbol;
+/** Files whose sender was asked: only `assertMayAttach` makes one. */
+export type CheckedAttachments = readonly OutboundAttachment[] & {
+  readonly [checkedBrand]: true;
+};
+const checkedSet = new WeakSet<object>();
+
 /**
- * Throws AttachmentRefusedError when the writer may not send these files or the
- * set is over a limit. A letter with no files always passes (staff still write
- * plain letters). The role is the one the gateway resolved from the token,
- * never a value from the request body.
+ * Returns the files as CheckedAttachments, or throws AttachmentRefusedError
+ * when the writer may not send them or the set is over a limit. A letter with
+ * no files always passes (staff still write plain letters) and gets an empty
+ * checked set. The role is the one the gateway resolved from the token, never a
+ * value from the request body.
  */
 export function assertMayAttach(
   role: string | null | undefined,
   files: readonly OutboundAttachment[] | undefined,
-): void {
-  if (!files || files.length === 0) return;
-  if (!MAY_ATTACH.has(String(role ?? "").toLowerCase())) {
-    throw new AttachmentRefusedError(
-      "staff",
-      "Only an owner or a manager can attach files to a letter.",
-    );
+): CheckedAttachments {
+  const out = Object.freeze([...(files ?? [])]) as unknown as CheckedAttachments;
+  if (out.length > 0) {
+    if (!MAY_ATTACH.has(String(role ?? "").toLowerCase())) {
+      throw new AttachmentRefusedError(
+        "staff",
+        "Only an owner or a manager can attach files to a letter.",
+      );
+    }
+    assertWithinLimits(out);
   }
-  assertWithinLimits(files);
+  checkedSet.add(out);
+  return out;
 }
 
-/** The limits alone, for the sender that has already checked the role. */
-export function assertWithinLimits(
+/** The limits alone; `assertMayAttach` is the only way in from outside. */
+function assertWithinLimits(
   files: readonly OutboundAttachment[] | undefined,
 ): void {
   if (!files || files.length === 0) return;
@@ -147,8 +163,14 @@ function filePart(boundary: string, f: OutboundAttachment): string[] {
 export function mixedBody(
   innerContentTypeHeader: string,
   innerBody: string,
-  files: readonly OutboundAttachment[],
+  files: CheckedAttachments,
 ): { contentTypeHeader: string; body: string } {
+  if (!checkedSet.has(files)) {
+    throw new AttachmentRefusedError(
+      "unchecked",
+      "These files were not checked for who may send them, so the letter was not built.",
+    );
+  }
   assertWithinLimits(files);
   const boundary = `mudavym_mix_${randomBytes(16).toString("hex")}`;
   const body = [
@@ -168,7 +190,7 @@ export function mixedBody(
 /** Plain-text letter with files, for the grant sender. */
 export function plainLetterWithFiles(
   text: string,
-  files: readonly OutboundAttachment[],
+  files: CheckedAttachments,
 ): { contentTypeHeader: string; body: string } {
   return mixedBody(
     'Content-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: base64',

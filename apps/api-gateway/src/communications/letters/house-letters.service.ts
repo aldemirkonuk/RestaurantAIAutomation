@@ -83,7 +83,7 @@ import {
   threadingHeader,
   unstructuredHeader,
 } from "../mime-headers";
-import { plainLetterWithFiles, type OutboundAttachment } from "../mime-attachments";
+import { plainLetterWithFiles, type CheckedAttachments } from "../mime-attachments";
 import type {
   InsertedInsightDto,
   QueueLetterDto,
@@ -2146,8 +2146,8 @@ export async function sendThroughGrant(params: {
   threadId?: string;
   inReplyTo?: string;
   references?: string;
-  /** g6a: uploaded files, at most 3 and 5 MB together (mime-attachments.ts). */
-  attachments?: OutboundAttachment[];
+  /** g6a: files that passed `assertMayAttach` (role, at most 3, 5 MB together). */
+  attachments?: CheckedAttachments;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
   // `From` is emitted only when we actually know the address. The `gmail_send`

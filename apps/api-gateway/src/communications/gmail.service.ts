@@ -49,7 +49,7 @@ import {
   getSeverityLabel,
 } from "./email-templates";
 
-import { mixedBody, type OutboundAttachment } from "./mime-attachments";
+import { mixedBody, type CheckedAttachments } from "./mime-attachments";
 
 export interface EmailOptions {
   to: string[];
@@ -80,11 +80,11 @@ export interface EmailOptions {
    * Files the person uploaded (g6a, r106): at most 3, 5 MB together, bytes only.
    * Present means the message is multipart/mixed with the text/html alternative
    * as its first part; absent keeps the multipart/alternative every caller had.
-   * The role gate (owner or manager) is asked where the request enters, via
-   * mime-attachments.ts `assertMayAttach`; the limits are asked again here, so
-   * no caller can hand this builder a fourth file.
+   * The type is the role gate: only `assertMayAttach(role, files)` in
+   * mime-attachments.ts returns a CheckedAttachments, and the builder refuses
+   * any other value at run time. The limits are asked again here.
    */
-  attachments?: OutboundAttachment[];
+  attachments?: CheckedAttachments;
 }
 
 /** The display name, made safe to sit inside a quoted From header. */

@@ -11,6 +11,7 @@ import { sendThroughGrant } from "./letters/house-letters.service";
 import {
   assertMayAttach,
   AttachmentRefusedError,
+  type CheckedAttachments,
   OUTBOUND_ATTACHMENT_MAX_BYTES,
   type OutboundAttachment,
 } from "./mime-attachments";
@@ -36,7 +37,18 @@ function parts(body: string, boundary: string) {
     .map((p) => p.replace(/^\r\n/, "").replace(/\r\n$/, ""));
 }
 
-async function viaGmail(attachments?: OutboundAttachment[]) {
+/** The caller's step: ask the role. Over-limit sets stay unchecked so the builder's refusal is what is tested. */
+function asked(files?: OutboundAttachment[]): CheckedAttachments | undefined {
+  if (!files) return undefined;
+  try {
+    return assertMayAttach("owner", files);
+  } catch {
+    return files as unknown as CheckedAttachments;
+  }
+}
+
+async function viaGmail(files?: OutboundAttachment[]) {
+  const attachments = asked(files);
   const send = jest.fn(async (_a: { requestBody: { raw: string } }) => ({
     data: { id: "g1", threadId: "t1" },
   }));
@@ -57,7 +69,19 @@ async function viaGmail(attachments?: OutboundAttachment[]) {
   return { result, raw, send };
 }
 
-async function viaGrant(attachments?: OutboundAttachment[]) {
+async function viaGmailRaw(attachments: CheckedAttachments) {
+  const send = jest.fn(async () => ({ data: { id: "g1", threadId: "t1" } }));
+  const svc = new GmailService({ get: () => undefined } as unknown as ConfigService);
+  const s = svc as unknown as Record<string, unknown>;
+  s.isConfigured = true;
+  s.senderEmail = "house@example.com";
+  s.gmail = { users: { messages: { send } } };
+  const result = await svc.sendEmail({ to: ["a@vendor.example"], subject: "Order", html: "<p>Hello</p>", attachments });
+  return { result, send };
+}
+
+async function viaGrant(files?: OutboundAttachment[]) {
+  const attachments = asked(files);
   let body = "";
   const fetchImpl = (async (_u: string, init: RequestInit) => {
     body = String(init.body);
@@ -112,7 +136,8 @@ describe("g6a outbound attachments", () => {
     const { result, send } = await viaGmail(big);
     expect(result.success).toBe(false);
     expect(send).not.toHaveBeenCalled();
-    await expect(viaGrant(big)).rejects.toMatchObject({ refusal: "too_big" });
+    await expect(viaGrant(big)).rejects.toBeInstanceOf(AttachmentRefusedError);
+    expect(() => assertMayAttach("owner", big)).toThrow(expect.objectContaining({ refusal: "too_big" }));
     expect(() => assertMayAttach("owner", big)).toThrow(/MB/);
   });
 
@@ -129,7 +154,8 @@ describe("g6a outbound attachments", () => {
     const { result, send } = await viaGmail(four);
     expect(result.success).toBe(false);
     expect(send).not.toHaveBeenCalled();
-    await expect(viaGrant(four)).rejects.toMatchObject({ refusal: "too_many" });
+    await expect(viaGrant(four)).rejects.toBeInstanceOf(AttachmentRefusedError);
+    expect(() => assertMayAttach("owner", four)).toThrow(expect.objectContaining({ refusal: "too_many" }));
   });
 
   it("refuses staff (and a missing role) with files; staff may still write plain letters", () => {
@@ -150,5 +176,17 @@ describe("g6a outbound attachments", () => {
     const filePart = parts(body, boundaryOf(head)!.boundary)[1];
     expect(filePart.split("\r\n\r\n")[0]).not.toMatch(/^Bcc:/m);
     expect(filePart).not.toContain("..");
+  });
+
+  it("a caller that never asked the role has no way to send a file", async () => {
+    // a staff member's files, passed straight to both builders and cast past the type
+    const unchecked = [file("a.pdf")] as unknown as CheckedAttachments;
+    const { result, send } = await viaGmailRaw(unchecked);
+    expect(result.success).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+    await expect(sendThroughGrant({
+      token: "t", from: "House <house@example.com>", to: "a@vendor.example", subject: "x", text: "y", attachments: unchecked,
+      fetchImpl: (async () => ({ ok: true })) as unknown as typeof fetch,
+    })).rejects.toMatchObject({ refusal: "unchecked" });
   });
 });
