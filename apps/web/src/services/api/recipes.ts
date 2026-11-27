@@ -426,6 +426,21 @@ export interface DrinkFigureRow {
   allergens?: RowAllergens | null;
 }
 
+/** One drink's printable card (GET /recipes/:rid/drinks/cards): the same for every role, no money at any key. */
+export interface DrinkCard {
+  cocktailId: string;
+  name: string;
+  section: string | null;
+  glass: string | null;
+  method: string | null;
+  garnish: string | null;
+  yieldServes: number;
+  version: number;
+  versionDate: string | null;
+  lines: Array<{ label: string; qty: number; unit: string | null; name: string | null }>;
+  allergens: RowAllergens;
+}
+
 /**
  * What the house's current menu says for one dish or drink of the same name
  * (GET /recipes/:rid/menu-prices; r28 recipes audit, gap 2). `prices` are the
@@ -526,6 +541,14 @@ export const dishesApi = {
     const r = await apiClient.get<{ costsUnread?: boolean; drinks: DrinkFigureRow[] }>(`${base(restaurantId)}/drinks/figures`);
     // An older gateway sends no flag: its costs were read, or the whole read failed.
     return { costsUnread: r.data.costsUnread === true, drinks: r.data.drinks };
+  },
+
+  /** Every drink with a current recipe as a printable card, in one read; no money for any role (r108 drinks-g7). */
+  async drinkCards(restaurantId: string): Promise<DrinkCard[]> {
+    const r = await apiClient.get<{ drinks: DrinkCard[] }>(`${base(restaurantId)}/drinks/cards`);
+    // An answer without its rows is unread, never an empty book.
+    if (!Array.isArray(r.data?.drinks)) throw new Error('The recipe cards came back without their rows.');
+    return r.data.drinks;
   },
 
   /** The current menu's price beside each dish and drink, in one read (r28 recipes audit, gap 2). */

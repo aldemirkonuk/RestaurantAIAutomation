@@ -1175,6 +1175,19 @@ textarea.cl-field {
   .cl-spine-nav { min-height: 64px; align-content: flex-start; }
 }
 
+/* The spec book (r108 drinks-g7): every drink's card in one print, hidden on screen; drawn alone on paper while
+   the button has set html[data-print-book]. A cover, then one card per page. No animation, no transition. */
+.cl-print-book { display: none; }
+@media print {
+  html[data-print-book] body > *:not(.cl-print-book) { display: none !important; }
+  html[data-print-book] .cl-print-book { display: block; width: 100%; box-sizing: border-box; color: #000; background: #fff; font-size: 14px; line-height: 1.5; }
+  .cl-print-book .cl-book-page { break-after: page; page-break-after: always; padding: 24px; }
+  .cl-print-book h1 { font-size: 26px; margin: 0 0 6px; }
+  .cl-print-book h2 { font-size: 20px; margin: 0 0 6px; }
+  .cl-print-book ol { padding-left: 18px; margin: 12px 0; }
+  .cl-print-book .cl-print-method { white-space: pre-wrap; }
+}
+
 /* The recipe card (r104 drinks need 4): hidden on screen; drawn alone on paper
    while the button has set html[data-print-card]. No animation, no overlay. */
 .cl-rcp-print { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 8px; }
