@@ -298,6 +298,31 @@ describe('where focus goes after a seal (r108)', () => {
     expect(document.activeElement).toBe(rowBtn('INV-90'));
   });
 
+  it('when the lanes are hidden (a paper open below 2xl), a keyboard seal lands focus on the open paper, not on BODY', async () => {
+    // Tailwind is not loaded in jsdom, so the row is "visible" here. In a browser
+    // below 2xl the lanes are display:none and .focus() on a row is a no-op; stand
+    // in for that by making row focus a no-op.
+    const real = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, ...a: []) {
+      if (this.hasAttribute('data-rc-id')) return;
+      return real.apply(this, a);
+    });
+    try {
+      render(<ReceiptsNext />, { wrapper });
+      fireEvent.click(await paperRow('INV-88'));
+      await screen.findByLabelText('Quantity, line 1');
+      const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+      swipe.focus();
+      fireEvent.keyDown(swipe, { key: 'Enter' });
+      await waitFor(() => expect(api.verify).toHaveBeenCalled());
+      const back = await screen.findByRole('button', { name: /All receipts/ });
+      await waitFor(() => expect(document.activeElement).toBe(back));
+      expect(document.activeElement).not.toBe(document.body);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('a pointer seal leaves focus alone, even though the press focused the handle', async () => {
     render(<ReceiptsNext />, { wrapper });
     fireEvent.click(await paperRow('INV-88'));

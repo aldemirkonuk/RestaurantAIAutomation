@@ -1745,7 +1745,17 @@ export default function ReceiptsNext() {
     const id = focusAfterSeal.current;
     if (!id || selectedId !== id) return;
     focusAfterSeal.current = null;
-    (document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null)?.focus();
+    // Under the 2xl width the lanes are display:none while a paper is open, and
+    // .focus() on a hidden row does nothing, leaving focus on BODY. Judge by where
+    // focus actually went, not by whether the call was made, and fall back to the
+    // open paper's own controls (the back control, then the review card heading).
+    const row = document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null;
+    row?.focus();
+    if (row && document.activeElement === row) return;
+    for (const el of [document.querySelector('[data-rc-back]'), document.getElementById('rc-check')]) {
+      (el as HTMLElement | null)?.focus();
+      if (el && document.activeElement === el) return;
+    }
   }, [selectedId]);
   const [rovingId, setRovingId] = useState<string | null>(null);
   const rovingRowId = reviewRows.some((d) => d.id === rovingId)
@@ -2268,6 +2278,7 @@ export default function ReceiptsNext() {
                 <button
                   type="button"
                   onClick={() => select(null)}
+                  data-rc-back=""
                   className="rc-ink mb-3 2xl:hidden"
                   style={{
                     fontFamily: SANS,
