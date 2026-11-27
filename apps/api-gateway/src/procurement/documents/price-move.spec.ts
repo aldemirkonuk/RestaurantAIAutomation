@@ -52,6 +52,13 @@ describe("priceMove", () => {
     expect(priceMove(bottle(10), bottle(11.04))).toMatchObject({ sentence: "was 10.00, now 11.04, up 10.4 percent" });
   });
 
+  it("never speaks a flagged move as exactly the threshold", () => {
+    expect(priceMove(bottle(200), bottle(220.09))).toMatchObject({ moved: true, sentence: "was 200.00, now 220.09, up 10.04 percent" });
+    expect(priceMove(bottle(100), bottle(110.04))).toMatchObject({ moved: true, sentence: "was 100.00, now 110.04, up 10.04 percent" });
+    expect(priceMove(bottle(500), bottle(550.2))).toMatchObject({ moved: true, sentence: "was 500.00, now 550.20, up 10.04 percent" });
+    expect(priceMove(bottle(100), bottle(89.96))).toMatchObject({ moved: true, sentence: "was 100.00, now 89.96, down 10.04 percent" });
+  });
+
   it("moved agrees with integer cross-multiplication over many cent pairs", () => {
     let seed = 7;
     const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;

@@ -41,7 +41,11 @@ const money = (v: number) => {
 /** Whole percent, but one decimal near the threshold so "up 10 percent" never names a moved 10.4. */
 const speakPct = (pct: number, thresholdPct: number) => {
   const a = Math.abs(pct);
-  return Math.abs(a - thresholdPct) < 1 ? a.toFixed(1) : String(Math.round(a));
+  if (Math.abs(a - thresholdPct) >= 1) return String(Math.round(a));
+  // A flagged move must never be spoken as the threshold itself: add decimals
+  // until the figure no longer rounds onto it (10.04 says 10.04, not 10.0).
+  for (let d = 1; d < 6; d++) if (Number(a.toFixed(d)) !== thresholdPct) return a.toFixed(d);
+  return a.toFixed(6);
 };
 
 const MICRO = 1e6;
