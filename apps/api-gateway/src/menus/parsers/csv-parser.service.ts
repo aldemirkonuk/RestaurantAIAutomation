@@ -6,13 +6,15 @@ import { MenuPriceReason, readMenuPrice } from "./menu-price";
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
   [
     "name",
-    "name wine wine_name item ad adi isim urun urun_adi sarap sarap_adi",
+    // r110 menu-r110-5: a kitchen sheet heads its names Dish / Yemek.
+    "name wine wine_name item dish dish_name ad adi isim urun urun_adi sarap sarap_adi yemek yemek_adi",
   ],
   ["producer", "producer winery vineyard chateau brand uretici"],
   ["vintage", "vintage year yil rekolte"],
   ["region", "region appellation bolge"],
   ["grape_variety", "grape variety grape_variety uzum uzum_cesidi"],
-  ["category", "category type kategori tur"],
+  // r110 menu-r110-5: a menu's Section / Bölüm is its category, as the sheet export writes it.
+  ["category", "category type section kategori tur bolum kisim"],
   [
     "by_glass_price",
     "by_glass glass glass_price by_glass_price kadeh kadeh_fiyati",
@@ -42,6 +44,8 @@ export interface CsvRowIssue {
     | "no_name_column"
     /** A bare `Price` / `Fiyat` header: bottle or glass is not decided, so it is not read. */
     | "price_column_not_read"
+    /** A named column no field takes (`Notes`, `Allergens`): it was not read, and that is said (r110 menu-r110-5). */
+    | "column_not_read"
     /** A spreadsheet error value (`#N/A`, `#REF!`) where a value was expected. */
     | "cell_error"
     /** The row has more cells than the header (an unquoted decimal comma): its prices are left blank. */
@@ -347,15 +351,19 @@ export class CsvParserService {
     return Array.from(headers, (h) => readHeader(h ?? "").field);
   }
 
-  /** A price header that names no field (bare `Price`, `Bottle Size`) is said, not read. */
+  /**
+   * A price header that names no field (bare `Price`, `Bottle Size`) is said,
+   * not read; so is any other named column no field takes (r110 menu-r110-5:
+   * a column was dropped in silence). A blank header is no column.
+   */
   private headerIssues(headers: string[], row: number): CsvRowIssue[] {
-    return headers
-      .filter((h) => readHeader(h ?? "").note)
-      .map((h) => ({
-        row,
-        reason: "price_column_not_read" as const,
-        raw: h.trim(),
-      }));
+    return Array.from(headers, (h) => (h ?? "").trim()).flatMap((h): CsvRowIssue[] => {
+      if (!h) return [];
+      const read = readHeader(h);
+      if (read.note) return [{ row, reason: "price_column_not_read" as const, raw: h }];
+      if (!read.field) return [{ row, reason: "column_not_read" as const, raw: h }];
+      return [];
+    });
   }
 
   /**

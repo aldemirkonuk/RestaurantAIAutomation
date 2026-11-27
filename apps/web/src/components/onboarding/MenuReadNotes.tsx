@@ -27,7 +27,9 @@ export function menuReadNoteText(n: MenuReadNote): string {
     case 'no_name':
       return `Line ${n.row} has no name, so it was not read.`
     case 'no_name_column':
-      return 'No column was read as the name (Name, Wine, Ad, Şarap), so no line was read.'
+      return 'No column was read as the name (Name, Dish, Wine, Ad, Yemek, Şarap), so no line was read.'
+    case 'column_not_read':
+      return `The column ${raw} was not read, so what it holds is not on this menu.`
     case 'price_column_not_read':
       return `The column ${raw} was not read: name it Bottle price / Şişe fiyatı or Glass price / Kadeh fiyatı.`
     default:

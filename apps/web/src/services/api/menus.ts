@@ -87,6 +87,7 @@ export interface MenuReadNote {
     | 'no_name'
     | 'no_name_column'
     | 'price_column_not_read'
+    | 'column_not_read'
     | 'cell_error'
     | 'no_number'
     | 'two_readings'

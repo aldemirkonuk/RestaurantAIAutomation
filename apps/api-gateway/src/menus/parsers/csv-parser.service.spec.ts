@@ -86,9 +86,14 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
         { row: 4, reason: "no_name" },
       ],
     });
+    // r110 menu-r110-5: the columns no field takes are said too, before the refusal.
     expect(parser().read("Cost;Supplier\n12;Metro\n")).toEqual({
       items: [],
-      issues: [{ row: 1, reason: "no_name_column" }],
+      issues: [
+        { row: 1, reason: "column_not_read", raw: "Cost" },
+        { row: 1, reason: "column_not_read", raw: "Supplier" },
+        { row: 1, reason: "no_name_column" },
+      ],
     });
   });
 });
@@ -286,5 +291,41 @@ describe("CsvParserService.read: negative prices and unclosed quotes are said", 
     );
     expect(items).toHaveLength(5);
     expect(issues).toEqual([{ row: 3, reason: "unclosed_quote" }]);
+  });
+});
+
+describe("CsvParserService.read: a kitchen sheet's Section and Dish (r110 menu-r110-5)", () => {
+  it("'Name,Section,Price' keeps the Section as the line's category", () => {
+    const { items } = parser().read("Name,Section,Price\r\nMercimek,Soups,90\r\n");
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ name: "Mercimek", category: "Soups" });
+  });
+
+  it("'Section,Dish,Price' reads: Dish is the name, Section the category", () => {
+    const { items, issues } = parser().read("Section,Dish,Price\r\nMezes,Haydari,120\r\nMains,Adana,380\r\n");
+    expect(items.map((i) => [i.name, i.category])).toEqual([
+      ["Haydari", "Mezes"],
+      ["Adana", "Mains"],
+    ]);
+    expect(issues.map((i) => i.reason)).not.toContain("no_name_column");
+  });
+
+  it("'Dish,Price' reads, and a Turkish 'Bölüm;Yemek' sheet too", () => {
+    expect(parser().read("Dish,Price\r\nHaydari,120\r\n").items.map((i) => i.name)).toEqual(["Haydari"]);
+    const tr = parser().read("Bölüm;Yemek;Kadeh Fiyatı\r\nMezeler;Haydari;120\r\n");
+    expect(tr.items[0]).toMatchObject({ name: "Haydari", category: "Mezeler", by_glass_price: 120 });
+  });
+
+  it("a named column no field takes is said, never dropped in silence; a blank header is no column", () => {
+    const { items, issues } = parser().read("Name,Allergens,,Bottle\r\nOpus One,sulphites,,64\r\n");
+    expect(items[0]).toMatchObject({ name: "Opus One", bottle_price: 64 });
+    expect(issues).toEqual([{ row: 1, reason: "column_not_read", raw: "Allergens" }]);
+  });
+
+  it("the sheet the menu exports reads back with no note (DD-r105-17 round trip unchanged)", () => {
+    const header = "name,producer,vintage,region,grape_variety,category,by_glass_price,bottle_price";
+    const { items, issues } = parser().read(`${header}\r\nOpus One,Opus,2019,Napa,Cabernet,Reds,15,64\r\n`);
+    expect(issues).toEqual([]);
+    expect(items[0]).toMatchObject({ name: "Opus One", category: "Reds", by_glass_price: 15, bottle_price: 64 });
   });
 });
