@@ -124,6 +124,10 @@ export default function CuttingFlat({
   initialFocus,
 }: CuttingFlatProps) {
   const [picked, setGraph] = useState<GraphType>(initialGraph);
+  // Whether this dialog arrived by a step, latched at mount. The page's window, compare and grain setters
+  // replace the entry without the step marker, so reading it live would flip the flag on an open dialog
+  // and start the arrival animation mid-read (MOTIONS.md; ADR 0112).
+  const [stepped] = useState(() => !!initialFocus);
   // A drawing the data turned out not to carry (the list shrinks when the read lands) is not held on to.
   const graph: GraphType = graphs.length === 0 || graphs.includes(picked) ? picked : graphs[0];
   const [comboPick, setComboPick] = useState<Partial<ComboPick> | undefined>(initialComboPick);
@@ -230,7 +234,7 @@ export default function CuttingFlat({
       data-ground={ground ?? undefined}
       // Landed by a step: the arrival (`rp-flat-in`) is for opening full
       // screen, not for a subject change inside it (MOTIONS.md).
-      data-stepped={initialFocus ? 'true' : undefined}
+      data-stepped={stepped ? 'true' : undefined}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

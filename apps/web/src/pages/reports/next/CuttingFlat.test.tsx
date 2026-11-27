@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { openStack } from '@/components/mudavym/overlayState';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
@@ -357,6 +357,30 @@ describe('full screen steps through the sheet (r108 g1)', () => {
     expect(dialogNamed('week')).toHaveAttribute('data-stepped', 'true');
     // The stylesheet takes the arrival off a stepped dialog.
     expect(FLAT_CSS).toMatch(/\.rp-flat\[data-stepped='true'\]\s*\{\s*animation:\s*none;/);
+  });
+
+  it('[REVERT-FAILS] a stepped dialog stays settled when the page replaces the entry without the step marker (r109)', () => {
+    // The window, compare and grain setters replace the entry with no state; the arrival must not start on an open dialog.
+    function Replace() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" data-testid="replace" onClick={() => navigate('/reports?flat=week&days=90', { replace: true })}>
+          replace
+        </button>
+      );
+    }
+    paint(
+      <>
+        <Sheet3 />
+        <Replace />
+      </>,
+    );
+    fireEvent.click(opener(titleOf('till')));
+    fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    expect(dialogNamed('week')).toHaveAttribute('data-stepped', 'true');
+    fireEvent.click(screen.getByTestId('replace'));
+    expect(where()).toBe('/reports?flat=week&days=90');
+    expect(dialogNamed('week')).toHaveAttribute('data-stepped', 'true');
   });
 
   it('a withheld cutting shows its held sentence when stepped to', () => {
