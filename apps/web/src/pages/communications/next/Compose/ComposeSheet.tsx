@@ -60,9 +60,26 @@ import {
 import type { AnsweredLetter } from '../mail-format';
 import { RecipientField, type Recipient } from './RecipientField';
 import { InsightPicker } from './InsightPicker';
+import { MailMotionStyles } from '../mail-motion';
 import { SenderLine } from './SenderLine';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
+
+/** "See it as it leaves": what the gateway says the send would write (r109 mail-gap g6). */
+type AsItLeaves = {
+  from: { name: string | null; address: string | null };
+  to: string;
+  replyTo: string | null;
+  subject: string;
+  inReplyTo: string | null;
+  answersAt: string | null;
+  body: string;
+};
+type SeeState =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'shown'; letter: AsItLeaves }
+  | { kind: 'failed'; message: string };
 
 type SendState =
   | { kind: 'idle' }
@@ -203,6 +220,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   const [tick, setTick] = useState(0);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const toRef = useRef<HTMLInputElement | null>(null);
+  const [see, setSee] = useState<SeeState>({ kind: 'idle' });
 
   // The undo window is a real clock over a real row: the countdown re-reads the
   // server's `dispatchAt`, so a stalled tab shows 0 rather than a comforting
@@ -335,6 +353,25 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
         : null,
     [to, subject, body, draftId, templateId, chosen, answers, prefill?.providerId],
   );
+
+  // A preview is of THESE words: any change to the letter takes it down, so it
+  // never shows a header block for a letter that is no longer the one held.
+  const letterKey = letter ? JSON.stringify(letter) : '';
+  useEffect(() => {
+    setSee((prev) => (prev.kind === 'idle' ? prev : { kind: 'idle' }));
+  }, [letterKey]);
+
+  /** Ask the gateway for the header block and body the send would write. Queues nothing. */
+  const seeIt = useCallback(async () => {
+    if (!letter) return;
+    setSee({ kind: 'loading' });
+    try {
+      const { data: shown } = await apiClient.post<AsItLeaves>('/communications/letters/preview', letter);
+      setSee({ kind: 'shown', letter: shown });
+    } catch (e) {
+      setSee({ kind: 'failed', message: errText(e) });
+    }
+  }, [letter]);
 
   /**
    * Mint the seal over the letter (ADR 0175 D9, sealed 2026-09-21). On the seal
@@ -635,6 +672,77 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
           onInsert={insertSentence}
           onRemove={removeSentence}
         />
+
+        {/* ── See it as it leaves (r109 mail-gap g6) ───────────────────────── */}
+        <div className="grid gap-2">
+          <button
+            type="button"
+            data-testid="letter-see"
+            onClick={() => void seeIt()}
+            disabled={!letter || see.kind === 'loading'}
+            aria-expanded={see.kind === 'shown'}
+            style={{
+              justifySelf: 'start',
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              fontSize: 12.5,
+              fontWeight: 600,
+              textDecoration: 'underline',
+              textUnderlineOffset: 3,
+              color: letter ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #665D50)',
+              cursor: letter ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {see.kind === 'loading' ? 'Reading it…' : 'See it as it leaves'}
+          </button>
+          {see.kind === 'failed' && (
+            <p role="alert" data-testid="letter-see-failed" style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--alarm-deep, #8C3322)' }}>
+              It could not be shown as it leaves: {see.message}
+            </p>
+          )}
+          {see.kind === 'shown' && (
+            <div
+              data-testid="letter-as-it-leaves"
+              className="mail-fade-in rounded-xl px-3 py-2.5"
+              style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
+            >
+              <MailMotionStyles />
+              <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '3px 12px', fontSize: 12, lineHeight: 1.5 }}>
+                <dt style={{ color: 'var(--ink-4, #665D50)' }}>From</dt>
+                <dd style={{ margin: 0, color: 'var(--ink-1, #211C16)' }}>
+                  {see.letter.from.address
+                    ? see.letter.from.name
+                      ? `${see.letter.from.name} <${see.letter.from.address}>`
+                      : see.letter.from.address
+                    : 'The mailbox this house sends from'}
+                </dd>
+                <dt style={{ color: 'var(--ink-4, #665D50)' }}>To</dt>
+                <dd style={{ margin: 0, color: 'var(--ink-1, #211C16)' }}>{see.letter.to}</dd>
+                <dt style={{ color: 'var(--ink-4, #665D50)' }}>Reply-To</dt>
+                <dd style={{ margin: 0, color: 'var(--ink-1, #211C16)' }}>{see.letter.replyTo ?? 'The From address'}</dd>
+                <dt style={{ color: 'var(--ink-4, #665D50)' }}>Subject</dt>
+                <dd style={{ margin: 0, color: 'var(--ink-1, #211C16)' }}>{see.letter.subject}</dd>
+                {see.letter.inReplyTo && (
+                  <>
+                    <dt style={{ color: 'var(--ink-4, #665D50)' }}>Threading</dt>
+                    <dd style={{ margin: 0, color: 'var(--ink-1, #211C16)' }}>
+                      {see.letter.answersAt
+                        ? `Answers their letter of ${fmtDay(see.letter.answersAt)}`
+                        : 'Answers their letter'}
+                    </dd>
+                  </>
+                )}
+              </dl>
+              <pre
+                data-testid="letter-as-sent-body"
+                style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55, color: 'var(--ink-1, #211C16)' }}
+              >
+                {see.letter.body}
+              </pre>
+            </div>
+          )}
+        </div>
 
         {/* ── the outcome, in words ───────────────────────────────────────── */}
         {send.kind === 'refused' && (
