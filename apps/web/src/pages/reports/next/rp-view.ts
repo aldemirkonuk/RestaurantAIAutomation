@@ -36,6 +36,8 @@ export interface Cat {
   prior?: number | null;
   /** Long form for the tooltip when `label` is abbreviated for the axis. */
   full?: string;
+  /** The till rang no check this day: a stated absence, which the tip says as such, not as "not stated". */
+  noCheck?: boolean;
 }
 
 /** A rule drawn across a plot, and the words for why it is there. */
