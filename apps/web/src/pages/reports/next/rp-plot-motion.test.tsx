@@ -196,3 +196,53 @@ describe('the hover detail', () => {
     expect(rule).toMatch(/box-shadow:\s*0 14px 28px -18px rgba\(0, 0, 0, 0\.6\)/);
   });
 });
+
+describe('a bar below zero rises from the zero line', () => {
+  const mixed: CatSeries = {
+    ...week(0),
+    data: [
+      { label: 'Mon', value: 300 },
+      { label: 'Tue', value: -200 },
+      { label: 'Wed', value: 150 },
+    ],
+  };
+  const paths = (c: HTMLElement) => Array.from(c.querySelectorAll<SVGPathElement>('.recharts-bar-rectangle > path'));
+  const texts = (c: HTMLElement) => Array.from(c.querySelectorAll('text.rp-bar-value, .rp-bar-value text')).map((t) => t.textContent);
+
+  it('[REVERT-FAILS] a negative bar carries rp-bar--neg and a positive one does not', () => {
+    const { container } = render(<CatPlot series={mixed} kind="bars" />);
+    expect(paths(container).map((p) => p.classList.contains('rp-bar--neg'))).toEqual([false, true, false]);
+  });
+
+  it('[REVERT-FAILS] the same holds for the bars of bars-and-line', () => {
+    const combo: CatSeries = { ...mixed, measures: [{ key: 'chk', label: 'Checks', unit: 'checks', format: String, values: [1, 2, 3] }] };
+    const { container } = render(<ComboPlot series={combo} />);
+    expect(paths(container).map((p) => p.classList.contains('rp-bar--neg'))).toEqual([false, true, false]);
+  });
+
+  it('[REVERT-FAILS] the stylesheet hangs a negative bar from its top edge, the others from the base', () => {
+    expect(css).toMatch(/\.rp-plot \.recharts-bar-rectangle > path\.rp-bar--neg \{[^}]*transform-origin:\s*50% 0%/);
+    expect(css).toMatch(/\.rp-plot \.recharts-bar-rectangle > path \{[^}]*transform-origin:\s*50% 100%/);
+  });
+
+  it('[REVERT-FAILS] every bar still carries one figure, a negative one under its tip, not on the zero line', () => {
+    const { container } = render(<CatPlot series={mixed} kind="bars" />);
+    expect(texts(container)).toEqual(['₺300', '₺-200', '₺150']);
+    const pos = container.querySelectorAll('text.rp-bar-value, .rp-bar-value text');
+    const ys = Array.from(pos).map((t) => Number(t.getAttribute('y')));
+    const tue = 1;
+    // a negative rect is y = its tip, height < 0: the zero line is y + height
+    const neg = paths(container)[1];
+    const zeroY = Number(neg.getAttribute('y')) + Number(neg.getAttribute('height'));
+    const tipY = Number(neg.getAttribute('y'));
+    expect(ys[tue]).toBeGreaterThanOrEqual(tipY);
+    expect(Math.max(ys[0], ys[2])).toBeLessThan(zeroY);
+  });
+
+  it('reduced motion stays still: no neg-specific animation, the guard still covers the bars', () => {
+    stubWorld({ reduced: true });
+    const { container } = render(<CatPlot series={mixed} kind="bars" />);
+    expect(plot(container).dataset.draw).toBe('still');
+    expect(css).not.toMatch(/rp-bar--neg[^}]*animation/);
+  });
+});
