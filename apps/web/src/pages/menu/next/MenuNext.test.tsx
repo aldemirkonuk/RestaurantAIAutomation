@@ -1038,7 +1038,8 @@ describe('MenuNext — the taken-off sentence is in view, and the controls are 4
     expect(next).toMatch(/type="submit" className="cl-btn cl-focus mdv-touch"/);
     expect(readFileSync('src/pages/menu/next/MenuSheetButton.tsx', 'utf8')).toMatch(/className="mdv-link cl-focus mdv-touch"/);
     const css = readFileSync('src/pages/menu/next/menu-rows.css', 'utf8');
-    const rule = css.slice(css.lastIndexOf('@media (max-width: 599px)'));
+    // The @media block that holds .mdv-touch, wherever later 599px blocks land (r110 menu-3).
+    const rule = css.slice(css.lastIndexOf('@media (max-width: 599px)', css.indexOf('.mdv-touch {')), css.indexOf('\n}\n', css.indexOf('.mdv-touch {')));
     expect(rule).toContain('.mdv-touch');
     expect(rule).toContain('min-height: 44px');
     expect(rule).not.toMatch(/transition|animation/);

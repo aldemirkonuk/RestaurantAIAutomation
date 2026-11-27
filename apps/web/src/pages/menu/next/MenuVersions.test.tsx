@@ -1035,6 +1035,7 @@ describe('MenuVersions — Put it back and Add details are 44 px targets on a ph
     expect(src).toMatch(/className="cl-btn cl-focus mdv-touch" data-testid="menu-removed-restore"/);
     expect(src).toMatch(/className="mdv-link mdv-touch"\s+aria-expanded=\{detailsOpen\}/);
     const css = readFileSync(resolve(__dirname, 'menu-rows.css'), 'utf8');
-    expect(css.slice(css.lastIndexOf('@media (max-width: 599px)'))).toContain('min-height: 44px');
+    // The @media block that holds .mdv-touch, wherever later 599px blocks land (r110 menu-3).
+    expect(css.slice(css.lastIndexOf('@media (max-width: 599px)', css.indexOf('.mdv-touch {')), css.indexOf('\n}\n', css.indexOf('.mdv-touch {')))).toContain('min-height: 44px');
   });
 });
