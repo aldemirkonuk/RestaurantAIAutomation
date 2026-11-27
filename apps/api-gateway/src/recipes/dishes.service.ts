@@ -429,12 +429,15 @@ export class DishesService {
     const client = this.db.getClient();
     const item = await client
       .from("restaurant_inventory")
-      .select("id, uom, bottle_size_ml, piece_grams, ml_grams, stock_live")
+      .select("id, uom, bottle_size_ml, piece_grams, ml_grams, stock_live, last_counted_at")
       .eq("id", itemId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (item.error) this.failed("item read", item.error, sentence);
     if (!item.data) throw new NotFoundException(ITEM_NOT_THIS_HOUSE);
+    // A 0 stock means an empty shelf only if it was counted or something was received.
+    const lots = await client.from("inventory_lots").select("id").eq("restaurant_id", restaurantId).eq("inventory_id", itemId).limit(1);
+    if (lots.error) this.failed("item stock read", lots.error, sentence);
 
     const used = await this.all<any>("item line read", sentence, (from, to) =>
       client
@@ -470,7 +473,7 @@ export class DishesService {
             );
       for (const r of rows) current.set(r.version_id, owner === "dish" ? r.dish_id : r.cocktail_id);
     }
-    return { item: item.data as StockItem, used, ownerIds: [...new Set(current.values())] };
+    return { item: { ...(item.data as StockItem), last_counted_at: (item.data as StockItem).last_counted_at ?? null, has_lots: (lots.data ?? []).length > 0 }, used, ownerIds: [...new Set(current.values())] };
   }
 
   /**
