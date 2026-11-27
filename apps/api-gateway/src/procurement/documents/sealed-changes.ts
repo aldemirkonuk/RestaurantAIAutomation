@@ -3,9 +3,12 @@
  * revalued by, and the till's cost of sales its restatements moved.
  *
  * Read from the receipts the cost writes leave behind, never re-derived:
- * `inventory_lot_revaluations` (stock: qty_at_revaluation x (new - prior)) and
- * `wine_consumption_cost_restatements` (sales: new - prior cost_at_sale), for
- * the order(s) the paper is linked to. Sums are integer micro-units, parsed
+ * `inventory_lot_revaluations` (stock: qty_at_revaluation x (new - prior)),
+ * `wine_consumption_cost_restatements` (sales, the order path: new - prior
+ * cost_at_sale) and `inventory_lot_draw_settlements` (sales, the delivery path:
+ * `difference`), for the order(s) the paper is linked to AND the lots of the
+ * deliveries it is linked to. A door delivery with no order books lots with a
+ * null source_order_id, so an order-only read reported "no order, no change". Sums are integer micro-units, parsed
  * from the decimal text so 18 significant digits survive. A prior cost that
  * was not known is counted and LEFT OUT of the figure, never read as 0, which
  * would book the whole new cost as a change (ADR 0020).
@@ -21,6 +24,7 @@
 export const CHANGES_PAGE = 1000;
 
 export interface RevaluationRow {
+  id?: string;
   qty_at_revaluation: number | string;
   prior_unit_cost: number | string | null;
   new_unit_cost: number | string;
@@ -32,6 +36,14 @@ export interface RestatementRow {
   prior_cost_at_sale: number | string | null;
   new_cost_at_sale: number | string;
   created_at: string;
+}
+
+/** `inventory_lot_draw_settlements`: what a sale already made from a revalued lot now costs (the canonical path). */
+export interface SettlementRow {
+  id?: string;
+  txn_id: string;
+  prior_total: number | string | null;
+  difference: number | string;
 }
 
 export interface SealedChanges {
@@ -77,7 +89,11 @@ export async function readEveryPage<T>(
   }
 }
 
-export function summariseChanges(revaluations: RevaluationRow[], restatements: RestatementRow[]): SealedChanges {
+export function summariseChanges(
+  revaluations: RevaluationRow[],
+  restatements: RestatementRow[],
+  settlements: SettlementRow[] = [],
+): SealedChanges {
   let stock = 0n;
   let sales = 0n;
   let bottles = 0;
@@ -99,6 +115,15 @@ export function summariseChanges(revaluations: RevaluationRow[], restatements: R
     }
     sales += toMicro(r.new_cost_at_sale) - toMicro(r.prior_cost_at_sale);
     saleIds.add(r.consumption_id);
+  }
+  for (const r of settlements) {
+    // A draw that left with no price has no prior to move from: counted, left out.
+    if (r.prior_total == null || r.prior_total === "") {
+      notKnown++;
+      continue;
+    }
+    sales += toMicro(r.difference);
+    saleIds.add(r.txn_id);
   }
   return {
     stockValueDelta: microText(stock),

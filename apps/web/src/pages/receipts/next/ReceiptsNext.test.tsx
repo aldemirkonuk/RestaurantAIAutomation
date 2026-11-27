@@ -318,7 +318,7 @@ describe('ReceiptsNext', () => {
 
   it('shows a verified paper its seal changes to an owner or manager, and asks the gateway', async () => {
     api.sealedChanges.mockResolvedValue({
-      status: 'verified', currency: 'EUR', orders: ['o1'], otherPapers: 0, stockValueDelta: '2', bottles: 1, salesCostDelta: '0', sales: 0, notKnown: 0,
+      status: 'verified', currency: 'EUR', orders: ['o1'], deliveries: 0, otherPapers: 0, stockValueDelta: '2', bottles: 1, salesCostDelta: '0', sales: 0, notKnown: 0,
     });
     api.queue = [doc({ status: 'verified' as ProcurementDocument['status'] })];
     api.detail = { document: api.queue[0], lines: [line], links: [] };
