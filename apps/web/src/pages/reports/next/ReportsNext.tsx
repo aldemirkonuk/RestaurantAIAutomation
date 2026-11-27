@@ -55,7 +55,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
-import Cutting, { DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
+import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
@@ -154,6 +154,22 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       ),
     [setParams],
   );
+  // Laying the till beside the window just before it lives in the link too
+  // (`?compare=prior`), for the same reasons the window does.
+  const tillCompare = params.get(COMPARE_PARAM) === COMPARE_PRIOR;
+  const setTillCompare = useCallback(
+    (on: boolean) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (on) next.set(COMPARE_PARAM, COMPARE_PRIOR);
+          else next.delete(COMPARE_PARAM);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
   // A bars-and-line pick made before the reader's own sheet is known: shown
   // for this visit, never written (a write then could put the house sheet
   // over theirs). Once the sheet is known the pick lives on the sheet itself.
@@ -199,7 +215,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // A full-screen link's analysis is read even when it is off the reader's
   // sheet, so the link opens it (r36 gap 9, `rp-flat-visit.ts`).
   const flatParam = params.get(FLAT_PARAM);
-  const data = useReportsNextData(tillDays, setTillDays, showing, place, flatAsked(flatParam));
+  const data = useReportsNextData(tillDays, setTillDays, showing, place, flatAsked(flatParam), tillCompare);
   const role = data.role ?? null;
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
@@ -509,10 +525,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const ctx = useMemo(
     () => ({
       days: tillDays,
+      compare: tillCompare,
       goals: { ...data.goalsDesk, placeBlocked: saving },
       currency: currencyMark,
     }),
-    [data.goalsDesk, tillDays, currencyMark, saving],
+    [data.goalsDesk, tillDays, tillCompare, currencyMark, saving],
   );
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =
@@ -564,6 +581,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
         onDays={setTillDays}
+        onCompare={setTillCompare}
       />
     ),
     };

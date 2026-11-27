@@ -374,6 +374,8 @@ export function useReportsNextData(
    * itself is not changed.
    */
   alsoRead: AnalysisId | null = null,
+  /** Lay the till beside the same-length window just before it (`?compare=prior`). */
+  tillCompare = false,
 ): ReportsNextData {
   const { activeRestaurantId, activeRole, loading: authLoading } = useAuth();
   const rid = activeRestaurantId;
@@ -474,12 +476,12 @@ export function useReportsNextData(
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
       return {
-        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null],
+        queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null, spec.takesWindow && tillCompare ? 'prior' : null],
         enabled: !!rid && !heldBack.has(id),
         staleTime: REGISTER_FRESH_MS,
         retry: 1,
         queryFn: async () => {
-          const ctx = { days: tillDays };
+          const ctx = { days: tillDays, compare: tillCompare };
           // The gateway withheld a lens for this reader's role, though the
           // page thought it could read it (a role changed since the session's
           // was read): never handed to `select`, which would read it as empty.

@@ -32,6 +32,8 @@ export interface Cat {
   value: number | null;
   /** A model's expectation for the same slot — drawn dashed, never solid. */
   projected?: number | null;
+  /** The same slot of the window just before this one — drawn dashed beside the measured value. `null` is a gap, never a zero. */
+  prior?: number | null;
   /** Long form for the tooltip when `label` is abbreviated for the axis. */
   full?: string;
 }
@@ -75,6 +77,8 @@ export interface CatSeries {
   refs?: Ref[];
   /** True when `projected` carries a second, dashed series. */
   projectedLabel?: string;
+  /** The reader's words for the `prior` series ("the prior 30 days"); present only when one is drawn. */
+  priorLabel?: string;
 }
 
 export interface Point {
