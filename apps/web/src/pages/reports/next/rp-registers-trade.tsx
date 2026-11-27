@@ -277,6 +277,9 @@ const till = analysis<TillWindow>({
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
   takesWindow: true,
+  // The till's takings are a sales figure (ADR 0298 decision 9): the gateway
+  // answers a reader without sales withheld, and the page does not ask.
+  readers: ['owner', 'manager'],
   select: (raw) => {
     const d = obj(raw);
     return {
