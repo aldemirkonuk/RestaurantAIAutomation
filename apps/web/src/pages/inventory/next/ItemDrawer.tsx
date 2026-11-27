@@ -81,6 +81,8 @@ export interface NutritionCardProps {
 }
 
 export interface ItemDrawerProps {
+  /** Close the drawer and open the house's Map POS buttons (r109 g3); absent for staff. */
+  onMapTill?: () => void;
   /** The row the URL opened, or null when its id is not on the list. */
   row: InvRow | null;
   house: HouseFields;
@@ -403,6 +405,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         onRetry={() => void usedInQ.refetch()}
         onRetryDishes={() => void dishesQ.refetch()}
         onRetryDrinks={() => void drinksQ.refetch()}
+        onMapTill={props.onMapTill}
       />
     </Sheet>
   );

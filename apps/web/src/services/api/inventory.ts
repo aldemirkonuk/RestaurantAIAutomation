@@ -635,6 +635,17 @@ export interface ItemUsedIn {
   /** Optional: an older gateway does not send it. */
   inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
   namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
+  /** Till buttons mapped to this good (r109 g3). Optional: an older gateway does not send it. */
+  atTill?: ItemUsedInGroup<ItemTillButton>;
+}
+
+/** One till button that draws this good on a sale. No money. */
+export interface ItemTillButton {
+  id: string;
+  source: string;
+  itemName: string;
+  category: string | null;
+  saleUnit: string | null;
 }
 
 /** Under `inventory`, so every inventory write rereads them too. */

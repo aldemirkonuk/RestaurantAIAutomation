@@ -206,3 +206,40 @@ describe("ItemUsedInService reads its groups at once (the drawer waits for the s
     expect(out.inDrinkRecipes).toMatchObject({ readable: true, lines: [] });
   });
 });
+
+describe("At the till (r109 g3)", () => {
+  const button = (id: string, more: Record<string, any> = {}) => ({
+    id, restaurant_id: H, inventory_id: I, source: "square", external_item_id: id, item_name: "Gin & Tonic",
+    category: "Cocktails", sale_unit: "glass", is_wine: false, master_wine_id: null, ...more,
+  });
+
+  it("atTill reads only this house and this good", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Gin", beverage_id: null, master_wine_id: null });
+    (db.tables as any).pos_item_mappings = [
+      button("b-1"),
+      button("b-other-house", { restaurant_id: "house-2" }),
+      button("b-other-good", { inventory_id: "item-9" }),
+      button("b-unmapped", { inventory_id: null }),
+    ];
+    const out = await svc.usedIn(H, I);
+    expect(out.atTill).toEqual({
+      readable: true,
+      lines: [{ id: "b-1", source: "square", itemName: "Gin & Tonic", category: "Cocktails", saleUnit: "glass" }],
+      source: expect.any(String),
+    });
+  });
+
+  it("reads more than a page of buttons whole", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Gin", beverage_id: null, master_wine_id: null });
+    (db.tables as any).pos_item_mappings = Array.from({ length: 1001 }, (_, i) => button(`b-${String(i).padStart(5, "0")}`));
+    const out = await svc.usedIn(H, I);
+    expect(out.atTill.lines).toHaveLength(1001);
+  });
+
+  it("a failed read is failed, never an empty list", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Gin", beverage_id: null, master_wine_id: null });
+    db.failures.pos_item_mappings = "timeout";
+    const out = await svc.usedIn(H, I);
+    expect(out.atTill).toMatchObject({ readable: false, lines: null });
+  });
+});

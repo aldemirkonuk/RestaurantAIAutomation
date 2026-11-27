@@ -48,6 +48,15 @@ export interface DrinkRecipeLine {
   unitCode: string;
 }
 
+/** One till button that draws this good on a sale (pos_item_mappings, ADR 0141). No money. */
+export interface TillButton {
+  id: string;
+  source: string;
+  itemName: string;
+  category: string | null;
+  saleUnit: string | null;
+}
+
 const PAGE = 1000;
 const CHUNK = 100;
 const LINE_COLS =
@@ -127,10 +136,11 @@ export class ItemUsedInService {
     const client = this.db.supabase;
     const item = await readHouseItem(client, restaurantId, itemId);
 
-    const [menu, inCocktails, inDrinkRecipes] = await Promise.all([
+    const [menu, inCocktails, inDrinkRecipes, atTill] = await Promise.all([
       this.menuGroups(client, restaurantId, item),
       this.inCocktails(client, restaurantId, item),
       this.inDrinkRecipes(client, restaurantId, item),
+      this.atTill(client, restaurantId, item),
     ]);
 
     return {
@@ -139,7 +149,43 @@ export class ItemUsedInService {
       inCocktails,
       inDrinkRecipes,
       namedNotLinked: menu.namedNotLinked,
+      atTill,
     };
+  }
+
+  /**
+   * The till buttons mapped to this good (r109 g3): a sale of one draws it
+   * down (pos-hub.service, record_pos_sale by p_restaurant_id). Both filters,
+   * the house and the good (ADR 0141), paged by id. A failed read is failed,
+   * never an empty list. A button mapped to a recipe is not here (#1914).
+   */
+  private async atTill(client: SupabaseClient, restaurantId: string, item: HouseItem): Promise<Group<TillButton>> {
+    const source = "Till buttons mapped to this good: a sale of one draws it down.";
+    const lines: TillButton[] = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("pos_item_mappings")
+        .select("id, restaurant_id, inventory_id, source, item_name, category, sale_unit")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", item.id);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The till buttons", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const r of rows) {
+        lines.push({
+          id: String(r.id),
+          source: String(r.source ?? "*"),
+          itemName: String(r.item_name ?? ""),
+          category: r.category ?? null,
+          saleUnit: r.sale_unit ?? null,
+        });
+      }
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    return { readable: true, lines, source };
   }
 
   /** The current menu's lines linked to the item, then the lines that only carry its name. */
