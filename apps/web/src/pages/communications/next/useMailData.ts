@@ -146,7 +146,8 @@ async function readThreadsPage(withKey: string, pageParam: unknown): Promise<Mai
 async function readThreadPage(key: string, pageParam: unknown, withKey: string | null = null): Promise<MailThreadPage> {
   const params: Record<string, string> = { key };
   // One key can be two threads (one Gmail thread to two vendors): naming
-  // the person reads only theirs (gateway GET /mail/thread `with`).
+  // the person reads only theirs (gateway GET /mail/thread `with`); a team or
+  // guest thread is read by its person.
   if (withKey) params.with = withKey;
   if (pageParam) params.before = String(pageParam);
   return (await apiClient.get<MailThreadPage>('/mail/thread', { params })).data;
@@ -200,7 +201,7 @@ export function useMailThreads(withKey: string | null) {
 }
 
 /**
- * GET /mail/thread?key=<thread_key>[&with=vendor:<id>]. The first page is the newest 50 letters;
+ * GET /mail/thread?key=<thread_key>[&with=<person key>]. The first page is the newest 50 letters;
  * "Show earlier letters" asks for the page `before` the oldest one held.
  * Pages are stored newest-first, so a reader joins them oldest-first.
  */

@@ -194,7 +194,7 @@ export function MailThread({
   bookFacts,
 }: {
   threadKey: string;
-  /** The person the thread was opened from (`?with=`); null reads by key alone. */
+  /** The person the thread was opened from (`?with=`: `vendor:`, `team:` or `guest:`); null reads by key alone. */
   withKey?: string | null;
   onBack: () => void;
   backLabel: string;
