@@ -386,7 +386,7 @@ export default function DrinkCards({
     : (data.current?.lines ?? []).map((l) => ({
         label: l.itemName ?? l.label,
         cost: l.costPerServeExact ?? l.costPerServe,
-        counted: l.role === 'stocked',
+        counted: l.role !== 'untracked',
       }));
   const shared = cost && sayMoney ? shareLines(shareItems, sayPct) : null;
   const cards = [

@@ -36,6 +36,21 @@ describe('line share of cost on the cost card', () => {
     expect(screen.getByTestId('line-shares-block').textContent).toContain('Shares are of the priced part of the serve.');
   });
 
+  it('a made line (a role the stocked/untracked type does not name yet) is in the share, an untracked one is not (r107f)', () => {
+    render(
+      <DrinkCards
+        data={drink([
+          line({ label: 'Gin', itemName: 'Gin', costPerServe: 2 }),
+          line({ label: 'House Sour Mix', itemName: 'House Sour Mix', role: 'made' as never, costPerServe: 0.105 }),
+          line({ label: 'Angostura', role: 'untracked', costPerServe: null, status: 'untracked' }),
+        ])}
+        sayMoney={say}
+        unsaved={false}
+      />,
+    );
+    expect(Array.from(shares()!.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['Gin 95%', 'House Sour Mix 5%']);
+  });
+
   it('staff, who see no cost card, see no shares', () => {
     render(<DrinkCards data={drink([line({})])} sayMoney={null} unsaved={false} />);
     expect(screen.queryByTestId('line-shares')).toBeNull();
