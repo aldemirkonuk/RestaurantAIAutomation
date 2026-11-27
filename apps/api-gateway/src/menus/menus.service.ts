@@ -2825,7 +2825,7 @@ export class MenusService {
       const why = err instanceof Error ? err.message : String(err);
       this.logger.error(`menu ${menuId} is current but its prices were not carried: ${why}`);
       throw new InternalServerErrorException(
-        `This menu is now the current one, but its prices did not reach the house (${why}). Open Menus kept and use Carry its prices again on it; a price set since it was chosen stays.`,
+        `This menu is now the current one, but its prices did not reach the house (${why}). Open Menus kept and use Finish carrying on the current menu's row; a price set since it was chosen stays.`,
       );
     }
 

@@ -2226,6 +2226,15 @@ describe("MenusService — every menu read is kept as its own version", () => {
       });
     });
 
+    it("a carry that fails after the choice names the one button the page offers for it, not an older label", async () => {
+      const { service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      jest.spyOn(service as any, "addToInventory").mockRejectedValue(new Error("timeout"));
+      const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
+      const e: any = await service.makeCurrent("rest-1", read.menuId, "user-2", fp).catch((x: unknown) => x);
+      expect(String(e.message)).toMatch(/use Finish carrying on the current menu's row/);
+      expect(String(e.message)).not.toMatch(/Carry its prices again/);
+    });
+
     it("choosing a current menu whose choice has no moment on record writes no price", async () => {
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = base();
