@@ -103,6 +103,8 @@ export interface ComposeSheetProps {
    * discarded leaves nothing to hold.
    */
   onHold?: (held: HeldLetter) => void;
+  /** The letter was queued (202): a reply held on its thread is let go (r109 mail-gap g2). */
+  onQueued?: () => void;
   /** Prefill from a recommendation's "Write to the vendor", when there is one. */
   prefill?: {
     providerId?: string;
@@ -145,7 +147,7 @@ export interface ComposeSheetProps {
   onDiscarded?: () => void;
 }
 
-export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: ComposeSheetProps) {
+export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDiscarded }: ComposeSheetProps) {
   const data = useComposeData();
   const person = prefill?.person ?? null;
   const [to, setTo] = useState<Recipient | null>(
@@ -361,6 +363,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
         undoMs: result.undoMs,
         notices: result.notices ?? [],
       });
+      onQueued?.();
       data.refetchQueued();
     } catch (e) {
       setSend({
@@ -369,7 +372,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
         guardrails: guardrailsFrom(e),
       });
     }
-  }, [to, letter, mint, data]);
+  }, [to, letter, mint, data, onQueued]);
 
   /** Ask an owner or a manager to send this exact letter. Nothing is queued. */
   const ask = useCallback(async () => {

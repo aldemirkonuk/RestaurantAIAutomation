@@ -33,6 +33,7 @@ import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
+import { forgetReplyHolds } from "../pages/communications/next/held-words";
 import { ensurePersisted } from "../lib/deviceStorage";
 
 /** How long sign-out waits for the read-cache clear before finishing anyway. */
@@ -688,6 +689,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         if (house !== restaurantId) return false;
         clearHouseEnded();
+        forgetReplyHolds();
 
         // The token now names the new house: forget the last house's reads
         // before anything renders under the new name (PROCURE-04, MENU-01,
@@ -1080,6 +1082,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // only ids and times, and it is what lets this person go straight back
       // into their house tomorrow.
       clearHouseEnded();
+      // A half-written Mail reply is this person's, in this house (r109 g2).
+      forgetReplyHolds();
       // The read cache was this session's: the next person on a shared device
       // must not see it. Cache only — unsent work is ADR 0241's to decide.
       // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a
