@@ -16,6 +16,7 @@ import {
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
+import { CorrectionRowLite, overlayCorrections } from "./correction-overlay";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -153,6 +154,8 @@ interface LineRow {
   document_id: string;
   line_no: number | null;
   inventory_id: string | null;
+  /** The count as printed, in `uom`: a corrected quantity re-derives `qty_bottles` from it. */
+  qty?: number | string | null;
   qty_bottles: number | string | null;
   unit_price: number | string | null;
   description: string | null;
@@ -379,6 +382,23 @@ function baseLine(invoice: LineRow[], id: string | null): LineRow | undefined {
  * price, so its printed total is checked against the PAID bottles. */
 function paidLine(l: LineRow): LineRow {
   return { ...l, qty_bottles: paidBottles(l) };
+}
+
+/** Each invoice's lines with its corrections laid over them (r109); a door count's lines as stored. */
+function overlaid(
+  rows: LineRow[],
+  corrections: Map<string, CorrectionRowLite[]>,
+  papers: PaperHeaderRow[],
+): LineRow[] {
+  if (!corrections.size) return rows;
+  const out = [...rows];
+  for (const [docId, list] of corrections) {
+    const at = rows.map((r, i) => (r.document_id === docId ? i : -1)).filter((i) => i >= 0);
+    const head = (papers.find((h) => h.id === docId) ?? { id: docId }) as unknown as Record<string, unknown>;
+    const laid = overlayCorrections(head, at.map((i) => rows[i] as unknown as Record<string, unknown>), list);
+    at.forEach((i, k) => (out[i] = laid.lines[k] as unknown as LineRow));
+  }
+  return out;
 }
 
 interface AgreedPrice {
@@ -779,6 +799,26 @@ export class DeliveryStockService {
         papers: priced.value.papers,
       },
     };
+  }
+
+  /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
+  private async correctionsOf(documentIds: string[]): Promise<StockResult<Map<string, CorrectionRowLite[]>>> {
+    const out = new Map<string, CorrectionRowLite[]>();
+    for (let from = 0; ; from += 1000) {
+      const read = await this.db
+        .getClient()
+        .from("document_corrections")
+        .select("document_id, revision, kind, field_path, after")
+        .in("document_id", documentIds)
+        .order("revision", { ascending: true })
+        .range(from, from + 999);
+      if (read.error)
+        return { ok: false, status: 500, error: `the corrections to the invoices could not be read (${read.error.message}), so no cost is posted on a paper that may have been corrected. Retry is safe.` };
+      const rows = (read.data ?? []) as (CorrectionRowLite & { document_id: string })[];
+      for (const r of rows) out.set(r.document_id, [...(out.get(r.document_id) ?? []), r]);
+      if (rows.length < 1000) break;
+    }
+    return { ok: true, value: out };
   }
 
   /**
@@ -1392,6 +1432,7 @@ export class DeliveryStockService {
     // Each invoice's money columns: its charges and discount are shared over
     // its lines (F3), so a paper that cannot be read is not read as "none".
     let papers: PaperHeaderRow[] = [];
+    let corrections = new Map<string, CorrectionRowLite[]>();
     if (invoiceIds.length) {
       const heads = await this.db
         .getClient()
@@ -1408,6 +1449,11 @@ export class DeliveryStockService {
           error: `the invoices on delivery ${deliveryId} could not be read for their charges and discount: ${heads.error.message}`,
         };
       papers = (heads.data ?? []) as unknown as PaperHeaderRow[];
+      // r109 (DD-r108-20): a paper is costed as corrected, never as first read.
+      const read = await this.correctionsOf(invoiceIds);
+      if (!read.ok) return read;
+      corrections = read.value;
+      papers = papers.map((h) => overlayCorrections(h as unknown as Record<string, unknown>, [], corrections.get(h.id) ?? []).header as unknown as PaperHeaderRow);
     }
     // QA 15 (5): an unreadable house is not "no currency named". ADR 0359
     // C2: nor is it "has not said whether it reclaims tax" — the same read
@@ -1441,7 +1487,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
+          "document_id, line_no, inventory_id, qty, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
@@ -1453,7 +1499,7 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      const rows = (read.data ?? []) as unknown as LineRow[];
+      const rows = overlaid((read.data ?? []) as unknown as LineRow[], corrections, papers);
       // R8: a weighed line is costed per one of its ITEM's unit.
       const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
       if (!units.ok) return units;
