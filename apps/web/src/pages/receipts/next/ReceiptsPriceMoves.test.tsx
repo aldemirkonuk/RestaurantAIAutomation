@@ -4,13 +4,17 @@
  * cost to compare. Information only: nothing here blocks or edits.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
-const api = vi.hoisted(() => ({ moves: vi.fn() }));
+const api = vi.hoisted(() => ({
+  moves: vi.fn(),
+  restate: vi.fn(),
+  seal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
+}));
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null }),
@@ -25,6 +29,8 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       list: (opts: { status?: string }) => Promise.resolve(opts.status === 'needs_review' ? [DOC_REF.current] : []),
       detail: () => Promise.resolve({ document: DOC_REF.current, lines: [LINE_REF.current], links: [] }),
       priceMoves: api.moves,
+      restateCurrency: api.restate,
+      mintCurrencySeal: api.seal,
       houseCurrency: () => Promise.resolve(null),
     },
   };
@@ -128,6 +134,15 @@ const moved = {
 
 beforeEach(() => {
   api.moves.mockReset();
+  api.restate.mockReset();
+  api.restate.mockResolvedValue({
+    currency: 'TRY',
+    previousCurrency: 'EUR',
+    sentence: 'Currency restated from EUR to TRY.',
+    moneyRefiled: true,
+    linesRefiled: 1,
+    lineFailures: [],
+  });
 });
 
 describe('the check card on a cost that moved', () => {
@@ -183,5 +198,26 @@ describe('the check card on a cost that moved', () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(await screen.findByText(/earlier costs could not be read, so no price was compared/)).toBeTruthy();
+  });
+
+  it('reads the prices again after the money is restated, so the note is not left on the old money (r105)', async () => {
+    api.moves.mockResolvedValueOnce({
+      thresholdPct: 10,
+      paperCurrency: 'TRY',
+      houseCurrency: 'USD',
+      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false as const, reason: 'currency_differs' }],
+    });
+    api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/none were compared against earlier costs/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Change the currency' }));
+    fireEvent.change(screen.getByLabelText('Currency this invoice is denominated in'), { target: { value: 'TRY' } });
+    const control = screen.getByRole('button', { name: /Hold to file this invoice in TRY/ });
+    fireEvent.keyDown(control, { key: 'Enter' });
+    fireEvent.keyDown(control, { key: 'Enter' });
+    await waitFor(() => expect(api.restate).toHaveBeenCalled());
+    expect(await screen.findByText(/was 10\.00, now 11\.80, up 18 percent, against its last invoiced cost/)).toBeTruthy();
+    expect(screen.queryByText(/none were compared against earlier costs/)).toBeNull();
   });
 });
