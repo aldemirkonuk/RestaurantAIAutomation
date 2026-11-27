@@ -48,13 +48,19 @@ describe("a serve that cannot be read, and one that has nothing recorded", () =>
     const out = await read(fakeDb(house({ item_nutrition: [], item_allergens: [] })).db);
     expect(out.whatIsIn.readable).toBe(true);
     expect(out.whatIsIn.sentence).toBeUndefined();
-    expect(JSON.stringify(out.whatIsIn)).not.toMatch(/"(energyKcal|kcal)":0\b/);
+    // Each figure is {value, atLeast, missing}; an unknown one is a null value, never 0 (ADR 0020).
+    expect(out.whatIsIn.figures.energyKcal.value).toBeNull();
+    for (const f of Object.values(out.whatIsIn.figures) as Array<{ value: number | null }>) expect(f.value).toBeNull();
+    expect(out.whatIsIn.counted).toBe(0);
   });
 
   it("tables present with rows for the flour: the figures are counted and the read says it is readable", async () => {
-    const nutrition = [{ restaurant_id: HOUSE_A, inventory_id: FLOUR, basis: "per_100g", energy_kcal: 364, fat_g: 1, saturates_g: 0.2, carbohydrate_g: 76, sugars_g: 0.3, protein_g: 10, salt_g: 0, abv_pct: null, energy_from_abv: false }];
+    const nutrition = [{ restaurant_id: HOUSE_A, inventory_id: FLOUR, basis: "100g", energy_kcal: 364, fat_g: 1, saturates_g: 0.2, carbohydrate_g: 76, sugars_g: 0.3, protein_g: 10, salt_g: 0, abv_pct: null, energy_from_abv: false }];
     const out = await read(fakeDb(house({ item_nutrition: nutrition, item_allergens: [{ restaurant_id: HOUSE_A, inventory_id: FLOUR, allergen: "gluten", status: "contains" }] })).db);
     expect(out.whatIsIn.readable).toBe(true);
     expect(JSON.stringify(out.whatIsIn)).toMatch(/gluten/);
+    // The tart's two flour lines (250 g and 50 g, 8 serves) at 364 kcal per 100 g count; the lemons do not.
+    expect(out.whatIsIn.figures.energyKcal.value).toBe(136.5);
+    expect(out.whatIsIn.counted).toBe(2);
   });
 });
