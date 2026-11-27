@@ -64,6 +64,16 @@ export const settingsApi = {
     return response.data;
   },
 
+  /**
+   * The house's IANA time zone as `GET /settings/time-zone` answers it:
+   * `zone: null` when nobody stated one, `readable: false` when the row could
+   * not be read. Read by every role (only the write is owner or manager).
+   */
+  async houseTimeZone(): Promise<{ zone: string | null; readable: boolean }> {
+    const response = await apiClient.get<{ zone: string | null; readable: boolean }>('/settings/time-zone');
+    return response.data;
+  },
+
   async getFeatureFlags(): Promise<FeatureFlags> {
     const response = await apiClient.get<FeatureFlags>('/settings/feature-flags');
     return response.data;

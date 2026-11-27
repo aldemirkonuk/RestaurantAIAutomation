@@ -5,6 +5,12 @@
  * reader's browser, so two people looking at one house read one date. While the
  * currency is read, or when it could not be, it falls back to the reader's own
  * form: a date carries no sign, so nothing is guessed.
+ *
+ * The DAY is the house's too: a version saved at 22:30 UTC is the 25th in an
+ * Istanbul house and the 24th on a laptop in New York, so the date is cut in the
+ * house's own zone (`GET /settings/time-zone`). Until that is read, when the
+ * house has stated none, or when it cannot be resolved, the day is the reader's
+ * own, as the form is.
  */
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -37,15 +43,27 @@ export function useHouseDate(): SayDate {
     staleTime: 5 * 60_000,
     refetchOnMount: true,
   });
+  const z = useQuery({
+    queryKey: ['settings', 'time-zone', activeRestaurantId ?? null],
+    enabled: Boolean(activeRestaurantId),
+    queryFn: () => settingsApi.houseTimeZone(),
+    staleTime: 5 * 60_000,
+    refetchOnMount: true,
+  });
+  const timeZone = z.data?.readable && z.data.zone ? z.data.zone : undefined;
   const locale = dateLocale(houseNumberLocale(q.data?.readable ? q.data.code : null));
   return (iso) => {
     const made = new Date(iso ?? '');
     if (!Number.isFinite(made.getTime())) return null;
     const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-    try {
-      return made.toLocaleDateString(locale, opts);
-    } catch {
-      return made.toLocaleDateString(undefined, opts);
+    // A zone this runtime cannot resolve throws a RangeError: say the day in the reader's zone, never nothing.
+    for (const [loc, zone] of [[locale, timeZone], [locale, undefined], [undefined, undefined]] as const) {
+      try {
+        return made.toLocaleDateString(loc, zone ? { ...opts, timeZone: zone } : opts);
+      } catch {
+        /* try the next, plainer form */
+      }
     }
+    return null;
   };
 }
