@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -115,6 +115,32 @@ export function TillWindowPicker({
   );
 }
 
+/**
+ * True when the reader's drawing needs a shape this view does not carry, so
+ * `Drawing` says why instead of plotting. One test, read by `Drawing` (what to
+ * show) and `Body` (whether the view's own reason was already said above).
+ */
+function cannotDraw(view: AnalysisView, graph: GraphType): boolean {
+  if (view.say) return false;
+  switch (graph) {
+    case 'line':
+    case 'area':
+    case 'bars':
+      return !view.cats;
+    case 'combo':
+      return !view.cats?.measures?.length;
+    case 'scatter':
+      return !view.points;
+    case 'heatmap':
+      return !view.matrix;
+    case 'figure':
+      return view.figures.length === 0;
+    case 'table':
+    default:
+      return !view.node && !view.table;
+  }
+}
+
 /** The chosen drawing, or — when the register cannot honestly be drawn that
  *  way at all — a sentence saying so rather than an empty frame. */
 function Drawing({
@@ -129,37 +155,33 @@ function Drawing({
   combo?: ComboControl;
 }) {
   if (view.say) return <Nothing>{view.say}</Nothing>;
+  if (cannotDraw(view, graph)) return <Undrawable graph={graph} why={view.undrawn} />;
   switch (graph) {
     case 'line':
     case 'area':
     case 'bars':
-      return view.cats ? <CatPlot series={view.cats} kind={graph} /> : <Undrawable graph={graph} />;
+      return <CatPlot series={view.cats!} kind={graph} />;
     case 'combo':
-      return view.cats?.measures?.length ? (
-        <ComboPlot series={view.cats} pick={combo?.pick} onPick={combo?.onPick} />
-      ) : (
-        <Undrawable graph={graph} />
-      );
+      return <ComboPlot series={view.cats!} pick={combo?.pick} onPick={combo?.onPick} />;
     case 'scatter':
-      return view.points ? <PointPlot series={view.points} /> : <Undrawable graph={graph} />;
+      return <PointPlot series={view.points!} />;
     case 'heatmap':
-      return view.matrix ? <HeatGrid series={view.matrix} /> : <Undrawable graph={graph} />;
+      return <HeatGrid series={view.matrix!} />;
     case 'figure':
-      return view.figures.length > 0 ? (
-        <BigFigure fig={view.figures[0]} window={windowLine} />
-      ) : (
-        <Undrawable graph={graph} />
-      );
+      return <BigFigure fig={view.figures[0]} window={windowLine} />;
     case 'table':
     default:
       if (view.node) return <>{view.node}</>;
-      return view.table ? <DataTable table={view.table} /> : <Undrawable graph={graph} />;
+      return <DataTable table={view.table!} />;
   }
 }
 
 /** The register answered, and this particular answer has nothing of that
- *  shape in it. Said, never drawn as an empty axis. */
-function Undrawable({ graph }: { graph: GraphType }) {
+ *  shape in it. Said, never drawn as an empty axis. When the register knows
+ *  WHY (`view.undrawn` — say, no order fell in either window), only that real
+ *  reason is said: a generic line above it would only bury it (r56). */
+function Undrawable({ graph, why }: { graph: GraphType; why?: ReactNode }) {
+  if (why != null) return <Nothing>{why}</Nothing>;
   return (
     <Nothing>
       This register answered, and what it returned cannot be drawn as{' '}
@@ -194,6 +216,11 @@ function Body({
   // figures would repeat what the rows already say, so they are left off.
   const figures =
     graph === 'table' && view.node ? [] : graph === 'figure' ? view.figures.slice(1) : view.figures;
+  // The reason the drawing is absent was just said in its place; say it once.
+  const notes =
+    view.undrawn != null && cannotDraw(view, graph)
+      ? view.notes.filter((n) => n !== view.undrawn)
+      : view.notes;
   return (
     <>
       <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} />
@@ -204,7 +231,7 @@ function Body({
           ))}
         </dl>
       )}
-      {view.notes.map((n, i) => (
+      {notes.map((n, i) => (
         <p key={i} className="rp-cap">
           {n}
         </p>
