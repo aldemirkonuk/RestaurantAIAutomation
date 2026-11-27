@@ -445,6 +445,9 @@ function valueLabels(dataKey: string, format: (v: number) => string) {
 
 const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
 
+/** A part week or month (r109 g3) is drawn this light, so a short bucket never reads as a slow one. */
+export const PART_OPACITY = 0.45;
+
 /** The most points a drawing carries; the table keeps every one (r102 M7: 365 days drew 365 recharts nodes and froze a frame). */
 export const MAX_DRAWN = 150;
 
@@ -584,7 +587,14 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
                   style={stagger(i, rows.length)}
                 />
               ) : (
-                <Cell key={`${i}:${r.label}`} fill="var(--seal)" data-projected="false" style={stagger(i, rows.length)} />
+                <Cell
+                  key={`${i}:${r.label}`}
+                  fill="var(--seal)"
+                  fillOpacity={r.part ? PART_OPACITY : undefined}
+                  data-projected="false"
+                  data-part={r.part ? 'true' : undefined}
+                  style={stagger(i, rows.length)}
+                />
               ),
             )}
           </Bar>
@@ -823,7 +833,13 @@ export function ComboPlot({
           >
             {rows.length <= LABEL_BARS_MAX && valueLabels('bar', bars.format)}
             {rows.map((r, i) => (
-              <Cell key={`${i}:${r.label}`} fill="var(--seal)" style={stagger(i, rows.length)} />
+              <Cell
+                key={`${i}:${r.label}`}
+                fill="var(--seal)"
+                fillOpacity={r.part ? PART_OPACITY : undefined}
+                data-part={r.part ? 'true' : undefined}
+                style={stagger(i, rows.length)}
+              />
             ))}
           </Bar>
           <Line

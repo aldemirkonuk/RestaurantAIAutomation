@@ -30,7 +30,8 @@ import {
   weekdayIndex,
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
-import type { Cat, Cell, Measure } from './rp-view';
+import type { Cat, CatSeries, Cell, Measure } from './rp-view';
+import { bucketPrior, bucketTill, grainOf } from './rp-grain';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
@@ -417,8 +418,37 @@ const till = analysis<TillWindow>({
         },
       );
     }
+    // Week or month bars (r109 g3): every day of the window inside its bucket,
+    // so a long window is no longer drawn as the highest of each stretch.
+    const grain = grainOf(ctx.grain, ctx.days);
+    const grained = grain !== 'day' && span.length > 0 ? bucketTill(span, w.dailySeries, grain) : null;
+    const grainedCats = (b: NonNullable<typeof grained>): CatSeries => {
+      const priorB =
+        ctx.compare && w.prior ? bucketPrior(b, span, daysBetween(w.prior.from, w.prior.to), w.prior.dailySeries) : null;
+      return {
+        data: b.map((x, i) => ({
+          label: x.label,
+          value: x.revenue,
+          full: x.full,
+          ...(x.whole ? {} : { part: true }),
+          ...(priorB ? { prior: priorB[i] } : {}),
+        })),
+        ...(priorB ? { priorLabel: `the prior ${w.days} days, in the same ${grain}s` } : {}),
+        xLabel: grain,
+        yLabel: 'taken',
+        unit: 'taken',
+        format: (v) => money(v, 'compact'),
+        measureLabel: 'Taken',
+        measures: counted
+          ? [
+              { key: 'checks', label: 'Checks', unit: 'checks', format: (v) => figure(v), values: b.map((x) => x.checks) },
+              { key: 'avg', label: 'Average check', unit: 'a check', format: (v) => money(v, 'compact'), values: b.map((x) => x.avg) },
+            ]
+          : undefined,
+      };
+    };
     return {
-      cats: {
+      cats: grained ? grainedCats(grained) : {
         data: shown.map((date, i) => ({
           label: shortDay(date),
           value: byDate.get(date) ?? null,
