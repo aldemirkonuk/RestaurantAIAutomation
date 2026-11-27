@@ -1,5 +1,5 @@
 import { AuthService } from "./auth.service";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { ConflictException, HttpException } from "@nestjs/common";
 
 /**
  * The lockout this closes was found in a stalled agent's uncommitted work and
@@ -140,9 +140,18 @@ describe("resendVerification — an account with no verification row", () => {
       { id: "v0", verified_at: minutesAgo(0.2), created_at: minutesAgo(0.2) },
     ]);
 
-    await expect(
-      service.resendVerification("u1", "a@b.com"),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    // A 429 whose body names the seconds left, so a cross-origin page (which
+    // cannot read Retry-After) can count down from it.
+    const refused = await service
+      .resendVerification("u1", "a@b.com")
+      .catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(HttpException);
+    expect((refused as HttpException).getStatus()).toBe(429);
+    const wait = (refused as HttpException).getResponse() as {
+      retryAfter: number;
+    };
+    expect(wait.retryAfter).toBeGreaterThan(40);
+    expect(wait.retryAfter).toBeLessThanOrEqual(60);
     expect(sent).toHaveLength(0);
   });
 
@@ -174,9 +183,18 @@ describe("resendVerification — an account with no verification row", () => {
       },
     ]);
 
-    await expect(
-      service.resendVerification("u1", "a@b.com"),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    // A 429 whose body names the seconds left, so a cross-origin page (which
+    // cannot read Retry-After) can count down from it.
+    const refused = await service
+      .resendVerification("u1", "a@b.com")
+      .catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(HttpException);
+    expect((refused as HttpException).getStatus()).toBe(429);
+    const wait = (refused as HttpException).getResponse() as {
+      retryAfter: number;
+    };
+    expect(wait.retryAfter).toBeGreaterThan(40);
+    expect(wait.retryAfter).toBeLessThanOrEqual(60);
     expect(sent).toHaveLength(0);
   });
 });

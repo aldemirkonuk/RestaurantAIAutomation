@@ -89,6 +89,17 @@ describe('VerifyEmail resend cooldown', () => {
     expect(resendButton()).toBeEnabled()
   })
 
+  it("seeds the wait from the body's retryAfter, which a cross-origin page can read", async () => {
+    // No Retry-After header is visible cross-origin; the body carries the seconds left.
+    h.post.mockRejectedValueOnce({
+      response: { status: 429, headers: {}, data: { message: 'Please wait 1 minute before resending', retryAfter: 42 } },
+    })
+    await pressResend()
+    expect(resendButton()).toBeDisabled()
+    expect(resendButton()).toHaveTextContent('Resend in 42 s')
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('keeps the label width fixed with tabular numerals', () => {
     expect(resendButton().style.fontVariantNumeric).toBe('tabular-nums')
   })
