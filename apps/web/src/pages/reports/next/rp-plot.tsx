@@ -916,6 +916,7 @@ export function ComboPlot({
           <Tooltip
             wrapperStyle={tipWrapper(barGutter)}
             {...tipMotion()}
+            filterNull={false}
             cursor={{ fill: 'var(--seal-tint)' }}
             content={<ComboTip plan={plan} /> as unknown as never}
           />

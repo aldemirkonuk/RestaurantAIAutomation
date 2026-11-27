@@ -17,7 +17,7 @@ vi.mock('recharts', async () => {
   };
 });
 
-import { CatPlot, PointPlot, tipSentence } from './rp-plot';
+import { CatPlot, ComboPlot, PointPlot, tipSentence } from './rp-plot';
 import type { CatSeries, PointSeries } from './rp-view';
 
 afterEach(cleanup);
@@ -83,6 +83,32 @@ describe('Escape', () => {
     arrow(surface(container), 'ArrowRight');
     expect(container.querySelector('.rp-tip')).not.toBeNull();
     expect(live().textContent).toBe('Day 2. $480 taken');
+  });
+});
+
+describe('the bars and a line', () => {
+  it('walks by keyboard and speaks each measure in its own unit, a null measure as not stated', () => {
+    const series: CatSeries = {
+      data: [
+        { label: 'Mon', value: 10, full: 'Monday' },
+        { label: 'Tue', value: 12, full: 'Tuesday' },
+        { label: 'Wed', value: null, full: 'Wednesday' },
+      ],
+      xLabel: 'weekday',
+      yLabel: 'bottles/day',
+      unit: 'bottles/day',
+      format: String,
+      measureLabel: 'Mean per day',
+      measures: [{ key: 'seen', label: 'Days seen', unit: 'days', format: String, values: [12, 11, null] }],
+    };
+    const { container } = render(<ComboPlot series={series} />);
+    expect(container.querySelector('.rp-plot')?.getAttribute('role')).toBe('group');
+    fireEvent.focus(surface(container));
+    expect(live().textContent).toMatch(/^Monday\. .*: 10 .*; Days seen: 12 days$/);
+    arrow(surface(container), 'ArrowRight');
+    arrow(surface(container), 'ArrowRight');
+    expect(live().textContent).toMatch(/^Wednesday\. .*: not stated; Days seen: not stated$/);
+    expect(container.querySelector('.rp-tip')?.textContent).toContain('—');
   });
 });
 
