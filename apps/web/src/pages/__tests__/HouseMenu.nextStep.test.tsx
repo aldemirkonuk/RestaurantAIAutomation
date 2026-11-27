@@ -47,6 +47,10 @@ describe('the first proof offers the way on to a team', () => {
     open(false)
     const link = await screen.findByRole('link', { name: 'Invite your people' })
     expect(link.getAttribute('href')).toBe('/settings?tab=team&invite=1')
+    // A 44 px thumb target at 375 (was 18 px tall): flex row, centred, pinned.
+    expect(link.className).toMatch(/(^|\s)inline-flex(\s|$)/)
+    expect(link.className).toMatch(/(^|\s)min-h-\[44px\](\s|$)/)
+    expect(link.className).toMatch(/(^|\s)items-center(\s|$)/)
   })
 
   it('shows a manager the link', async () => {

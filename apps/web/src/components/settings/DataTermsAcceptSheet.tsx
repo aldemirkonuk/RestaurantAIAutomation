@@ -172,15 +172,19 @@ export function DataTermsAcceptSheet({
       // scrim says so instead of offering "Put it down" and doing nothing.
       closeLabel={dismissable ? 'Put it down' : 'These terms stay open until you accept them'}
       scrim
+      // Only a sheet that can be put down may say reading asks nothing yet. The
+      // sign-in sheet has no way out but Hold to accept (ADR 0207 §19, the
+      // founder's "must accept to continue"), so it says that instead (r109).
       label={
         reaccepting
-          ? `This house's data and privacy terms changed. Reading them asks nothing of you yet; ${jev.short}`
-          : `This house's data and privacy terms, including Jev (TypeSafe). Reading them asks nothing of you yet; ${jev.short}`
+          ? `This house's data and privacy terms changed. ${dismissable ? 'Reading them asks nothing of you yet' : 'They stay open until you accept them again'}; ${jev.short}`
+          : `This house's data and privacy terms, including Jev (TypeSafe). ${dismissable ? 'Reading them asks nothing of you yet' : 'They stay open until you accept them'}; ${jev.short}`
       }
       eyebrow="Data & privacy terms"
       title={reaccepting ? 'The terms changed — read them again' : 'This house’s data & privacy terms'}
       contract={
         <span>
+          {dismissable ? null : <>To go on in Mudavym, accept them: they stay open until you do. </>}
           {jev.long} It changes nothing else — every other flow below already happens whether or
           not you accept.
         </span>
