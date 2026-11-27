@@ -275,11 +275,14 @@ export default function CocktailRegister({
           return Boolean(f?.hasRecipe) && costNotKnown(f?.cost);
         }).map((c) => c.id)
       : [];
+  // A switch narrows the list only while what it narrows by is read: unread, the list stays whole and the switch says so.
+  const figuresRead = Boolean(figures.byId);
+  const costsRead = figuresRead && !figures.costsUnread;
   const rows = !seesCost
     ? byAllergen
-    : onlyBare
+    : onlyBare && figuresRead
       ? byAllergen.filter((c) => bareIds.includes(c.id))
-      : onlyUncosted
+      : onlyUncosted && !onlyBare && costsRead
         ? byAllergen.filter((c) => uncostedIds.includes(c.id))
         : byAllergen;
   const figuresRead = Boolean(figures.byId) && !figures.costsUnread;
@@ -614,13 +617,13 @@ export default function CocktailRegister({
                 // The line lands when the figures do (about 225 ms in), so its room is held from the first paint:
                 // empty while they load and for a house where every drink has a recipe, never given back (r104 FAIL 14).
                 <div className="cl-said cl-norecipe-room" data-testid="no-recipe-room">
-                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={(v) => { flip.before(); setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
+                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} read={figuresRead} onOnly={(v) => { flip.before(); setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
                 </div>
               ) : null}
               {seesCost ? (
                 // Lands with the figures like the no-recipe line, so its room is held the same way (r107 walk F2: 31 px table shift at 1440).
                 <div className="cl-norecipe-room" data-testid="no-cost-room">
-                  <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} onOnly={(v) => { flip.before(); setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
+                  <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} read={costsRead} onOnly={(v) => { flip.before(); setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
                 </div>
               ) : null}
               <AllergenCheck value={allergen} onChange={slid(setAllergen)} hidden={searched.length - byAllergen.length} noun="drinks" />

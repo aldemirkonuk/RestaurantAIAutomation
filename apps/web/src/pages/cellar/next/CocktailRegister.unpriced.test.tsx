@@ -5,7 +5,7 @@
  * as the words under each Not known cost (`costNotKnown`), owner or manager only.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
@@ -122,6 +122,45 @@ describe('Only without a cost', () => {
     fireEvent.click(screen.getByTestId('no-cost-yet').querySelector('input') as HTMLInputElement);
     expect(rowsShown()).toEqual(['Gin Sour']);
     expect((screen.getByTestId('no-recipe-yet').querySelector('input') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('keeps the switch when the last unpriced drink gets priced, so the list can come back (r107f)', async () => {
+    const orig = figures[1];
+    const { qc } = mount();
+    await waitFor(() => expect(screen.getByTestId('no-cost-yet')).toBeInTheDocument());
+    fireEvent.click(only());
+    expect(rowsShown()).toEqual(['Gin Sour']);
+    try {
+      figures[1] = { ...orig, cost: cost({}) } as never;
+      await act(async () => { await qc.invalidateQueries(); });
+      await waitFor(() => expect(screen.getByTestId('no-cost-yet')).toHaveTextContent('Every drink with a recipe now has a cost.'));
+      expect(rowsShown()).toEqual([]);
+      expect(only().checked).toBe(true);
+      fireEvent.click(only());
+      expect(rowsShown()).toEqual(['House G&T', 'Gin Sour', 'Bare', 'Paloma']);
+      expect(screen.queryByTestId('no-cost-yet')).toBeNull();
+    } finally {
+      figures[1] = orig;
+    }
+  });
+
+  it('keeps the no-recipe switch when the last bare drink gets a recipe (r107f)', async () => {
+    const orig = figures[2];
+    const { qc } = mount();
+    await waitFor(() => expect(screen.getByTestId('no-recipe-yet')).toBeInTheDocument());
+    const box = () => screen.getByTestId('no-recipe-yet').querySelector('input') as HTMLInputElement;
+    fireEvent.click(box());
+    expect(rowsShown()).toEqual(['Bare']);
+    try {
+      figures[2] = { ...orig, hasRecipe: true, lineCount: 1, yieldServes: 1, cost: cost({}) } as never;
+      await act(async () => { await qc.invalidateQueries(); });
+      await waitFor(() => expect(screen.getByTestId('no-recipe-yet')).toHaveTextContent('Every drink now has a recipe.'));
+      expect(box().checked).toBe(true);
+      fireEvent.click(box());
+      expect(rowsShown()).toEqual(['House G&T', 'Gin Sour', 'Bare', 'Paloma']);
+    } finally {
+      figures[2] = orig;
+    }
   });
 
   it('says nothing when every costed drink is complete', async () => {
