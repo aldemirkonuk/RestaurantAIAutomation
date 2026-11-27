@@ -16,7 +16,7 @@ import { ItemUsedInService } from "./item-used-in.service";
 import { ItemUseCountsService } from "./item-use-counts.service";
 import { ItemFiguresService, MoneyView } from "./item-figures.service";
 import { HouseItemService } from "./house-item.service";
-import { CreateHouseItemDto } from "./dto/house-item.dto";
+import { CreateHouseItemDto, LinkMenuLineDto } from "./dto/house-item.dto";
 
 /** Registered by InventoryModule beside this controller. */
 export const ITEM_DETAIL_PROVIDERS = [ItemUsedInService, ItemUseCountsService, ItemFiguresService, HouseItemService];
@@ -66,6 +66,29 @@ export class ItemDetailController {
         error.message || "Where this item is used could not be read",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
+    }
+  }
+
+  @Post(":restaurantId/item/:itemId/used-in/link")
+  @ApiOperation({ summary: "Link a same-named current-menu line to this good; answers the fresh Used in" })
+  @ApiResponse({ status: 201, description: "Linked; the fresh Used in" })
+  @ApiResponse({ status: 403, description: "Only an owner or a manager links a line" })
+  @ApiResponse({ status: 409, description: "Not on the current menu, another name, or already linked (with the good that holds it)" })
+  async linkUsedIn(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: LinkMenuLineDto,
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    if (!user?.userId) {
+      throw new HttpException("Linking a line needs a signed-in owner or manager. Nothing was linked.", HttpStatus.FORBIDDEN);
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "link a menu line to a good");
+    try {
+      return await this.usedInService.link(restaurantId, itemId, dto.menuItemId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(error.message || "The line could not be linked", HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -31,6 +32,8 @@ export interface MenuLine {
   byGlassPrice: number | null;
   bottlePrice: number | null;
   linkedBy?: "inventory_item_id" | "wine_library_id";
+  /** The current menu the line is on, by its name, so a person linking it knows which (r109 g2). */
+  menuName?: string | null;
 }
 
 export interface CocktailLine {
@@ -142,18 +145,127 @@ export class ItemUsedInService {
     };
   }
 
+  /**
+   * Link one current-menu line that carries this good's name and no link to
+   * any good (r109 g2), then answer with the fresh "Used in".
+   *
+   * Every condition is re-checked here and again in the write itself: the
+   * line is this house's, on one of its current (active) menus, not
+   * discarded, linked to nothing, and its name folds to the good's name, so a
+   * crafted id cannot link an unrelated line. Twin goods sharing a folded
+   * name (#1618) each pass the name check; the first to link takes the line
+   * and the other is answered 409 with the good that holds it.
+   *
+   * What it changes (ADR 0193): the line counts as this good on the current
+   * menu, and a later price or name correction on the line sets this good's
+   * menu price or name (menus.service correctLine, priceSync no longer
+   * 'not_linked'). Making another menu current does not carry the link: that
+   * plan matches lines to goods by wine_library_id, which this leaves alone.
+   */
+  async link(restaurantId: string, itemId: string, menuItemId: string) {
+    const client = this.db.supabase;
+    const item = await readHouseItem(client, restaurantId, itemId);
+    const unavailable = (what: string, message: string) =>
+      new ServiceUnavailableException(`${what} could not be read (${message}), so nothing was linked. Try again.`);
+
+    const menus = await client
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active");
+    if (menus.error) throw unavailable("The house's current menu", menus.error.message);
+    const menuIds = ((menus.data ?? []) as Array<{ id: string }>).map((m) => String(m.id));
+
+    const line = await client
+      .from("menu_items")
+      .select("id, menu_id, name, inventory_item_id, status")
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (line.error) throw unavailable("The menu line", line.error.message);
+    const l = line.data as Record<string, any> | null;
+    if (!l) throw new NotFoundException(`Menu line ${menuItemId} is not on this house's menu. Nothing was linked.`);
+    if (!menuIds.includes(String(l.menu_id)) || l.status === "discarded") {
+      throw new ConflictException({
+        message: `"${l.name}" is not on the house's current menu, so it is not linked. Only a line on the current menu is.`,
+        reason: "not_current",
+      });
+    }
+    const want = item.displayName ? foldName(item.displayName) : "";
+    if (!want || foldName(String(l.name ?? "")) !== want) {
+      throw new ConflictException({
+        message: `"${l.name}" does not carry this good's name, so it is not linked to it.`,
+        reason: "name_mismatch",
+      });
+    }
+    if (l.inventory_item_id) throw await this.heldBy(client, restaurantId, String(l.name), String(l.inventory_item_id));
+
+    const write = await client
+      .from("menu_items")
+      .update({ inventory_item_id: item.id })
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .is("inventory_item_id", null)
+      .in("menu_id", menuIds)
+      .neq("status", "discarded")
+      .select("id");
+    if (write.error) {
+      throw new ServiceUnavailableException(`The link could not be saved (${write.error.message}). Nothing was linked. Try again.`);
+    }
+    if (((write.data ?? []) as unknown[]).length === 0) {
+      // Linked, moved or discarded between the read and the write.
+      const now = await client
+        .from("menu_items")
+        .select("inventory_item_id")
+        .eq("id", menuItemId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      const holder = (now.data as Record<string, any> | null)?.inventory_item_id;
+      if (holder) throw await this.heldBy(client, restaurantId, String(l.name), String(holder));
+      throw new ConflictException({
+        message: `"${l.name}" changed while it was being linked, so it is not linked. Look at it again.`,
+        reason: "changed",
+      });
+    }
+    return this.usedIn(restaurantId, itemId);
+  }
+
+  /** The 409 for a line another good already holds, naming that good. */
+  private async heldBy(client: SupabaseClient, restaurantId: string, lineName: string, holderId: string) {
+    const r = await client
+      .from("restaurant_inventory")
+      .select("id, display_name, wine_name")
+      .eq("id", holderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    const d = r.data as Record<string, any> | null;
+    const name = d ? d.display_name || d.wine_name || null : null;
+    return new ConflictException({
+      message: name
+        ? `"${lineName}" is already linked to ${name}, so it was not linked again.`
+        : `"${lineName}" is already linked to another good, so it was not linked again.`,
+      reason: "already_linked",
+      heldBy: { id: holderId, displayName: name },
+    });
+  }
+
   /** The current menu's lines linked to the item, then the lines that only carry its name. */
   private async menuGroups(client: SupabaseClient, restaurantId: string, item: HouseItem) {
     // Only lines on the house's current (active) menus are "on the menu";
     // an archived or draft menu is not (menus.service readCurrentMenus).
     const menus = await client
       .from("restaurant_menus")
-      .select("id")
+      .select("id, name")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
     const menuIds = menus.error
       ? null
       : ((menus.data ?? []) as Array<{ id: string }>).map((m) => m.id);
+    const menuNames = new Map(
+      ((menus.data ?? []) as Array<{ id: string; name?: string | null }>).map((m) => [m.id, m.name ?? null]),
+    );
+    const named = (g: Group<MenuLine>): Group<MenuLine> =>
+      g.lines === null ? g : { ...g, lines: g.lines.map((l) => ({ ...l, menuName: menuNames.get(l.menuId) ?? null })) };
 
     const soldAs = await this.soldAs(client, restaurantId, item, menuIds, menus.error?.message);
     const namedNotLinked = await this.namedNotLinked(
@@ -164,7 +276,7 @@ export class ItemUsedInService {
       menus.error?.message,
       soldAs.lines,
     );
-    return { soldAs, namedNotLinked };
+    return { soldAs: named(soldAs), namedNotLinked: named(namedNotLinked) };
   }
 
   private async soldAs(

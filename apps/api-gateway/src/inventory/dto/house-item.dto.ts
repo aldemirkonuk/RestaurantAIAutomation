@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from "class-validator";
 
 /**
  * "Carry this": a food or other good the wine library does not hold. kind and
@@ -26,4 +26,11 @@ export class CreateHouseItemDto {
   @IsInt()
   @Min(0)
   thresholdMin?: number;
+}
+
+/** Link one same-named current-menu line to this good (r109 g2). */
+export class LinkMenuLineDto {
+  @ApiProperty({ description: "menu_items.id of a line on the house's current menu, linked to no good" })
+  @IsUUID()
+  menuItemId: string;
 }
