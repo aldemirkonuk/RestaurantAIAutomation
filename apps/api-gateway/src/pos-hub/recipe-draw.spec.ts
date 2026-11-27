@@ -150,9 +150,6 @@ describe("units never cross (I6)", () => {
     ["mg", "g", "book", 1_000n],
     ["mg", "kg", "book", 1_000_000n],
     ["each_milli", "each", "book", 1_000n],
-    ["each_milli", "bottle", "book", 1_000n],
-    ["each_milli", "case", "book", 1_000n],
-    ["each_milli", "pack", "book", 1_000n],
   ] as const)("%s reaches a good kept in %s by %s, %s base units to one", (base, uom, via, per) => {
     expect(route(base, { uom, bottleSizeMl: 750 })).toEqual({ via, basePerUnit: per });
   });
@@ -170,6 +167,13 @@ describe("units never cross (I6)", () => {
     ["each_milli", "ml"],
     ["each_milli", "l"],
     ["each_milli", "kg"],
+    // A piece is never one container: the cost side refuses the same pairs (r36 gap 4).
+    ["each_milli", "bottle"],
+    ["each_milli", "case"],
+    ["each_milli", "pack"],
+    ["each_milli", "keg"],
+    ["each_milli", "glass"],
+    ["each_milli", "shot"],
   ] as const)("%s against a good kept in %s waits", (base, uom) => {
     expect(route(base, { uom, bottleSizeMl: 750 })).toEqual({ wait: "measure_mismatch" });
   });
@@ -193,6 +197,15 @@ describe("units never cross (I6)", () => {
   it("one egg a plate takes one egg", () => {
     const v: RecipeVersion = { id: "v", yieldServes: 1, lines: [stocked(1, "egg", 1_000, "each_milli")] };
     expect(book(planRecipeDraw(v, 6, new Map([["egg", kept("each")]])))).toEqual({ "egg:book": 6 });
+  });
+
+  it("one lime against limes kept by the case waits, and never takes a case a serve", () => {
+    const v: RecipeVersion = { id: "v", yieldServes: 1, lines: [stocked(1, "lime", 1_000, "each_milli", "lime")] };
+    expect(planRecipeDraw(v, 3, new Map([["lime", kept("case")]]))).toEqual({
+      kind: "wait",
+      versionId: "v",
+      waits: [{ position: 1, label: "lime", reason: "measure_mismatch" }],
+    });
   });
 });
 

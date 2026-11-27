@@ -37,7 +37,7 @@ const int = (c: string): number | null => (c === "null" ? null : Number(c));
 describe("route matches recipe_draw_route row for row", () => {
   const rows = block("route");
   it("reads every route case from the SQL test", () => {
-    expect(rows.length).toBe(20);
+    expect(rows.length).toBe(23);
   });
   it.each(rows.map((r) => [r[0], r] as const))("%s", (_id, r) => {
     const [, base, uom, bottle, via, bpu, wait] = r;
