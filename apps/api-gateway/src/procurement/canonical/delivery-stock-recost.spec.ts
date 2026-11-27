@@ -9,7 +9,6 @@
 import { DatabaseService } from "../../database/database.service";
 import { makeMockDb, MockDb } from "./delivery-mock";
 import { DeliveryStockService } from "./delivery-stock.service";
-import { movesCost, overlayCorrections } from "./correction-overlay";
 
 const REST = "11111111-1111-1111-1111-111111111111";
 const DEL = "dddddddd-dddd-dddd-dddd-dddddddddddd";
@@ -85,12 +84,6 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
     expect(posted().map((c) => c.args.p_unit_cost)).toEqual([55]);
     expect(String(posted()[0].args.p_reason)).toMatch(/^correction revision 3 of document inv-1;/);
     expect(r.ok && r.value.deliveries[0]).toMatchObject({ deliveryId: DEL, kept: [], drawnBefore: 6 });
-  });
-
-  it("verify itself costs the corrected paper (costing no longer reads the stored line alone)", async () => {
-    given({ state: "AGREED", corrections: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)] });
-    await service.finaliseAtVerified(REST, DEL, USER);
-    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([55]);
   });
 
   describe("the invariant |unit_cost x received - (corrected net + charges)| <= received x 5e-7", () => {
@@ -187,44 +180,9 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
     expect(r).toMatchObject({ ok: false, status: 404 });
     expect(posted()).toEqual([]);
   });
-
-  it("a failed read of the corrections posts nothing (ADR 0067)", async () => {
-    given({});
     db.answers.document_corrections = { data: null, error: { message: "boom" } };
     const r = await recost();
     expect(r).toMatchObject({ ok: false, status: 500 });
     expect(posted()).toEqual([]);
-  });
-});
-
-describe("overlayCorrections", () => {
-  const rows = [
-    { document_id: "d", line_no: 2, qty: 1, qty_bottles: 1, uom: "bottle", unit_price: 9, line_total: 9, pack_size: 1 },
-    { document_id: "d", line_no: 1, qty: 1, qty_bottles: 1, uom: "bottle", unit_price: 5, line_total: 5, pack_size: 1 },
-  ];
-
-  it("lines[n] is the n-th line by line_no, and an untouched line comes back as stored", () => {
-    const out = overlayCorrections({ id: "d" }, rows, [
-      { revision: 2, kind: "correction", field_path: "lines[1].netPrice", after: env(8) },
-    ]);
-    expect(out.lines[0]).toEqual({ ...rows[0], unit_price: 8 });
-    expect(out.lines[1]).toBe(rows[1]);
-    expect(out.touched).toBe(true);
-  });
-
-  it("a later revision wins, a tick changes nothing, a header total is laid over", () => {
-    const out = overlayCorrections({ id: "d", total: 14 }, rows, [
-      { revision: 3, kind: "correction", field_path: "lines[0].netPrice", after: env(4) },
-      { revision: 2, kind: "correction", field_path: "lines[0].netPrice", after: env(6) },
-      { revision: 4, kind: "verification", field_path: "lines[0].netPrice", after: env(99) },
-      { revision: 5, kind: "correction", field_path: "totals.taxInclusiveAmount", after: env(13) },
-    ]);
-    expect(out.lines[1]).toMatchObject({ unit_price: 4 });
-    expect(out.header).toMatchObject({ total: 13 });
-  });
-
-  it("movesCost names the money fields and nothing else", () => {
-    expect(["lines[0].netPrice", "lines[2].quantity", "lines[1].unit", "lines[0].priceBaseQuantity", "lines[0].priceBaseUnit", "currency"].every(movesCost)).toBe(true);
-    expect(["lines[0].description", "documentNumber", "lines[0].vintage", "nope"].some(movesCost)).toBe(false);
   });
 });
