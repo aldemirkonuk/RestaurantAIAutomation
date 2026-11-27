@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { HttpException, ValidationPipe } from "@nestjs/common";
 import { PosHubController } from "./pos-hub.controller";
+import { PosHistoryImportService } from "./pos-history-import.service";
 import { PosHubService } from "./pos-hub.service";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
@@ -52,6 +53,7 @@ describe("PosHubController — sale-unit review routes", () => {
         { provide: PosHubService, useValue: posHub },
         { provide: CatalogMatcherService, useValue: {} },
         { provide: PosMappingReviewService, useValue: mappingReview },
+        { provide: PosHistoryImportService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

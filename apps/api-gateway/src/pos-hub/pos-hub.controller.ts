@@ -19,6 +19,7 @@ import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubService } from "./pos-hub.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
+import { PosHistoryImportService } from "./pos-history-import.service";
 import { bellNoteForTill } from "./refused-checks-note";
 import {
   ListSaleUnitReviewQueryDto,
@@ -57,6 +58,7 @@ export class PosHubController {
     private readonly posHub: PosHubService,
     private readonly catalogMatcher: CatalogMatcherService,
     private readonly mappingReview: PosMappingReviewService,
+    private readonly history: PosHistoryImportService,
   ) {}
 
   @Get("providers")
@@ -151,6 +153,26 @@ export class PosHubController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  /**
+   * r109 onboarding g3: a till's item-sales export (date, item, qty, optional
+   * net), owner or manager only. Saved to pos_sales_history, never as checks,
+   * and it moves no stock (ADR 0281, amended 2026-11-27).
+   */
+  @Post("import/:restaurantId/history")
+  @ApiOperation({
+    summary: "Bring the till's last 90 days of item sales, without moving stock",
+    description: "Body: { csv: string } — Square, Toast or Lightspeed item-sales export, up to 5 MB and 50,000 rows.",
+  })
+  async importHistory(
+    @Req() req: Request & { user?: { userId?: string } },
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: { csv?: unknown },
+  ) {
+    const userId = req.user?.userId;
+    if (!userId) throw new HttpException("Sign in to bring the till's sales in.", HttpStatus.UNAUTHORIZED);
+    return this.history.importHistory(userId, restaurantId, body?.csv);
   }
 
   @Get("mappings/:restaurantId")
