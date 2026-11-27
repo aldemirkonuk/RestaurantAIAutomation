@@ -1214,7 +1214,13 @@ export class DeliveryStockService {
   ): Promise<
     StockResult<{
       taxBasisKnown: boolean;
-      held: { deliveryId: string; inventoryId: string; why: string }[];
+      held: {
+        inventoryId: string;
+        deliveryIds: string[];
+        why: string;
+        /** `tax_basis`: the hold clears once the house answers its tax question. Else `other`. */
+        cause: "tax_basis" | "other";
+      }[];
     }>
   > {
     const doc = await this.db
@@ -1243,6 +1249,26 @@ export class DeliveryStockService {
     const taxBasisKnown =
       houseReclaims(houseTaxForLotCost((house.data ?? null) as HouseTaxRow | null)).reclaims !== null;
 
+    // Which items are on THIS paper. A delivery carries every paper attached to
+    // it, so a hold read off the delivery is not yet this paper's.
+    const own = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select("document_id, inventory_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("document_id", documentId);
+    if (own.error)
+      return {
+        ok: false,
+        status: 500,
+        error: `the lines of this document could not be read: ${own.error.message}`,
+      };
+    const onPaper = new Set(
+      ((own.data ?? []) as unknown as { document_id: string; inventory_id: string | null }[])
+        .filter((r) => r.document_id === documentId && r.inventory_id)
+        .map((r) => r.inventory_id as string),
+    );
+
     const joins = await this.db
       .getClient()
       .from("document_deliveries")
@@ -1257,7 +1283,13 @@ export class DeliveryStockService {
     const deliveryIds = [
       ...new Set(((joins.data ?? []) as unknown as { delivery_id: string }[]).map((r) => r.delivery_id)),
     ];
-    const held: { deliveryId: string; inventoryId: string; why: string }[] = [];
+    // A hypothetical answer that reclaims: if a hold clears under it, the missing
+    // tax answer is what held it; any other hold would stay held.
+    const knownTax: HouseTax = { tax_basis: "prices_include_tax", reclaims_input_tax: true };
+    const byItem = new Map<
+      string,
+      { inventoryId: string; deliveryIds: string[]; why: string; cause: "tax_basis" | "other" }
+    >();
     for (const deliveryId of deliveryIds) {
       const delivery = await this.deliveryFor(restaurantId, deliveryId);
       if (!delivery.ok) return delivery;
@@ -1265,10 +1297,23 @@ export class DeliveryStockService {
       if (!booked.ok) return booked;
       const priced = await this.agreedPrices(restaurantId, deliveryId, booked.value);
       if (!priced.ok) return priced;
-      for (const [inventoryId, why] of priced.value.held)
-        held.push({ deliveryId, inventoryId, why });
+      let ifKnown: Map<string, string> | null = null;
+      if (!taxBasisKnown && [...priced.value.held.keys()].some((id) => onPaper.has(id))) {
+        const what = await this.agreedPrices(restaurantId, deliveryId, booked.value, knownTax);
+        if (!what.ok) return what;
+        ifKnown = what.value.held;
+      }
+      for (const [inventoryId, why] of priced.value.held) {
+        if (!onPaper.has(inventoryId)) continue;
+        const cause = ifKnown && !ifKnown.has(inventoryId) ? "tax_basis" : "other";
+        const seen = byItem.get(inventoryId);
+        if (seen) {
+          if (!seen.deliveryIds.includes(deliveryId)) seen.deliveryIds.push(deliveryId);
+          if (cause === "other") seen.cause = "other";
+        } else byItem.set(inventoryId, { inventoryId, deliveryIds: [deliveryId], why, cause });
+      }
     }
-    return { ok: true, value: { taxBasisKnown, held } };
+    return { ok: true, value: { taxBasisKnown, held: [...byItem.values()] } };
   }
 
   private async deliveryFor(
@@ -1330,6 +1375,8 @@ export class DeliveryStockService {
     restaurantId: string,
     deliveryId: string,
     booked: Map<string, number>,
+    /** A what-if only: cost under this tax answer instead of the house's own. */
+    houseTaxOverride?: HouseTax,
   ): Promise<
     StockResult<{
       byItem: Map<string, AgreedPrice>;
@@ -1431,6 +1478,7 @@ export class DeliveryStockService {
       houseCurrency = row?.currency ?? null;
       houseTax = houseTaxForLotCost(row);
     }
+    if (houseTaxOverride) houseTax = houseTaxOverride;
     const moneyOfPaper = new Map(papers.map((r) => [r.id, notHouseMoney(r.currency, houseCurrency)]));
 
     const lineByKey = new Map<string, LineRow>();
