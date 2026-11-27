@@ -37,7 +37,7 @@ export function MenuSheetButton({ kind, label, filename, testId }: { kind: 'expo
   };
   return (
     <>
-      <button type="button" className="mdv-link cl-focus" disabled={busy} onClick={() => void go()} data-testid={testId}>
+      <button type="button" className="mdv-link cl-focus mdv-touch" disabled={busy} onClick={() => void go()} data-testid={testId}>
         {busy ? 'Preparing the sheet…' : label}
       </button>
       {failed ? (

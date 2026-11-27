@@ -275,7 +275,7 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
           />
         </>
       ) : null}
-      <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim()}>
+      <button type="submit" className="cl-btn cl-focus mdv-touch" disabled={adding || !name.trim()}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
       {error ? (
@@ -526,7 +526,15 @@ export default function MenuNext() {
   const offHere = offList && offList.house === activeRestaurantId ? offList : null;
   const [backSaid, setBackSaid] = useState<{ tone: 'alert' | 'said'; text: string } | null>(null);
   const [putting, setPutting] = useState(false);
-  const putBack = async (off: { id: string; name: string; house: string | null }) => {
+  // On a phone the cards run long: the line taken off could be the fourth, and this sentence sits above
+  // them, 500 px out of sight (r107 walk finding 2). It comes into view with an instant jump, never a
+  // glide: nothing animates (ADR 0112), and no timer ends it.
+  const offSaid = useRef<HTMLParagraphElement | null>(null);
+  useEffect(() => {
+    const el = offSaid.current;
+    if (offList && el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }, [offList]);
+    const putBack = async (off: { id: string; name: string; house: string | null }) => {
     setPutting(true);
     setBackSaid(null);
     // Only this line's way back is cleared when it settles: another line may have been taken off since.
@@ -737,16 +745,18 @@ export default function MenuNext() {
 
             {offHere || backSaid ? (
               <p
+                ref={offSaid}
                 role={backSaid?.tone === 'alert' ? 'alert' : 'status'}
                 className="cl-said"
-                style={{ marginTop: 10 }}
+                // scrollIntoView lands it on the nearest edge: the margins keep it clear of the sticky header (53 px) and the phone's bottom bar.
+                style={{ marginTop: 10, scrollMarginTop: 72, scrollMarginBottom: 72 }}
                 data-testid="menu-off-list-said"
               >
                 {offHere ? (
                   <>
                     Taken off the list.{' '}
                     {canManage ? (
-                      <button type="button" className="cl-btn cl-focus" disabled={putting} onClick={() => void putBack(offHere)}>
+                      <button type="button" className="cl-btn cl-focus mdv-touch" disabled={putting} onClick={() => void putBack(offHere)}>
                         {putting ? 'Putting back…' : `Put ${offHere.name} back`}
                       </button>
                     ) : null}{' '}
