@@ -280,4 +280,64 @@ DO $$ DECLARE s record; BEGIN
   PERFORM pg_temp.ok(s.waiting_people = 3, 'A4b three people waiting (got ' || s.waiting_people || ')');
 END $$;
 
+-- ── A bounce is read from the From's own mailbox (QA round 24, item 3b) ─────
+-- (migration mail_automatic_reads_the_parsed_sender) House H5, vendor V10.
+-- The raw-From test matched a display name or a comment that names
+-- postmaster@ / mailer-daemon@, so a person's letter was hidden. The bridge
+-- now writes transport.fromMailServer from the parsed From; a row stored
+-- before that falls back to the raw From, anchored at its last address.
+INSERT INTO public.restaurants (id, name, slug, timezone)
+VALUES ('55555555-5555-4555-8555-555555555555', 'Test house 5', 'test-house-5', 'UTC');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, message_id, received_at, sent_at, created_at, email_headers) VALUES
+  ('d1e00000-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Prices for May', 'RECEIVED', 'mid:e1', '<e1@v10.example>', now() - interval '1 seconds', NULL, now() - interval '1 seconds',
+   '{"from":"\"postmaster@x.example\" <ayse@v10.example>","transport":{"autoReplied":false,"deliveryReport":false,"fromMailServer":false}}'),
+  ('d2e00000-0000-4000-8000-000000000002', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Old letter, display name', 'RECEIVED', 'mid:e2', '<e2@v10.example>', now() - interval '2 seconds', NULL, now() - interval '2 seconds',
+   '{"from":"\"postmaster@x.example\" <ayse@v10.example>"}'),
+  ('d3e00000-0000-4000-8000-000000000003', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Old bounce', 'RECEIVED', 'mid:e3', '<e3@v10.example>', now() - interval '3 seconds', NULL, now() - interval '3 seconds',
+   '{"from":"Mail Delivery Subsystem <mailer-daemon@googlemail.com>"}'),
+  ('d4e00000-0000-4000-8000-000000000004', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Old bounce, comment', 'RECEIVED', 'mid:e4', '<e4@v10.example>', now() - interval '4 seconds', NULL, now() - interval '4 seconds',
+   '{"from":"MAILER-DAEMON@mx.v10.example (Mail Delivery System)"}'),
+  ('d5e00000-0000-4000-8000-000000000005', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Flagged bounce', 'RECEIVED', 'mid:e5', '<e5@v10.example>', now() - interval '5 seconds', NULL, now() - interval '5 seconds',
+   '{"from":"Mail System <x@mx.v10.example>","transport":{"fromMailServer":true}}'),
+  ('d6e00000-0000-4000-8000-000000000006', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Malformed flag', 'RECEIVED', 'mid:e6', '<e6@v10.example>', now() - interval '6 seconds', NULL, now() - interval '6 seconds',
+   '{"from":"Ayse <ayse@v10.example>","transport":{"fromMailServer":"yes"}}'),
+  ('d7e00000-0000-4000-8000-000000000007', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Names nobody', 'RECEIVED', 'mid:e7', '<e7@v10.example>', now() - interval '7 seconds', NULL, now() - interval '7 seconds',
+   '{"from":"mailer-daemon@a.example, ayse@v10.example","transport":{"fromMailServer":false}}'),
+  ('d8e00000-0000-4000-8000-000000000008', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000010',
+   'inbound', 'email', 'Old letter, comment', 'RECEIVED', 'mid:e8', '<e8@v10.example>', now() - interval '8 seconds', NULL, now() - interval '8 seconds',
+   '{"from":"ayse@v10.example (postmaster@x.example)"}');
+
+DO $$ DECLARE a boolean; BEGIN
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e1') WHERE id = 'd1e00000-0000-4000-8000-000000000001';
+  PERFORM pg_temp.ok(a IS FALSE, 'P1 a person''s letter whose display name names postmaster (flag false) is a letter (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e2') WHERE id = 'd2e00000-0000-4000-8000-000000000002';
+  PERFORM pg_temp.ok(a IS FALSE, 'P2 an old letter whose display name names postmaster (no flag) is a letter (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e3') WHERE id = 'd3e00000-0000-4000-8000-000000000003';
+  PERFORM pg_temp.ok(a IS TRUE, 'P3 an old bounce from <mailer-daemon@...> (no flag) is automatic (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e4') WHERE id = 'd4e00000-0000-4000-8000-000000000004';
+  PERFORM pg_temp.ok(a IS TRUE, 'P4 an old bounce from MAILER-DAEMON@... (comment) (no flag) is automatic (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e5') WHERE id = 'd5e00000-0000-4000-8000-000000000005';
+  PERFORM pg_temp.ok(a IS TRUE, 'P5 a row the bridge flagged fromMailServer is automatic (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e6') WHERE id = 'd6e00000-0000-4000-8000-000000000006';
+  PERFORM pg_temp.ok(a IS FALSE, 'P6 a malformed flag neither throws nor hides a letter (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e7') WHERE id = 'd7e00000-0000-4000-8000-000000000007';
+  PERFORM pg_temp.ok(a IS FALSE, 'P7 a From that names nobody, flagged false, is a letter (got ' || coalesce(a::text, 'null') || ')');
+  SELECT automatic INTO a FROM public.mail_thread_letters('55555555-5555-4555-8555-555555555555', 'mid:e8') WHERE id = 'd8e00000-0000-4000-8000-000000000008';
+  PERFORM pg_temp.ok(a IS FALSE, 'P8 an old letter whose comment names postmaster (no flag) is a letter (got ' || coalesce(a::text, 'null') || ')');
+END $$;
+
+-- P9: the house is waiting on the five letters, never on the three bounces.
+DO $$ DECLARE s record; BEGIN
+  SELECT * INTO s FROM public.mail_inbox_summary('55555555-5555-4555-8555-555555555555', true);
+  PERFORM pg_temp.ok(s.in_today = 5, 'P9 in_today counts the five letters, not the bounces (got ' || s.in_today || ')');
+END $$;
+
 rollback;

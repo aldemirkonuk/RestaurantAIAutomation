@@ -38,7 +38,10 @@ export interface TransportSignals {
   autoSubmitted: boolean;
   /**
    * `Auto-Submitted: auto-replied` exactly (RFC 3834 §5): an out-of-office or
-   * vacation answer the vendor's mail server wrote. Narrower than
+   * vacation answer the vendor's mail server wrote. Also the older markers an
+   * autoresponder writes in place of RFC 3834 (QA round 24, item 3a): an
+   * `X-Autoreply` or `X-Autorespond` header whose value is not `no`/`false`,
+   * and `Precedence: auto_reply`. Narrower than
    * `autoSubmitted` on purpose: `auto-generated` is also what a vendor's ERP
    * stamps on a real order confirmation or invoice, and
    * `X-Auto-Response-Suppress` is an instruction to the RECIPIENT that
@@ -52,6 +55,14 @@ export interface TransportSignals {
    * a delivery status notification, i.e. a bounce, whoever it claims to be from.
    */
   deliveryReport: boolean;
+  /**
+   * The PARSED From's local part is `mailer-daemon` or `postmaster` (QA round
+   * 24, item 3b): a bounce a mail server wrote. Read from the one mailbox the
+   * From names (`senderAddress`), never from the raw header, so a display
+   * name such as `"postmaster@x" <ayse@bigdist.com>` on a person's letter
+   * does not make it automatic. False when the From names no single mailbox.
+   */
+  fromMailServer: boolean;
   /** `From` (or `Return-Path`) is a no-reply / marketing / bounce address. */
   noReplyFrom: boolean;
   /** ESP fingerprint (`mailchimp`, `sendgrid`, …) or `null` if none detected. */
@@ -162,7 +173,20 @@ export function deriveTransportSignals(
     );
 
   // The first token only: `auto-replied; owner-email=...` carries parameters.
-  const autoReplied = autoSub.split(/[\s;]/)[0] === "auto-replied";
+  // X-Autoreply / X-Autorespond are written by autoresponders that predate
+  // RFC 3834; a value of "no"/"false" says the opposite. Precedence:
+  // auto_reply is the same marker on older servers (QA round 24, item 3a).
+  // Never X-Auto-Response-Suppress: that is on a person's Outlook letter.
+  const legacyAutoReply = (v: string | undefined) => {
+    if (v === undefined) return false;
+    const t = v.trim().toLowerCase();
+    return t !== "no" && t !== "false";
+  };
+  const autoReplied =
+    autoSub.split(/[\s;]/)[0] === "auto-replied" ||
+    legacyAutoReply(h["x-autoreply"]) ||
+    legacyAutoReply(h["x-autorespond"]) ||
+    precedence.trim() === "auto_reply";
   const contentType = (h["content-type"] || "").toLowerCase();
   const deliveryReport =
     /^\s*multipart\/report\b/.test(contentType) &&
@@ -172,6 +196,9 @@ export function deriveTransportSignals(
   const fromAddr = extractEmailAddress(fromValue);
   const returnPathAddr = extractEmailAddress(h["return-path"]);
   const localPart = (addr: string) => addr.split("@")[0] || "";
+  const fromMailServer = /^(mailer-daemon|postmaster)$/i.test(
+    localPart(fromAddr),
+  );
   const noReplyFrom =
     (fromAddr !== "" && NO_REPLY_LOCALPART.test(localPart(fromAddr))) ||
     (returnPathAddr !== "" &&
@@ -195,6 +222,7 @@ export function deriveTransportSignals(
     autoSubmitted,
     autoReplied,
     deliveryReport,
+    fromMailServer,
     noReplyFrom,
     esp,
     spfPass,
