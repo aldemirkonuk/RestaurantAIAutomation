@@ -63,7 +63,14 @@ const cached = (id: string) =>
 
 beforeEach(() => {
   vi.useFakeTimers();
-  qc = new QueryClient();
+  // The app's own defaults (App.tsx), not the library's: refetchOnMount 'always' is what
+  // made an opened drawer ask again for reads the hover had already filled.
+  qc = new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 5_000, refetchOnWindowFocus: true, refetchOnMount: 'always', retry: 1, throwOnError: false },
+      mutations: { throwOnError: false },
+    },
+  });
   api.figures.mockReset().mockResolvedValue({
     waste: { readable: true, qty30d: 2, given30d: 1, value30d: 80, source: 'w' },
     countGap: { readable: true, last: [{ countedAt: '2026-09-30T10:00:00Z', expected: 13, counted: 12, variance: -1, by: 'A', money: -40 }], source: 'c' },
