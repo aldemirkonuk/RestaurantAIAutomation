@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { clearRegisterDraft, readRegisterDraft, writeRegisterDraft, type RegisterDraft } from '../lib/registerDraft'
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -85,6 +86,10 @@ export function Register() {
     if (searchParams.get('invite') || type === 'join') return 'join'
     return 'create'
   })
+  // A draft typed before a reload or a trip to /verify-email and back. Read
+  // once, before the first paint, so restoring replays nothing and moves nothing.
+  const [draft] = useState(() => readRegisterDraft(path))
+  const draftDone = useRef(false)
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
     const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,16 +103,56 @@ export function Register() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Path A account fields
-  const [joinName, setJoinName] = useState('')
-  const [joinEmail, setJoinEmail] = useState('')
+  const [joinName, setJoinName] = useState(path === 'join' ? draft?.name ?? '' : '')
+  const [joinEmail, setJoinEmail] = useState(path === 'join' ? draft?.email ?? '' : '')
   const [joinPassword, setJoinPassword] = useState('')
   const [joinConfirm, setJoinConfirm] = useState('')
 
   // Path B account fields
-  const [createName, setCreateName] = useState('')
-  const [createEmail, setCreateEmail] = useState('')
+  const [createName, setCreateName] = useState(path === 'create' ? draft?.name ?? '' : '')
+  const [createEmail, setCreateEmail] = useState(path === 'create' ? draft?.email ?? '' : '')
   const [createPassword, setCreatePassword] = useState('')
   const [createConfirm, setCreateConfirm] = useState('')
+
+  // Write what was typed, 400 ms after the last key, and again as the page
+  // goes away. Only the allow-listed non-secret fields reach registerDraft.
+  // The restaurant form is gone from this page (the house is opened on
+  // /get-started), so the restaurant fields of the draft stay empty.
+  const typed: RegisterDraft = {
+    mode: path,
+    name: path === 'join' ? joinName : createName,
+    email: path === 'join' ? joinEmail : createEmail,
+    restaurantName: '',
+    address: '',
+    city: '',
+    country: '',
+    postalCode: '',
+    phone: '',
+  }
+  const typedRef = useRef(typed)
+  typedRef.current = typed
+  const typedKey = JSON.stringify(typed)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!draftDone.current) writeRegisterDraft(typedRef.current)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [typedKey])
+  useEffect(() => {
+    const flush = () => {
+      if (!draftDone.current) writeRegisterDraft(typedRef.current)
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
+  /** The sign-up went through: the draft has done its work. */
+  const finishDraft = () => {
+    draftDone.current = true
+    clearRegisterDraft()
+  }
 
   // Email availability checking state
   const [joinEmailCheck, setJoinEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
@@ -409,6 +454,7 @@ export function Register() {
         password: joinPassword,
         ...(inviteMailSecret ? { emailSecret: inviteMailSecret } : {}),
       })
+      finishDraft()
       navigate('/', { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to join restaurant')
@@ -777,6 +823,7 @@ export function Register() {
               email: createEmail,
               password: createPassword,
             })
+            finishDraft()
             navigate('/verify-email', { replace: true })
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : 'Registration failed')
