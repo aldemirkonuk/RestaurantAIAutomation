@@ -315,6 +315,9 @@ describe("cost at sale (P9, D4)", () => {
     lotId: "lot-1",
     orderId: "ord-1",
     lotQtyLeft: 1000,
+    // #2410 (r109 g1) widened SaleCostSource after #2523 wrote this fixture.
+    parts: null,
+    partsCapped: false,
   });
 
   it("a bottle's worth of pours costs the bottle, and a whole bottle costs one per unit", () => {
@@ -410,8 +413,8 @@ describe("cost at sale (P9, D4)", () => {
       // r109 g1: the shelf the WAC was read over, oldest first; the sample
       // and the spent lot are not on it.
       parts: [
-        { order_id: "o1", lot_id: "old", qty: 2, unit_cost: 30, invoiced: true },
-        { order_id: "o2", lot_id: "new", qty: 3, unit_cost: 40, invoiced: true },
+        { order_id: "o1", delivery_id: null, lot_id: "old", qty: 2, unit_cost: 30, invoiced: true },
+        { order_id: "o2", delivery_id: null, lot_id: "new", qty: 3, unit_cost: 40, invoiced: true },
       ],
       partsCapped: false,
     });

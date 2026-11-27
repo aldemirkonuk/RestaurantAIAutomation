@@ -79,7 +79,9 @@ describe("DeliveryStockService.heldCostsOfDocument", () => {
     // is unknown. Answering the tax question would not release it.
     const res = await service.heldCostsOfDocument(REST, DOC);
     expect(res.ok && res.value.taxBasisKnown).toBe(false);
-    expect(res.ok && res.value.held.map((h) => h.cause)).toEqual(["other"]);
+    // Integration (#2424 x #2202): #2202's typed cause names a case price with
+    // no stated pack as a lines hold, more exact than #2424's "other".
+    expect(res.ok && res.value.held.map((h) => h.cause)).toEqual(["lines"]);
   });
 
   it("a hold that clears under a known tax answer is tagged tax_basis; one that does not stays other", async () => {
@@ -94,10 +96,11 @@ describe("DeliveryStockService.heldCostsOfDocument", () => {
     };
     const spy = jest
       .spyOn(service as unknown as { agreedPrices: (...a: unknown[]) => unknown }, "agreedPrices")
-      .mockImplementation(async (...a: unknown[]) => ({
+      // Integration (#2424 x #2202): the cause is the one agreedPrices typed
+      // (#2202's heldCause), not a second hypothetical-tax pass (#2424, dropped).
+      .mockImplementation(async () => ({
         ok: true,
-        // Under the hypothetical (4th argument) only the pack hold remains.
-        value: { held: a[3] ? new Map([[other, real.get(other)]]) : real },
+        value: { held: real, heldCause: new Map([[ITEM, "tax_basis"], [other, "other"]]) },
       }));
     const res = await service.heldCostsOfDocument(REST, DOC);
     spy.mockRestore();
@@ -131,7 +134,7 @@ describe("DeliveryStockService.heldCostsOfDocument", () => {
     const held = new Map([[X, "no pack. The lot stays provisional."]]);
     const spy = jest
       .spyOn(service as unknown as { agreedPrices: (...a: unknown[]) => unknown }, "agreedPrices")
-      .mockImplementation(async () => ({ ok: true, value: { held } }));
+      .mockImplementation(async () => ({ ok: true, value: { held, heldCause: new Map([[X, "other"]]) } }));
     const forA = await service.heldCostsOfDocument(REST, DOC);
     expect(forA.ok && forA.value.held).toEqual([]);
 

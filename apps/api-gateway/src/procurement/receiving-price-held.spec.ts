@@ -583,7 +583,8 @@ describe("restating or confirming a currency clears the receiving refusal", () =
                 : null,
             error: null,
           }),
-          order: async () => ({ data: [], error: null }),
+          // Awaited as a list, or narrowed to the latest change (.limit(1).maybeSingle()).
+          order: () => Object.assign(Promise.resolve({ data: [], error: null }), { limit: () => q }),
           insert: async () => ({ error: null }),
           update(row: Row) {
             // THE WRITE THE DOOR WILL READ. One shared object, so the chain is

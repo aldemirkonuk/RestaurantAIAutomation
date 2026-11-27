@@ -110,14 +110,20 @@ describe("a sale priced by an agreed lot WAC keeps that basis", () => {
     basis: "agreed_lot_wac",
     lotId: "lot-1",
     orderId: null,
+    lotQtyLeft: 2,
+    parts: null,
+    partsCapped: false,
   };
 
   it("writes the basis it was costed at, on a whole bottle", () => {
-    expect(snapshotLineCost(agreed, "whole_bottle", 0, 750, 2)).toEqual({
+    expect(snapshotLineCost({ ...agreed }, "whole_bottle", 0, 750, 2)).toEqual({
       cost_at_sale: 40,
       cost_basis: "agreed_lot_wac",
+      cost_unit_at_sale: 20,
       cost_source_lot_id: "lot-1",
       cost_source_order_id: null,
+      cost_parts: null,
+      cost_parts_capped: false,
     });
   });
 

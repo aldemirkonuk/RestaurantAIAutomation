@@ -42,7 +42,9 @@ describe("a whole-bottle line reads its ledger row", () => {
   it("keeps its source's basis word so a verified invoice can still restate it", () => {
     const snap = snapshotLineCost(source(), "whole_bottle", 3750, 750, 5, row);
     expect(snap.cost_basis).toBe("last_purchase_price");
-    expect(snap.cost_source_order_id).toBe("ord-a");
+    // r102 F2 (#2523): 5 bottles over lot-a's 3 were split across two lots, so
+    // the line names no single delivery; ord-a's paper does not restate all 5.
+    expect(snap.cost_source_order_id).toBeNull();
   });
 
   it("falls back to the recorded cost when a bottle left unpriced (never a lower number)", () => {
@@ -94,6 +96,10 @@ describe("a pour keeps WAC under its own basis word", () => {
       basis,
       lotId: "l",
       orderId: "o",
+      // #2523 (r102 F2) and #2410 (r109 g1) widened SaleCostSource after this spec.
+      lotQtyLeft: 0,
+      parts: null,
+      partsCapped: false,
     });
     expect(
       snapshotLineCost(src("invoice_lot_wac"), "volume", 150, 750, 1).cost_basis,
@@ -110,7 +116,10 @@ describe("a pour keeps WAC under its own basis word", () => {
 });
 
 describe("the basis word says how the line was costed (r105)", () => {
-  const wac = (basis: any) => ({ unitCost: 13, basis, lotId: "l", orderId: "o" });
+  // lotQtyLeft/parts/partsCapped: #2523 and #2410 widened SaleCostSource after #2476 wrote this.
+  const wac = (basis: any) => ({
+    unitCost: 13, basis, lotId: "l", orderId: "o", lotQtyLeft: 0, parts: null, partsCapped: false,
+  });
   const row = { quantity_change: -3, unit_cost: 10.333333, cost_total: 31, unpriced_qty: 0 };
 
   it("words a line costed from its drawn lots apart from one costed at the recorded WAC", () => {

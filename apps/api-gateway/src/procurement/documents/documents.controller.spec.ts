@@ -561,7 +561,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       const { controller, inserts } = harness({ doc: inUsd, lastChange: converted });
       await expect(
         controller.restateCurrency("doc-9", { currency: "EUR", fromCurrency: "USD", rate: 0.9, rateDate: "2026-11-21" }, user),
-      ).rejects.toMatchObject({ status: 409 });
+        // #2070's house-money rule (EUR is not this USD house's money) refuses
+        // first, with a 400; either way nothing is written.
+      ).rejects.toMatchObject({ status: 400 });
       expect(inserts).toHaveLength(0);
     });
 
@@ -635,13 +637,17 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
   });
 
   it("says when the label was corrected, and the rate-less 400 says a currency was missing, not 'no currency was sent'", async () => {
+    // Integration call (#2479 x #2070): a "from" other than the filed label is
+    // refused (#2479, r104b); the one-step label correction #2070 wrote is not
+    // reached. Relabel first (no rate), then convert.
     const { controller } = harness({ doc: { ...DOC, currency: "TRY" } });
-    const out: any = await controller.restateCurrency(
-      "doc-9",
-      { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
-      user,
-    );
-    expect(out.sentence).toContain("The paper had been filed as TRY; its own figures are in EUR");
+    await expect(
+      controller.restateCurrency(
+        "doc-9",
+        { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" },
+        user,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
     const agree = harness({ doc: { ...DOC, currency: "EUR" } });
     const same: any = await agree.controller.restateCurrency(
       "doc-9",
@@ -1108,7 +1114,7 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       procurement_documents: none,
       procurement_document_lines: none,
     });
-    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z");
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z");
     expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T00:00:00Z"]]);
   });
 
@@ -1117,7 +1123,7 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       procurement_documents: none,
       procurement_document_lines: none,
     });
-    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T10:00:00.123456+00:00");
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "2026-11-01T10:00:00.123456+00:00");
     expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T10:00:00.123456+00:00"]]);
   });
 
@@ -1126,7 +1132,7 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       procurement_documents: none,
       procurement_document_lines: none,
     });
-    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01");
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "2026-11-01");
     expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T00:00:00.000Z"]]);
   });
 
@@ -1136,7 +1142,7 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       procurement_document_lines: none,
     });
     const id = "11111111-2222-4333-8444-555555555555";
-    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T10:00:00.123456+00:00", id);
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "2026-11-01T10:00:00.123456+00:00", id);
     const or = calls.find((c) => c[0] === "procurement_documents" && c[1] === "or")!;
     expect(or[2][0]).toBe(
       `created_at.lt."2026-11-01T10:00:00.123456+00:00",and(created_at.eq."2026-11-01T10:00:00.123456+00:00",id.lt."${id}")`,
@@ -1147,14 +1153,14 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
   it("refuses a beforeId that is not a paper id (it is placed in a filter)", async () => {
     const { controller } = listControllerWith({ procurement_documents: none });
     await expect(
-      controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z", 'x"),or=(id.neq.1'),
+      controller.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z", 'x"),or=(id.neq.1'),
     ).rejects.toMatchObject({ status: 400 });
   });
 
   it("refuses a cursor that is not a date", async () => {
     const { controller } = listControllerWith({ procurement_documents: none });
     await expect(
-      controller.list(user, "verified", undefined, undefined, undefined, undefined, "yesterday"),
+      controller.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "yesterday"),
     ).rejects.toMatchObject({ status: 400 });
   });
 
@@ -1164,7 +1170,7 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       procurement_document_lines: none,
       providers: { data: [{ id: "p1" }, { id: "p2" }], error: null },
     });
-    await controller.list(user, "verified", undefined, undefined, undefined, "Acme, (inv)%");
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "Acme, (inv)%");
     const or = calls.find((c) => c[0] === "procurement_documents" && c[1] === "or")!;
     expect(or[2][0]).toBe(
       "doc_number.ilike.%Acme inv%,extracted->>vendorName.ilike.%Acme inv%,provider_id.in.(p1,p2)",
@@ -1177,7 +1183,7 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
       providers: { data: null, error: { message: "boom" } },
     });
     await expect(
-      controller.list(user, "verified", undefined, undefined, undefined, "acme"),
+      controller.list(user, "verified", undefined, undefined, undefined, undefined, "acme"),
     ).rejects.toMatchObject({ status: 500 });
   });
 });
@@ -1199,7 +1205,8 @@ describe("DocumentsController.list — papers filed in one instant (r105)", () =
       b.limit = (n: number) => ((lim = n), b);
       b.lt = (col: string, v: string) => ((out = out.filter((r) => r[col] < v)), b);
       b.or = (expr: string) => {
-        const m = /^created_at\.lt\.(.+),and\(created_at\.eq\.(.+),id\.lt\.(.+)\)$/.exec(expr)!;
+        // #2449 quotes each value; read them with or without the quotes.
+        const m = /^created_at\.lt\."?(.+?)"?,and\(created_at\.eq\."?(.+?)"?,id\.lt\."?(.+?)"?\)$/.exec(expr)!;
         out = out.filter((r) => r.created_at < m[1] || (r.created_at === m[2] && r.id < m[3]));
         return b;
       };
@@ -1222,7 +1229,7 @@ describe("DocumentsController.list — papers filed in one instant (r105)", () =
     const c = pagedControllerWith(["a", "b", "c", "d", "e"].map((id) => ({ id: `0000000${id.charCodeAt(0) - 96}-0000-4000-8000-000000000000`, created_at: at })));
     const p1: any = await c.list(user, "verified", undefined, undefined, "3");
     expect(p1.hasMore).toBe(true);
-    const p2: any = await c.list(user, "verified", undefined, undefined, "3", undefined, p1.nextBefore, p1.nextBeforeId);
+    const p2: any = await c.list(user, "verified", undefined, undefined, "3", undefined, undefined, p1.nextBefore, p1.nextBeforeId);
     const ids = [...p1.items, ...p2.items].map((i: any) => i.id);
     expect(new Set(ids).size).toBe(5);
     expect(p2.hasMore).toBe(false);
@@ -1230,8 +1237,8 @@ describe("DocumentsController.list — papers filed in one instant (r105)", () =
 
   it("refuses a cursor id without its time, or an id that is not one", async () => {
     const c = pagedControllerWith([]);
-    await expect(c.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "00000001-0000-4000-8000-000000000000")).rejects.toMatchObject({ status: 400 });
-    await expect(c.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-20T10:00:00Z", "x),or(id.gt.0")).rejects.toMatchObject({ status: 400 });
+    await expect(c.list(user, "verified", undefined, undefined, undefined, undefined, undefined, undefined, "00000001-0000-4000-8000-000000000000")).rejects.toMatchObject({ status: 400 });
+    await expect(c.list(user, "verified", undefined, undefined, undefined, undefined, undefined, "2026-11-20T10:00:00Z", "x),or(id.gt.0")).rejects.toMatchObject({ status: 400 });
   });
 });
 

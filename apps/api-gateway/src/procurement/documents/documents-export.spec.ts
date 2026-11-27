@@ -49,7 +49,7 @@ describe("verified papers CSV: exact decimals (r106 g5)", () => {
     expect(none[6]).toBe("");
     const some = verifiedCsv([row({ total: "5.00" }), row({ total: null }), row({ total: "7.00" })]).split("\r\n").find((l) => l.startsWith("Total "))!.split(",");
     expect(some[8]).toBe("12.00");
-    expect(some[9]).toBe("1 of 3 papers printed no total");
+    expect(some[9]).toBe("1 of 3 papers prints no total; not in this total");
   });
   it("a column only some papers printed totals the ones that did and says how many did not", () => {
     // 9 TRY papers print tax, 1 is tax-inclusive and prints none; every paper prints a total.
@@ -57,12 +57,12 @@ describe("verified papers CSV: exact decimals (r106 g5)", () => {
       row({ currency: "TRY", doc_number: `T-${i}`, subtotal: null, freight: null, tax: i === 9 ? null : "1.00", total: "10.00" }),
     );
     const total = verifiedCsv(papers).trim().split("\r\n").pop()!;
-    expect(total).toBe("Total,,,,TRY,,,9.00,100.00,1 of 10 papers prints no tax; not in this total");
+    expect(total).toBe("Total invoice,,,,TRY,,,9.00,100.00,1 of 10 papers prints no tax; not in this total");
   });
   it("an unread total is said too, and a column nobody or everybody printed needs no word", () => {
     const papers = [row({ total: null }), row({ total: "5.00" }), row({ total: "6.00" })];
     const total = verifiedCsv(papers).trim().split("\r\n").pop()!;
-    expect(total).toBe("Total,,,,USD,30.30,,0.90,11.00,1 of 3 papers prints no total; not in this total");
+    expect(total).toBe("Total invoice,,,,USD,30.30,,0.90,11.00,1 of 3 papers prints no total; not in this total");
     // freight printed by none: empty, no note for it
     expect(total).not.toContain("freight");
   });

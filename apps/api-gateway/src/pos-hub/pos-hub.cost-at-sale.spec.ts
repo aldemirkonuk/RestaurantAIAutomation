@@ -170,6 +170,8 @@ describe("cost at sale (C1-C5)", () => {
     const frac = consumption.get("pos:generic_webhook:chk-1:item-1||90.0000:#0:frac");
     expect(whole).toMatchObject({ cost_at_sale: 30, cost_basis: "invoice_lot_wac" });
     expect(frac).toMatchObject({ cost_at_sale: 15, cost_basis: "pour_lot_wac" });
+  });
+
   it("C1 depleted lots past the row cap do not hide the live shelf", async () => {
     // 1100 spent lots, older than the 3 live ones: an unfiltered read returns
     // the first 1000 (all spent) and the sale is costed over no shelf at all.

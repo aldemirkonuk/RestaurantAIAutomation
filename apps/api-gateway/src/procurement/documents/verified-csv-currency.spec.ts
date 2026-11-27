@@ -11,7 +11,7 @@ const row = (o: Partial<ExportRow> = {}): ExportRow => ({
   currency: "USD", subtotal: null, freight: null, tax: null, total: "10.40", ...o,
 });
 const totals = (csv: string) =>
-  csv.trim().split("\r\n").filter((l) => l.startsWith("Total,")).map((l) => l.split(","));
+  csv.trim().split("\r\n").filter((l) => /^Total[ ,]/.test(l)).map((l) => l.split(","));
 
 describe("verified CSV Total rows by currency (r109)", () => {
   it("USD and TRY papers total apart; TRY is never added to USD", () => {
@@ -46,6 +46,9 @@ describe("verified CSV Total rows by currency (r109)", () => {
   it("the export of a house with one non-USD verified paper gives two totals, end to end", async () => {
     const chain: any = {
       from: () => chain, select: () => chain, eq: () => chain, order: () => chain, in: () => chain,
+      or: () => chain,
+      // The export pages by keyset (.limit) in the integrated tree; .range kept for the offset reader.
+      limit: (...a: unknown[]) => chain.range(...a),
       range: () => Promise.resolve({
         data: [
           { id: "d1", doc_number: "A-1", currency: "USD", total: 40.5, provider_id: null, extracted: { vendorName: "Acme" } },
