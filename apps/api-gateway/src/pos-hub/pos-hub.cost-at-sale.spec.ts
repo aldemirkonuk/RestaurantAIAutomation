@@ -18,7 +18,7 @@ type Row = Record<string, any>;
 
 function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boolean; logReadError?: boolean }) {
   const consumption = new Map<string, Row>();
-  const state = { lots: opts.lots ?? [], lotLimits: [] as number[] };
+  const state = { lots: opts.lots ?? [], lotLimits: [] as number[], lotReads: [] as string[][] };
   const client: any = {
     from(table: string) {
       const filters: Row = {};
@@ -91,6 +91,7 @@ function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boo
               .filter((l) => lotRules.every((r) => r(l)))
               .sort((a, b) => String(a.received_at).localeCompare(String(b.received_at)))
               .slice(0, Math.min(lotLimit ?? 1000, 1000));
+            state.lotReads.push(rows.map((l) => String(l.id)));
             return Promise.resolve(
               opts.lotsError
                 ? { data: null, error: { message: "lots down" } }
@@ -172,6 +173,22 @@ describe("cost at sale (C1-C5)", () => {
     expect(row.cost_source_lot_id).toBe("live-1");
     expect(row.cost_parts_capped).toBe(false);
     expect((row.cost_parts as Row[]).map((p) => p.lot_id)).toEqual(["live-1", "live-2", "live-3"]);
+  });
+
+  it("C1 the lots read keeps a live lot that carries no cost, so FIFO's oldest lot is seen", async () => {
+    // FIFO draws every live lot. A read that drops the uncosted ones makes the
+    // oldest PRICED lot look like the first, and (with r102 F2's rule that a line
+    // names a delivery only when FIFO drew it from there) a line drawn from the
+    // older uncosted lot would be restated by a paper that never priced it.
+    const uncosted = lot({ id: "lot-old", qty: 3, unit_cost: null, cost_provenance: null, source_order_id: null, received_at: "2026-07-01" });
+    const sample = lot({ id: "lot-sample", qty: 1, cost_provenance: "sample", source_order_id: "ord-s", received_at: "2026-07-15" });
+    const priced = lot({ id: "lot-new", qty: 6, source_order_id: "ord-1", received_at: "2026-08-01" });
+    const { db, consumption, state } = makeDb({ lots: [priced, sample, uncosted] });
+    await new PosHubService(db).ingest("r1", "generic_webhook", [check()]);
+    expect(state.lotReads).toEqual([["lot-old", "lot-sample", "lot-new"]]);
+    // the parts stay over the priced, non-sample lots only (the rollup's WAC shelf)
+    const row = consumption.get(KEY)!;
+    expect((row.cost_parts as Row[]).map((p) => p.lot_id)).toEqual(["lot-new"]);
   });
 
   it("C1 more live lots than the parts cap reads as capped, not as a short shelf", async () => {

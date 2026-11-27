@@ -2010,12 +2010,15 @@ export class PosHubService {
           .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", inventoryIds),
-        // The same live, on-hand, priced, non-sample lots pickSaleCostSource
-        // keeps, filtered at the source and read per item, oldest first. An
-        // unfiltered read keeps depleted lots at qty 0 and passes PostgREST's
-        // 1000-row cap, so the parts would miss live lots and the sale would
-        // be restated over a shelf the rollup never read. One past the cap is
-        // enough to say "capped".
+        // Every live, on-hand lot, costed or not, read per item, oldest first.
+        // An unfiltered read keeps depleted lots at qty 0 and passes
+        // PostgREST's 1000-row cap, so the parts would miss live lots and the
+        // sale would be restated over a shelf the rollup never read. One past
+        // the cap is enough to say "capped". Costed and sample lots are NOT
+        // filtered here: FIFO draws every live lot, so the oldest one must be
+        // seen even when it carries no cost, or a line drawn from it would name
+        // a younger priced lot's order and be restated by a paper that never
+        // priced it (r102 F2 names the picked lot only when it is costed).
         Promise.all(
           inventoryIds.map((id) =>
             db
@@ -2027,8 +2030,6 @@ export class PosHubService {
               .eq("inventory_id", id)
               .eq("stock_state", "live")
               .gt("qty", 0)
-              .not("unit_cost", "is", null)
-              .neq("cost_provenance", "sample")
               .order("received_at", { ascending: true })
               .order("id", { ascending: true })
               .limit(COST_PARTS_CAP + 1),

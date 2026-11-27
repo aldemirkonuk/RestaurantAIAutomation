@@ -109,18 +109,17 @@ export function pickSaleCostSource(
     // The oldest live costed lot is named whatever the basis: a line costed at
     // the last price paid still came off a delivery, and the invoice that
     // verifies that delivery restates the line (r102).
+    // The lots arrive unfiltered by cost (every live lot FIFO can draw), so the
+    // cap is judged over all of them and the costed ones are picked out here.
     const live = (lots ?? [])
-      .filter(
-        (l) =>
-          (l.stock_state ?? "live") === "live" &&
-          Number(l.qty) > 0 &&
-          l.unit_cost != null &&
-          l.cost_provenance !== "sample",
-      )
+      .filter((l) => (l.stock_state ?? "live") === "live" && Number(l.qty) > 0)
       .sort((a, b) =>
         String(a.received_at ?? "").localeCompare(String(b.received_at ?? "")),
       );
-    const first = live[0];
+    const priced = live.filter(
+      (l) => l.unit_cost != null && l.cost_provenance !== "sample",
+    );
+    const first = priced[0];
     if (first) {
       lotId = first.id ? String(first.id) : null;
       orderId = first.source_order_id ? String(first.source_order_id) : null;
@@ -128,9 +127,12 @@ export function pickSaleCostSource(
     // r109 g1: the same live lots the rollup's WAC is read over (live, priced,
     // not a sample), each with its own qty and cost. A paper replaces its own
     // order's part, so a lot spent before its paper is checked still restates.
+    // The lots read stops one past the cap over EVERY live lot, so more than the
+    // cap live means the priced ones may not all have been read: capped, never a
+    // short shelf.
     if (live.length > COST_PARTS_CAP) partsCapped = true;
-    else if (live.length > 0)
-      parts = live.map((l) => ({
+    else if (priced.length > 0)
+      parts = priced.map((l) => ({
         order_id: l.source_order_id ? String(l.source_order_id) : null,
         delivery_id: l.delivery_id ? String(l.delivery_id) : null,
         lot_id: l.id ? String(l.id) : null,
