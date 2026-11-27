@@ -1059,3 +1059,39 @@ describe('MenuNext — the menu reads in its printed order, under its own sectio
     expect(screen.queryAllByTestId('menu-section-row')).toHaveLength(0);
   });
 });
+
+describe('MenuNext — a line shows what the menu prints beside it (r108 menu-g10)', () => {
+  it('the description in one line with its full text in the title, and the marks as printed', async () => {
+    const long = 'Red lentils, cumin and lemon, slow cooked the way the house has made it since the first winter';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ description: long, printed_marks: ['V', 'GF'] })] }));
+    mount();
+    const desc = await screen.findByTestId('menu-line-description');
+    expect(desc).toHaveTextContent(long);
+    expect(desc).toHaveAttribute('title', long);
+    expect(desc).toHaveClass('mdv-line-desc');
+    const marks = screen.getByTestId('menu-line-marks');
+    expect(marks).toHaveAttribute('aria-label', 'Marks as printed on the menu: V, GF');
+    expect(within(marks).getByText('as printed on the menu')).toBeInTheDocument();
+  });
+
+  it('a scanned line says its marks were read from the scan, not that the menu printed them', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ source: 'scan', printed_marks: ['GF'] })] }));
+    mount();
+    const marks = await screen.findByTestId('menu-line-marks');
+    expect(marks).toHaveAttribute('aria-label', 'Marks as read from the scan, check them on the menu: GF');
+    expect(within(marks).queryByText('as printed on the menu')).toBeNull();
+  });
+
+  it('a line with no description and no marks shows neither, and claims nothing', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ description: null, printed_marks: null })] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-line-description')).toBeNull();
+    expect(screen.queryByTestId('menu-line-marks')).toBeNull();
+  });
+
+  it('the description stays one line: menu-rows.css ellipsises it', () => {
+    const css = readFileSync(`${__dirname}/menu-rows.css`, 'utf8');
+    expect(css).toMatch(/\.mdv-line-desc\s*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/);
+  });
+});

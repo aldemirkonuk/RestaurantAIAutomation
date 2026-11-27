@@ -63,6 +63,11 @@ import './menu-rows.css';
 
 const EM = '—';
 
+/** Where a line's marks come from, said plainly: a scan's marks were read, a file's were typed in the file. */
+function marksNote(source: string | undefined): string {
+  return source === 'scan' ? 'as read from the scan, check them on the menu' : 'as printed on the menu';
+}
+
 /**
  * Whether a line on the current menu is a dish (a kitchen line): the gateway's
  * own word when it sends one (menu-line-view.ts isKitchenLine), else the same
@@ -406,7 +411,27 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
       data-state={discarding ? 'pending' : undefined}
       data-new={isNew ? 'true' : undefined}
     >
-      <td>{line.name}</td>
+      <td>
+        {line.name}
+        {/* r108 menu-g10: what the menu prints beside the line, in one line. */}
+        {line.description ? (
+          <span className="cl-note mdv-line-desc" title={line.description} data-testid="menu-line-description">
+            {line.description}
+          </span>
+        ) : null}
+        {line.printed_marks && line.printed_marks.length > 0 ? (
+          // A scan's marks come from the same read as its line text, so nothing
+          // outside the read checked them: say "as read", not "as printed".
+          <span className="mdv-line-marks" aria-label={`Marks ${marksNote(line.source)}: ${line.printed_marks.join(', ')}`} data-testid="menu-line-marks">
+            {line.printed_marks.map((m) => (
+              <span key={m} className="cl-chip" title={marksNote(line.source)}>
+                {m}
+              </span>
+            ))}
+            <span className="cl-note">{marksNote(line.source)}</span>
+          </span>
+        ) : null}
+      </td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
       <td className="cl-num" data-label="Glass">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>

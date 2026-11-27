@@ -398,6 +398,13 @@ export interface MenuLine {
   flag_field?: string | null
   /** The line's place on the menu as printed (r108 menu-g14); null for a line read before places were kept. */
   line_no?: number | null
+  /** The line's description as the menu prints it (r108 menu-g10); absent from an older gateway. */
+  description?: string | null
+  /**
+   * Dietary or allergen marks the menu PRINTS beside the line, as printed
+   * (r108 menu-g10). Never inferred; none is never "free of".
+   */
+  printed_marks?: string[] | null
   created_at: string
   /**
    * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every

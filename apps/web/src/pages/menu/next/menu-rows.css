@@ -93,6 +93,26 @@
   }
 }
 
+/* r108 menu-g10: a line's printed description in one line, its full text in
+   the title; its printed marks as plain chips. Layout only, no motion. */
+.mdv-line-desc {
+  display: block;
+  max-width: 36ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.mdv-line-marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
 /* r108 menu-g14: a section's sub-heading inside the menu's table. */
 .mdv-section-row th {
   text-align: left;

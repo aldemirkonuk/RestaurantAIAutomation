@@ -75,6 +75,9 @@ export const MEMBER_LINE_KEYS = [
   "created_at",
   // r108 menu-g14: the line's printed place (null before places were kept).
   "line_no",
+  // r108 menu-g10: what the menu prints beside the line (not its raw text).
+  "description",
+  "printed_marks",
 ] as const;
 
 /**

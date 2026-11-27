@@ -32,6 +32,7 @@ import { itemNeedsPencil } from "./pencil-rule";
 import { flagReasonOf, isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
 import { repriceIntoDraft, type RepriceReply } from "./menu-reprice";
+import { keepDescription, keepPrintedMarks } from "./parsers/printed-marks";
 import {
   setHouseMenuPrice,
   setHouseMenuPrices,
@@ -565,7 +566,7 @@ function menusUnreadable(error: { message?: string }): InternalServerErrorExcept
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
 export const LINE_SELECT =
-  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, line_no";
+  "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, review_notes, price_flag, price_flag_note, raw_extracted_text, created_at, line_no, description, printed_marks";
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
@@ -3169,6 +3170,9 @@ export class MenusService {
       bottle_price: item.bottle_price ?? null,
       raw_extracted_text: item.raw_text ?? null,
       line_no: firstLineNo === null ? null : firstLineNo + idx,
+      // r108 menu-g10: a mark is stored only when it is on the line's raw text.
+      description: keepDescription(item.description),
+      printed_marks: keepPrintedMarks(item.printed_marks, item.raw_text),
       wine_library_id: masterWineId,
       ...(houseItemId ? { inventory_item_id: houseItemId } : {}),
       source: method,
