@@ -7,6 +7,7 @@ import {
   Logger,
   Post,
   Query,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Public } from "../../auth/decorators/public.decorator";
@@ -58,7 +59,7 @@ export class InboundEmailController {
     @Body() body: any,
     @Headers("x-inbound-secret") headerSecret?: string,
     @Query("secret") querySecret?: string,
-  ): Promise<{ status: string; restaurant_id?: string | null }> {
+  ): Promise<{ status: string; restaurant_id?: string | null; test?: true }> {
     const configured = (
       this.configService.get<string>("INBOUND_WEBHOOK_SECRET") || ""
     ).trim();
@@ -88,6 +89,37 @@ export class InboundEmailController {
         norm.recipients,
       );
 
+      // The house's own test letter (founder /goal 2026-11-07, the session's
+      // call): it proves the address works and is NOT a vendor's letter, so it
+      // is marked arrived and kept out of the vendor pipeline. Rejected:
+      // publishing it as well — it would only land in triage as noise. A
+      // letter whose code matches no open check of this house goes on below.
+      if (restaurantId) {
+        let isTest: boolean;
+        try {
+          isTest = await this.inboundAddress.noteTestLetter(
+            restaurantId,
+            norm.subject,
+            norm.from,
+          );
+        } catch (e: any) {
+          this.logger.error(
+            `inbound-email: a test letter for ${restaurantId} could not be marked arrived: ${e?.message}`,
+          );
+          // 503, not 200: the provider retries, rather than the owner being
+          // told "not arrived yet" about a letter that did arrive.
+          throw new ServiceUnavailableException(
+            "The test letter could not be recorded; send it again.",
+          );
+        }
+        if (isTest) {
+          this.logger.log(
+            `inbound-email: test letter arrived for restaurant=${restaurantId}`,
+          );
+          return { status: "ok", restaurant_id: restaurantId, test: true };
+        }
+      }
+
       // Publish the exact event shape the Gmail path publishes, plus restaurant_id + source.
       await this.orchestrator.publishEvent(
         "email.events",
@@ -114,6 +146,7 @@ export class InboundEmailController {
       );
       return { status: "ok", restaurant_id: restaurantId };
     } catch (e: any) {
+      if (e instanceof ServiceUnavailableException) throw e;
       this.logger.error(`inbound-email webhook failed: ${e?.message}`);
       return { status: "error" };
     }
