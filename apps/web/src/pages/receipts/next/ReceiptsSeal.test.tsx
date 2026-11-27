@@ -544,3 +544,19 @@ describe('completing the swipe lands the seal and then a quiet loading sign', ()
  * Deleted at the ADR 0149 cutover (CUTOVER-MANIFEST-2026-09-28.md, group
  * `receipts`): `ReceiptsPage.tsx` is gone, so there is no second verify
  * path left to hold to the seal. Sections 1-3 above hold the only one. */
+
+/* ─── 5. Reduced motion has no ink tween (r108 g16, ADR 0112) ───────────
+ * `.rc-ink` carries a 160 ms background/border transition; the reduce rule
+ * must name it, or a person who asked for no motion still sees it tween. */
+import pageSource from './ReceiptsNext.tsx?raw';
+
+describe('reduced motion: the ink tween is off', () => {
+  it('names .rc-ink inside the prefers-reduced-motion block, with transition: none', () => {
+    const block = /@media \(prefers-reduced-motion: reduce\) \{([^}]*)\}/.exec(pageSource);
+    expect(block).not.toBeNull();
+    const [selectors, body] = (block as RegExpExecArray)[1].split('{');
+    expect(selectors).toContain('.rc-ink');
+    expect(body).toContain('transition: none');
+    expect(body).toContain('animation: none');
+  });
+});
