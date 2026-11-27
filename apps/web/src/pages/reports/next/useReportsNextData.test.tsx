@@ -160,3 +160,47 @@ describe('useReportsNextData — a window switch leaves the other registers the 
     expect(result.current.registers.till).not.toBe(till);
   });
 });
+
+describe('useReportsNextData — a till window is read before the click (perf-p6-4)', () => {
+  const TILL90 = '/analytics/pos-revenue/r1?days=90';
+  function arrange() {
+    auth.role = 'owner';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path.startsWith('/analytics/pos-revenue/r1')) return { data: { posConnected: true } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  }
+
+  it('warming 90d reads it once, and the click then reads nothing more', async () => {
+    arrange();
+    const { result, rerender } = renderHook(
+      ({ days }: { days: number }) => useReportsNextData(days, () => {}, ['till']),
+      { wrapper: wrapper(), initialProps: { days: 30 } },
+    );
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+
+    act(() => {
+      result.current.warmTillWindow(90);
+      result.current.warmTillWindow(90); // a second hover is the same read
+    });
+    await waitFor(() => expect(paths().filter((p) => p === TILL90)).toHaveLength(1));
+
+    rerender({ days: 90 }); // the click
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    expect(result.current.registers.till?.data).toBeDefined();
+    expect(paths().filter((p) => p === TILL90)).toHaveLength(1);
+  });
+
+  it('does not warm the window already showing, nor for a role held back', async () => {
+    arrange();
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['till']), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current.registers.till?.loading).toBe(false));
+    const before = paths().length;
+    act(() => result.current.warmTillWindow(30));
+    expect(paths().length).toBe(before);
+  });
+});

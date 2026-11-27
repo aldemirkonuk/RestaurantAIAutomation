@@ -80,9 +80,12 @@ function GraphIcon({ graph }: { graph: GraphType }) {
 export function TillWindowPicker({
   days,
   onChange,
+  onWarm,
 }: {
   days: number;
   onChange: (d: number) => void;
+  /** Called when a chip is hovered, focused or touched, before any click. */
+  onWarm?: (d: number) => void;
 }) {
   const options = useMemo(() => [7, 30, 90], []);
   return (
@@ -94,6 +97,9 @@ export function TillWindowPicker({
           className="rp-chip rp-ink rp-focus rp-no-drag"
           aria-pressed={days === d}
           onClick={() => onChange(d)}
+          onPointerEnter={onWarm && (() => onWarm(d))}
+          onFocus={onWarm && (() => onWarm(d))}
+          onTouchStart={onWarm && (() => onWarm(d))}
         >
           {d}d
         </button>
@@ -202,6 +208,8 @@ export interface CuttingProps {
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
   onDays: (d: number) => void;
+  /** Warms a window's read ahead of the click (perf-p6-4). */
+  onWarmDays?: (d: number) => void;
 }
 
 function Cutting({
@@ -216,6 +224,7 @@ function Cutting({
   onSwap,
   onRemove,
   onDays,
+  onWarmDays,
 }: CuttingProps) {
   const spec = CATALOGUE[id];
   const drawn = graphOrDefault(id, graph);
@@ -258,7 +267,7 @@ function Cutting({
             </button>
           </div>
         ) : spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} />
+          <TillWindowPicker days={ctx.days} onChange={onDays} onWarm={onWarmDays} />
         ) : null}
       </div>
 

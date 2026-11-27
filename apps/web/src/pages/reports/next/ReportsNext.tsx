@@ -358,6 +358,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onSwap={handlers[c.id].onSwap}
         onRemove={handlers[c.id].onRemove}
         onDays={setTillDays}
+        onWarmDays={data.warmTillWindow}
       />
     ),
   }));

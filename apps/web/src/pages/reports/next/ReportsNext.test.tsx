@@ -433,6 +433,7 @@ function base() {
     } as Record<string, unknown>,
     tillDays: 30,
     setTillDays: vi.fn(),
+    warmTillWindow: vi.fn(),
     sheet: defaultSheet(),
     saveSheet,
     sheetKnown: true,
@@ -1773,5 +1774,23 @@ describe('a till-window click redraws the till and not the other cuttings (perf-
     expect(till.mock.calls.length).toBeGreaterThan(tillBefore);
     expect(spies.map((s) => s.mock.calls.length)).toEqual(drawnBefore);
     [...spies, till].forEach((s) => s.mockRestore());
+  });
+});
+
+describe('till window chips warm the read before the click (perf-p6-4)', () => {
+  it('pointer, focus and touch on the 90d chip each ask the data layer to warm 90', () => {
+    const warm = vi.fn();
+    hook.current = { ...hook.current, warmTillWindow: warm };
+    render(
+      <MemoryRouter>
+        <ReportsNext ground="charcoal" />
+      </MemoryRouter>,
+    );
+    const chip = screen.getAllByRole('button', { name: '90d' })[0];
+    fireEvent.pointerEnter(chip);
+    fireEvent.focus(chip);
+    fireEvent.touchStart(chip);
+    expect(warm).toHaveBeenCalledTimes(3);
+    expect(warm).toHaveBeenCalledWith(90);
   });
 });
