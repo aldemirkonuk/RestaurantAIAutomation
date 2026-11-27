@@ -8,7 +8,7 @@
  * driven by its keyboard path (Enter arms it, Enter again completes it).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -199,11 +199,26 @@ describe('OrderSheet (INV-W20, INV-W21)', () => {
     expect(document.body.textContent).not.toMatch(/Order sent|Send it\?/);
   });
 
-  it('says how many orders are already open above the hold (r109 g1)', () => {
-    mount(<OrderSheet row={row()} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" alreadyOpen={0} />);
+  it('says how many orders are already open above the hold, and which one the hold changes (r109 g1)', () => {
+    const o = (id: string, status: string, providerId: string | null) =>
+      ({ id, orderNumber: id, status, openQty: 6, unit: 'bottle', expected: null, inBookUnit: 6, providerId }) as never;
+    const place = (openOrders: never[]) =>
+      mount(<OrderSheet row={row()} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" openOrders={openOrders} />);
+    place([]);
     expect(screen.queryByTestId('iv-order-already-open')).toBeNull();
-    mount(<OrderSheet row={row()} onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" alreadyOpen={2} />);
-    expect(screen.getByTestId('iv-order-already-open').textContent).toContain('2 already open for it.');
+    cleanup();
+    // A sent order from the same vendor is NOT changed by the hold: a second order is placed.
+    place([o('w2', 'IN_TRANSIT', 'p1')]);
+    const sent = screen.getByTestId('iv-order-already-open').textContent ?? '';
+    expect(sent).toContain('1 already open for it.');
+    expect(sent).not.toContain('changed by this hold');
+    expect(sent).toContain('1 is on its way or with another vendor; this hold places a new order.');
+    cleanup();
+    place([o('w3', 'PENDING', 'p1'), o('w4', 'PENDING', 'p9')]);
+    const text = screen.getByTestId('iv-order-already-open').textContent ?? '';
+    expect(text).toContain('2 already open for it.');
+    expect(text).toContain('1 with Enoteca Rossi is changed by this hold, not placed again.');
+    expect(text).toContain('The other 1 is on its way or with another vendor');
   });
 
   it('offers no made-up quantity when the title is at or above par', () => {
