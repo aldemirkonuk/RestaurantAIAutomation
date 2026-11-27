@@ -1269,3 +1269,14 @@ textarea.cl-field {
 .cl-rcp-usable-in { width: 72px; text-align: right; }
 .cl-rcp-usable-in[aria-invalid='true'] { border-color: var(--warn); }
 .cl-rcp-usable-bad { color: var(--warn); }
+/* Batch for a bottle (r109 drinks-g2): opens at once, nothing animates. */
+.cl-rcp-batch-wrap { margin: 0 0 8px; }
+.cl-rcp-batch { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px solid var(--paper-2); border-radius: 8px; }
+.cl-rcp-batch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
+.cl-rcp-batch-in { width: 72px; text-align: right; }
+.cl-rcp-batch-tick { display: inline-flex; align-items: center; gap: 6px; margin: 0; min-height: 30px; }
+.cl-rcp-batch-head { margin: 0; font-size: 12.5px; color: var(--ink-1); }
+.cl-rcp-batch .cl-btn[aria-pressed='true'] { border-color: var(--ink-2); font-weight: 600; }
+@media (max-width: 719px), (pointer: coarse) {
+  .cl-rcp-batch-tick { min-height: 44px; }
+}

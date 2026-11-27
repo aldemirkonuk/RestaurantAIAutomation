@@ -23,6 +23,8 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { useHouseDate } from './useHouseDate';
 import type { RecipeWords } from './recipeWords';
 import { MAKE_SAID, readMake, scaledAmount, scaledCost } from './recipeScale';
+import BatchForBottle, { BATCH_START, batchAnswer, batchCost, type BatchState } from './BatchForBottle';
+import { batchAtService, batchHead, batchParts } from './recipeBatch';
 
 const FLAG = 'data-print-card';
 
@@ -113,6 +115,7 @@ export default function RecipeCard({
   const makeRead = readMake(makeText);
   // A count that cannot be read is said, and the card is drawn for 1, never for a guess.
   const n = makeRead ?? 1;
+  const [batch, setBatch] = useState<BatchState>(BATCH_START);
 
   // The flag is only ever on while this card is the thing being printed.
   useEffect(() => () => document.documentElement.removeAttribute(FLAG), []);
@@ -134,6 +137,8 @@ export default function RecipeCard({
   const glass = v.glass ?? data.cocktail.glass;
   const garnish = v.garnish ?? data.cocktail.garnish;
   const method = v.method ?? data.cocktail.method;
+  const batched = batchAnswer(v, batch);
+  const batchMoney = batchCost(batched, exact, showCost ? sayMoney : null);
 
   return (
     <>
@@ -177,6 +182,8 @@ export default function RecipeCard({
         ) : null}
       </div>
 
+      {isDish ? null : <BatchForBottle v={v} state={batch} setState={setBatch} cost={batchMoney} />}
+
       {/* Out of the app's own tree, so paper can hide everything else and leave one page (r104 walk: visibility alone left blank sheets). */}
       {createPortal(
         <section className="cl-print-card" data-testid="recipe-card" aria-hidden="true">
@@ -196,6 +203,13 @@ export default function RecipeCard({
           </ol>
           {method ? <p className="cl-print-method">{method}</p> : null}
           {garnish ? <p>Garnish: {garnish}</p> : null}
+          {batched?.kind === 'plan' ? (
+            <div data-testid="recipe-card-batch">
+              <p><b>{batchHead(batched.plan)}</b> {batchParts(batched.plan)}</p>
+              {batchAtService(batched.plan) ? <p>{batchAtService(batched.plan)}</p> : null}
+              {batchMoney ? <p>{batchMoney}</p> : null}
+            </div>
+          ) : null}
           <p>{cardAllergens(data.whatIsIn)}</p>
           {showCost ? (
             <p data-testid="recipe-card-cost">
