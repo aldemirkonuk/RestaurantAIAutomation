@@ -623,7 +623,7 @@ export function VerifyEmail() {
                         Sign in to resend
                       </Link>
                       <p className="mdv-note">After you verify, sign in to continue.</p>
-                      <Link className="mdv-link" to="/login">
+                      <Link className="mdv-link mdv-pub__verified" to="/login">
                         I verified it, sign in
                       </Link>
                     </>
