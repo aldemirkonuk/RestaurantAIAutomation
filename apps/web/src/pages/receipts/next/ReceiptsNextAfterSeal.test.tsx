@@ -332,3 +332,22 @@ describe('where focus goes after a seal (r108)', () => {
     expect(document.activeElement).not.toBe(rowBtn('INV-89'));
   });
 });
+
+describe('the lines card holds its place while the lines are read (r109)', () => {
+  it('reserves its height before the lines arrive and keeps the same box when they do', async () => {
+    let arrive: (d: unknown) => void = () => {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (api as any).detail = new Promise((r) => { arrive = r; });
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    const reserve = await screen.findByTestId('lines-reserve');
+    expect(reserve).toHaveTextContent('Reading the lines');
+    // The height itself is CSS (jsdom measures none); the box must be the one
+    // carrying the reserve class, and it must be gone once the lines are in.
+    expect(reserve).toHaveClass('rc-lines-wait');
+    expect(document.head.innerHTML + document.body.innerHTML).toMatch(/\.rc-lines-wait \{ min-height: \d+px \}/);
+    arrive({ document: DOC, lines: [LINE], links: [] });
+    await screen.findByLabelText('Quantity, line 1');
+    expect(screen.queryByTestId('lines-reserve')).toBeNull();
+  });
+});
