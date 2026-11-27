@@ -860,3 +860,81 @@ textarea.cl-field {
 .cl-unplaced-list > li:first-child {
   border-top: 0;
 }
+
+/* ── a recipe line and the shelf picker (pages/cellar/next/recipe/) ─────────
+   A people page: one column on a phone, one line per ingredient on a desk.
+   Tokens only from mudavym.css: --seal for linked and costed, --warn for not
+   linked and no price yet. */
+.cl-rcp-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cl-rcp-line {
+  padding: 8px 10px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.cl-rcp-line[data-role='untracked'] { background: var(--paper-0); }
+.cl-rcp-read { display: flex; gap: 10px; font-size: 12.5px; color: var(--ink-1); }
+.cl-rcp-amt { min-width: 64px; color: var(--ink-2); }
+.cl-rcp-edit {
+  display: grid;
+  grid-template-columns: 1fr 72px 92px;
+  grid-template-areas: 'what what what' 'qty unit unit' 'switch switch remove';
+  gap: 6px;
+  align-items: center;
+}
+.cl-rcp-what { grid-area: what; min-width: 0; }
+.cl-rcp-qty { grid-area: qty; width: 100%; text-align: right; }
+.cl-rcp-unit { grid-area: unit; width: 100%; }
+.cl-rcp-switch { grid-area: switch; justify-content: center; }
+.cl-rcp-remove { grid-area: remove; justify-self: end; }
+@media (min-width: 720px) {
+  .cl-rcp-edit {
+    grid-template-columns: minmax(0, 1fr) 72px 92px 170px 34px;
+    grid-template-areas: 'what qty unit switch remove';
+  }
+}
+.cl-rcp-qty[aria-invalid='true'],
+.cl-rcp-unit[aria-invalid='true'] { border-color: var(--warn); }
+.cl-rcp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-link[data-linked='true'] svg { color: var(--seal); }
+.cl-rcp-link[data-linked='false'] { color: var(--warn); }
+.cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
+.cl-rcp-note-warn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-tint);
+  color: var(--ink-1);
+  border-left: 3px solid var(--warn);
+}
+.cl-rcp-picker { margin-top: 8px; padding: 8px; border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-0); }
+.cl-rcp-picks { list-style: none; margin: 6px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.cl-rcp-pick {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-1);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.cl-rcp-pick:hover { background: var(--seal-tint); }
+.cl-rcp-pick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
