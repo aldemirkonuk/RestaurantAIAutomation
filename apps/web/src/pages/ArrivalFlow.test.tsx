@@ -552,7 +552,7 @@ describe('approved arrival flow', () => {
     )
     render(<MemoryRouter><HouseContents /></MemoryRouter>)
     expect(screen.getByText('1 line in pencil, worth a second look')).toBeInTheDocument()
-    expect(screen.getByText('Optional')).toBeInTheDocument()
+    expect(await screen.findByText('Optional')).toBeInTheDocument()
     expect(screen.getByLabelText('Vendor')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
     expect(screen.getByText(/Which drinks the house pours/)).toBeInTheDocument()

@@ -27,3 +27,23 @@ export function menuKept(progress: MenuFacts | null | undefined): MenuKept {
   if (!progress.menu_uploaded) return 'none'
   return progress.menu_current === false ? 'draft' : 'read'
 }
+
+/**
+ * What a page holds while it asks (r41 onboarding gap 2): the standing the
+ * record gave, or `unread` when the read itself failed. A failed read is not
+ * "no menu": said as "No menu read yet", it sent a house whose menu is
+ * current to /get-started, which saw that menu and sent it back.
+ */
+export type MenuStandingRead = MenuKept | 'unread'
+
+/**
+ * Whether the house states its money, from the setup read's next steps
+ * (`next_steps.money_set`, served since #1593). `null` when the read does not
+ * answer it: an older gateway, or a money read that failed there. Read
+ * structurally, as `menu_current` is.
+ */
+export function moneySetIn(progress: unknown): boolean | null {
+  const steps = (progress as { next_steps?: { money_set?: unknown } | null } | null | undefined)?.next_steps
+  const set = steps?.money_set
+  return typeof set === 'boolean' ? set : null
+}
