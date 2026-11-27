@@ -28,7 +28,7 @@ export const reportsTour: TourDefinition = {
       element: '[data-tour="reports-arrange"]',
       title: 'Arrange it your way',
       description:
-        'Move, resize, swap or take off parts of the sheet, then rule it off to keep it as yours. Put it all back starts again from the default sheet.',
+        'Move, resize, swap or take off parts of the sheet, then rule it off to keep it as yours. Undo (or Cmd-Z) steps back one change at a time, all the way to the sheet you started from. Put it all back starts again from the default sheet, and can be undone too.',
     },
     {
       element: '#rp-exports',

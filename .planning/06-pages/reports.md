@@ -193,10 +193,13 @@ is what it still cannot do, and why.
   grain today — `pos_checks.opened_at` would have to be bucketed by hour in the
   gateway first (§13.13). Weekday × week is offered because `pos-revenue` really
   does return a date per row.
-- **Discard an arrangement mid-edit.** "Rule it off" saves and "Put it all back"
-  resets to the house sheet; there is no cancel. Escape cancels a single
-  keyboard MOVE, which is not the same thing. Adding a fourth button was not
-  worth it until the founder says it is.
+- ~~**Discard an arrangement mid-edit.**~~ Built r108 g4 (2026-11-27, under the
+  2026-11-27 new-features goal, which overrides the "until the founder says it
+  is" note that stood here): arranging keeps a step history and **Undo** (or
+  Cmd/Ctrl-Z) steps back one change at a time; undoing to the start leaves the
+  reader's sheet as it was when Arrange was pressed, which is the cancel.
+  `apps/web/src/pages/reports/next/rp-undo.ts`. It is a step history, not a
+  "Cancel arranging" button: the reader keeps the good moves.
 - **Compare this house with any other house.** No peer set exists — Mudavym
   holds one tenant's books (memory: production-tenant-shape). "Against
   ourselves" says so in words rather than drawing a median nobody measured.
@@ -959,9 +962,14 @@ drift chips, S02/S03 Plus scorecards, S10 Plus days-of-cover. Pro depth (forecas
   arithmetic over the same draft: `apps/web/src/pages/reports/next/rp-arrange.ts`,
   `Placing.tsx`. No new dependency. A single-pointer path (the placing bar's ten
   buttons) ships with it, because WCAG 2.5.7 is evaluated independently of 2.1.1.
-- **There is no cancel while arranging.** "Rule it off" saves; "Put it all back"
-  resets to the house sheet. A reader who swaps a cutting to see what it holds
-  and then wants their old sheet must swap it back by hand.
+- ~~**There is no cancel while arranging.**~~ Superseded r108 g4: every draft
+  write (move, resize, swap, Show instead, Draw as, take off, put on, house
+  layout, Put it all back) pushes the whole draft it replaced, capped at 50, so
+  an undo puts a displaced neighbour back too. A held keyboard move is one
+  step; the first Cmd-Z during the hold cancels it, as Escape does. Undo is off
+  while the sheet is saving, and a ruled-off sheet starts the next arranging
+  with no history, so a saved sheet is never silently rewritten. No tween
+  (DD-r99-1). Not kept: a redo, and history across a reload.
 - **The goals-desk role gate is client-side only.** `useGoalsDesk` hides the
   set/edit/archive/ask controls unless `activeRole` is `owner` or `manager`
   (`useAuth().activeRole`, from `user_restaurant_access`). The routes themselves

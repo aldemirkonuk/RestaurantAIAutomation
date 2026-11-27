@@ -121,7 +121,8 @@ export interface SheetProps {
   arranging: boolean;
   /** `order` is the list order the move leaves the sheet in: on a narrow
    *  ruling, row-mates are drawn in list order (`liftCuttings`). */
-  onMove: (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[]) => void;
+  /** `moved`: the cutting the drag or resize was of, when the grid names it (the undo's words). */
+  onMove: (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[], moved?: AnalysisId) => void;
   /** The sheet element, shared with `useArrange` so both measure one ruling. */
   containerRef?: (el: HTMLDivElement | null) => void;
   /** Where a keyboard-held cutting started. Drawn as an outline, not a child. */
@@ -162,7 +163,8 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
      is, which left every cutting four twelfths wide on the desktop after one
      drag on a phone. */
   const handleChange = useCallback(
-    (next: readonly LayoutItem[]) => {
+    // react-grid-layout passes (layout, oldItem, newItem): the third names the cutting that moved.
+    (next: readonly LayoutItem[], _old?: LayoutItem | null, item?: LayoutItem | null) => {
       if (!arranging) return;
       const cols = colsForWidth(el?.clientWidth ?? 0);
       const placed = next.map((l) => ({
@@ -175,7 +177,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         const extra = shown.find((x) => x.id === c.id)?.extraRows ?? 0;
         slots[c.id] = extra ? { ...c.slot, h: Math.max(1, c.slot.h - extra) } : c.slot;
       }
-      onMove(slots, lifted.map((c) => c.id));
+      onMove(slots, lifted.map((c) => c.id), (item?.i as AnalysisId | undefined) ?? undefined);
     },
     [arranging, shown, el, onMove],
   );
