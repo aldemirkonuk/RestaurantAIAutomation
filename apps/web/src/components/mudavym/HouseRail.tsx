@@ -10,6 +10,7 @@
 
 import { Link, useLocation } from 'react-router-dom';
 import { openAskAi } from '../askai/events';
+import { ROUTE_LOADERS } from '../../lib/mudavym/routeChunks';
 import {
   isCurrentRoom,
   visibleFoot,
@@ -17,6 +18,28 @@ import {
   type RoomFlags,
   type ShellRole,
 } from '../../lib/mudavym/rooms';
+
+/**
+ * Fetch a room's chunk on intent (pointer over, keyboard focus, a touch), once
+ * per path, never on mount, never when the person asked to save data.
+ */
+const asked = new Set<string>();
+function warmOnIntent(path: string) {
+  const load = ROUTE_LOADERS[path];
+  if (!load || asked.has(path)) return;
+  const nav = typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { connection?: { saveData?: boolean } });
+  if (nav?.connection?.saveData) return;
+  asked.add(path);
+  void load().catch(() => asked.delete(path));
+}
+const intent = (path: string) => ({
+  onPointerEnter: () => warmOnIntent(path),
+  onFocus: () => warmOnIntent(path),
+  onTouchStart: () => warmOnIntent(path),
+});
+
+/** Test hook: forget which rooms were already asked for. */
+export const __resetIntent = () => asked.clear();
 
 export interface RoomsListProps {
   role: ShellRole;
@@ -44,6 +67,7 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
                     className="mdv-rail__room"
                     aria-current={here ? 'page' : undefined}
                     onClick={onNavigate}
+                    {...intent(r.path)}
                   >
                     {r.name}
                   </Link>
@@ -61,6 +85,7 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
               className="mdv-rail__room"
               aria-current={isCurrentRoom(pathname, r) ? 'page' : undefined}
               onClick={onNavigate}
+              {...intent(r.path)}
             >
               {r.name}
             </Link>

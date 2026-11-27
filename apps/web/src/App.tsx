@@ -77,6 +77,7 @@ import { InventoryCommandPage } from './pages/inventory/command/InventoryCommand
 import { InventoryRoute } from './pages/inventory/next/InventoryRoute'
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
+import { loadReports } from './lib/mudavym/routeChunks'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
@@ -93,7 +94,7 @@ const CommunicationsNext = lazyWithRefresh(() => import('./pages/communications/
 const TeamNext = lazyWithRefresh(() => import('./pages/team/next/TeamNext'))
 const ReceiptsNext = lazyWithRefresh(() => import('./pages/receipts/next/ReceiptsNext'))
 const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-reports/next/DocumentsReportsNext'))
-const ReportsNext = lazyWithRefresh(() => import('./pages/reports/next/ReportsNext'))
+const ReportsNext = lazyWithRefresh(loadReports)
 const NotificationsNext = lazyWithRefresh(() => import('./pages/notifications/next/NotificationsNext'))
 const RecommendationsNext = lazyWithRefresh(() => import('./pages/recommendations/next/RecommendationsNext'))
 const RecommendationsCatalogView = lazyWithRefresh(() => import('./pages/recommendations/next/CatalogView'))
