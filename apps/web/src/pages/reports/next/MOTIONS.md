@@ -54,6 +54,11 @@ to those would put a moving cutting somewhere the announcement says it is not.
   ours to animate, and no fade, rise or settle is added around it. The label
   and `aria-pressed` change at once; nothing is left to remove under reduced
   motion.
+- **The legend's hide and show does not animate.** A series hidden from the
+  legend is gone at once and a series shown again is painted where it belongs:
+  no `rp-grow` for its bars and no `rp-prior-draw` for its dashed line
+  (`.rp-prior:has(> [data-again])`), because the reader is reading the same drawing
+  again, not watching a new one arrive. The y domain does not rescale either.
 - **Nothing animates when the drawing changes.** Switching a register from an
   area to a heat map replaces the drawing outright. A cross-fade would suggest
   the two pictures are the same measurement in transit; they are two readings of
