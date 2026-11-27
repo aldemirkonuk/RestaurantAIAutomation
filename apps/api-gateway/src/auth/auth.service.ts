@@ -1297,9 +1297,7 @@ export class AuthService {
             ? updateQuery.is("password_hash", null)
             : updateQuery.eq("password_hash", expectedCurrentHash);
       }
-      const { data: written, error: writeErr } = await updateQuery.select(
-        "*",
-      );
+      const { data: written, error: writeErr } = await updateQuery.select("*");
       if (writeErr) {
         this.logger.error(`${caller} failed: ${writeErr.message}`);
         throw new BadRequestException("Failed to update password");
@@ -1648,12 +1646,13 @@ export class AuthService {
   }
 
   /**
-   * Opens the house row for the signed-in /get-started route
-   * (`createFirstHouse`). A place another house already holds opens the house
+   * Opens the house row for `createFirstHouse`. On the signed-in
+   * /get-started route a place another house already holds opens the house
    * anyway, with its pin and without the place id -- the founder, 2026-10-02:
-   * "Open it, keep the pin (Recommended)". The public register route does not
-   * come here: it refuses a held place and says so (the founder, 2026-10-08,
-   * OPEN-1: "Refuse, say it exists (Recommended)"; see registerRestaurant).
+   * "Open it, keep the pin (Recommended)". The public register route
+   * (`registerRestaurant`) comes here too, with `refuseHeldPlace`: it refuses
+   * a held place and says so (the founder, 2026-10-08, OPEN-1: "Refuse, say
+   * it exists (Recommended)"), by throwing PlaceAlreadyAHouse.
    * Whether one house per place is a rule at all is still OPEN (ADR 0265).
    *
    * On this route nothing tells a held place from a free one, the time taken
@@ -1672,6 +1671,7 @@ export class AuthService {
   private async insertHouseRow(
     placeId: string | undefined,
     insert: (googlePlaceId: string | undefined) => PromiseLike<HouseRowAnswer>,
+    refuseHeldPlace = false,
   ): Promise<HouseRowAnswer> {
     let keep = placeId;
     if (placeId) {
@@ -1686,10 +1686,14 @@ export class AuthService {
           held.error,
           "the place was not looked up",
         );
-      if (held.data) keep = undefined;
+      if (held.data) {
+        if (refuseHeldPlace) throw new PlaceAlreadyAHouse();
+        keep = undefined;
+      }
     }
     let answer = await insert(keep);
     if (keep && isSharedPlace(answer.error)) {
+      if (refuseHeldPlace) throw new PlaceAlreadyAHouse();
       keep = undefined;
       answer = await insert(undefined);
     }
@@ -1811,6 +1815,7 @@ export class AuthService {
     userId: string,
     dto: CreateFirstHouseDto,
     authTime: number | null = null,
+    refuseHeldPlace = false,
   ): Promise<TokenPair & { restaurantId: string }> {
     const { data: user, error: userReadError } =
       await this.databaseService.supabase
@@ -1870,7 +1875,11 @@ export class AuthService {
           .select("id")
           .single();
       const { data: restaurant, error: restaurantError } =
-        await this.insertHouseRow(coords.google_place_id, insertRow);
+        await this.insertHouseRow(
+          coords.google_place_id,
+          insertRow,
+          refuseHeldPlace,
+        );
       if (restaurantError || !restaurant)
         throw houseWriteError(
           "restaurant",
@@ -1968,22 +1977,32 @@ export class AuthService {
       throw new ForbiddenException(
         "A house opens only for an address that is verified. Sign up, verify the address, then open the house.",
       );
-    return this.createFirstHouse(user.user_id, {
-      restaurantName: dto.restaurantName,
-      address: dto.address,
-      city: dto.city,
-      country: dto.country,
-      stateProvince: dto.stateProvince,
-      postalCode: dto.postalCode,
-      neighborhood: dto.neighborhood,
-      restaurantEmail: dto.restaurantEmail,
-      restaurantPhone: dto.phone,
-      timezone: dto.timezone,
-      currency: dto.currency,
-      latitude: dto.latitude,
-      longitude: dto.longitude,
-      googlePlaceId: dto.googlePlaceId,
-    });
+    // The password was just proved, so this is an interactive sign-in: the
+    // pair carries auth_time, as `signIn` does, and a passkey can be added
+    // without a second proof. A held place is refused, not opened without its
+    // id (F-006 OPEN-1). This door sends no onboarding email: the caller
+    // already holds a verified account.
+    return this.createFirstHouse(
+      user.user_id,
+      {
+        restaurantName: dto.restaurantName,
+        address: dto.address,
+        city: dto.city,
+        country: dto.country,
+        stateProvince: dto.stateProvince,
+        postalCode: dto.postalCode,
+        neighborhood: dto.neighborhood,
+        restaurantEmail: dto.restaurantEmail,
+        restaurantPhone: dto.phone,
+        timezone: dto.timezone,
+        currency: dto.currency,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        googlePlaceId: dto.googlePlaceId,
+      },
+      signedInNow(),
+      true,
+    );
   }
 
   /**
