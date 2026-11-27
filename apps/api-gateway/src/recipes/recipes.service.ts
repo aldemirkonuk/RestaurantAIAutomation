@@ -7,6 +7,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { photoUrlOf } from "./drink-photo.service";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
@@ -201,7 +202,7 @@ export class RecipesService {
     // The house check and the pointer reads go at once (gap 17). When the
     // check refuses another house's drink, what the other reads found is
     // dropped with the 404 and never answered.
-    const [cocktail, pointer, count, legacy] = await Promise.all([
+    const [cocktail, pointer, count, legacy, photoUrl] = await Promise.all([
       this.houseCocktail(restaurantId, cocktailId),
       client
         .from("recipe_current")
@@ -219,6 +220,8 @@ export class RecipesService {
         .select("free_text, quantity, unit, sort_order, beverages(name), master_wine_library(name)")
         .eq("cocktail_id", cocktailId)
         .order("sort_order", { ascending: true }),
+      // The drink's photo (r110 drinks-g3), for any role; a failed read is no photo, never a failed recipe.
+      photoUrlOf(client, restaurantId, cocktailId),
     ]);
     if (pointer.error) this.failed("current pointer read", pointer.error);
     if (count.error) this.failed("version count read", count.error);
@@ -250,6 +253,7 @@ export class RecipesService {
         garnish: cocktail.garnish ?? null,
         method: cocktail.method ?? null,
         description: cocktail.description ?? null,
+        photoUrl,
       },
       current,
       cost,

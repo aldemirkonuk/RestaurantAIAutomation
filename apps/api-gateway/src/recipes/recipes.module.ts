@@ -7,10 +7,12 @@ import { DishesController } from "./dishes.controller";
 import { DishesService } from "./dishes.service";
 import { LooseLinesController } from "./loose-lines.controller";
 import { LooseLinesService } from "./loose-lines.service";
+import { DrinkPhotoController } from "./drink-photo.controller";
+import { DrinkPhotoService } from "./drink-photo.service";
 
 @Module({
   imports: [DatabaseModule, AuthModule],
-  controllers: [RecipesController, DishesController, LooseLinesController],
-  providers: [RecipesService, DishesService, LooseLinesService],
+  controllers: [RecipesController, DishesController, LooseLinesController, DrinkPhotoController],
+  providers: [RecipesService, DishesService, LooseLinesService, DrinkPhotoService],
 })
 export class RecipesModule {}
