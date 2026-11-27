@@ -293,7 +293,7 @@ export function uploadShapeOf(files: File[]): { kind: 'csv' | 'sheet' | 'file' |
 async function pagesOf(files: File[], turns: Record<number, PageTurn> = {}): Promise<{ images: string[] } | { imageBase64: string }> {
   if (files.length === 1) {
     try {
-      return { imageBase64: await photoToJpegBase64(files[0]) };
+      return { imageBase64: await photoToJpegBase64(files[0], undefined, turns[0] ?? 0) };
     } catch {
       return { imageBase64: await fileToBase64(files[0]) };
     }
@@ -338,12 +338,11 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       return;
     }
     const rekeyed: Record<number, PageTurn> = {};
-    if (picked.length > 1) {
-      picked.forEach((f, i) => {
-        const was = files.indexOf(f);
-        if (was >= 0 && turns[was]) rekeyed[i] = turns[was];
-      });
-    }
+    // At any length: a turn set while several were held still holds once one page is left.
+    picked.forEach((f, i) => {
+      const was = files.indexOf(f);
+      if (was >= 0 && turns[was]) rekeyed[i] = turns[was];
+    });
     setTurns(rekeyed);
     setFiles(picked);
   };

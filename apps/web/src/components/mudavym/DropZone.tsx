@@ -70,7 +70,7 @@ export function useCoarsePointer(): boolean {
   return coarse;
 }
 
-function Thumb({ file }: { file: File }) {
+function Thumb({ file, turn = 0 }: { file: File; turn?: Turn }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     if (!file.type.startsWith('image/') || typeof URL.createObjectURL !== 'function') {
@@ -82,7 +82,7 @@ function Thumb({ file }: { file: File }) {
     return () => URL.revokeObjectURL?.(url);
   }, [file]);
   return src ? (
-    <img className="mdv-drop__thumb" src={src} alt="" />
+    <img className="mdv-drop__thumb" src={src} alt="" style={turn ? { transform: `rotate(${turn}deg)` } : undefined} />
   ) : (
     <span className="mdv-drop__thumb mdv-drop__thumb--doc" aria-hidden>
       {(file.name.split('.').pop() ?? '').slice(0, 4).toUpperCase()}
@@ -210,7 +210,7 @@ export function DropZone({
       >
         {held && first ? (
           <div className="mdv-drop__held">
-            <Thumb file={first} />
+            <Thumb file={first} turn={files.length === 1 ? (turns?.[0] ?? 0) : 0} />
             <div className="mdv-drop__what">
               <span className="mdv-drop__name">
                 {files.length > 1 ? `${files.length} pages` : first.name}
@@ -263,7 +263,7 @@ export function DropZone({
                     Add pages
                   </button>
                 ) : null}
-                <button type="button" className="mdv-link" onClick={openPicker} disabled={disabled}>
+                <button type="button" className="mdv-link" data-mdv-change onClick={openPicker} disabled={disabled}>
                   Change
                 </button>
                 {onClear ? (

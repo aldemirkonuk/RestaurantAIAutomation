@@ -14,6 +14,10 @@ import './drop-pages.css';
 
 export type Turn = 0 | 90 | 180 | 270;
 
+type Act = 'earlier' | 'later' | 'remove' | 'change';
+/** A page's corner relative to the strip. */
+type Spot = { left: number; top: number };
+
 export interface DropZonePagesProps {
   files: File[];
   onFiles: (files: File[], mode: 'replace' | 'add') => void;
@@ -58,8 +62,20 @@ function PageThumb({ file, turn }: { file: File; turn: Turn }) {
 export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = false }: DropZonePagesProps) {
   const [said, setSaid] = useState('');
   const items = useRef(new Map<number, HTMLLIElement>());
-  const before = useRef(new Map<number, DOMRect>());
-  const lifted = useRef<{ id: number; rect: DOMRect } | null>(null);
+  const listRef = useRef<HTMLOListElement | null>(null);
+  // Where the strip's own container sat when the page was mounted, so a focus that has nowhere in the strip to go can reach the zone's Change.
+  const scope = useRef<HTMLElement | null>(null);
+  // Positions are measured against the strip itself, so a scroll, a resize or a
+  // layout shift between two measures is not read as a page moving.
+  const before = useRef(new Map<number, Spot>());
+  const lifted = useRef<{ id: number; rect: Spot } | null>(null);
+  // Where focus goes once the new order is drawn: a button of that page, or of its neighbour after a removal.
+  const focusAfter = useRef<{ id: number; act: Act } | null>(null);
+  const spotOf = (el: HTMLElement): Spot => {
+    const o = listRef.current?.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    return { left: r.left - (o?.left ?? 0), top: r.top - (o?.top ?? 0) };
+  };
   const count = useRef(files.length);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
 
@@ -74,7 +90,7 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
       const el = items.current.get(id);
       if (!el) continue;
       const from = lifted.current?.id === id ? lifted.current.rect : before.current.get(id);
-      const to = el.getBoundingClientRect();
+      const to = spotOf(el);
       if (settle && from && (from.left !== to.left || from.top !== to.top)) {
         el.style.transition = 'none';
         el.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px)`;
@@ -84,16 +100,33 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
       }
     }
     lifted.current = null;
-    const next = new Map<number, DOMRect>();
+    const next = new Map<number, Spot>();
     for (const f of files) {
       const el = items.current.get(idOf(f));
-      if (el) next.set(idOf(f), el.getBoundingClientRect());
+      if (el) next.set(idOf(f), spotOf(el));
     }
     before.current = next;
+    // A button that was just disabled (a page moved to an end) loses focus to BODY without a blur: hand it on.
+    const want = focusAfter.current;
+    focusAfter.current = null;
+    if (want) items.current.get(want.id)?.querySelector<HTMLButtonElement>(`[data-act="${want.act}"]`)?.focus();
   }, [files]);
 
-  const move = (from: number, to: number) => {
+  useEffect(() => {
+    return () => {
+      // The last removal takes the strip away: focus goes to the zone's Change.
+      if (focusAfter.current?.act === 'change') scope.current?.querySelector<HTMLElement>('[data-mdv-change]')?.focus();
+    };
+  }, []);
+
+  const move = (from: number, to: number, via?: 'earlier' | 'later') => {
     if (to < 0 || to >= files.length || to === from) return;
+    focusAfter.current = null;
+    if (via) {
+      // The pressed button is disabled once the page is at that end: focus its opposite arrow.
+      const act: Act = via === 'earlier' ? (to === 0 ? 'later' : 'earlier') : to === files.length - 1 ? 'earlier' : 'later';
+      focusAfter.current = { id: idOf(files[from]), act };
+    }
     const order = files.slice();
     const [page] = order.splice(from, 1);
     order.splice(to, 0, page);
@@ -102,6 +135,9 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
   };
   const remove = (i: number) => {
     setSaid(`Page ${i + 1} removed`);
+    // The removed page's button goes with it: the next page's Remove, else the previous one's, else the zone's Change.
+    const heir = files[i + 1] ?? files[i - 1];
+    focusAfter.current = files.length > 2 && heir ? { id: idOf(heir), act: 'remove' } : { id: 0, act: 'change' };
     onFiles(
       files.filter((_, j) => j !== i),
       'replace',
@@ -136,13 +172,13 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
       const r = items.current.get(idOf(f))?.getBoundingClientRect();
       if (j !== from && r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) to = j;
     });
-    lifted.current = { id: d.id, rect: el.getBoundingClientRect() };
+    lifted.current = { id: d.id, rect: spotOf(el) };
     el.style.transform = '';
     if (to !== from) {
       move(from, to);
     } else if (!reduced()) {
       const back = lifted.current.rect;
-      const home = el.getBoundingClientRect();
+      const home = spotOf(el);
       el.style.transition = 'none';
       el.style.transform = `translate(${back.left - home.left}px, ${back.top - home.top}px)`;
       void el.offsetWidth;
@@ -156,7 +192,14 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
 
   return (
     <>
-      <ol className="mdv-pages" aria-label="Pages of the menu">
+      <ol
+        className="mdv-pages"
+        aria-label="Pages of the menu"
+        ref={(el) => {
+          listRef.current = el;
+          if (el?.parentElement) scope.current = el.parentElement;
+        }}
+      >
         {files.map((f, i) => {
           const id = idOf(f);
           return (
@@ -184,18 +227,20 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
                 <button
                   type="button"
                   className="mdv-pages__btn"
+                  data-act="earlier"
                   aria-label={`Move page ${i + 1} earlier`}
                   disabled={disabled || i === 0}
-                  onClick={() => move(i, i - 1)}
+                  onClick={() => move(i, i - 1, 'earlier')}
                 >
                   {'←'}
                 </button>
                 <button
                   type="button"
                   className="mdv-pages__btn"
+                  data-act="later"
                   aria-label={`Move page ${i + 1} later`}
                   disabled={disabled || i === files.length - 1}
-                  onClick={() => move(i, i + 1)}
+                  onClick={() => move(i, i + 1, 'later')}
                 >
                   {'→'}
                 </button>
@@ -213,6 +258,7 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
                 <button
                   type="button"
                   className="mdv-pages__btn"
+                  data-act="remove"
                   aria-label={`Remove page ${i + 1}`}
                   disabled={disabled}
                   onClick={() => remove(i)}
