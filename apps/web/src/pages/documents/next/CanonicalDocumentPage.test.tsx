@@ -211,7 +211,7 @@ describe('CanonicalDocumentPage', () => {
     expect(container.querySelector('.cd-page')?.getAttribute('data-embedded')).toBe('true')
   })
 
-  it('an embedded paper held back for its money says that one sentence, not also "no order or door count" (r107)', async () => {
+  it('an embedded paper held back for its money says that one sentence once, under the unchanged heading (r107)', async () => {
     const r = response()
     r.canonical.layer3.lines = []
     r.canonical.layer1.lines = r.canonical.layer1.lines.length ? r.canonical.layer1.lines : []
@@ -235,8 +235,32 @@ describe('CanonicalDocumentPage', () => {
       expect(v?.textContent).toMatch(/Prices are in TRY and the house costs in USD/)
       return v as Element
     })
-    expect(verdict.textContent).not.toMatch(/no order or door count/)
+    expect(verdict.querySelector('h2')?.textContent).toMatch(/no order or door count/)
     // Said once on the page (r108): the receipts money card no longer repeats it.
+    expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
+  })
+
+  it('an embedded foreign paper that has a comparison source still says the money sentence, once (r107)', async () => {
+    const r = response()
+    const l3 = r.canonical.layer3.lines as Array<Record<string, unknown>>
+    expect(l3.some((l) => l.ordered != null || l.shipped != null || l.received !== 'not_counted')).toBe(true)
+    documentMock.mockResolvedValue(r)
+    priceMovesMock.mockResolvedValue({
+      thresholdPct: 10,
+      paperCurrency: 'TRY',
+      houseCurrency: 'USD',
+      lines: [{ lineId: 'l1', lineNo: 1, description: 'x', compared: false, reason: 'currency_differs' }],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/orders']}>
+          <CanonicalDocumentPage documentId="doc-syn" embedded />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(container.textContent).toMatch(/Prices are in TRY and the house costs in USD/))
+    expect(container.querySelector('.cd-verdict h2')?.textContent).not.toMatch(/no order or door count/)
     expect(container.textContent?.match(/Prices are in TRY and the house costs in USD/g)).toHaveLength(1)
   })
 

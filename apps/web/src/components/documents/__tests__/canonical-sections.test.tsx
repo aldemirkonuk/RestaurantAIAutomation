@@ -555,12 +555,43 @@ describe('VerdictBlock — not compared is not a difference (finding 1, ADR 0103
     expect(container.textContent?.match(/not compared/gi)).toHaveLength(1)
   })
 
-  it('says only the foreign-money sentence when that is why nothing was compared (r107)', () => {
+  it('the foreign-money sentence is its own line under an unchanged heading, once (r107)', () => {
     const sentence = 'Prices are in TRY and the house costs in USD, so none were compared against earlier costs.'
-    const { container, queryByTestId } = render(<VerdictBlock doc={uncompared()} foreignMoney={sentence} />)
-    expect(container.textContent).toContain(sentence)
-    expect(container.textContent).not.toMatch(/no order or door count/)
-    expect(queryByTestId('not-compared-note')).toBeNull()
+    const { container, getByTestId } = render(<VerdictBlock doc={uncompared()} foreignMoney={sentence} />)
+    expect(container.querySelector('h2')?.textContent).toMatch(/no order or door count/)
+    expect(getByTestId('foreign-money-note').textContent).toBe(sentence)
+    expect(container.textContent?.match(/Prices are in TRY/g)).toHaveLength(1)
+    // The true "not a discrepancy" note is not dropped for it.
+    expect(getByTestId('not-compared-note')).toBeTruthy()
+  })
+
+  it('a foreign paper that HAS a comparison source still says the sentence, once, and the heading counts its lines', () => {
+    const sentence = 'Prices are in TRY and the house costs in USD, so none were compared against earlier costs.'
+    const d = uncompared()
+    d.layer3.lines[2] = adjudicated({
+      lineIndex: 2,
+      ordered: 12,
+      shipped: 12,
+      received: 10,
+      billed: 12,
+      verdict: 'short_ship',
+      moneyAtRisk: 840,
+    })
+    const { container, getByTestId } = render(<VerdictBlock doc={d} foreignMoney={sentence} />)
+    expect(container.querySelector('h2')?.textContent).toMatch(/1 line differs from the delivery/)
+    expect(getByTestId('foreign-money-note').textContent).toBe(sentence)
+    expect(container.textContent?.match(/Prices are in TRY/g)).toHaveLength(1)
+  })
+
+  it('a clean compared paper in a foreign money does not read as "nothing moved" (r107)', () => {
+    const sentence = 'Prices are in TRY and the house costs in USD, so none were compared against earlier costs.'
+    const d = uncompared()
+    d.layer3.lines = [0, 1, 2, 3].map((i) =>
+      adjudicated({ lineIndex: i, ordered: 12, shipped: 12, received: 12, billed: 12, verdict: 'ok' }),
+    )
+    const { container, getByTestId } = render(<VerdictBlock doc={d} foreignMoney={sentence} />)
+    expect(container.querySelector('h2')?.textContent).toMatch(/Nothing on this document differs from the delivery/)
+    expect(getByTestId('foreign-money-note').textContent).toBe(sentence)
   })
 
   it('claims no amount, and does not print a zero at risk', () => {
