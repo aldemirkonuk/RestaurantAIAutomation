@@ -59,7 +59,8 @@ export interface TasteCardProps {
 /** One line of "Worked out from": the line's name and whose taste stood in for it. Lines with no known taste are named in the note instead. */
 const FROM_WORDS = { good: 'its own taste', class_prior: 'typical of its kind', class_prior_estimate: 'typical of its kind, an estimate' } as const;
 export const workedFromWords = (b: TasteBasis): string | null => {
-  const named = b.lineSources.filter((l): l is { name: string; from: Exclude<LineFrom, 'unknown'> } => l.from !== 'unknown').map((l) => `${l.name} (${FROM_WORDS[l.from]})`);
+  // An unweighed line adds nothing, so it is not a source: it is named in the not-weighed sentence instead.
+  const named = b.lineSources.filter((l): l is { name: string; from: Exclude<LineFrom, 'unknown'>; weighed?: false } => l.from !== 'unknown' && l.weighed !== false).map((l) => `${l.name} (${FROM_WORDS[l.from]})`);
   return named.length ? `Worked out from: ${named.join(', ')}.` : null;
 };
 export const unknownLinesWords = (b: TasteBasis): string | null => {
@@ -67,10 +68,12 @@ export const unknownLinesWords = (b: TasteBasis): string | null => {
   return names.length ? `Left out because its taste is not known: ${names.join(', ')}.` : null;
 };
 
-export const unweighedLinesWords = (b: TasteBasis): string | null =>
-  b.unweighed > 0
-    ? `${b.unweighed} counted ${b.unweighed === 1 ? 'ingredient is' : 'ingredients are'} not weighed, so ${b.unweighed === 1 ? 'it adds' : 'they add'} nothing to the taste.`
-    : null;
+export const unweighedLinesWords = (b: TasteBasis): string | null => {
+  if (b.unweighed <= 0) return null;
+  const names = [...new Set(b.lineSources.filter((l) => l.weighed === false).map((l) => l.name))];
+  const which = names.length > 0 ? ` (${names.join(', ')})` : '';
+  return `${b.unweighed} counted ${b.unweighed === 1 ? 'ingredient' : 'ingredients'}${which} ${b.unweighed === 1 ? 'is' : 'are'} not weighed, so ${b.unweighed === 1 ? 'it adds' : 'they add'} nothing to the taste.`;
+};
 
 export function Glyph({ shape }: { shape: MarkShape }) {
   const common = { width: 14, height: 14, viewBox: '0 0 14 14', 'aria-hidden': true, focusable: false } as const;

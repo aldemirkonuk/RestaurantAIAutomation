@@ -64,7 +64,8 @@ const LINE_FROM: ReadonlySet<string> = new Set<LineFrom>(['good', 'class_prior',
 export interface TasteBasis {
   /** Axes the roll-up could not tell: said as "not known", never as "none". */
   notKnown: AxisKey[];
-  lineSources: Array<{ name: string; from: LineFrom }>;
+  /** `weighed: false` marks a counted line with no stated weight: it is listed but adds nothing to the taste. */
+  lineSources: Array<{ name: string; from: LineFrom; weighed?: false }>;
   /** Lines whose taste is not known at all (they add nothing). */
   unknownNames: string[];
   /** Counted lines ("1 each") with no stated weight: left out of the roll-up, since a count has no weight of its own. */
@@ -152,7 +153,7 @@ function parseBasis(raw: unknown): TasteBasis | null {
   const notKnown = (Array.isArray(raw.notKnown) ? raw.notKnown : []).filter((k): k is AxisKey => typeof k === 'string' && AXIS_SET.has(k));
   const lineSources = (Array.isArray(raw.lineSources) ? raw.lineSources : [])
     .filter((l): l is Record<string, unknown> => isObj(l) && typeof l.name === 'string' && l.name.trim() !== '' && typeof l.from === 'string' && LINE_FROM.has(l.from))
-    .map((l) => ({ name: l.name as string, from: l.from as LineFrom }));
+    .map((l) => ({ name: l.name as string, from: l.from as LineFrom, ...(l.weighed === false ? { weighed: false as const } : {}) }));
   const unknownNames = (Array.isArray(raw.unknownNames) ? raw.unknownNames : []).filter((n): n is string => typeof n === 'string' && n.trim() !== '');
   const unweighed = typeof raw.unquantified === 'number' && Number.isInteger(raw.unquantified) && raw.unquantified > 0 ? raw.unquantified : 0;
   return { notKnown, lineSources, unknownNames, unweighed };
