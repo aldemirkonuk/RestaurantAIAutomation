@@ -84,6 +84,7 @@ describe('the entry chunk every page loads', () => {
     'exceljs',
     'jspdf',
     'html2canvas',
+    'socket.io-client',
   ])('does not carry %s', (pkg) => {
     expect(packages.has(pkg)).toBe(false)
   })
