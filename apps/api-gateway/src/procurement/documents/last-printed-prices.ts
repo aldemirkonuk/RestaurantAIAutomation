@@ -12,6 +12,17 @@ const LAST_PAPER_WINDOW = 200;
 export interface Earlier {
   price: PerBottle;
   formatMl: number | null;
+  /** The vendor of the paper the price came from (r108 g14). */
+  providerId?: string | null;
+  /** The day of that paper: its doc_date, else when it was verified. */
+  on?: string | null;
+}
+
+/** The paper being compared, which bounds "last": last BEFORE it (r108, #2370). */
+export interface ComparedPaper {
+  status?: string | null;
+  doc_date?: string | null;
+  verified_at?: string | null;
 }
 
 /**
@@ -19,9 +30,16 @@ export interface Earlier {
  * this house in this money (r108 g15): one bounded read, then limit(1) per
  * good it missed, so a quarterly good is never lost off a row cap.
  *
- * Shared by GET :id/price-moves and the price_moved notification producer, so
- * both compare against the same basis (#2236). Moved out of
- * DocumentsController unchanged.
+ * "Last" is last BEFORE this paper, never "newest of all": opening an old
+ * verified paper must not compare it with a later one ("was 7.00, now 5.00"
+ * reverses history). A verified paper is bounded by its own verified_at; any
+ * paper that carries a doc_date is bounded by it (an earlier paper with no
+ * date stays eligible). Papers order by doc_date, then verified_at, because a
+ * paper read and verified late for an old delivery is not the newest one.
+ * `other` narrows it to another vendor's papers since a day (r108 g14).
+ *
+ * Shared by GET :id/price-moves, GET :id/vendor-prices and the price_moved
+ * notification producer, so all compare against the same basis (#2236, #2440).
  */
 export async function readLastPrintedPrices(
   client: any,
@@ -29,23 +47,36 @@ export async function readLastPrintedPrices(
   currency: string,
   goods: string[],
   restaurantId: string,
+  paper: ComparedPaper = {},
+  other?: { providerId: string; sinceIso: string },
 ): Promise<Map<string, Earlier>> {
   const last = new Map<string, Earlier>();
   if (!goods.length) return last;
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const thisDate = typeof paper.doc_date === "string" && ISO_DATE.test(paper.doc_date.slice(0, 10)) ? paper.doc_date.slice(0, 10) : null;
+  const thisVerified = paper.status === "verified" && paper.verified_at ? paper.verified_at : null;
   const read = async (only: string[], limit: number) => {
-    const { data, error } = await client
+    let q = client
       .from("procurement_documents")
       .select(
-        "id, verified_at, procurement_document_lines!inner(inventory_id, restaurant_id, line_total, qty, pack_size, qty_bottles, uom, format_ml)",
+        "id, verified_at, doc_date, provider_id, procurement_document_lines!inner(inventory_id, restaurant_id, line_total, qty, pack_size, qty_bottles, uom, format_ml)",
       )
       .eq("restaurant_id", restaurantId)
       .eq("status", "verified")
       .neq("id", paperId)
       .ilike("currency", currency)
-      .not("doc_type", "in", "(credit_memo,purchase_order,statement)")
+      .not("doc_type", "in", "(credit_memo,purchase_order,statement)");
+    // `<>` leaves a paper with no vendor out, which is wanted: a price with
+    // no vendor to name is no price to point at.
+    if (other) q = q.neq("provider_id", other.providerId).gte("verified_at", other.sinceIso);
+    q = q
       .eq("procurement_document_lines.restaurant_id", restaurantId)
       .in("procurement_document_lines.inventory_id", only)
-      .gt("procurement_document_lines.line_total", 0)
+      .gt("procurement_document_lines.line_total", 0);
+    if (thisVerified) q = q.lt("verified_at", thisVerified);
+    if (thisDate) q = q.or(`doc_date.is.null,doc_date.lte.${thisDate}`);
+    const { data, error } = await q
+      .order("doc_date", { ascending: false, nullsFirst: false })
       .order("verified_at", { ascending: false, nullsFirst: false })
       .limit(limit);
     if (error)
@@ -54,7 +85,7 @@ export async function readLastPrintedPrices(
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     // Newest first; two lines of one good on a paper are one price, summed.
-    for (const p of (data ?? []) as { id: string; procurement_document_lines: (PrintedLine & { inventory_id: string; format_ml?: number | null })[] }[]) {
+    for (const p of (data ?? []) as { id: string; verified_at?: string | null; doc_date?: string | null; provider_id?: string | null; procurement_document_lines: (PrintedLine & { inventory_id: string; format_ml?: number | null })[] }[]) {
       const here = new Map<string, Earlier>();
       for (const l of p.procurement_document_lines ?? []) {
         if (!l.inventory_id || last.has(l.inventory_id)) continue;
@@ -64,6 +95,8 @@ export async function readLastPrintedPrices(
         here.set(l.inventory_id, {
           price: seen ? addPerBottle(seen.price, pb) : pb,
           formatMl: seen?.formatMl ?? l.format_ml ?? null,
+          providerId: p.provider_id ?? null,
+          on: p.doc_date ?? p.verified_at ?? null,
         });
       }
       for (const [g, e] of here) last.set(g, e);
