@@ -56,7 +56,19 @@ export class ItemUseCountsService {
       // The drawer counts them (item-used-in inCocktails), so the list must too:
       // a good is found by its beverage_id or master_wine_id. A cocktail that has
       // both a current recipe line and an old row counts once (same owner key).
-      const legacy = await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", undefined);
+      // Read through the house's own live cocktails, 200 at a time and keyset-paged: reading the whole
+      // table walked every house's and the catalogue's rows on each list load (item-used-in inCocktails
+      // reads the same way, so the list and the drawer agree).
+      const houseCocktails = [...live].filter((o) => o.startsWith("cocktail_id:")).map((o) => o.slice("cocktail_id:".length));
+      const legacy: Row[] = [];
+      for (let i = 0; i < houseCocktails.length; i += 200) {
+        const chunk = houseCocktails.slice(i, i + 200);
+        legacy.push(
+          ...(await this.paged(client, "cocktail_ingredients", "id, cocktail_id, beverage_id, wine_id", undefined, (q) =>
+            q.in("cocktail_id", chunk),
+          )),
+        );
+      }
       if (legacy.length > 0) {
         const goods = await this.paged(client, "restaurant_inventory", "id, beverage_id, master_wine_id", restaurantId);
         const byBeverage = new Map<string, string[]>();
@@ -70,9 +82,12 @@ export class ItemUseCountsService {
           push(byBeverage, g.beverage_id, g.id);
           push(byWine, g.master_wine_id, g.id);
         }
+        // A cocktail with a current version counts only through it; its old rows are superseded
+        // (the recipe sheet hides them once a version exists, ADR 0366).
+        const hasCurrent = new Set(ownerOfVersion.values());
         for (const r of legacy) {
           const owner = `cocktail_id:${r.cocktail_id}`;
-          if (!live.has(owner)) continue;
+          if (!live.has(owner) || hasCurrent.has(owner)) continue;
           for (const id of (r.beverage_id && byBeverage.get(String(r.beverage_id))) || []) add(id, owner);
           for (const id of (r.wine_id && byWine.get(String(r.wine_id))) || []) add(id, owner);
         }

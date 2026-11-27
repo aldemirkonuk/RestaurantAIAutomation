@@ -29,6 +29,7 @@ function seed() {
   db.tables.recipe_current_dish = [{ dish_id: "d-plate", version_id: "v-plate", restaurant_id: A }];
   db.tables.cocktails = [
     { id: "c-sour", restaurant_id: A, deleted_at: null },
+    { id: "c-old", restaurant_id: A, deleted_at: null }, // live, no current version yet: its old rows still count
     { id: "c-gone", restaurant_id: A, deleted_at: "2026-11-01T00:00:00Z" },
     { id: "c-b", restaurant_id: B, deleted_at: null },
   ];
@@ -40,7 +41,7 @@ function seed() {
     { id: "b-campari", restaurant_id: B, beverage_id: "bev-campari", master_wine_id: null },
   ];
   db.tables.cocktail_ingredients = [
-    { id: "i1", cocktail_id: "c-sour", beverage_id: "bev-campari", wine_id: null },
+    { id: "i1", cocktail_id: "c-old", beverage_id: "bev-campari", wine_id: null },
     { id: "i2", cocktail_id: "c-sour", beverage_id: "bev-gin", wine_id: null }, // also a current line: counts once
     { id: "i3", cocktail_id: "c-gone", beverage_id: "bev-campari", wine_id: null }, // deleted drink
     { id: "i4", cocktail_id: "c-b", beverage_id: "bev-campari", wine_id: null }, // another house
@@ -54,12 +55,22 @@ describe("ItemUseCountsService (r105 g5)", () => {
     expect(await svc.counts(A)).toEqual({ counts: { gin: 2, campari: 1 } });
   });
 
+  it("a legacy row of a cocktail that has a current version is superseded, not counted (recipe sheet rule)", async () => {
+    const { db, svc } = seed();
+    // The Negroni (c-sour) was rebuilt in the versioned editor; its old row naming Campari is history.
+    db.tables.cocktail_ingredients.push({ id: "i9", cocktail_id: "c-sour", beverage_id: "bev-campari", wine_id: null });
+    // c-old keeps its only Campari row (no version): Campari still counts exactly once.
+    expect((await svc.counts(A)).counts.campari).toBe(1);
+    db.tables.recipe_current.push({ cocktail_id: "c-old", version_id: "v-old-new", restaurant_id: A });
+    expect((await svc.counts(A)).counts.campari).toBeUndefined();
+  });
+
   it("never counts another house's lines", async () => {
     const { svc } = seed();
     const a = await svc.counts(A);
     const b = await svc.counts(B);
     expect(a.counts.vodka).toBeUndefined();
-    expect(b.counts).toEqual({ gin: 1, vodka: 1, "b-campari": 1 });
+    expect(b.counts).toEqual({ gin: 1, vodka: 1 }); // c-b has a current version: its old Campari row is superseded
   });
 
   it("a failed read is unread, never an empty map that reads as nothing is used", async () => {
@@ -76,6 +87,26 @@ describe("ItemUseCountsService (r105 g5)", () => {
     const { svc } = seed();
     const { counts } = await svc.counts(A);
     expect(counts.campari).toBeGreaterThanOrEqual(1);
+  });
+
+  it("reads only the house's own cocktails' ingredient rows, never the catalogue's or another house's", async () => {
+    const { db, svc } = seed();
+    db.tables.cocktails.push(...Array.from({ length: 1200 }, (_, k) => ({ id: `cat-${k}`, restaurant_id: null, deleted_at: null })));
+    db.tables.cocktail_ingredients.push(
+      ...Array.from({ length: 1200 }, (_, k) => ({ id: `z${String(k).padStart(4, "0")}`, cocktail_id: `cat-${k}`, beverage_id: "bev-campari", wine_id: null })),
+    );
+    let read = 0;
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      const q: any = real(t);
+      if (t !== "cocktail_ingredients") return q;
+      const then = q.then.bind(q);
+      q.then = (res: any, rej: any) => then((r: any) => { read += Array.isArray(r.data) ? r.data.length : 0; return res(r); }, rej);
+      return q;
+    };
+    expect(await svc.counts(A)).toEqual({ counts: { gin: 2, campari: 1 } });
+    // house A's live cocktail c-sour has two rows (i1, i2); nothing of the 1,200 catalogue rows is read.
+    expect(read).toBe(2);
   });
 
   it("a failed legacy read is unread, not 0", async () => {
