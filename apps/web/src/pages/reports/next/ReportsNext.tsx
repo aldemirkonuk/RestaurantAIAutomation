@@ -524,6 +524,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     const strip = !editing && isStrip(c.id, data.registers[c.id], ctx, c.graph);
     return {
     id: c.id,
+    strip,
     slot: strip
       ? { ...c.slot, h: STRIP_ROWS }
       : fit
