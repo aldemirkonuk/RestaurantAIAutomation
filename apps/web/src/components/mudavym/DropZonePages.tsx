@@ -10,6 +10,8 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { PageQualityHint } from './PageQualityHint';
+import type { PageQuality } from '../../lib/pageQuality';
 import './drop-pages.css';
 
 export type Turn = 0 | 90 | 180 | 270;
@@ -24,6 +26,9 @@ export interface DropZonePagesProps {
   turns?: Record<number, Turn>;
   onTurn?: (index: number, turn: Turn) => void;
   disabled?: boolean;
+  /** The advisory look at each page (r110 g2), and the phone's Retake. */
+  quality?: (file: File) => PageQuality | null;
+  retakable?: boolean;
 }
 
 let nextId = 1;
@@ -59,7 +64,7 @@ function PageThumb({ file, turn }: { file: File; turn: Turn }) {
   );
 }
 
-export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = false }: DropZonePagesProps) {
+export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = false, quality, retakable = false }: DropZonePagesProps) {
   const [said, setSaid] = useState('');
   const items = useRef(new Map<number, HTMLLIElement>());
   const listRef = useRef<HTMLOListElement | null>(null);
@@ -266,6 +271,18 @@ export function DropZonePages({ files, onFiles, turns = {}, onTurn, disabled = f
                   Remove
                 </button>
               </div>
+              <PageQualityHint
+                quality={quality?.(f) ?? null}
+                label={`Page ${i + 1}`}
+                retakable={retakable}
+                disabled={disabled}
+                onRetake={(file) =>
+                  onFiles(
+                    files.map((g, j) => (j === i ? file : g)),
+                    'replace',
+                  )
+                }
+              />
             </li>
           );
         })}

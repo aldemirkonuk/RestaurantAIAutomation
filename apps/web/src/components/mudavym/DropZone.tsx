@@ -21,6 +21,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyArt } from './emptyArt';
 import { DropZonePages, type Turn } from './DropZonePages';
+import { PageQualityHint } from './PageQualityHint';
+import { usePageQuality } from './usePageQuality';
 import { formatBytes } from '../../lib/uploadAccept';
 import { isPhoto } from '../../lib/menuPhotos';
 import './drop-zone.css';
@@ -112,6 +114,7 @@ export function DropZone({
   const depth = useRef(0);
   const [dragging, setDragging] = useState(false);
   const coarse = useCoarsePointer();
+  const quality = usePageQuality(files);
 
   const held = files.length > 0;
   // More pages only join photos: a PDF or sheet held makes any further file a dead end (uploadShapeOf refuses the pair).
@@ -294,8 +297,26 @@ export function DropZone({
           </div>
         )}
       </div>
+      {files.length === 1 && first && !reading ? (
+        <PageQualityHint
+          wide
+          quality={quality(first)}
+          label="This photo"
+          retakable={coarse}
+          disabled={disabled}
+          onRetake={(file) => onFiles([file], 'replace')}
+        />
+      ) : null}
       {files.length > 1 ? (
-        <DropZonePages files={files} onFiles={onFiles} turns={turns} onTurn={onTurn} disabled={disabled || reading} />
+        <DropZonePages
+          files={files}
+          onFiles={onFiles}
+          turns={turns}
+          onTurn={onTurn}
+          disabled={disabled || reading}
+          quality={quality}
+          retakable={coarse}
+        />
       ) : null}
     </div>
   );
