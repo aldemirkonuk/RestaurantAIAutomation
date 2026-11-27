@@ -6,7 +6,7 @@
  * one card per page. Drawn in a portal and shown only on paper while `html[data-print-book]` is set
  * (cellar-next.css); a failed read says so and prints nothing, never a shorter book (ADR 0020). No animation.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -43,6 +43,15 @@ export default function RecipeBook() {
   const [said, setSaid] = useState<string | null>(null);
   const [book, setBook] = useState<DrinkCard[] | null>(null);
 
+  // One number per ask, as in Plan prep: a late book for the house left behind is dropped, never printed under the house now open.
+  const ask = useRef(0);
+  useEffect(() => {
+    ask.current += 1;
+    setReading(false);
+    setSaid(null);
+    setBook(null);
+  }, [activeRestaurantId]);
+
   // The flag is only ever on while the book is the thing being printed.
   useEffect(() => () => document.documentElement.removeAttribute(FLAG), []);
 
@@ -64,14 +73,16 @@ export default function RecipeBook() {
     if (!activeRestaurantId) return;
     setReading(true);
     setSaid(null);
+    const mine = ++ask.current;
     try {
       const cards = await dishesApi.drinkCards(activeRestaurantId);
+      if (mine !== ask.current) return;
       if (cards.length === 0) setSaid(BOOK_EMPTY);
       else setBook(cards);
     } catch {
-      setSaid(BOOK_UNREAD);
+      if (mine === ask.current) setSaid(BOOK_UNREAD);
     } finally {
-      setReading(false);
+      if (mine === ask.current) setReading(false);
     }
   };
 
