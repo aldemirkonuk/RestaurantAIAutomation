@@ -27,7 +27,7 @@ const chunks = <T>(xs: T[], n = CHUNK): T[][] => {
   return out;
 };
 
-/** Every row of one read, page by page; `read(from, to)` orders by a unique key. Throws on a failed page. */
+/** Every page of one read ordered by a unique key; throws on a failed page. */
 async function all(read: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<Row[]> {
   const out: Row[] = [];
   for (let from = 0; ; from += PAGE) {
@@ -39,7 +39,6 @@ async function all(read: (from: number, to: number) => PromiseLike<{ data: unkno
   }
 }
 
-/** One read per chunk of ids, every chunk at once, each paged. */
 async function byChunks(ids: string[], read: (ids: string[]) => (from: number, to: number) => PromiseLike<any>): Promise<Row[]> {
   return (await Promise.all(chunks(ids).map((part) => all(read(part))))).flat();
 }
@@ -50,11 +49,7 @@ const grams = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-/**
- * The components `componentIds` name, each with what one batch holds. With
- * `figures` false only the allergens are read (the list column); the batch's
- * figures are then all unknown, and its allergens are the same as the sheet's.
- */
+/** Each component's batch; `figures: false` reads allergens only (the list column). */
 export async function madeLineNutrition(
   client: Client,
   restaurantId: string,
@@ -107,7 +102,7 @@ export async function madeLineNutrition(
     const next: string[] = [];
     for (const l of lines) {
       const owner = info.get(versionOf.get(l.version_id) ?? "");
-      if (!owner) continue; // a pointer to a dish that is not this house's, or is gone
+      if (!owner) continue;
       owner.lines.push(l);
       if (l.component_dish_id && !visited.has(l.component_dish_id)) {
         visited.add(l.component_dish_id);
@@ -117,7 +112,6 @@ export async function madeLineNutrition(
     frontier = next;
   }
 
-  // What each linked good states, for every line of every component read.
   const itemIds = [...new Set([...info.values()].flatMap((c) => c.lines.map((l) => l.inventory_id).filter(Boolean)))] as string[];
   const [allergenRows, nutritionRows, weightRows] = await Promise.all([
     byChunks(itemIds, (ids) => (from, to) =>
@@ -170,7 +164,7 @@ export async function madeLineNutrition(
   const build = (id: string): MadeComponent | null => {
     if (memo.has(id)) return memo.get(id)!;
     const c = info.get(id);
-    if (!c) return null; // not read: another house's, gone, or deeper than MADE_DEPTH
+    if (!c) return null; // another house's, gone, or too deep
     if (busy.has(id)) return { name: c.name, batch: null, yieldQtyBase: c.yieldQtyBase, yieldBaseUnit: c.yieldBaseUnit };
     busy.add(id);
     const batch = serveNutrition(
@@ -190,7 +184,7 @@ export async function madeLineNutrition(
   return out;
 }
 
-/** One recipe line as serveNutrition takes it, with a made line's component from `component`. */
+/** One recipe line as serveNutrition takes it. */
 export function toInput(
   l: Row,
   figures: Map<string, ItemFigures>,
