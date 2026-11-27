@@ -154,6 +154,12 @@ export interface MailPersonRow {
    * gateway that predates it.
    */
   unsentStatus?: string | null;
+  /**
+   * With a search: about 140 characters of the newest letter that holds the words, centred on the
+   * first match (r109 mail-gap g5). Null or absent with no search, or when the person was found by
+   * name, subject or order number only; the row then shows `lastLine`.
+   */
+  hitLine?: string | null;
 }
 
 export interface MailPeoplePage {
@@ -1168,4 +1174,36 @@ export function seenMarkFor(head: Pick<MailThreadPage, 'key' | 'person' | 'messa
   const newestIn = head.messages.filter((m) => m.direction === 'inbound').slice(-1)[0];
   if (!newestIn) return null;
   return { key: head.key, with: head.person.key, through: letterAt(newestIn) };
+}
+
+
+/** One letter folded to one letter: no accents, no case, Turkish dotted and dotless i as i. The length never changes. */
+const FOLD_ONE: Record<string, string> = { ı: 'i', İ: 'i', ş: 's', Ş: 's', ğ: 'g', Ğ: 'g', ç: 'c', Ç: 'c', ö: 'o', Ö: 'o', ü: 'u', Ü: 'u' };
+function foldOne(ch: string): string {
+  const known = FOLD_ONE[ch];
+  if (known) return known;
+  const base = ch.normalize('NFD')[0] ?? ch;
+  return base.toLowerCase().length === 1 ? base.toLowerCase() : base;
+}
+const foldText = (t: string): string => Array.from(t, foldOne).join('');
+
+/**
+ * A search hit's words in pieces, the matched ones flagged (r109 mail-gap g5), so the row can mark
+ * the term the reader typed. The match is blind to case, accents and Turkish i, as the search is, and
+ * every match is marked. A term that is not in the text leaves one unmarked piece.
+ */
+export function markedParts(text: string, term: string): Array<{ text: string; hit: boolean }> {
+  const want = foldText(term.trim().replace(/\s+/g, ' '));
+  // Folding keeps the length only for a text of one-unit letters; anything else is shown unmarked.
+  const folded = foldText(text);
+  if (want === '' || folded.length !== text.length) return [{ text, hit: false }];
+  const parts: Array<{ text: string; hit: boolean }> = [];
+  let from = 0;
+  for (let at = folded.indexOf(want); at !== -1; at = folded.indexOf(want, from)) {
+    if (at > from) parts.push({ text: text.slice(from, at), hit: false });
+    parts.push({ text: text.slice(at, at + want.length), hit: true });
+    from = at + want.length;
+  }
+  if (from < text.length) parts.push({ text: text.slice(from), hit: false });
+  return parts.length > 0 ? parts : [{ text, hit: false }];
 }

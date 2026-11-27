@@ -66,6 +66,7 @@ import {
   MAIL_HEADER_RESERVE,
   READ_SCOPE_HOLD,
   mailSearchTerm,
+  markedParts,
   mailStatusLine,
   searchEmptyWords,
   setupLinkWords,
@@ -290,10 +291,13 @@ function PersonRow({
   onOpen,
   enterPlace,
   tabStop = true,
+  term = '',
 }: {
   p: MailPersonRow;
   on: WaitingOn;
   onOpen: () => void;
+  /** The search term, '' for none: with one, a row that has the words shows them marked. */
+  term?: string;
   enterPlace?: number;
   /** The one row in the Tab order; the arrows reach the rest (roving tabindex). */
   tabStop?: boolean;
@@ -350,18 +354,49 @@ function PersonRow({
           {p.openThreads > 1 && <span style={QUIET}>{p.openThreads} open threads</span>}
           <UnsentChip status={p.unsentStatus} />
         </span>
-        <span
-          style={{
-            fontSize: 12,
-            color: 'var(--ink-2, #4F473C)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            maxWidth: '100%',
-          }}
-        >
-          {p.lastLine ?? EM}
-        </span>
+        {term && p.hitLine ? (
+          // The words that matched, in the newest letter that holds them: the term is marked, nothing animates.
+          // It may run to three lines, so a match in the middle is never cut off at a phone's width.
+          <span
+            data-testid="person-hit"
+            style={{
+              fontSize: 12,
+              color: 'var(--ink-2, #4F473C)',
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+              maxWidth: '100%',
+            }}
+          >
+            {markedParts(p.hitLine, term).map((part, i) =>
+              part.hit ? (
+                <mark
+                  key={i}
+                  style={{ background: 'var(--seal-tint, rgba(26,94,107,.14))', color: 'var(--ink-1, #211C16)', borderRadius: 2 }}
+                >
+                  {part.text}
+                </mark>
+              ) : (
+                <span key={i}>{part.text}</span>
+              ),
+            )}
+          </span>
+        ) : (
+          <span
+            style={{
+              fontSize: 12,
+              color: 'var(--ink-2, #4F473C)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: '100%',
+            }}
+          >
+            {p.lastLine ?? EM}
+          </span>
+        )}
       </button>
     </li>
   );
@@ -625,6 +660,7 @@ function People({
               onOpen={() => onOpenPerson(p.key)}
               enterPlace={entering.get(p.key)}
               tabStop={p.key === tabStopKey}
+              term={search}
             />
           ))}
         </ul>

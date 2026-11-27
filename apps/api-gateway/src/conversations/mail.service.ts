@@ -179,9 +179,10 @@ export class MailService {
           });
           if (res.error) this.failed("people", res.error);
           const want = `${n.kind}:${n.address}`;
-          return ((res.data ?? []) as any[]).filter(
-            (r) => String(r.key).toLowerCase() === want,
-          );
+          // This read searched for the ADDRESS, so its snippet is not of the words the reader typed.
+          return ((res.data ?? []) as any[])
+            .filter((r) => String(r.key).toLowerCase() === want)
+            .map((r) => ({ ...r, hit_line: null }));
         }),
       );
       const seen = new Set(rows.map((r) => String(r.key).toLowerCase()));
@@ -231,6 +232,11 @@ export class MailService {
           newestOpenOrderNumber: r.newest_open_order_number ?? null,
           unsentStatus:
             typeof r.unsent_status === "string" ? r.unsent_status : null,
+          // Only a search has words to show; a list with none names no snippet.
+          hitLine:
+            query && typeof r.hit_line === "string" && r.hit_line !== ""
+              ? r.hit_line
+              : null,
         }),
       ),
       next:
