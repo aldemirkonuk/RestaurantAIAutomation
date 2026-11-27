@@ -3,6 +3,7 @@ import { policyFor } from "../../ask-readings/reading-data-classes";
 import { join } from "path";
 import { AnalyticsController } from "../../analytics/analytics.controller";
 import { RecommendationActionsService } from "../../analytics/recommendation-actions.service";
+import { readerSees } from "../../analytics/report-registers-role";
 import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cuttings";
 
@@ -252,10 +253,13 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     for (const [user, withSales] of cases) {
       const { controller } = build();
       const gate = { withSales };
-      const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args: unknown[] };
+      // The goal routes also hand on what the role may read of a goal (r108);
+      // Figures of record is answered before the service for a role without money.
+      const goalGate = { withSales, goalSees: readerSees(user) };
+      const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args?: unknown[] };
       const overview = (await controller.getOverview(RID, user)) as unknown as { args: unknown[] };
       const goals = (await controller.listGoalsWithProgress(RID, undefined, user)) as unknown as { args: unknown[] };
-      expect([user, fin.args, overview.args, goals.args]).toEqual([
+      expect([user, fin.args ?? fin, overview.args, goals.args]).toEqual([
         user,
         [RID, 0, gate],
         // ADR 0348 decision 3: the overview is also told the role's classes.
@@ -280,8 +284,8 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const made = (await controller.createGoal(RID, { metricKey: "days_of_inventory" }, user)) as unknown as { args: unknown[] };
       expect([user, list.args, one.args, made.args]).toEqual([
         user,
-        [RID, "active", gate],
-        [RID, "g1", undefined, gate],
+        [RID, "active", { ...gate, goalSees: readerSees(user) }],
+        [RID, "g1", undefined, { ...gate, goalSees: readerSees(user) }],
         [RID, { metricKey: "days_of_inventory" }, gate],
       ]);
     }

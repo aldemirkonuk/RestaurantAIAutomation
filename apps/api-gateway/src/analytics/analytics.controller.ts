@@ -33,6 +33,11 @@ import {
   actorOf,
 } from "./recommendation-actions.service";
 import { insightRowTarget } from "./insights/item-state";
+import {
+  readerSees,
+  registerReadable,
+  withheldRegister,
+} from "./report-registers-role";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { goalScenarioBook } from "./goal-scenarios";
@@ -135,6 +140,11 @@ function withheldBasket(restaurantId: string) {
     transactionCount: null,
     pairs: null,
   };
+}
+
+/** The gate the goal routes hand on: the till's, and what the role may read of a goal. */
+function goalGateFor(user?: { role?: string | null }): SalesGate {
+  return { ...salesGateFor(user), goalSees: readerSees(user) };
 }
 
 function parseHorizon(raw?: string): number | undefined {
@@ -244,6 +254,10 @@ export class AnalyticsController {
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
+    // Figures of record are the house's cost and margin: an owner's or a
+    // manager's. Staff are answered before the cellar is read (r108).
+    if (!registerReadable("financial", readerSees(user)))
+      return withheldRegister("financial");
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
@@ -978,7 +992,7 @@ export class AnalyticsController {
     return this.goalsService.listGoals(
       restaurantId,
       status || "active",
-      salesGateFor(user),
+      goalGateFor(user),
     );
   }
 
@@ -1024,7 +1038,7 @@ export class AnalyticsController {
       return await this.goalsService.listGoalsWithProgress(
         restaurantId,
         status || "active",
-        salesGateFor(user),
+        goalGateFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute goal progress");
@@ -1102,7 +1116,7 @@ export class AnalyticsController {
         restaurantId,
         goalId,
         undefined,
-        salesGateFor(user),
+        goalGateFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute goal progress");

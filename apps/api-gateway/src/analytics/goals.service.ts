@@ -603,7 +603,11 @@ export class GoalsService {
       this.listGoals(restaurantId, status, gate),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
-    const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
+    // Withheld stubs are not computed: no query reads a purchase for a role
+    // that may not see it, and they do not use up the screenful.
+    const held = goals.filter((g: any) => g?.withheldForRole === true);
+    const readableGoals = goals.filter((g: any) => g?.withheldForRole !== true);
+    const computed = readableGoals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
     const progress = await Promise.all(
       computed.map(async (g: any) => {
         try {
@@ -631,10 +635,14 @@ export class GoalsService {
     );
     return {
       status,
-      goals: progress,
+      goals: [
+        ...progress,
+        ...held.map((g: any) => ({ goal: g, withheldForRole: true })),
+      ],
       total: goals.length,
       computed: computed.length,
-      truncated: goals.length > computed.length,
+      truncated: readableGoals.length > computed.length,
+      ...(held.length > 0 ? { withheldForRole: held.length } : {}),
       supportedMetrics: Object.entries(GoalsService.SUPPORTED_METRICS).map(
         ([key, m]) => ({ key, label: m.label, unit: m.unit }),
       ),
@@ -678,7 +686,6 @@ export class GoalsService {
         : readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
     if (error || !goal) throw new Error(error?.message || "Goal not found");
-
     // ADR 0348 item 3: a reading this caller may not read is not computed,
     // not recorded and not sent (`withheldProgress`).
     const withheldForRole = goalReadingWithheldFor(goal.metric_key, gate);
