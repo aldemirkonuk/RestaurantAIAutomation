@@ -70,6 +70,10 @@ describe("perBottlePrinted + printedPriceMove (r108 g15)", () => {
   it("divides the printed total by the bottles, case lines through qty x pack", () => {
     expect(perBottlePrinted({ line_total: 132, qty_bottles: 12 })).toMatchObject({ cents: 13200n, milliBottles: 12000n, value: 11 });
     expect(perBottlePrinted({ line_total: 132, qty_bottles: 0, qty: 1, pack_size: 12, uom: "case" })).toMatchObject({ value: 11 });
+    // A case with no pack size is not one bottle: 120 a case is not "120 a bottle".
+    for (const pack_size of [null, undefined, ""])
+      expect(perBottlePrinted({ line_total: 120, qty_bottles: 0, qty: 1, pack_size, uom: "case" })).toBe("unit_differs");
+    expect(perBottlePrinted({ line_total: 10, qty_bottles: 0, qty: 1, pack_size: null, uom: "bottle" })).toMatchObject({ value: 10 });
     expect(perBottlePrinted({ line_total: 100, qty_bottles: 3 })).toMatchObject({ value: 33.3333 });
   });
   it("says why it has no price", () => {
