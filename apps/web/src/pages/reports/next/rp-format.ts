@@ -12,7 +12,7 @@
  * on the way to a chart.
  */
 
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import type { HouseRole } from './rp-spec';
 
 export const EM = '—';
@@ -28,10 +28,53 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-/** Money of record, or the dash. */
-export function money(v: unknown, mode: 'compact' | 'full' | 'table' = 'full'): string {
+/** A well-formed ISO 4217 code, or null. */
+function isoCode(c: unknown): string | null {
+  return typeof c === 'string' && /^[A-Z]{3}$/.test(c) ? c : null;
+}
+
+/**
+ * Money of record in the HOUSE's currency, or the dash.
+ *
+ * `currency` is the code `GET /settings/currency` answers. With no code
+ * (never stated, not read yet, or unreadable) the figure prints BARE — no
+ * symbol at all. It never falls back to `$`: a currency mark is a claim about
+ * the amount, and every house used to read as dollars (audit G5; the same
+ * rule as `fmtMoney`, `lib/mudavym/format.ts`). The page says once, under its
+ * date line, why the figures are plain numbers.
+ */
+export function money(
+  v: unknown,
+  mode: 'compact' | 'full' | 'table' = 'full',
+  currency?: string | null,
+): string {
   const n = num(v);
-  return n === null ? EM : formatMoney(n, mode);
+  if (n === null) return EM;
+  const code = isoCode(currency);
+  if (!code)
+    return mode === 'table'
+      ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : formatNumber(n, mode === 'compact' ? 'compact' : 'full');
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+      ...(mode === 'compact'
+        ? { notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }
+        : mode === 'table'
+          ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+          : { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+    }).format(n);
+  } catch {
+    // A well-formed code this runtime does not know: the number is still true.
+    return `${formatNumber(n, mode === 'compact' ? 'compact' : 'full')} ${code}`;
+  }
+}
+
+/** `money` bound to one house's currency — what every register view uses. */
+export function moneyIn(currency: string | null | undefined) {
+  return (v: unknown, mode: 'compact' | 'full' | 'table' = 'full') => money(v, mode, currency);
 }
 
 /** Plain figure, or the dash. */

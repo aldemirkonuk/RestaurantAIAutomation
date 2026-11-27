@@ -29,9 +29,10 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
+import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
@@ -219,8 +220,19 @@ export interface ReportsNextData {
   saveSheet: (next: SheetState) => void;
   /** False while the preferences API has not answered — the sheet is not yet the reader's. */
   sheetKnown: boolean;
+  /**
+   * The house's money, three states (`HouseCurrency`, services/api/settings.ts):
+   * `stated` with a code; `unstated` (nobody recorded one); `unread` (the read
+   * failed, or has not answered yet). Only `stated` prints a currency mark.
+   */
+  currency: HouseMoney;
   refetchAll: () => void;
 }
+
+export type HouseMoney =
+  | { state: 'stated'; code: string }
+  | { state: 'unstated'; code: null }
+  | { state: 'unread'; code: null; pending: boolean };
 
 export function useReportsNextData(
   tillDays: number,
@@ -314,6 +326,23 @@ export function useReportsNextData(
     // actually matter, and recomputing a map of eight entries is free.
   }, [active, results, heldBack, activeRole]);
 
+  // One small read, cached with the registers, so every money figure on the
+  // sheet prints in the house's own currency rather than `$` (audit G5).
+  const currencyQuery = useQuery({
+    queryKey: [ROOT, 'currency', rid],
+    enabled: !!rid,
+    staleTime: 5 * 60_000,
+    retry: 1,
+    queryFn: () => settingsApi.houseCurrency(),
+  });
+  const currency = useMemo<HouseMoney>(() => {
+    const c = currencyQuery.data;
+    if (c && c.readable && typeof c.code === 'string' && /^[A-Z]{3}$/.test(c.code))
+      return { state: 'stated', code: c.code };
+    if (c && c.readable && c.code === null) return { state: 'unstated', code: null };
+    return { state: 'unread', code: null, pending: currencyQuery.isPending };
+  }, [currencyQuery.data, currencyQuery.isPending]);
+
   const reading = (registers.reading ?? {
     data: undefined,
     loading: true,
@@ -346,6 +375,7 @@ export function useReportsNextData(
     sheet,
     saveSheet,
     sheetKnown: !prefsLoading,
+    currency,
     refetchAll,
   };
 }

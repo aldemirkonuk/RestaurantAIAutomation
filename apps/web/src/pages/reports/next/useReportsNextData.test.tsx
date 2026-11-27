@@ -133,3 +133,54 @@ describe('useReportsNextData — registers a role is not sent (ADR 0348)', () =>
     expect(result.current.reading.failure).toBeNull();
   });
 });
+
+describe('useReportsNextData — the house’s money (audit G5)', () => {
+  const answer = (body: unknown | Error) => {
+    auth.rid = 'r1';
+    auth.role = 'owner';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === '/settings/currency') {
+        if (body instanceof Error) throw body;
+        return { data: body };
+      }
+      if (path === READING) return { data: { insights: [] } };
+      return { data: {} };
+    });
+  };
+  const row = (code: string | null, readable = true) => ({
+    restaurantId: 'r1',
+    code,
+    country: null,
+    readable,
+    reason: readable ? null : 'read failed',
+    statedAt: null,
+  });
+
+  it('a stated code is the one the sheet prints in', async () => {
+    answer(row('TRY'));
+    const { result } = mount();
+    await waitFor(() => expect(result.current.currency).toEqual({ state: 'stated', code: 'TRY' }));
+  });
+
+  it('a house that never stated one is unstated, not dollars', async () => {
+    answer(row(null));
+    const { result } = mount();
+    await waitFor(() => expect(result.current.currency).toEqual({ state: 'unstated', code: null }));
+  });
+
+  it('a failed or unreadable read is unread, never unstated', async () => {
+    answer(row(null, false));
+    const first = mount();
+    await waitFor(() =>
+      expect(first.result.current.currency).toMatchObject({ state: 'unread', pending: false }),
+    );
+    // A thrown read is retried once before it settles as unread.
+    answer(new Error('503'));
+    const second = mount();
+    await waitFor(
+      () => expect(second.result.current.currency).toMatchObject({ state: 'unread', pending: false }),
+      { timeout: 4000 },
+    );
+  });
+});
