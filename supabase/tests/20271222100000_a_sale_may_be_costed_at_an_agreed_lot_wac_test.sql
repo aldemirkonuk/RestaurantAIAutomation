@@ -29,7 +29,7 @@ begin
     'A3: agreed_lot_wac was not kept on the sale row';
 
   -- A4b: the words the restate and pour PRs add survive this CHECK (it sorts after theirs).
-  foreach b in array array['invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial'] loop
+  foreach b in array array['invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial', 'ledger_lot_draw'] loop
     n := n + 1;
     insert into public.wine_consumption_log
       (id, restaurant_id, inventory_id, wine_name, consumption_type, quantity, volume_ml, source, cost_at_sale, cost_basis)
