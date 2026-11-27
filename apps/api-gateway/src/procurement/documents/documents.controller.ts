@@ -1603,7 +1603,7 @@ export class DocumentsController {
     // that reads as "nothing moved" (ADR 0020).
     const { data: paper, error: paperErr } = await client
       .from("procurement_documents")
-      .select("id, currency")
+      .select("id, currency, created_at")
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -1700,6 +1700,15 @@ export class DocumentsController {
       // (the old limit of 1000) let a good with many newer lots push another
       // good's only lot out of the answer, and that good then read as "no
       // earlier cost": absence reported as health (ADR 0020).
+      // r105 (#2462): "was" is also bounded by the paper's own date, and the
+      // paper's own deliveries never stand in as its earlier cost.
+      const paperAt = (paper as { created_at?: string | null }).created_at ?? null;
+      if (!paperAt)
+        throw new HttpException(
+          "The paper's own date could not be read, so no price was compared.",
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const own = deliveries;
       const reads = await Promise.all(
         goods.map(async (good) => {
           let q = client
@@ -1708,9 +1717,11 @@ export class DocumentsController {
             .eq("restaurant_id", user.restaurantId)
             .eq("cost_provenance", "invoice")
             .eq("inventory_id", good)
-            .not("unit_cost", "is", null);
+            .not("unit_cost", "is", null)
+            .lt("received_at", paperAt);
           const bound = before.get(good);
           if (bound) q = q.lt("received_at", bound);
+          if (own.length) q = q.or(`delivery_id.is.null,delivery_id.not.in.(${own.join(",")})`);
           const { data, error: lotErr } = await q
             .order("received_at", { ascending: false })
             .limit(1);
