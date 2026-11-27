@@ -29,7 +29,10 @@
  * parser as proposed rows, which become lines only when they are used.
  *
  * A pasted spec is only ever proposed (F17): nothing becomes a line until
- * "Use these lines", and nothing is saved until Save.
+ * "Use these lines", and nothing is saved until Save. A pasted line whose name
+ * is exactly one shelf item's (case and spaces folded) proposes that item as
+ * its link, shown on the line before it is used (ADR 0366 item 7); two items
+ * of one name propose neither and say so.
  *
  * A failed save says it failed, and that sentence is true: the gateway saves a
  * version in one transaction, so a refused save left the recipe as it was.
@@ -64,7 +67,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
-import type { CocktailRecipe, PreviewCostBody, RecipeLine, RecipeVersion, SaveRecipeBody } from '../../../../services/api/recipes';
+import {
+  recipesApi,
+  type CocktailRecipe,
+  type PreviewCostBody,
+  type RecipeLine,
+  type RecipeVersion,
+  type SaveRecipeBody,
+  type ShelfItem,
+} from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
 import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
@@ -89,6 +100,8 @@ export const UNKNOWN_SENTENCE =
 export const NEWER_SENTENCE =
   'Someone saved a newer version while you were editing. Your lines stay here; saving them will be refused until you load the saved recipe.';
 export const LEGACY_NOTE = 'Lines from the old recipe box, not saved here yet.';
+export const PASTE_NOTE =
+  "Check these before you use them. A line links to a shelf item only where the name is exactly that item's. Nothing is saved yet.";
 const LOAD_FAILED = 'The saved recipe could not be read just now. Your lines stay here.';
 export const SET_ASIDE_SENTENCE =
   'Your lines are set aside. Put them back to work on them again; saving them then replaces the version shown.';
@@ -121,13 +134,32 @@ function fromServer(l: RecipeLine): DraftRow {
   };
 }
 
-function fromProposal(p: ProposedLine): DraftRow {
+/**
+ * The shelf item a pasted line would link to. Only `linked` carries an item;
+ * it becomes the line's link on "Use these lines" and is saved only by Save.
+ */
+export type ProposedLink =
+  | { status: 'looking' }
+  | { status: 'linked'; item: ShelfItem }
+  | { status: 'same-name'; n: number }
+  | { status: 'none' }
+  | { status: 'unread' };
+type ProposedRow = ProposedLine & { link?: ProposedLink };
+
+/** Labels sent in one shelf match; matches the gateway (ShelfMatchDto ArrayMaxSize(60), MaxLength(200)). */
+const MATCH_MAX = 60;
+const MATCH_LABEL_MAX = 200;
+const askShelf = (l: ProposedLine) => l.role === 'stocked' && l.label.trim().length > 0 && l.label.trim().length <= MATCH_LABEL_MAX;
+
+export function fromProposal(p: ProposedRow): DraftRow {
+  const item = p.link?.status === 'linked' ? p.link.item : null;
   return {
     key: nextKey(),
     role: p.role,
-    inventoryId: null,
-    itemName: null,
-    itemKind: null,
+    inventoryId: item?.id ?? null,
+    itemName: item?.name ?? null,
+    itemKind: item?.kind ?? null,
+    itemUom: item?.uom ?? null,
     label: p.label,
     qtyText: qtyText(p.qty),
     unit: p.unit ?? '',
@@ -145,7 +177,36 @@ function metaOf(v: Pick<RecipeVersion, 'yieldServes' | 'glass' | 'garnish' | 'me
   };
 }
 
-type Proposed = { from: 'legacy' | 'paste'; lines: ProposedLine[]; note: string };
+type Proposed = { from: 'legacy' | 'paste'; lines: ProposedRow[]; note: string; token?: number };
+
+/** What a proposed line says about its shelf link. */
+function LinkSaid({ link, label, onUnlink }: { link: ProposedLink; label: string; onUnlink: () => void }) {
+  if (link.status === 'looking') return <span className="cl-dim" data-testid="recipe-proposed-looking"> · looking on your shelf…</span>;
+  if (link.status === 'unread')
+    return <span className="cl-dim" data-testid="recipe-proposed-unread"> · your shelf could not be read, so it is not linked</span>;
+  if (link.status === 'same-name')
+    return (
+      <span className="cl-rcp-flag" data-testid="recipe-proposed-same-name">
+        {' '}
+        · {link.n} shelf items have this name, so none is linked; link one after you use it
+      </span>
+    );
+  if (link.status !== 'linked') return null;
+  return (
+    <span data-testid="recipe-proposed-link">
+      {' '}
+      · links to <b>{link.item.name}</b>{' '}
+      <button
+        type="button"
+        className="cl-linkish cl-focus"
+        aria-label={`Do not link ${label || 'this line'} to ${link.item.name}`}
+        onClick={onUnlink}
+      >
+        Do not link
+      </button>
+    </span>
+  );
+}
 
 /** The old recipe box's rows, read through the same parser as a paste. */
 function legacyProposal(d: CocktailRecipe): Proposed | null {
@@ -382,6 +443,8 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const [said, setSaid] = useState<Said | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [proposed, setProposed] = useState<Proposed | null>(null);
+  // Each "Read it" gets a token, so a shelf answer for an older paste is dropped.
+  const pasteToken = useRef(0);
   const [pasteOpen, setPasteOpen] = useState(Boolean(kept?.paste));
   const [pasteText, setPasteText] = useState(kept?.paste ?? '');
   // The typed lines a "Load the saved recipe" replaced, kept until put back, thrown away or saved over.
@@ -405,6 +468,33 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   useEffect(() => {
     if (recipe.status === 404) dropDraftsForDrink(cocktailId);
   }, [recipe.status, cocktailId]);
+
+  // Read a paste into proposed lines, then ask the shelf once which of them
+  // have an exact-name item. Nothing is linked or saved until it is used and saved.
+  const readPaste = () => {
+    const token = ++pasteToken.current;
+    const parsed = parseSpec(pasteText);
+    const ask = [...new Set(parsed.filter(askShelf).map((l) => l.label.trim()))].slice(0, MATCH_MAX);
+    const lines: ProposedRow[] = parsed.map((l) => (ask.includes(l.label.trim()) && askShelf(l) ? { ...l, link: { status: 'looking' } } : l));
+    setProposed({ from: 'paste', lines, note: PASTE_NOTE, token });
+    if (!ask.length || !activeRestaurantId) return;
+    const settle = (answer: (l: ProposedRow) => ProposedLink) =>
+      setProposed((p) =>
+        p && p.token === token ? { ...p, lines: p.lines.map((l) => (l.link?.status === 'looking' ? { ...l, link: answer(l) } : l)) } : p,
+      );
+    recipesApi.matchShelf(activeRestaurantId, ask).then(
+      (matches) => {
+        const byLabel = new Map(matches.map((m) => [m.label, m]));
+        settle((l) => {
+          const m = byLabel.get(l.label.trim());
+          if (m?.item) return { status: 'linked', item: m.item };
+          if (m && m.sameName > 1) return { status: 'same-name', n: m.sameName };
+          return { status: 'none' };
+        });
+      },
+      () => settle(() => ({ status: 'unread' })),
+    );
+  };
 
   const data = recipe.data;
   const versionId = data?.current?.versionId ?? null;
@@ -683,6 +773,17 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
                     {p.label}
                     {p.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
                     {p.flag ? <span className="cl-rcp-flag" data-testid="recipe-proposed-flag"> · {p.flag}</span> : null}
+                    {p.link ? (
+                      <LinkSaid
+                        link={p.link}
+                        label={p.label}
+                        onUnlink={() =>
+                          setProposed((pr) =>
+                            pr ? { ...pr, lines: pr.lines.map((l, j) => (j === i ? { ...l, link: { status: 'none' } } : l)) } : pr,
+                          )
+                        }
+                      />
+                    ) : null}
                   </span>
                   <button
                     type="button"
@@ -757,9 +858,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
               type="button"
               className="cl-btn cl-focus"
               disabled={parseSpec(pasteText).length === 0}
-              onClick={() =>
-                setProposed({ from: 'paste', lines: parseSpec(pasteText), note: 'Check these before you use them. Nothing is saved yet.' })
-              }
+              onClick={readPaste}
             >
               Read it
             </button>
