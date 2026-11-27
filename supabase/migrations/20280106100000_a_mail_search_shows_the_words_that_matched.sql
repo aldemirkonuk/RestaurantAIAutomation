@@ -102,8 +102,11 @@ ranked AS (
         COALESCE(lower(c.direction::text) = 'inbound'
           OR c.status::text IN ('SENT', 'AUTO_SENT', 'SEND_UNCONFIRMED')
           OR (c.status IS NULL AND c.sent_at IS NOT NULL), false) AS letter,
-        COALESCE(c.status::text IN ('SENT', 'AUTO_SENT')
-          OR (c.status IS NULL AND c.sent_at IS NOT NULL), false) AS left_ok) at_of
+        -- A letter that did not arrive did not leave: its thread says "Did not reach", so the
+        -- row must not also say "No answer yet" (r109 delivery notices, email_headers.delivery).
+        COALESCE((c.status::text IN ('SENT', 'AUTO_SENT')
+          OR (c.status IS NULL AND c.sent_at IS NOT NULL))
+          AND (c.email_headers->'delivery'->>'state') IS DISTINCT FROM 'did_not_arrive', false) AS left_ok) at_of
     WHERE c.restaurant_id = p_restaurant_id
       AND p_withhold_house_letters IS NOT TRUE
       AND p_waiting_only IS NOT TRUE

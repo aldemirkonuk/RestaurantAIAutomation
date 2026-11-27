@@ -92,6 +92,25 @@ VALUES (gen_random_uuid(), '71000000-0000-4000-8000-000000000002', NULL, 'guest'
 SELECT pg_temp.ok((SELECT hit_line FROM public.list_mail_people('71000000-0000-4000-8000-000000000001', false, false, NULL, NULL, 50, 'tahini', NULL, false) WHERE key = 'guest:guest@kitchen.example') = 'Is the tahini gluten free?', 'H10-another-houses-guest-is-never-quoted');
 SELECT pg_temp.ok((SELECT hit_line FROM public.list_mail_people('71000000-0000-4000-8000-000000000001', false, false, NULL, NULL, 50, 'tahini', NULL, false) WHERE key = 'vendor:7a000000-0000-4000-8000-000000000001') = 'Hello, the tahini pallet arrives Friday.', 'H10-another-house-is-never-quoted');
 
+-- No answer yet is not claimed for a letter that did not arrive: two guests the house wrote to
+-- 80 h ago, one delivered and one bounced (a delivery notice marked email_headers.delivery)
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, kind, from_address, direction, channel, message_text, status, thread_key,
+   sent_at, received_at, created_at, email_headers)
+VALUES
+  (gen_random_uuid(), '71000000-0000-4000-8000-000000000001', NULL, 'guest', 'delivered@kitchen.example', 'outbound', 'email', 'Your table is held.', 'SENT', 'gm:dl',
+   now() - interval '80 hours', NULL, now() - interval '80 hours', '{}'),
+  (gen_random_uuid(), '71000000-0000-4000-8000-000000000001', NULL, 'guest', 'bounced@kitchen.example', 'outbound', 'email', 'Your table is held.', 'SENT', 'gm:bn',
+   now() - interval '80 hours', NULL, now() - interval '80 hours',
+   '{"delivery":{"state":"did_not_arrive","at":"2026-11-27T11:02:00.000Z","recipient":"bounced@kitchen.example","status":"5.1.1","said":null}}'),
+  (gen_random_uuid(), '71000000-0000-4000-8000-000000000001', NULL, 'guest', 'delayed@kitchen.example', 'outbound', 'email', 'Your table is held.', 'SENT', 'gm:dy',
+   now() - interval '80 hours', NULL, now() - interval '80 hours',
+   '{"delivery":{"state":"delayed","at":"2026-11-27T11:02:00.000Z","recipient":"delayed@kitchen.example","status":"4.4.7","said":null}}');
+CREATE TEMP TABLE aw AS SELECT * FROM public.list_mail_people('71000000-0000-4000-8000-000000000001', false, false, NULL, NULL, 50, NULL, NULL, true);
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM aw WHERE key = 'guest:delivered@kitchen.example' AND awaiting_since IS NOT NULL), 'D1-a-delivered-letter-still-awaits-an-answer');
+SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM aw WHERE key = 'guest:bounced@kitchen.example'), 'D2-a-letter-that-did-not-arrive-is-not-no-answer-yet');
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM aw WHERE key = 'guest:delayed@kitchen.example'), 'D3-a-delayed-letter-is-not-called-undelivered');
+
 -- grants: service_role only
 SELECT pg_temp.ok(has_function_privilege('service_role', 'public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text, text, boolean)', 'EXECUTE')
   AND NOT has_function_privilege('authenticated', 'public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text, text, boolean)', 'EXECUTE')
