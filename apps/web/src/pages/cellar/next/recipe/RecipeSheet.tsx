@@ -83,6 +83,7 @@ import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft,
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
+import { PhotoControls, PhotoFrame } from './DrinkPhoto';
 import { useHousePercent } from './useHousePercent';
 import { useListTax } from './useListTax';
 import { useSayGrams } from './WeighBox';
@@ -779,6 +780,14 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
           {garnish ? <div><dt>Garnish</dt><dd>{garnish}</dd></div> : null}
         </dl>
       </header>
+
+      {/* A drink's photo (r110 drinks-g3): any role sees it; an owner or manager adds, replaces or removes it. */}
+      {!isDish && (data.cocktail.photoUrl || canEdit) ? (
+        <div className="cl-rcp-photo" data-testid="recipe-photo">
+          <PhotoFrame url={data.cocktail.photoUrl} alt={data.cocktail.name} testId="recipe-photo-frame" />
+          {canEdit ? <PhotoControls cocktailId={cocktailId} hasPhoto={Boolean(data.cocktail.photoUrl)} /> : null}
+        </div>
+      ) : null}
 
       <RecipeCard data={data} words={words} canSeeCost={money} sayMoney={sayMoney} sayPct={sayPct} tax={listTax} />
 

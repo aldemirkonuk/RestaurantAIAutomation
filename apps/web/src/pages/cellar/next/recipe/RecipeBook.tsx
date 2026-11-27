@@ -14,6 +14,7 @@ import { dishesApi, type DrinkCard, type CocktailRecipe } from '../../../../serv
 import { cardAllergens } from './RecipeCard';
 import { scaledAmount } from './recipeScale';
 import { useHouseDate } from './useHouseDate';
+import { PhotoFrame, whenPhotosReady } from './DrinkPhoto';
 
 const FLAG = 'data-print-book';
 export const BOOK_UNREAD = 'The spec book could not be read just now. Nothing was printed.';
@@ -56,8 +57,15 @@ export default function RecipeBook() {
       setBook(null);
     };
     window.addEventListener('afterprint', done, { once: true });
-    window.print();
-    return () => window.removeEventListener('afterprint', done);
+    // The photos are fetched once the book is drawn; paper waits for them (at most 8 s), never prints them blank.
+    let live = true;
+    whenPhotosReady(document.querySelector('.cl-print-book'), () => {
+      if (live) window.print();
+    });
+    return () => {
+      live = false;
+      window.removeEventListener('afterprint', done);
+    };
   }, [book]);
 
   const read = async () => {
@@ -104,6 +112,7 @@ export default function RecipeBook() {
                   <section key={c.cocktailId} className="cl-book-page" data-testid="book-card" data-section={s.section}>
                     <p>{s.section}</p>
                     <h2>{c.name}</h2>
+                    {c.photoUrl ? <PhotoFrame url={c.photoUrl} alt={c.name} testId="book-photo" /> : null}
                     <p>
                       Makes {c.yieldServes} {c.yieldServes === 1 ? 'serve' : 'serves'}
                       {c.glass ? ` · ${c.glass}` : ''}

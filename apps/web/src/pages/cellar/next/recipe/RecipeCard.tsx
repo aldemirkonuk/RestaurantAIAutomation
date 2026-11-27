@@ -23,6 +23,7 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { useHouseDate } from './useHouseDate';
 import type { RecipeWords } from './recipeWords';
 import { MAKE_SAID, readMake, scaledAmount, scaledCost } from './recipeScale';
+import { PhotoFrame, whenPhotosReady } from './DrinkPhoto';
 
 const FLAG = 'data-print-card';
 
@@ -122,7 +123,8 @@ export default function RecipeCard({
     const root = document.documentElement;
     root.setAttribute(FLAG, '');
     window.addEventListener('afterprint', () => root.removeAttribute(FLAG), { once: true });
-    window.print();
+    // The card's photo is printed decoded or not at all, never as a blank box (at most 8 s).
+    whenPhotosReady(document.querySelector('.cl-print-card'), () => window.print());
   };
 
   const price = data.cocktail.price;
@@ -181,6 +183,7 @@ export default function RecipeCard({
       {createPortal(
         <section className="cl-print-card" data-testid="recipe-card" aria-hidden="true">
           <h1>{data.cocktail.name}</h1>
+          {data.cocktail.photoUrl ? <PhotoFrame url={data.cocktail.photoUrl} alt={data.cocktail.name} testId="recipe-card-photo" /> : null}
           <p>
             Makes {v.yieldServes} {v.yieldServes === 1 ? words.unit : `${words.unit}s`}
             {!isDish && glass ? ` · ${glass}` : ''}

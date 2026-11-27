@@ -170,3 +170,25 @@ describe('the spec book', () => {
     expect(block).not.toMatch(/animation|transition/);
   });
 });
+
+describe('the spec book prints each drink photo (r110 drinks-g3)', () => {
+  it('draws the photo eager (the book is drawn only for paper, where a lazy image is never fetched) and prints once it is decoded', async () => {
+    let decoded: () => void = () => undefined;
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', { configurable: true, writable: true, value: () => new Promise<void>((res) => (decoded = res)) });
+    h.get.mockImplementation(async (url: string) =>
+      url === `/recipes/${RID}/drinks/cards`
+        ? { data: { drinks: [card('c1', 'Negroni', 'Aperitivo', { photoUrl: 'https://signed/a.webp' })] } }
+        : { data: { restaurantId: RID, code: 'GBP', country: null, readable: true, reason: null, statedAt: null } },
+    );
+    mount();
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    const frame = await waitFor(() => screen.getByTestId('book-photo'));
+    const img = frame.querySelector('img')!;
+    expect(img.getAttribute('loading')).toBe('eager');
+    expect(img.getAttribute('src')).toBe('https://signed/a.webp');
+    expect(window.print).not.toHaveBeenCalled();
+    await act(async () => decoded());
+    await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+    delete (HTMLImageElement.prototype as { decode?: unknown }).decode;
+  });
+});
