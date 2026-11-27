@@ -28,6 +28,7 @@ import { VendorSendAuthorityModule } from "../organizations/vendor-send-authorit
 import { IntegrationsOauthService } from "../integrations/integrations-oauth.service";
 import { HouseLettersController } from "./letters/house-letters.controller";
 import { HouseLettersService } from "./letters/house-letters.service";
+import { HouseLetterFilesService } from "./letters/house-letter-files.service";
 import { HouseLettersCron } from "./letters/house-letters.cron";
 import { HouseSenderService } from "./letters/house-sender.service";
 import { HouseInboxService } from "./inbox/house-inbox.service";
@@ -117,6 +118,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
     // ADR 0118 — the house's own letters.
     HouseSenderService,
     HouseLettersService,
+    HouseLetterFilesService,
     HouseLettersCron,
     /**
      * ADR 0118, receive half — the house's own inbox reaches the book.
