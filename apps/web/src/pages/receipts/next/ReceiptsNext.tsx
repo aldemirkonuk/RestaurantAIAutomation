@@ -1247,11 +1247,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
       onVerified(sealByKeyboard.current);
     },
   });
-  // r108: a keyboard seal hands its focus on (the swipe unmounts, and focus
-  // would fall to BODY). Taken when the gesture COMPLETES, while the control
-  // still holds focus; a pointer seal never moves focus.
-  const sealWrap = useRef<HTMLDivElement>(null);
-  const keyDown = useRef(false);
+  // r109: a keyboard seal hands its focus on (the swipe unmounts, and focus
+  // would fall to BODY). The gesture itself says it was a keyboard hold; the
+  // handle is already disabled by the time onConfirm runs, so focus is no
+  // witness. A pointer seal never moves focus.
   const sealByKeyboard = useRef(false);
 
   /**
@@ -1403,12 +1402,12 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
               The linked order could not be read — the pairing is unverified, not wrong.
             </p>
           ) : (
-            <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+            <p className="rc-order-wait" style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
               Reading the linked order…
             </p>
           )
         ) : linkedOrderIds === undefined ? (
-          <p style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+          <p className="rc-order-wait" style={{ fontSize: 12, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
             {detailQ.isError
               ? 'Whether an order is linked could not be read.'
               : 'Reading which order this pairs with…'}
@@ -1786,23 +1785,17 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                   : 'Confirm opens once the lines are read.'}
               </p>
             )}
-            <div
-              ref={sealWrap}
-              onKeyDownCapture={(e) => { if (e.key === ' ' || e.key === 'Enter') keyDown.current = true; }}
-              onPointerDownCapture={() => { keyDown.current = false; }}
-            >
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
               onChallenge={() => documentsApi.mintVerifySeal(doc.id)}
-              onConfirm={(challenge) => {
-                sealByKeyboard.current = keyDown.current && !!sealWrap.current?.contains(document.activeElement);
+              onConfirm={(challenge, how) => {
+                sealByKeyboard.current = how?.viaKeyboard === true;
                 verify.mutate(challenge);
               }}
             />
-            </div>
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
@@ -1889,13 +1882,21 @@ export default function ReceiptsNext() {
     const at = reviewRows.findIndex((d) => d.id === id);
     return at >= 0 ? (reviewRows[at + 1]?.id ?? null) : null;
   };
-  // r108: after a keyboard seal the next row takes focus, so j/k work without a Tab back.
+  // r108/r109: after a keyboard seal the next paper takes focus, so j/k work
+  // without a Tab back. Below 2xl an open paper hides the list (`hidden
+  // 2xl:block`), so a row there cannot hold focus: the opened paper's own pane
+  // takes it, and j/k walk from there. jsdom has no CSS and cannot see the
+  // difference; the Playwright check `receipts-seal-focus` does.
   const focusAfterSeal = useRef<string | null>(null);
+  const detailPane = useRef<HTMLElement>(null);
   useEffect(() => {
     const id = focusAfterSeal.current;
     if (!id || selectedId !== id) return;
     focusAfterSeal.current = null;
-    (document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null)?.focus();
+    const row = document.querySelector(`[data-rc-id="${id}"]`) as HTMLElement | null;
+    const lane = row?.closest('section');
+    const listShown = !!row && !!lane && getComputedStyle(lane).display !== 'none';
+    (listShown ? row : detailPane.current)?.focus();
   }, [selectedId]);
   const [rovingId, setRovingId] = useState<string | null>(null);
   const rovingRowId = reviewRows.some((d) => d.id === rovingId)
@@ -1917,6 +1918,19 @@ export default function ReceiptsNext() {
     e.preventDefault();
     setRovingId(to.id);
     (e.currentTarget.closest('section')?.querySelector(`[data-rc-id="${to.id}"]`) as HTMLElement | null)?.focus();
+  };
+
+  // j / k from the open paper itself, for the layouts where the list is hidden.
+  const onDetailKey = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'j' && e.key !== 'k') return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || sealHeld.current) return;
+    if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]')) return;
+    const from = reviewRows.findIndex((d) => d.id === selectedId);
+    const to = from >= 0 ? reviewRows[from + (e.key === 'j' ? 1 : -1)] : undefined;
+    if (!to) return;
+    e.preventDefault();
+    focusAfterSeal.current = to.id;
+    select(to.id);
   };
 
   /*
@@ -2008,6 +2022,8 @@ export default function ReceiptsNext() {
         @media screen and (max-width: 639px) {
           .rc-lines-wait-head { display: none }
           .rc-lines-wait-row { height: ${LINES_WAIT_ROW_PX.phone}px }
+          /* the answer wraps to two lines on a phone; the wait holds both */
+          .rc-order-wait { min-height: 38px }
           .rc-lines, .rc-lines tbody { display: block; width: 100% }
           .rc-lines thead { display: none }
           .rc-lines tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px; padding: 8px 0 }
@@ -2415,6 +2431,9 @@ export default function ReceiptsNext() {
           <section
             aria-label="Document detail"
             data-testid="detail-placeholder"
+            ref={detailPane}
+            tabIndex={-1}
+            onKeyDown={onDetailKey}
             onPointerDownCapture={() => { sealHeld.current = true; }}
             onPointerUpCapture={() => { sealHeld.current = false; }}
             onPointerCancelCapture={() => { sealHeld.current = false; }}

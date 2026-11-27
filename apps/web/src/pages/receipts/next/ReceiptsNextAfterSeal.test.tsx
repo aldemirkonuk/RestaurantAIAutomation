@@ -275,6 +275,51 @@ describe('where focus goes after a seal (r108)', () => {
     expect(document.activeElement).toBe(rowBtn('INV-90'));
   });
 
+  it('a keyboard seal still hands focus on when the handle lost focus before the confirm ran', async () => {
+    // A real browser drops focus to BODY the moment completing disables the
+    // handle, before onConfirm runs; the gesture, not activeElement, knows.
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    let release: (t: string) => void = () => {};
+    api.mintVerifySeal.mockImplementationOnce(() => new Promise<string>((r) => { release = r; }));
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    fireEvent.keyDown(swipe, { key: ' ' });
+    // The hold completes and disables the handle; only then does focus go.
+    await waitFor(() => expect(swipe).toBeDisabled(), { timeout: 3000 });
+    // jsdom keeps focus on a disabled button; park it on a node, then remove it.
+    const parked = document.body.appendChild(document.createElement('button'));
+    parked.focus();
+    parked.remove();
+    expect(document.activeElement).toBe(document.body);
+    release('seal-token');
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    await waitFor(() => expect(document.activeElement).toBe(rowBtn('INV-89')));
+    fireEvent.keyDown(rowBtn('INV-89'), { key: 'j' });
+    expect(document.activeElement).toBe(rowBtn('INV-90'));
+  });
+
+  it('with the list hidden (below 2xl) the opened paper takes focus and j opens the next paper', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    fireEvent.click(await paperRow('INV-88'));
+    await screen.findByLabelText('Quantity, line 1');
+    // jsdom loads no Tailwind; the real page hides this lane with `hidden 2xl:block`.
+    (screen.getByRole('region', { name: 'Awaiting review' }) as HTMLElement).style.display = 'none';
+    const swipe = screen.getByRole('button', { name: /Swipe up to confirm/ });
+    swipe.focus();
+    fireEvent.keyDown(swipe, { key: 'Enter' });
+    await waitFor(() => expect(api.verify).toHaveBeenCalled());
+    const pane = screen.getByRole('region', { name: 'Document detail' });
+    await waitFor(() => expect(document.activeElement).toBe(pane));
+    expect(screen.getByRole('button', { pressed: true, hidden: true }).textContent).toMatch(/INV-89/);
+    fireEvent.keyDown(pane, { key: 'j' });
+    await waitFor(() => expect(screen.getByRole('button', { pressed: true, hidden: true }).textContent).toMatch(/INV-90/));
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Document detail' }));
+    fireEvent.keyDown(pane, { key: 'k' });
+    await waitFor(() => expect(screen.getByRole('button', { pressed: true, hidden: true }).textContent).toMatch(/INV-89/));
+  });
+
   it('a pointer seal leaves focus alone, even though the press focused the handle', async () => {
     render(<ReceiptsNext />, { wrapper });
     fireEvent.click(await paperRow('INV-88'));
