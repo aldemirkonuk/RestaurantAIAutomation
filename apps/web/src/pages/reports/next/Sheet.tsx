@@ -37,7 +37,7 @@
  * a place the reader can see.
  */
 
-import { useCallback, useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Responsive,
   type LayoutItem,
@@ -61,6 +61,46 @@ import {
 } from './rp-sheet';
 
 const Grid = Responsive;
+
+/** The most a held card grows beyond its held height to show content it would clip. */
+const HELD_GROW_MAX_PX = 240;
+
+/**
+ * The phone card that holds a height (the till): the slot plus the compare answer's room, and the room
+ * its own content needs beyond that. The held height was a constant, so a header that wraps to five
+ * lines at 375 pushed "Show the working" out of a clipped body in the default state (r108 walk P1).
+ * The body reports how far its content overflows it (`scrollHeight` over `clientHeight`); the card
+ * grows by that and by no more, so a card whose content fits stands exactly where it did. The growth is
+ * dropped when the hold or the slot changes, and read again.
+ */
+function HeldStackItem({ slotPx, holdPx, children }: { slotPx: number; holdPx: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [extra, setExtra] = useState(0);
+  useLayoutEffect(() => {
+    setExtra(0);
+    const body = ref.current?.querySelector<HTMLElement>('.rp-cut__body');
+    if (!body) return;
+    const measure = () => {
+      const over = Math.ceil(body.scrollHeight - body.clientHeight);
+      if (over > 0) setExtra((e) => Math.min(HELD_GROW_MAX_PX, e + over));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(body);
+    return () => ro.disconnect();
+  }, [slotPx, holdPx]);
+  return (
+    <div
+      ref={ref}
+      className="rp-grid-item rp-stack__item"
+      data-holds
+      style={{ height: slotPx + holdPx + extra }}
+    >
+      {children}
+    </div>
+  );
+}
 
 /**
  * The width the sheet is laid out at, known BEFORE the first paint (r61, c2).
@@ -221,7 +261,12 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       {stacked && (
         <div className="rp-stack">
           {/* List order IS the narrow reading order (`projectCuttings`). */}
-          {shown.map((c) => (
+          {shown.map((c) =>
+            c.holdPx !== undefined && !TEXT_IDS.has(c.id) ? (
+              <HeldStackItem key={c.id} slotPx={slotHeightPx(c.slot.h)} holdPx={c.holdPx}>
+                {c.body}
+              </HeldStackItem>
+            ) : (
             <div
               key={c.id}
               className="rp-grid-item rp-stack__item"
@@ -235,7 +280,8 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
             >
               {c.body}
             </div>
-          ))}
+            ),
+          )}
         </div>
       )}
       {!stacked && width > 0 && (
