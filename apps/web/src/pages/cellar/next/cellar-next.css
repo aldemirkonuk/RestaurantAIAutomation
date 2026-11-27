@@ -1135,3 +1135,17 @@ textarea.cl-field {
     min-height: 44px;
   }
 }
+
+/* One sentence under a table of shares (the tax basis, said once). Its room is held from first
+   paint, so reading the basis moves nothing: one line wide, two on a phone. No transition (ADR 0112). */
+.cl-share-caption {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+@media (max-width: 640px) {
+  .cl-share-caption {
+    min-height: 2.8em;
+  }
+}
