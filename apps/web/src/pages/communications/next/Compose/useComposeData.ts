@@ -164,6 +164,9 @@ export function useComposeData() {
       return data;
     },
     staleTime: 60_000,
+    // Ask once the house is known: the key carries it, so a read made before
+    // the session answered was a second request under a new key (perf-p1-5).
+    enabled: Boolean(restaurantId),
   });
 
   const bookQ = useQuery<BookEntry[]>({
@@ -175,6 +178,7 @@ export function useComposeData() {
       return data.entries;
     },
     staleTime: 60_000,
+    enabled: Boolean(restaurantId),
   });
 
   const templatesQ = useQuery<LetterTemplate[]>({
@@ -186,12 +190,14 @@ export function useComposeData() {
       return data.templates;
     },
     staleTime: 60_000,
+    enabled: Boolean(restaurantId),
   });
 
   const queuedQ = useQuery<QueuedLetter[]>({
     queryKey: ['house-letter-queued', restaurantId],
     queryFn: readQueued,
     staleTime: 15_000,
+    enabled: Boolean(restaurantId),
   });
 
   const insightsQ = useQuery<InsightSentence[]>({
