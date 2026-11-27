@@ -190,3 +190,28 @@ describe('GetStarted: resumes where the person left', () => {
     expect(val('Address')).toBe('')
   })
 })
+
+// r108 g16: a restore says so, and can be cleared.
+describe('GetStarted: a restored draft says so', () => {
+  it('shows no line on a fresh visit', () => {
+    render(page())
+    expect(screen.queryByTestId('draft-kept-note')).toBeNull()
+  })
+
+  it('says "We kept what you typed." after a restore; Start over empties the fields and storage and focuses the first one', async () => {
+    const first = render(page())
+    typeHouse()
+    first.unmount() // the flush on unmount writes the draft
+    expect(sessionStorage.getItem(KEY)).toContain('Meyhane')
+
+    render(page())
+    expect(screen.getByText('We kept what you typed.')).toBeInTheDocument()
+    expect(val('Restaurant name')).toBe('Meyhane')
+    fireEvent.click(screen.getByRole('button', { name: 'Start over' }))
+    expect(val('Restaurant name')).toBe('')
+    expect(val('Address')).toBe('')
+    expect(sessionStorage.getItem(KEY)).toBeNull()
+    expect(screen.queryByTestId('draft-kept-note')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Restaurant name')))
+  })
+})
