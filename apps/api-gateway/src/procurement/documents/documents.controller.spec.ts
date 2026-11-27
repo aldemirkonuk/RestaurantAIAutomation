@@ -1130,6 +1130,27 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
     expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T00:00:00.000Z"]]);
   });
 
+  it("pages by (created_at, id) with the raw timestamp, so papers sharing a millisecond are not skipped (r106 fz)", async () => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: none,
+      procurement_document_lines: none,
+    });
+    const id = "11111111-2222-4333-8444-555555555555";
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T10:00:00.123456+00:00", id);
+    const or = calls.find((c) => c[0] === "procurement_documents" && c[1] === "or")!;
+    expect(or[2][0]).toBe(
+      `created_at.lt."2026-11-01T10:00:00.123456+00:00",and(created_at.eq."2026-11-01T10:00:00.123456+00:00",id.lt."${id}")`,
+    );
+    expect(calls).toContainEqual(["procurement_documents", "order", ["id", { ascending: false }]]);
+  });
+
+  it("refuses a beforeId that is not a paper id (it is placed in a filter)", async () => {
+    const { controller } = listControllerWith({ procurement_documents: none });
+    await expect(
+      controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z", 'x"),or=(id.neq.1'),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
   it("refuses a cursor that is not a date", async () => {
     const { controller } = listControllerWith({ procurement_documents: none });
     await expect(

@@ -1464,7 +1464,7 @@ export class DocumentsController {
     name: "before",
     required: false,
     description:
-      "ISO time: only papers created before it. Pass the last row's `nextBefore` to read the next older page.",
+      "ISO time: only papers created before it. Pass the last row's `nextBefore` (and `beforeId`) to read the next older page.",
   })
   @ApiQuery({
     name: "beforeId",
@@ -1551,10 +1551,8 @@ export class DocumentsController {
         ? (before as string)
         : beforeAt.toISOString()
       : null;
-    if (beforeId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(beforeId))
-      throw new HttpException("`beforeId` has to be a paper's id.", HttpStatus.BAD_REQUEST);
     if (cursorAt && beforeId)
-      query = query.or(`created_at.lt.${cursorAt},and(created_at.eq.${cursorAt},id.lt.${beforeId})`);
+      query = query.or(`created_at.lt."${cursorAt}",and(created_at.eq."${cursorAt}",id.lt."${beforeId}")`);
     else if (cursorAt) query = query.lt("created_at", cursorAt);
     if (term) {
       // A vendor is named by the provider row or by what the paper itself
