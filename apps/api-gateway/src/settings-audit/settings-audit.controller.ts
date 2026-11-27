@@ -51,6 +51,7 @@ export const REGISTERS: SettingsRegister[] = [
   "target-margin",
   "ask-training",
   "state-and-country",
+  "tax-basis",
 ];
 
 /**

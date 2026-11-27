@@ -6,23 +6,28 @@
  * else by runway — and each group is headed with its count; any other sort
  * is one list.
  *
- * A row is 48px and opens in place, like the orders ledger row: the whole
- * row is the hit area, and the title is a real button so the keyboard can
- * reach it (Enter or Space opens it; the dropdown sits in the next table
- * row, spanning every column).
+ * A row is 56px and opens the item drawer (ItemDrawer.tsx): the whole row
+ * is the hit area, and the title is a real button so the keyboard can reach
+ * it (Enter or Space opens it).
  *
  * "Your price" reuses the legacy page's HousePriceCell for owners and
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
-import RowDropdown, { type RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
+import type { RowDropdownProps } from './RowDropdown';
+import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
+import { listFigure, listPace, listUnitTail } from './ItemCards';
+import PhoneRows from './PhoneRows';
+import { emptyColumns } from './iv-columns';
+import { useIsPhone } from '../../../hooks/useIsPhone';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
+  /** What one row is called in the table's caption: "title" for a drink, "good" for a house of goods. */
+  thing?: string;
   /** The wine library did not answer: a missing type is unknown, not "not recorded" (INV-W28). */
   libraryUnread?: boolean;
   /** Head the rows by severity (the "Needs you first" sort). */
@@ -46,29 +51,12 @@ const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Ru
 /** The headers that sort, and the sort each one sets. */
 const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
 
-/** The status word, never a colour alone. */
-function statusWord(row: InvRow): string {
-  const dry = row.runway !== null && row.runway < 1.5;
-  switch (row.standing) {
-    case 'out':
-      return 'Out';
-    case 'below':
-      return dry ? 'Below par · dry tomorrow' : 'Below par';
-    case 'unknown':
-      return 'Stock not read';
-    case 'nopar':
-      return dry ? 'Dry tomorrow' : 'No par set';
-    default:
-      return dry ? 'Dry tomorrow' : row.standing === 'at' ? 'At par' : 'Above par';
-  }
-}
-
 function ParBar({ row }: { row: InvRow }) {
   if (row.stock === null || row.par === null || row.par <= 0) return null;
   const pct = Math.max(0, Math.min(1, row.stock / row.par)) * 100;
   return (
     <span className="iv-parbar" aria-hidden>
-      <i data-standing={row.standing} style={{ width: `${pct}%` }} />
+      <i data-standing={row.standing} style={{ transform: `scaleX(${pct / 100})` }} />
     </span>
   );
 }
@@ -82,19 +70,67 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
 
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
+  // A phone cannot read nine columns: it gets two-line cards (critic c2 P0-2).
+  const phone = useIsPhone();
+  // A column of nothing but dashes stays out of the way until asked for (N-18).
+  const [showEmpty, setShowEmpty] = useState(false);
+  const empty = emptyColumns({
+    rows,
+    canManage,
+    libraryUnread: props.libraryUnread === true,
+    locationsUnavailable: props.locationsUnavailable,
+  });
+  const hidden = showEmpty ? new Set<string>() : empty;
+  const cols = COLUMNS.filter((c) => !hidden.has(c));
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
-  const span = COLUMNS.length + (selecting ? 1 : 0);
+  const thing = props.thing ?? 'title';
+  const nameHead = thing.charAt(0).toUpperCase() + thing.slice(1);
+  const span = cols.length + (selecting ? 1 : 0);
   const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
   const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
 
+  if (phone) {
+    return (
+      <PhoneRows
+        rows={rows}
+        thing={thing}
+        grouped={grouped}
+        openId={openId}
+        onToggle={onToggle}
+        canManage={canManage}
+        currency={currency}
+        advice={advice}
+        onPriceChanged={onPriceChanged}
+        selected={props.selected}
+        onSelect={props.onSelect}
+        onSelectAll={props.onSelectAll}
+      />
+    );
+  }
+
   return (
     <div className="iv-tablewrap">
+      {empty.size > 0 ? (
+        <div className="iv-colsbar">
+          <button
+            type="button"
+            className="iv-colsbtn iv-focus"
+            aria-pressed={showEmpty}
+            data-testid="inv-columns"
+            onClick={() => setShowEmpty((v) => !v)}
+          >
+            {showEmpty
+              ? 'Hide empty columns'
+              : `Columns · ${empty.size} empty ${empty.size === 1 ? 'column' : 'columns'} hidden · Show`}
+          </button>
+        </div>
+      ) : null}
       <table className="iv-table" data-testid="inventory-table">
         {/* INV-W39: the book had no name and no heading, so a screen reader
             went from the page title straight to Tools. */}
-        <caption className="sr-only">The book: every title on hand</caption>
+        <caption className="sr-only">The book: every {thing} on hand</caption>
         <thead>
           <tr>
             {selecting ? (
@@ -111,7 +147,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                 />
               </th>
             ) : null}
-            {COLUMNS.map((c) => {
+            {cols.map((c) => {
               // The legacy column-header sort (InventoryCommandPage.tsx:496,1337):
               // a header that has a sort sets it; clicking the active one goes
               // back to Needs you first. Each sort reads one direction.
@@ -126,6 +162,8 @@ export default function InventoryTable(props: InventoryTableProps) {
                   <>
                     Value <span className="iv-dim">at cost</span>
                   </>
+                ) : c === 'Title' ? (
+                  nameHead
                 ) : (
                   c
                 );
@@ -165,6 +203,8 @@ export default function InventoryTable(props: InventoryTableProps) {
             const sev = severity(row);
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
             const open = openId === row.id;
+            // A counted good's unit is said once, after its last figure; nothing read, nothing to say.
+            const tail = row.par === null && row.stock === null ? null : listUnitTail(row.uom, row.par ?? row.stock);
             return (
               <Fragment key={row.id}>
                 {startsGroup ? (
@@ -188,13 +228,13 @@ export default function InventoryTable(props: InventoryTableProps) {
                       <input
                         type="checkbox"
                         className="iv-focus"
-                        aria-label={`Select ${row.name ?? 'this title'}`}
+                        aria-label={`Select ${row.name ?? `this ${thing}`}`}
                         checked={props.selected!.has(row.id)}
                         onChange={() => props.onSelect!(row.id)}
                       />
                     </td>
                   ) : null}
-                  <td data-label="Title" className="iv-title">
+                  <td data-label={nameHead} className="iv-title">
                     <button
                       type="button"
                       className="iv-titlebtn iv-focus"
@@ -206,43 +246,56 @@ export default function InventoryTable(props: InventoryTableProps) {
                       }}
                     >
                       <span className="iv-name">
-                        {row.name ?? 'Unnamed title'}
+                        {row.name ?? `Unnamed ${thing}`}
                         {row.abc ? (
                           <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
                             {row.abc}
                           </span>
                         ) : null}
                       </span>
-                      <span className="iv-producer">
-                        {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
-                      </span>
+                      {/* No producer and no vintage: no line, never a bare dash (N-18). */}
+                      {row.producer || row.vintage !== null ? (
+                        <span className="iv-producer">
+                          {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
                     </button>
                     <NameHint inventoryId={row.id} />
                   </td>
+{!hidden.has('Type') ? (
                   <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
                     {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
                   </td>
+ ) : null}
+{!hidden.has('Zone') ? (
                   <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
+ ) : null}
                   <td data-label="Live / shadow · par" className="iv-r iv-num">
                     <span>
-                      {row.stock === null ? EM : fmtCount(row.stock)}
-                      <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
+                      <span className="iv-live">{listFigure(row.stock, row.uom)}</span>
+                      <span className="iv-dim"> / {listFigure(row.shadow, row.uom)}</span>
                       {' · '}
-                      {row.par === null ? EM : fmtCount(row.par)}
+                      {listFigure(row.par, row.uom)}
+                      {tail === null ? null : ` ${tail}`}
                     </span>
                     <ParBar row={row} />
                   </td>
+{!hidden.has('Vel/day') ? (
                   <td data-label="Vel/day" className="iv-r iv-num">
-                    {row.velocity === null ? EM : fmtPace(row.velocity)}
+                    {row.velocity === null ? EM : listPace(row.velocity, row.uom)}
                   </td>
+ ) : null}
+{!hidden.has('Runway') ? (
                   <td data-label="Runway" className="iv-r iv-num">
                     {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
                   </td>
+ ) : null}
+{!hidden.has('Your price') ? (
                   <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
                     {canManage ? (
                       <HousePriceCell
                         inventoryId={row.id}
-                        wineName={row.name ?? 'this title'}
+                        wineName={row.name ?? `this ${thing}`}
                         bottle={row.bottle}
                         glass={row.glass}
                         advice={advice}
@@ -258,30 +311,17 @@ export default function InventoryTable(props: InventoryTableProps) {
                       </>
                     )}
                   </td>
+ ) : null}
+{!hidden.has('Value') ? (
                   <td data-label="Value at cost" className="iv-r iv-num">
                     {cellMoney(row.value, currency)}
                   </td>
+ ) : null}
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>
+                    <span className="iv-dot" aria-hidden />
                     {statusWord(row)}
                   </td>
                 </tr>
-                {open ? (
-                  <tr className="iv-openrow">
-                    <td colSpan={span}>
-                      <RowDropdown
-                        row={row}
-                        canManage={canManage}
-                        currency={currency}
-                        zoneName={zoneName}
-                        locations={props.locations}
-                        locationsUnavailable={props.locationsUnavailable}
-                        providers={props.providers}
-                        providersError={props.providersError}
-                        restaurantId={props.restaurantId}
-                      />
-                    </td>
-                  </tr>
-                ) : null}
               </Fragment>
             );
           })}

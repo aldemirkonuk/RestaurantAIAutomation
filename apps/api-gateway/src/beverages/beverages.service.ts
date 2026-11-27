@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -30,7 +31,6 @@ import {
 } from "../menus/current-menu-lines";
 import type {
   CreateCocktailDto,
-  SetCocktailIngredientsDto,
   UpdateCocktailDto,
 } from "./dto/beverages.dto";
 // The price register's one enforcement point (ADR 0117 addendum, 2026-09-05).
@@ -338,7 +338,17 @@ export class BeveragesService {
 
     if (opts.search) q = q.ilike("name", `%${opts.search}%`);
 
-    const { data, error } = await q;
+    // The unattributed-reference count does not depend on the list, so both
+    // reads go out together. A list failure still throws first, as before.
+    const [{ data, error }, { count, error: refError }] = await Promise.all([
+      q,
+      this.dbService
+        .getClient()
+        .from("cocktails")
+        .select("id", { count: "exact", head: true })
+        .is("restaurant_id", null)
+        .is("deleted_at", null),
+    ]);
     if (error) {
       this.logger.error(`Failed to list cocktails: ${error.message}`);
       throw this.explain(error, "cocktails");
@@ -347,14 +357,7 @@ export class BeveragesService {
     // Unattributed reference rows, counted separately. A failure here leaves
     // the figure null; it must never fall back to 0, which would read as "there
     // is no reference data" when the truth is "we could not ask".
-    let referenceRows: number | null = null;
-    const { count, error: refError } = await this.dbService
-      .getClient()
-      .from("cocktails")
-      .select("id", { count: "exact", head: true })
-      .is("restaurant_id", null)
-      .is("deleted_at", null);
-    if (!refError) referenceRows = count ?? 0;
+    const referenceRows: number | null = refError ? null : (count ?? 0);
 
     const rows = data ?? [];
     return {
@@ -553,6 +556,10 @@ export class BeveragesService {
       .getClient()
       .from("cocktails")
       .insert({
+        // `cocktails.id` has no database default (20260817090000_cocktails.sql:27
+        // keeps the ids the reference rows were migrated with), so a row the
+        // house writes names its own id, or the insert is refused as a null id.
+        id: randomUUID(),
         // The tenant comes from the guarded path parameter, never the body.
         restaurant_id: restaurantId,
         name: dto.name.trim(),
@@ -648,77 +655,6 @@ export class BeveragesService {
       );
     }
     return { id: data.id, retired: true as const };
-  }
-
-  /**
-   * Replace one cocktail's recipe lines.
-   *
-   * `cocktail_ingredients` was created empty and has stayed empty because the
-   * extraction pass over the scanned cocktail sections never ran
-   * (20260817090000_cocktails.sql:20-25). That is a reason for the EXTRACTOR
-   * not to have written rows; it was never a reason for a bartender to be
-   * unable to. This is the first writer the table has ever had.
-   *
-   * Replace rather than merge: a recipe is one document, and a per-line diff
-   * against a list a human just retyped invents an edit history nobody made.
-   */
-  async setCocktailIngredients(
-    restaurantId: string,
-    cocktailId: string,
-    dto: SetCocktailIngredientsDto,
-  ) {
-    const client = this.dbService.getClient();
-
-    // Ownership first, and read from the table rather than trusted from the
-    // path: the ingredients table has no restaurant_id of its own, so this
-    // lookup IS the tenancy check for the write below.
-    const { data: owner, error: ownerError } = await client
-      .from("cocktails")
-      .select("id")
-      .eq("id", cocktailId)
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (ownerError) throw this.explain(ownerError, "cocktails");
-    if (!owner) {
-      throw new Error(
-        "No live cocktail of this house has that id. No recipe line was written.",
-      );
-    }
-
-    const { error: clearError } = await client
-      .from("cocktail_ingredients")
-      .delete()
-      .eq("cocktail_id", cocktailId);
-    if (clearError) throw this.explain(clearError, "cocktail_ingredients");
-
-    if (dto.lines.length === 0) {
-      return { cocktailId, lines: 0, recipesAvailable: true as const };
-    }
-
-    const { data, error } = await client
-      .from("cocktail_ingredients")
-      .insert(
-        dto.lines.map((l, i) => ({
-          cocktail_id: cocktailId,
-          // `free_text` covers what no catalogue holds — "fresh lime juice",
-          // "egg white" — and the CHECK constraint requires one of the three.
-          free_text: l.freeText?.trim() ?? null,
-          beverage_id: l.beverageId ?? null,
-          wine_id: l.wineId ?? null,
-          quantity: l.quantity ?? null,
-          unit: l.unit?.trim() ?? null,
-          sort_order: l.sortOrder ?? i,
-        })),
-      )
-      .select("id");
-    if (error) throw this.explain(error, "cocktail_ingredients");
-
-    return {
-      cocktailId,
-      lines: (data ?? []).length,
-      recipesAvailable: true as const,
-    };
   }
 
   /** One cocktail's recipe lines, in the order the house recorded them. */

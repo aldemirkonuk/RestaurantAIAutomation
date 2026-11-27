@@ -128,6 +128,64 @@ describe("BeveragesService.listCocktails", () => {
     expect(out.referenceRows).toBeNull();
     expect(out.count).toBe(0);
   });
+
+  it("asks for the reference count while the list is still in flight", async () => {
+    // Both reads are held open; the count must already be awaited when the
+    // list has not answered. Serial code would never touch the second `then`
+    // until the first resolved.
+    const started: string[] = [];
+    const releases: Array<() => void> = [];
+    const heldChain = (label: string, result: TableResult) => {
+      const self: Record<string, unknown> = {};
+      for (const m of ["select", "eq", "is", "ilike", "order", "limit"]) {
+        self[m] = jest.fn(() => self);
+      }
+      self.then = (resolve: (v: unknown) => unknown) => {
+        started.push(label);
+        return new Promise((go) => releases.push(() => go(undefined)))
+          .then(() => ({
+            data: result.data ?? null,
+            error: result.error ?? null,
+            count: result.count ?? null,
+          }))
+          .then(resolve);
+      };
+      return self;
+    };
+    let calls = 0;
+    const db = {
+      getClient: () => ({
+        from: () =>
+          calls++ === 0
+            ? heldChain("list", { data: [{ id: "c1", name: "Negroni" }] })
+            : heldChain("count", { count: 7 }),
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    const service = moduleRef.get(BeveragesService);
+
+    const pending = service.listCocktails(RID, { limit: 200 });
+    await new Promise((r) => setImmediate(r));
+    expect(started).toEqual(["list", "count"]);
+    releases.forEach((go) => go());
+    const out = await pending;
+    expect(out.count).toBe(1);
+    expect(out.referenceRows).toBe(7);
+  });
+
+  it("still throws the list's own failure, and not a half answer, when both reads fail", async () => {
+    const service = await serviceWith({
+      cocktails: [
+        { error: { code: "42P01", message: "does not exist" } },
+        { error: { message: "boom" } },
+      ],
+    });
+    await expect(service.listCocktails(RID, { limit: 200 })).rejects.toThrow(
+      /cocktails/,
+    );
+  });
 });
 
 /* ── the house's own record, and the one register a house can write ─────────
@@ -288,6 +346,52 @@ describe("BeveragesService cocktail writes", () => {
       source: "manual",
     });
     expect(inserted[0]).not.toHaveProperty("restaurantId");
+    // The table has no id default, so the row must carry one of its own.
+    expect((inserted[0] as { id?: unknown }).id).toEqual(
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
+    );
+  });
+
+  it("a copy inserts its own non-null id: fresh per drink, never the source's (r108 drinks-r108-1)", async () => {
+    // Copy on /cocktails writes the new drink through this same insert (the
+    // web's copy mutation POSTs /cocktails/:rid), so the id rule is the copy's
+    // too: a migrations-built database has no id default and refused it (500).
+    const inserted: Array<Record<string, unknown>> = [];
+    const db = {
+      getClient: () => ({
+        from: () => {
+          const self: Record<string, unknown> = {};
+          for (const m of ["select", "eq", "is"]) self[m] = jest.fn(() => self);
+          self.insert = jest.fn((row: Record<string, unknown>) => {
+            inserted.push(row);
+            return self;
+          });
+          self.single = jest.fn(() => Promise.resolve({ data: { id: inserted.at(-1)?.id }, error: null }));
+          return self;
+        },
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
+    }).compile();
+    const service = moduleRef.get(BeveragesService);
+    const SOURCE = "22222222-2222-4222-8222-222222222222";
+    const copyBody = { name: "Gimlet copy", menuSection: "Sours", method: "Shake", glass: "Coupe", garnish: "Lime" };
+
+    await service.createCocktail(RID, { ...copyBody, id: SOURCE } as never);
+    await service.createCocktail(RID, copyBody as never);
+
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    expect(inserted).toHaveLength(2);
+    for (const row of inserted) {
+      expect(row.id).not.toBeNull();
+      expect(row.id).toEqual(expect.stringMatching(uuid));
+      expect(row.id).not.toBe(SOURCE);
+      expect(row).toMatchObject({ restaurant_id: RID, name: "Gimlet copy" });
+    }
+    expect(inserted[0].id).not.toBe(inserted[1].id);
   });
 
   it("refuses to report success for an update that matched no row", async () => {
@@ -364,61 +468,6 @@ describe("BeveragesService cocktail writes", () => {
     expect(patches[0]).toHaveProperty("deleted_at");
   });
 
-  it("checks ownership before writing a recipe line", async () => {
-    // `cocktail_ingredients` has no restaurant_id of its own, so this lookup IS
-    // the tenancy boundary for the write.
-    const { service } = await richService({
-      tables: { cocktails: [{ data: null }] },
-    });
-    await expect(
-      service.setCocktailIngredients(RID, COCKTAIL_ID, {
-        lines: [{ freeText: "fresh lime juice" }],
-      }),
-    ).rejects.toThrow(/No recipe line was written/);
-  });
-
-  it("writes the recipe lines a bartender typed — the table's first writer", async () => {
-    const inserted: unknown[] = [];
-    const db = {
-      getClient: () => ({
-        from: (table: string) => {
-          const self: Record<string, unknown> = {};
-          for (const m of ["select", "eq", "is", "order", "delete"]) {
-            self[m] = jest.fn(() => self);
-          }
-          self.insert = jest.fn((rows: unknown) => {
-            inserted.push(rows);
-            return self;
-          });
-          self.maybeSingle = jest.fn(() =>
-            Promise.resolve({ data: { id: COCKTAIL_ID }, error: null }),
-          );
-          self.then = (resolve: (v: unknown) => unknown) =>
-            Promise.resolve({
-              data: table === "cocktail_ingredients" ? [{ id: "i1" }, { id: "i2" }] : [],
-              error: null,
-            }).then(resolve);
-          return self;
-        },
-      }),
-    };
-    const moduleRef = await Test.createTestingModule({
-      providers: [BeveragesService, { provide: DatabaseService, useValue: db }],
-    }).compile();
-    const out = await moduleRef
-      .get(BeveragesService)
-      .setCocktailIngredients(RID, COCKTAIL_ID, {
-        lines: [
-          { beverageId: "b-1", quantity: 30, unit: "ml" },
-          { freeText: "fresh lime juice", quantity: 20, unit: "ml", sortOrder: 5 },
-        ],
-      });
-
-    expect(out).toEqual({ cocktailId: COCKTAIL_ID, lines: 2, recipesAvailable: true });
-    const rows = inserted[0] as Record<string, unknown>[];
-    expect(rows[0]).toMatchObject({ cocktail_id: COCKTAIL_ID, beverage_id: "b-1", sort_order: 0 });
-    expect(rows[1]).toMatchObject({ free_text: "fresh lime juice", sort_order: 5 });
-  });
 });
 
 /* ── the till book: the till's own record, every line (ADR 0301 §1) ──────────

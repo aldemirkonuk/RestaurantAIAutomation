@@ -20,7 +20,11 @@ import { useCallback } from 'react'
 // Query: Inventory list
 // ---------------------------------------------------------------------------
 
-export function useInventory() {
+/**
+ * `opts.enabled: false` mounts the hook without reading (a page that shows no
+ * stock on this view, such as /cocktails inside the cellar). Default true.
+ */
+export function useInventory(opts: { enabled?: boolean } = {}) {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
 
@@ -65,7 +69,7 @@ export function useInventory() {
       const items = await inventoryApi.getInventory(activeRestaurantId!)
       return items.map(normalizeInventoryItem)
     },
-    enabled: !!activeRestaurantId && isAuthenticated,
+    enabled: !!activeRestaurantId && isAuthenticated && opts.enabled !== false,
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -126,7 +130,7 @@ export function useUpdateInventoryItem() {
       return inventoryApi.updateInventoryItem(
         itemId,
         {
-          stockLive: data.stockLive,
+          stockLive: data.stockLive ?? undefined,
           shadowStock: data.shadowStock,
           thresholdMin: data.thresholdMin,
           thresholdMax: data.thresholdMax,

@@ -23,7 +23,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
   BottleVM,
@@ -50,6 +50,8 @@ const mock = vi.hoisted(() => ({
   register: { data: null, loading: false, error: null, refetch: () => {} } as Record<string, unknown>,
   recipe: { data: null, loading: false, error: null } as Record<string, unknown>,
   writes: {} as Record<string, unknown>,
+  // Owner/manager by default: the cocktail writes are theirs (r34 w1 F13).
+  manages: true,
   rowRecord: { data: null, loading: false, error: null } as Record<string, unknown>,
   whole: { rows: [], reads: [], loading: false, partial: false } as Record<string, unknown>,
   zones: { data: null, loading: false, error: null } as Record<string, unknown>,
@@ -75,6 +77,33 @@ const mock = vi.hoisted(() => ({
   } as Record<string, unknown>,
 }));
 
+// The recipe sheet has its own suite (recipe/RecipeSheet.test.tsx); here it
+// is only asserted to be mounted on the opened cocktail.
+vi.mock('./recipe/RecipeSheet', () => ({
+  default: ({ cocktailId, holdRoom }: { cocktailId: string; holdRoom?: boolean }) => (
+    <div data-testid="recipe-sheet-mounted" data-hold-room={holdRoom ? 'true' : undefined}>{cocktailId}</div>
+  ),
+}));
+// The spec book button reads the signed-in house; this page suite mounts no AuthProvider. Its own suite is
+// recipe/RecipeBook.test.tsx.
+vi.mock('./recipe/RecipeBook', () => ({ default: () => null }));
+// The cocktail list prints through the house's money (`useHouseMoney`), which
+// reads the signed-in house; this page suite mounts no AuthProvider, so the
+// house is a lira one here. Its own behaviour is CocktailRegister.recipe.test.
+// The cost columns read the signed-in role too; here the reader sees no
+// money, so they are not drawn (CocktailRegister.cost.test covers them).
+vi.mock('./recipe/useRecipe', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useHouseMoney: () => (n: number | null | undefined) => (n == null ? '—' : `₺${n.toFixed(2)}`),
+  useCanEditRecipe: () => false,
+  useDrinkFigures: () => ({ byId: null, loading: false, error: null }),
+  useMenuPrices: () => ({ byId: null, currentMenus: null, error: null }),
+}));
+vi.mock('./recipe/useListTax', () => ({ useListTax: () => ({ basis: 'prices_exclude_tax' }) }));
+// The loose-lines queue reads the signed-in house; its own behaviour is recipe/LooseLines.test.
+vi.mock('./recipe/LooseLines', () => ({ default: () => null }));
+vi.mock('./recipe/SwapGood', () => ({ default: () => null }));
+vi.mock('./recipe/useHousePercent', () => ({ useHousePercent: () => (p: number) => `%${p}` }));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarNextData: () => mock.current,
@@ -83,6 +112,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useRegister: () => mock.register,
   useCocktailRecipe: () => mock.recipe,
   useCocktailWrites: () => mock.writes,
+  useCocktailManages: () => mock.manages,
   useRowRecord: () => mock.rowRecord,
   useWholeCellar: () => mock.whole,
   useZones: () => mock.zones,
@@ -238,6 +268,7 @@ beforeEach(() => {
   mock.current = { ...base };
   mock.beverages = { data: null, loading: false, error: null };
   mock.cocktails = { data: null, loading: false, error: null };
+  mock.manages = true;
   mock.rowRecord = { data: null, loading: false, error: null };
   mock.whole = { rows: [], reads: [], loading: false, partial: false };
   mock.zones = { data: null, loading: false, error: null };
@@ -1298,7 +1329,6 @@ describe('CellarNext — the registers that are not wines', () => {
       create: { mutateAsync: vi.fn(), isPending: false },
       amend: { mutateAsync: vi.fn(), isPending: false },
       retire: { mutateAsync: vi.fn(), isPending: false },
-      setRecipe: { mutateAsync: vi.fn(), isPending: false },
     };
     mock.cocktails = {
       loading: false, error: null,
@@ -1318,11 +1348,69 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByText(/55 unattributed reference cocktails/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Negroni'));
-    // The recipe half is no longer "never" — it is unwritten, and writable.
-    expect(screen.getByTestId('recipe-empty')).toHaveTextContent(
-      /empty because the extraction pass over the scanned menus never ran/,
+    // The opened cocktail carries its recipe sheet.
+    expect(screen.getByTestId('recipe-sheet-mounted')).toHaveTextContent('c1');
+  });
+
+  it('/cocktails?open=<id> opens that drink, as the inventory drawer links it', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+          method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    // Opened without a click: the recipe half is already drawn.
+    expect(screen.getByTestId('recipe-sheet-mounted')).toHaveTextContent('c1');
+  });
+
+  it('a second ?open= link followed while on /cocktails opens that drink too', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+    };
+    const drink = (id: string, name: string) => ({
+      id, name, display_name: null, menu_section: 'Aperitivo', method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+    });
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [drink('c1', 'Negroni'), drink('c2', 'Americano')],
+        count: 2, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/cocktails?open=c1']}>
+          <Link to="/cocktails?open=c2">to the Americano</Link>
+          <CellarNext category="cocktails" />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
-    expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
+    const selected = () => [...document.querySelectorAll('tr[data-selected="true"]')].map((r) => r.textContent ?? '');
+    expect(selected().join()).toContain('Negroni');
+    fireEvent.click(screen.getByRole('link', { name: 'to the Americano' }));
+    expect(selected().join()).toContain('Americano');
+    expect(selected().join()).not.toContain('Negroni');
   });
 
   it('retiring a cocktail takes two presses and never carries the seal', async () => {
@@ -1334,7 +1422,6 @@ describe('CellarNext — the registers that are not wines', () => {
       create: { mutateAsync: vi.fn(), isPending: false },
       amend: { mutateAsync: vi.fn(), isPending: false },
       retire: { mutateAsync: retire, isPending: false },
-      setRecipe: { mutateAsync: vi.fn(), isPending: false },
     };
     mock.cocktails = {
       loading: false, error: null,
@@ -1367,6 +1454,124 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByTestId('cocktail-said')).toHaveTextContent(
       /dated, not deleted/,
     );
+  });
+
+  it('staff see the cocktail list and its recipe, and are offered no way to change either (r34 w1 F13)', () => {
+    mock.manages = false;
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = {
+      data: { cocktailId: 'c1', rows: [{ id: 'l1', quantity: 30, unit: 'ml', free_text: 'gin' }], count: 1, writable: true },
+      loading: false, error: null,
+    };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+          method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+
+    expect(screen.getByText('Negroni')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add a cocktail/ })).toBeNull();
+    expect(screen.getByTestId('cocktail-who-writes')).toHaveTextContent(
+      /An owner or a manager keeps this list/,
+    );
+
+    fireEvent.click(screen.getByText('Negroni'));
+    const leaf = screen.getByTestId('cocktail-leaf');
+    // The recipe is read, as anyone in the house may: on the chain it is the recipe sheet, which
+    // gates its own editing by `useCanEditRecipe` (the old textarea writer is retired, #1989).
+    expect(within(leaf).getByTestId('recipe-sheet-mounted')).toBeInTheDocument();
+    expect(within(leaf).queryByRole('button', { name: /^Amend$/ })).toBeNull();
+    expect(within(leaf).queryByRole('button', { name: /Take it off/ })).toBeNull();
+    expect(within(leaf).queryByRole('button', { name: /Amend the recipe/ })).toBeNull();
+    expect(within(leaf).queryByRole('button', { name: /Write the recipe/ })).toBeNull();
+  });
+
+  it('staff opening a cocktail with no recipe are not offered to write one', () => {
+    mock.manages = false;
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{ id: 'c1', name: 'Negroni', display_name: null, menu_section: null, method: null, glass: null, garnish: null, price: null, description: null }],
+        count: 1, truncated: false, referenceRows: 0, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+    fireEvent.click(screen.getByText('Negroni'));
+    const leaf = screen.getByTestId('cocktail-leaf');
+    // The recipe sheet is mounted (it gates its own editing); the register offers no writer of its own.
+    expect(within(leaf).getByTestId('recipe-sheet-mounted')).toBeInTheDocument();
+    expect(within(leaf).queryByRole('button', { name: /Write the recipe/ })).toBeNull();
+  });
+
+  it('staff on an empty list are not told to add one', () => {
+    mock.manages = false;
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: { rows: [], count: 0, truncated: false, referenceRows: 0, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.' },
+    };
+    draw({ category: 'cocktails' });
+    expect(screen.getByTestId('cocktails-empty')).toHaveTextContent(/the list is empty, not unread\.$/);
+    expect(screen.getByTestId('cocktails-empty')).not.toHaveTextContent(/Add one above/);
+  });
+
+  it('an owner or manager is offered the two acts and the recipe sheet, and sees no staff line', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = {
+      data: { cocktailId: 'c1', rows: [{ id: 'l1', quantity: 30, unit: 'ml', free_text: 'gin' }], count: 1, writable: true },
+      loading: false, error: null,
+    };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{ id: 'c1', name: 'Negroni', display_name: null, menu_section: null, method: null, glass: null, garnish: null, price: 18, description: null }],
+        count: 1, truncated: false, referenceRows: 0, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' });
+    expect(screen.queryByTestId('cocktail-who-writes')).toBeNull();
+    fireEvent.click(screen.getByText('Negroni'));
+    const leaf = screen.getByTestId('cocktail-leaf');
+    expect(within(leaf).getByRole('button', { name: /^Amend$/ })).toBeEnabled();
+    expect(within(leaf).getByRole('button', { name: /Take it off the list/ })).toBeEnabled();
+    expect(within(leaf).getByTestId('recipe-sheet-mounted')).toBeInTheDocument();
   });
 
   it('an unknown ?register value opens the overview rather than an invented register', () => {
@@ -2208,5 +2413,93 @@ describe('the floor — confirmed zones only', () => {
     expect(screen.getByTestId('floor-none')).toHaveTextContent(
       /a fact about the\s+book, not about the building/,
     );
+  });
+});
+
+describe('CellarNext — first paint is the loaded layout (r90)', () => {
+  const cocktailRow = {
+    id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+    method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+  };
+  const loadedList = {
+    loading: false, error: null,
+    data: { rows: [cocktailRow], count: 1, truncated: false, referenceRows: 55, recipesAvailable: false, scopeNote: 'Only cocktails this restaurant owns.' },
+  };
+  const cocktailsRegister = { data: null, loading: true, error: null, refetch: () => {} };
+  const writes = {
+    create: { mutateAsync: vi.fn(), isPending: false },
+    amend: { mutateAsync: vi.fn(), isPending: false },
+    retire: { mutateAsync: vi.fn(), isPending: false },
+  };
+
+  it('while the cocktail list is read it holds the table: head and one empty row (nothing is known of the list), hidden from a screen reader', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = { data: null, loading: true, error: null };
+    draw({ category: 'cocktails' });
+    expect(screen.getByText('Reading this house’s cocktails…')).toHaveAttribute('role', 'status');
+    const room = screen.getByTestId('cocktails-reading-room');
+    expect(room).toHaveAttribute('aria-hidden', 'true');
+    expect(room.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(room.querySelectorAll('thead th')).toHaveLength(7);
+  });
+
+  it('the held table is gone once the list is read (no empty rows beside real ones)', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = loadedList;
+    draw({ category: 'cocktails' });
+    expect(screen.queryByTestId('cocktails-reading-room')).toBeNull();
+    expect(screen.getByText('Negroni')).toBeInTheDocument();
+  });
+
+  it('a link that names a drink holds the panel\'s room from the list read on; a plain visit holds none', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = { data: null, loading: true, error: null };
+    const { container, unmount } = draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    const held = (c: HTMLElement) =>
+      [...c.querySelectorAll<HTMLElement>('div[aria-hidden="true"]')].filter((d) => d.style.minHeight === 'calc(100vh - 56px)');
+    expect(held(container)).toHaveLength(1);
+    unmount();
+    const plain = draw({ category: 'cocktails' });
+    expect(held(plain.container)).toHaveLength(0);
+  });
+
+  it('the opened drink is told it came from a link, so its sheet holds room while its recipe is read', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = loadedList;
+    draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    expect(screen.getByTestId('recipe-sheet-mounted')).toHaveAttribute('data-hold-room', 'true');
+  });
+
+  it('the register head holds the two lines the readout brings while it is read, and not once it has failed', () => {
+    mock.register = cocktailsRegister;
+    mock.writes = writes;
+    mock.cocktails = loadedList;
+    mock.current = { ...base, registers: null, registersLoading: true };
+    const { container, unmount } = draw({ category: 'cocktails' });
+    const blanks = () => container.querySelectorAll('p[aria-hidden="true"]');
+    expect(blanks()).toHaveLength(2);
+    unmount();
+    mock.current = { ...base, registers: null, registersLoading: false, registersError: 'down' };
+    const failed = draw({ category: 'cocktails' });
+    expect(failed.container.querySelectorAll('p[aria-hidden="true"]')).toHaveLength(0);
+  });
+
+  it('the signature keeps its place but is not drawn until the page has been read', () => {
+    mock.current = { ...base, registers: null, registersLoading: true };
+    const { container, unmount } = draw();
+    const foot = () => container.querySelector('footer') as HTMLElement;
+    expect(foot().style.visibility).toBe('hidden');
+    unmount();
+    mock.current = { ...base, registers: readout(), registersLoading: false };
+    const read = draw();
+    expect((read.container.querySelector('footer') as HTMLElement).style.visibility).toBe('');
   });
 });
