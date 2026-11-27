@@ -13,7 +13,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
-const api = vi.hoisted(() => ({ list: vi.fn() }));
+const api = vi.hoisted(() => ({ list: vi.fn(), listPage: vi.fn() }));
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null }),
@@ -21,7 +21,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 vi.mock('../../../services/api/documents', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../../services/api/documents')>();
-  return { ...mod, documentsApi: { ...mod.documentsApi, list: api.list, houseCurrency: () => Promise.resolve(null) } };
+  return { ...mod, documentsApi: { ...mod.documentsApi, list: api.list, listPage: api.listPage, houseCurrency: () => Promise.resolve(null) } };
 });
 vi.mock('../../../services/api/receiving', () => ({
   receivingApi: { listUnverified: () => Promise.resolve({ items: [] }) },
@@ -65,12 +65,13 @@ async function openLane() {
 
 beforeEach(() => {
   api.list.mockReset();
+  api.listPage.mockReset();
   api.list.mockImplementation((o: { status?: string; before?: string; q?: string }) => {
     if (o.status !== 'verified') return Promise.resolve([]);
-    if (o.before) return Promise.resolve([paper(101)]);
     if (o.q) return Promise.resolve([paper(150)]);
     return Promise.resolve(newest);
   });
+  api.listPage.mockImplementation(() => Promise.resolve({ items: [paper(101)], hasMore: false }));
 });
 
 describe('the verified lane past its first window', () => {
@@ -81,7 +82,7 @@ describe('the verified lane past its first window', () => {
     expect(screen.queryByText(/V-101/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Older papers' }));
     expect(await screen.findByText(/V-101/)).toBeTruthy();
-    expect(api.list).toHaveBeenCalledWith(
+    expect(api.listPage).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'verified', before: newest[99].created_at, beforeId: newest[99].id }),
     );
     // One short page later nothing is older, and the sentence goes.
@@ -99,10 +100,39 @@ describe('the verified lane past its first window', () => {
     expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'verified', q: 'acme' }));
   });
 
+  it('drops an older answer that lands after the search changed (r106)', async () => {
+    let land: (v: { items: ProcurementDocument[]; hasMore: boolean }) => void = () => {};
+    api.listPage.mockImplementationOnce(() => new Promise((res) => (land = res)));
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
+    fireEvent.change(await screen.findByLabelText('Search verified papers by vendor or number'), {
+      target: { value: 'acme' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(await screen.findByText(/V-150/)).toBeTruthy();
+    land({ items: [paper(101)], hasMore: false });
+    await new Promise((r) => setTimeout(r, 30));
+    // The unfiltered older paper is not drawn under the Acme search.
+    expect(screen.queryByText(/V-101/)).toBeNull();
+    expect(screen.getByText(/V-150/)).toBeTruthy();
+  });
+
+  it('a full older page the server says is the last does not offer more (exactly 100 papers)', async () => {
+    api.listPage.mockImplementationOnce(() =>
+      Promise.resolve({ items: Array.from({ length: 100 }, (_, i) => paper(200 + i)), hasMore: false }),
+    );
+    render(<ReceiptsNext />, { wrapper });
+    await openLane();
+    fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
+    await screen.findByText(/V-200\b/);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Older papers' })).toBeNull());
+  });
+
   it('says so when the older read fails', async () => {
     render(<ReceiptsNext />, { wrapper });
     await openLane();
-    api.list.mockImplementationOnce(() => Promise.reject(new Error('gateway is down')));
+    api.listPage.mockImplementationOnce(() => Promise.reject(new Error('gateway is down')));
     fireEvent.click(await screen.findByRole('button', { name: 'Older papers' }));
     expect(await screen.findByText(/Older papers could not be read/)).toBeTruthy();
   });
