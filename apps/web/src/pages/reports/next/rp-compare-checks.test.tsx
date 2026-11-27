@@ -23,6 +23,7 @@ vi.mock('./useReportExports', () => ({ useReportExports: () => ({}) }));
 
 import { useReportsNextData } from './useReportsNextData';
 import { daysBetween, till } from './rp-registers-trade';
+import { flushWarm, forgetWarm, warmRead } from './rp-warm';
 
 // The 600-check seed, 30 days: 176 checks in the window (owner, 2026-09-02..10-01).
 const FROM = '2026-09-02';
@@ -151,5 +152,35 @@ describe('a window switch with compare on reads the till alone (perf-p4-5 on the
     expect(asked.filter((p) => p === '/analytics/pos-revenue/r1?days=90')).toHaveLength(1);
     expect(asked.filter((p) => !p.startsWith('/analytics/pos-revenue/'))).toEqual([]);
     expect(result.current.registers.week).toBe(week);
+  });
+});
+
+describe('warm start keeps only a whole read (r108 g8)', () => {
+  const OWNER = { userId: 'u1', restaurantId: 'r1', role: 'owner' };
+  beforeEach(() => forgetWarm());
+
+  it('[REVERT-FAILS] a till read whose N read failed is not kept; a whole one is', async () => {
+    const key = JSON.stringify(['till', 30, 'prior']);
+    await readTill(true, true);
+    flushWarm();
+    expect(warmRead(OWNER, key)).toBeUndefined();
+    forgetWarm();
+    await readTill(true);
+    flushWarm();
+    expect(warmRead(OWNER, key)).toBeDefined();
+  });
+
+  it('[REVERT-FAILS] a three-source read with one source down is not kept', async () => {
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path.startsWith('/analytics/seasonality/')) throw new Error('down');
+      return { data: {} };
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['bench']), { wrapper });
+    await waitFor(() => expect(result.current.registers.bench?.data).toBeDefined());
+    flushWarm();
+    expect(warmRead(OWNER, JSON.stringify(['bench', null, null]))).toBeUndefined();
   });
 });

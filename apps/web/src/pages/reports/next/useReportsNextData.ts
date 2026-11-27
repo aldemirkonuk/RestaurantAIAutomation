@@ -42,6 +42,7 @@ import { defaultIdsFor } from './rp-readable';
 import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
+import { warmRead, warmWrite, type WarmOwner } from './rp-warm';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -293,6 +294,11 @@ export interface ReportsNextData {
    */
   housePending?: boolean;
   /**
+   * When the oldest kept read on screen was read (rp-warm.ts), while its
+   * register reads again; null when every register on screen is this load's.
+   */
+  warmAt?: number | null;
+  /**
    * The goals desk's writes. It lives behind this hook rather than beside it so
    * the page has exactly ONE data seam: everything the page does to the
    * gateway — every read and the four writes — arrives through here, which is
@@ -485,9 +491,41 @@ export function useReportsNextData(
       staleTime: REGISTER_FRESH_MS,
     });
 
+  /* Warm start (r108 g8, rp-warm.ts): a whole successful read is kept in this
+     tab's sessionStorage for 15 minutes under (user, house, role), and a reload
+     or a new tab paints it as PLACEHOLDER data while the register reads again.
+     Placeholder, not initialData: it is never written into the cache as a read,
+     so the read always goes out, a failed read again drops it rather than
+     showing kept money as current, and a role that is learnt after mount still
+     finds it. No role yet, no warm read. */
+  const owner = useMemo<WarmOwner | null>(
+    () => (userId && rid && activeRole ? { userId, restaurantId: rid, role: activeRole } : null),
+    [userId, rid, activeRole],
+  );
+  const ownerRef = useRef(owner);
+  ownerRef.current = owner;
+  /** When each kept read on screen was read, by its warm key. */
+  const warmSeen = useRef(new Map<string, number>());
+  const warmFor = (key: string) => {
+    const e = warmRead(owner, key);
+    if (e) warmSeen.current.set(key, e.at);
+    return e?.data;
+  };
+
+  const warmKeyOf = (id: AnalysisId, days: number) => {
+    const spec = CATALOGUE[id];
+    return JSON.stringify([id, spec.takesWindow ? days : null, spec.takesWindow && tillCompare ? 'prior' : null]);
+  };
+
   /** One cutting's read for one till window — shared by the cutting and the warm-up (perf-p6-4). */
   const readOf = useCallback(
     (id: AnalysisId, days: number) => {
+      const warmKey = warmKeyOf(id, days);
+      /** Keep the read only when it is whole: every source it reads answered (r108 g8). */
+      const keep = <T,>(out: T, whole: boolean): T => {
+        if (whole) warmWrite(ownerRef.current, warmKey, out);
+        return out;
+      };
       const spec = CATALOGUE[id];
       return {
         queryKey: [ROOT, id, rid, spec.takesWindow ? days : null, spec.takesWindow && tillCompare ? 'prior' : null],
@@ -508,13 +546,16 @@ export function useReportsNextData(
             );
             if (settled.some((r) => r.status === 'fulfilled' && withheldByGateway(r.value)))
               return WITHHELD;
-            return spec.select(
+            return keep(
+              spec.select(
               Object.fromEntries(
                 keys.map((k, i) => {
                   const r = settled[i];
                   return [k, r.status === 'fulfilled' ? r.value : null];
                 }),
               ),
+              ),
+              settled.every((r) => r.status === 'fulfilled'),
             );
           }
           const shownUrl = spec.shownPath?.(rid as string, ctx) ?? null;
@@ -530,11 +571,11 @@ export function useReportsNextData(
             if (withheldByGateway(whole.value)) return WITHHELD;
             const shownRead =
               shown.status === 'fulfilled' && !withheldByGateway(shown.value) ? spec.select(shown.value) : null;
-            return spec.withShown(spec.select(whole.value), shownRead);
+            return keep(spec.withShown(spec.select(whole.value), shownRead), shownRead !== null);
           }
           const data = await readRaw(spec.path!(rid as string, ctx));
           if (withheldByGateway(data)) return WITHHELD;
-          return spec.select(data);
+          return keep(spec.select(data), true);
         },
       };
     },
@@ -542,11 +583,13 @@ export function useReportsNextData(
     [rid, tillCompare, qc],
   );
 
+  const warmKeys = active.map((id) => warmKeyOf(id, tillDays));
   const results = useQueries({
-    queries: active.map((id) => ({
+    queries: active.map((id, at) => ({
       ...readOf(id, tillDays),
       enabled: !!rid && !heldBack.has(id),
       retry: 1,
+      placeholderData: () => (heldBack.has(id) ? undefined : warmFor(warmKeys[at])),
     })),
   });
 
@@ -636,6 +679,13 @@ export function useReportsNextData(
     // actually matter, and recomputing a map of eight entries is free.
   }, [active, results, heldBack, activeRole, rid, tillDays, tillCompare]);
 
+  /** The oldest kept read still on screen, while its register reads again; null with none. */
+  const warmAt = active.reduce<number | null>((oldest, _id, i) => {
+    if (!results[i]?.isPlaceholderData) return oldest;
+    const at = warmSeen.current.get(warmKeys[i]);
+    return at == null ? oldest : oldest == null ? at : Math.min(oldest, at);
+  }, null);
+
   // One small read, cached with the registers, so every money figure on the
   // sheet prints in the house's own currency rather than `$` (audit G5).
   const currencyQuery = useQuery({
@@ -643,7 +693,13 @@ export function useReportsNextData(
     enabled: !!rid,
     staleTime: 5 * 60_000,
     retry: 1,
-    queryFn: () => settingsApi.houseCurrency(),
+    // The house's money is kept with its reads, so a warm sheet is not all dashes.
+    placeholderData: () => warmFor('currency') as Awaited<ReturnType<typeof settingsApi.houseCurrency>> | undefined,
+    queryFn: async () => {
+      const c = await settingsApi.houseCurrency();
+      if (c?.readable) warmWrite(ownerRef.current, 'currency', c);
+      return c;
+    },
   });
   const currency = useMemo<HouseMoney>(() => {
     const c = currencyQuery.data;
@@ -695,6 +751,7 @@ export function useReportsNextData(
     sheetStale,
     currency,
     refetchAll,
+    warmAt,
   };
 }
 
