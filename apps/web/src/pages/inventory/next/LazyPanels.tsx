@@ -13,22 +13,26 @@
  *  - A panel is an overlay with no place to hold, so it draws nothing until
  *    it can be drawn whole; nothing slides or fades in.
  * A file that cannot load says so (ADR 0020): the map in its own place, an
- * overlay as a toast and closed.
+ * overlay as a toast and closed. A file gone stale after a deploy reloads the
+ * page once first, as every other lazy page does (lib/lazyWithRefresh).
  */
-import { Component, Suspense, lazy, type ReactNode } from 'react';
+import { Component, Suspense, type ReactNode } from 'react';
+import { lazyWithRefresh } from '../../../lib/lazyWithRefresh';
 
-export const CellarMapView = lazy(() => import('../command/CellarMapView').then((m) => ({ default: m.CellarMapView })));
-export const MenuScannerFlow = lazy(() => import('../../../components/scanner/MenuScannerFlow').then((m) => ({ default: m.MenuScannerFlow })));
-export const StorageLocationManager = lazy(() => import('../../../components/inventory/StorageLocationManager').then((m) => ({ default: m.StorageLocationManager })));
-export const ManualReceiptWorkspace = lazy(() => import('../../../components/inventory/ManualReceiptWorkspace').then((m) => ({ default: m.ManualReceiptWorkspace })));
-export const PosMappingPanel = lazy(() => import('../../../components/inventory/PosMappingPanel').then((m) => ({ default: m.PosMappingPanel })));
-export const AuctionLotStart = lazy(() => import('../command/AuctionLotStart').then((m) => ({ default: m.AuctionLotStart })));
-export const AutoLocatePreviewModal = lazy(() => import('../../../components/inventory/AutoLocatePreviewModal').then((m) => ({ default: m.AutoLocatePreviewModal })));
+export const CellarMapView = lazyWithRefresh(() => import('../command/CellarMapView').then((m) => ({ default: m.CellarMapView })));
+export const MenuScannerFlow = lazyWithRefresh(() => import('../../../components/scanner/MenuScannerFlow').then((m) => ({ default: m.MenuScannerFlow })));
+export const StorageLocationManager = lazyWithRefresh(() => import('../../../components/inventory/StorageLocationManager').then((m) => ({ default: m.StorageLocationManager })));
+export const ManualReceiptWorkspace = lazyWithRefresh(() => import('../../../components/inventory/ManualReceiptWorkspace').then((m) => ({ default: m.ManualReceiptWorkspace })));
+export const PosMappingPanel = lazyWithRefresh(() => import('../../../components/inventory/PosMappingPanel').then((m) => ({ default: m.PosMappingPanel })));
+export const AuctionLotStart = lazyWithRefresh(() => import('../command/AuctionLotStart').then((m) => ({ default: m.AuctionLotStart })));
+export const AutoLocatePreviewModal = lazyWithRefresh(() => import('../../../components/inventory/AutoLocatePreviewModal').then((m) => ({ default: m.AutoLocatePreviewModal })));
 
 /** What a panel that could not load says, as a toast. */
 export const PANEL_LOAD_FAILED = 'That could not be opened. Reload the page, then try again.';
 /** What the map says in its own place when its file could not load. */
 export const MAP_LOAD_FAILED = 'The cellar map could not be opened. Check the connection, then reload the page.';
+/** What the page says in its own place when the command page's file could not load. */
+export const PAGE_LOAD_FAILED = 'The inventory page could not be opened. Check the connection, then reload the page.';
 /** What the held place says while the map's file loads. */
 export const MAP_LOADING = 'Opening the cellar map.';
 
@@ -38,7 +42,7 @@ interface BoundaryProps {
   onFail: string | (() => void);
 }
 
-class LoadBoundary extends Component<BoundaryProps, { failed: boolean }> {
+export class LoadBoundary extends Component<BoundaryProps, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
