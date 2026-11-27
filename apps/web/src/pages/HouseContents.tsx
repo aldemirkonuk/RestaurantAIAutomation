@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
+import { KeepOnPhone } from '../components/onboarding/KeepOnPhone'
 import {
   addCustomProvider,
   addProviderFromCatalogue,
@@ -427,6 +428,8 @@ export default function HouseContents() {
               </span>
             )}
           </p>
+
+          <KeepOnPhone />
 
           <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
             <span className="block text-xs uppercase tracking-[0.12em]">Later · not required</span>
