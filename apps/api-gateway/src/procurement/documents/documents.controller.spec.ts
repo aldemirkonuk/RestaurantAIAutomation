@@ -855,3 +855,37 @@ describe("DocumentsController.list — older papers and a search (r104 g2)", () 
     ).rejects.toMatchObject({ status: 500 });
   });
 });
+
+describe("DocumentsController.list — how many lines each paper has (r109 g6)", () => {
+  const paper = (id: string, lines: unknown) => ({
+    id,
+    restaurant_id: "rest-1",
+    doc_type: "invoice",
+    status: "needs_review",
+    provider_id: null,
+    extracted: null,
+    ...(lines === undefined ? {} : { procurement_document_lines: lines }),
+  });
+  const run = async (rows: unknown[]) => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: { data: rows, error: null },
+      procurement_document_lines: { data: [], error: null },
+    });
+    const out = await controller.list({ userId: "u1", restaurantId: "rest-1" } as any);
+    return { items: out.items as Array<Record<string, unknown>>, calls };
+  };
+
+  it("embeds the count on the same select and reads it into line_count", async () => {
+    const { items, calls } = await run([paper("d1", [{ count: 5 }]), paper("d2", [{ count: 0 }])]);
+    const sel = calls.find(([t, m]) => t === "procurement_documents" && m === "select");
+    expect(String(sel?.[2][0])).toContain("procurement_document_lines(count)");
+    expect(items.map((i) => i.line_count)).toEqual([5, 0]);
+    // The embed is spoken as line_count, not passed on under its own name.
+    expect(items[0]).not.toHaveProperty("procurement_document_lines");
+  });
+
+  it("a count that did not come back is null, never zero lines", async () => {
+    const { items } = await run([paper("d1", undefined), paper("d2", []), paper("d3", [{ count: null }])]);
+    expect(items.map((i) => i.line_count)).toEqual([null, null, null]);
+  });
+});
