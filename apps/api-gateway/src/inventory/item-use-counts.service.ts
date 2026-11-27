@@ -3,6 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { DatabaseService } from "../database/database.service";
 
 const PAGE = 1000;
+const LEGACY_CHUNK = 100;
 
 export const USE_COUNTS_UNREAD =
   "How many recipes use each good could not be read just now, so none is shown as unused.";
