@@ -597,10 +597,12 @@ export function InventoryCommandPage() {
         value: (i) =>
           i.rollupReadable === false
             ? UNREAD
-            : (
-                (paidPer(i) ?? 0) *
-                ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-              ).toFixed(2),
+            : paidPer(i) == null
+              ? ""
+              : (
+                  (paidPer(i) as number) *
+                  ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
+                ).toFixed(2),
       },
     ],
     [],
@@ -656,10 +658,12 @@ export function InventoryCommandPage() {
         value: (i) =>
           i.rollupReadable === false
             ? UNREAD
-            : (
-                (paidPer(i) ?? 0) *
-                ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-              ).toFixed(2),
+            : paidPer(i) == null
+              ? ""
+              : (
+                  (paidPer(i) as number) *
+                  ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
+                ).toFixed(2),
       },
       { header: "Observation", value: (i) => countObservation(i) },
     ],
@@ -853,12 +857,17 @@ export function InventoryCommandPage() {
   }, [menu]);
 
   const kpis = useMemo(() => {
-    const valueOnHand = filteredInventory.reduce(
-      (s, i) =>
-        s +
-        (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
-      0,
-    );
+    // Only goods with a cost on the books add to the value; the rest are
+    // counted, not priced at a catalogue figure or at zero.
+    let valueOnHand = 0;
+    let uncosted = 0;
+    for (const i of filteredInventory) {
+      const paid = paidPer(i);
+      const qty = (i.liveStock ?? 0) + (i.shadowStock ?? 0);
+      if (paid == null) {
+        if (qty > 0) uncosted += 1;
+      } else valueOnHand += paid * qty;
+    }
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
         s + (i.menuPrice ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
@@ -868,7 +877,7 @@ export function InventoryCommandPage() {
       const r = runwayDays(i);
       return r != null && r <= 5;
     }).length;
-    return { valueOnHand, menuPotential, runwayAlerts };
+    return { valueOnHand, uncosted, menuPotential, runwayAlerts };
   }, [filteredInventory]);
 
   const typeOptions = useMemo(() => {
@@ -1070,9 +1079,11 @@ export function InventoryCommandPage() {
           sub={
             figuresUnknown
               ? UNKNOWN
-              : kpis.menuPotential > 0
-                ? `${fmtMoney(kpis.menuPotential)} menu`
-                : "cost basis"
+              : kpis.uncosted > 0
+                ? `${kpis.uncosted} without a cost`
+                : kpis.menuPotential > 0
+                  ? `${fmtMoney(kpis.menuPotential)} menu`
+                  : "cost basis"
           }
           tone="green"
         />
@@ -1388,9 +1399,11 @@ export function InventoryCommandPage() {
                   const isFocused = idx === focusedIndex;
                   const run = runwayDays(item);
                   const delta = marketDeltaPct(item);
+                  const paid = paidPer(item);
                   const value =
-                    (item.wac ?? item.price ?? 0) *
-                    ((item.liveStock ?? 0) + (item.shadowStock ?? 0));
+                    paid == null
+                      ? null
+                      : paid * ((item.liveStock ?? 0) + (item.shadowStock ?? 0));
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
                   return (
@@ -1539,7 +1552,7 @@ export function InventoryCommandPage() {
                             : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
                         </div>
                         <div className="text-right font-mono text-xs font-semibold text-gray-700">
-                          {item.rollupReadable === false ? UNREAD : fmtMoney(value)}
+                          {item.rollupReadable === false ? UNREAD : value == null ? "-" : fmtMoney(value)}
                         </div>
                         <div>
                           <StatusChip item={item} />

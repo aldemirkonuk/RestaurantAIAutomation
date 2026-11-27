@@ -20,9 +20,15 @@ export function runwayDays(item: InventoryItem): number | null {
   return item.liveStock / v
 }
 
-/** Unit cost; undefined when the rollup read failed (G15). */
-export const paidPer = (item: InventoryItem) =>
-  item.rollupReadable === false ? undefined : (item.wac ?? item.price)
+/**
+ * What the house paid per unit: the lots' WAC. undefined = the rollup read
+ * failed (G15); null = it was read and no lot carries a cost. Never the wine
+ * library's reference price: that is not what the house paid.
+ */
+export const paidPer = (item: InventoryItem): number | null | undefined =>
+  item.rollupReadable === false ? undefined : (item.wac ?? null)
+
+export const NO_COST = 'no cost on the books'
 
 export const UNREAD = 'could not be read'
 

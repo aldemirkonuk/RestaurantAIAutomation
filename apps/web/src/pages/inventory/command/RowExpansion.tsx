@@ -18,7 +18,7 @@ import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsSt
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
-import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, paidPer, runwayDays, UNREAD } from './bits'
+import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, NO_COST, paidPer, runwayDays, UNREAD } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
@@ -242,7 +242,7 @@ export function RowExpansion({
           }
         >
           <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          <KV k="You paid (WAC)" v={item.rollupReadable === false ? UNREAD : fmtMoneyExact(paid)} />
+          <KV k="You paid (WAC)" v={item.rollupReadable === false ? UNREAD : paid == null ? NO_COST : fmtMoneyExact(paid)} />
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}

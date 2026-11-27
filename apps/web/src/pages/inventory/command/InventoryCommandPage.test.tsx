@@ -232,6 +232,22 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     expect(screen.queryByText('$240')).not.toBeInTheDocument();
   });
 
+  it('a good with no costed lot is counted, never priced at its catalogue price (r104)', async () => {
+    routeGets({
+      'inventory-low-stock': [],
+      'inventory-summary': { totalWines: 2, totalValue: 0 },
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Barolo', stockLive: 6, thresholdMin: 2, price: 40 },
+        { id: 'row-2', wineId: 'wine-2', wineName: 'Chablis', stockLive: 2, thresholdMin: 1, price: 30, wac: 10 },
+      ],
+    });
+    mount();
+    const valueCard = (await screen.findByText('Value on hand')).closest('div')?.parentElement as HTMLElement;
+    await waitFor(() => expect(within(valueCard).getByText('$20')).toBeInTheDocument());
+    expect(within(valueCard).getByText('1 without a cost')).toBeInTheDocument();
+    expect(screen.queryByText('$240')).not.toBeInTheDocument();
+  });
+
   it('a price-advice answer without its shape is said on the row, and the page still renders (ADR 0193)', async () => {
     routeGets({
       'inventory-list': [

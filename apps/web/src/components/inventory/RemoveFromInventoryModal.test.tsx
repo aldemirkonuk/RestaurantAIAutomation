@@ -55,6 +55,17 @@ describe('RemoveFromInventoryModal, said per batch', () => {
     expect(api.del).toHaveBeenCalledTimes(4);
   });
 
+  it('writes off only what has a cost on the books, and says how many have none (r104)', () => {
+    mount([
+      item({ id: 'w1', inventoryId: 'i1', name: 'Barolo', liveStock: 6, price: 40 }),
+      item({ id: 'w2', inventoryId: 'i2', name: 'Chablis', liveStock: 2, wac: 10, price: 30 }),
+    ]);
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('write off $20 in on-hand value');
+    expect(text).toContain('1 without a cost on the books is not in that figure');
+    expect(text).not.toContain('$240');
+  });
+
   it('a batch of wines keeps the library line, plural', () => {
     mount([item({ id: 'w1', inventoryId: 'i1' }), item({ id: 'w2', inventoryId: 'i2', name: 'Chablis' })]);
     expect(screen.getByRole('heading', { name: 'Remove 2 wines from inventory' })).toBeTruthy();
