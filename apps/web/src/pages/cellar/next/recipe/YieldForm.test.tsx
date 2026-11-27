@@ -88,6 +88,29 @@ describe('YieldForm', () => {
       expect(screen.queryByTestId('yield-said')).toBeNull();
     });
 
+    it.each([
+      ['1.500', 'ml', '1.500 could be 1500 or 1.5. Type it without the separator.'],
+      ['1,000', 'g', '1,000 could be 1000 or 1. Type it without the separator.'],
+      ['abc', 'ml', 'Type the amount as a number, like 700.'],
+      ['1.5.0', 'ml', 'Type the amount as a number, like 700.'],
+      ['0', 'ml', 'A batch makes an amount above zero.'],
+      ['-3', 'ml', 'A batch makes an amount above zero.'],
+    ])('%s in %s says its own reason (r107f)', (value, unit, said) => {
+      render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
+      fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: unit } });
+      fireEvent.change(field(), { target: { value } });
+      expect(button()).toBeDisabled();
+      expect(screen.getByTestId('yield-needs-amount').textContent).toBe(said);
+    });
+
+    it('1.500 in cl reads as a litre and a half: no sentence, Save is on (r107f)', () => {
+      render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
+      fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: 'cl' } });
+      fireEvent.change(field(), { target: { value: '1.500' } });
+      expect(screen.queryByTestId('yield-needs-amount')).toBeNull();
+      expect(button()).toBeEnabled();
+    });
+
     it('an untouched empty form does not scold', () => {
       render(<YieldForm dishId={ID} current={null} />, { wrapper: wrap });
       expect(button()).toBeDisabled();
