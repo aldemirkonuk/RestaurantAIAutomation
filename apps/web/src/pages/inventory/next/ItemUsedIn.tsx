@@ -372,7 +372,7 @@ export default function ItemUsedIn({
         </p>
       ) : null;
     body = (
-      <>
+      <div className="ivd-arrive">
         <Group title="Sold as" testid="ivd-used-sold" group={soldAs} line={menu} />
         {inCocktails ? (
         <Group
@@ -423,7 +423,7 @@ export default function ItemUsedIn({
           line={menu}
           hideWhenEmpty
         />
-      </>
+      </div>
     );
   }
 
@@ -452,7 +452,11 @@ export default function ItemUsedIn({
             <p className="iv-note">No dish&apos;s current recipe uses this good.</p>
           </>
         ) : (
-          dishes.data.dishes.map((d) => <DishBlock key={d.dishId} dish={d} canManage={canManage} currency={currency} />)
+          <div className="ivd-arrive">
+            {dishes.data.dishes.map((d) => (
+              <DishBlock key={d.dishId} dish={d} canManage={canManage} currency={currency} />
+            ))}
+          </div>
         )}
       </section>
     </section>
