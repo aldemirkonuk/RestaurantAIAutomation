@@ -21,6 +21,8 @@ vi.mock('./NameThisWine', () => ({ NameHint: () => null }));
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
     id: 'i1',
+    rollupReadable: true,
+    locationsReadable: true,
     wineId: 'w1',
     name: 'Gravner Ribolla',
     libraryName: null,
