@@ -43,7 +43,8 @@ import { OrganizationsService } from "../../organizations/organizations.service"
 import { isIso4217, notACurrencyBecause } from "../../common/iso-4217";
 import { documentMoneyState } from "./invoice-currency";
 import { DeliveryService } from "../canonical/delivery.service";
-import { DeliveryStockService } from "../canonical/delivery-stock.service";
+import { CorrectionRecost, DeliveryStockService } from "../canonical/delivery-stock.service";
+import { movesCost } from "../canonical/correction-overlay";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
@@ -770,7 +771,24 @@ export class DocumentsController {
       { path: body.path, value: body.value ?? null, reason: body.reason },
     );
     if (!result.ok) throw new HttpException(result.error, result.status);
-    return result.value;
+    if (!movesCost(body.path)) return result.value;
+    // r109 (DD-r108-20): a correction to the paper's money re-costs the lots
+    // it settled. The revision has landed and stands whatever happens here, so
+    // a failure comes back in words beside it, never as a failed correction.
+    let recost: { ok: true; value: CorrectionRecost } | { ok: false; error: string };
+    try {
+      const r = await this.deliveryStock.recostAfterCorrection(
+        user.restaurantId,
+        id,
+        result.value.revision,
+        user.userId,
+        body.path,
+      );
+      recost = r.ok ? r : { ok: false, error: r.error };
+    } catch (e) {
+      recost = { ok: false, error: `the correction stands, but its cost could not be re-run: ${(e as Error).message}` };
+    }
+    return { ...result.value, recost };
   }
 
   /**

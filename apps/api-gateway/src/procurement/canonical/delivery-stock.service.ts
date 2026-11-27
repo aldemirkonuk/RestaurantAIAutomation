@@ -16,6 +16,7 @@ import {
   notHouseMoney,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
+import { CorrectionRowLite, movesCost, overlayCorrections } from "./correction-overlay";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -107,6 +108,8 @@ export interface FinalisedItem {
   lotsMatched: number;
   lotsFinalised: number;
   bottlesFinalised: number;
+  /** Units still on the shelf in this delivery's lots of the item (`bottles_matched`). */
+  bottlesMatched: number;
   source: "accepted_proposal" | "invoice_line";
   basis?: string;
   /** How an invoice price became this cost (lane 1.4); absent for a proposal. */
@@ -153,6 +156,8 @@ interface LineRow {
   document_id: string;
   line_no: number | null;
   inventory_id: string | null;
+  /** The count as printed, in `uom`: a corrected quantity re-derives `qty_bottles` from it. */
+  qty?: number | string | null;
   qty_bottles: number | string | null;
   unit_price: number | string | null;
   description: string | null;
@@ -379,6 +384,42 @@ function baseLine(invoice: LineRow[], id: string | null): LineRow | undefined {
  * price, so its printed total is checked against the PAID bottles. */
 function paidLine(l: LineRow): LineRow {
   return { ...l, qty_bottles: paidBottles(l) };
+}
+
+/** Each invoice's lines with its corrections laid over them (r109); a door count's lines as stored. */
+function overlaid(
+  rows: LineRow[],
+  corrections: Map<string, CorrectionRowLite[]>,
+  papers: PaperHeaderRow[],
+): LineRow[] {
+  if (!corrections.size) return rows;
+  const out = [...rows];
+  for (const [docId, list] of corrections) {
+    const at = rows.map((r, i) => (r.document_id === docId ? i : -1)).filter((i) => i >= 0);
+    const head = (papers.find((h) => h.id === docId) ?? { id: docId }) as unknown as Record<string, unknown>;
+    const laid = overlayCorrections(head, at.map((i) => rows[i] as unknown as Record<string, unknown>), list);
+    at.forEach((i, k) => (out[i] = laid.lines[k] as unknown as LineRow));
+  }
+  return out;
+}
+
+/** What a correction re-cost did, per delivery the paper is the invoice on (r109). */
+export interface CorrectionRecost {
+  /** False when the corrected field cannot move a cost: nothing was read or posted. */
+  costField: boolean;
+  deliveries: {
+    deliveryId: string;
+    /** Items whose lots now carry the corrected paper's cost (a lot already there writes nothing). */
+    recosted: FinalisedItem[];
+    /** Items the corrected paper cannot cost: their lots keep the cost they had, and why. */
+    kept: { inventoryId: string; reason: string }[];
+    /** Sales rows moved to the corrected cost (`restate_sale_cost`); 0 with no order. */
+    salesRestated: number;
+    /** Units this delivery booked that were drawn before the correction: their draws keep their cost. */
+    drawnBefore: number;
+    /** Why nothing moved on this delivery, when nothing did. */
+    note?: string;
+  }[];
 }
 
 interface AgreedPrice {
@@ -710,6 +751,7 @@ export class DeliveryStockService {
     deliveryId: string,
     userId: string | null,
     only?: ReadonlySet<string>,
+    reason?: string,
   ): Promise<StockResult<CostReceipt>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
@@ -760,7 +802,7 @@ export class DeliveryStockService {
         continue;
       }
 
-      const posted = await this.post(restaurantId, deliveryId, inventoryId, price, userId, `delivery ${deliveryId} verified (ADR 0103 A1)`);
+      const posted = await this.post(restaurantId, deliveryId, inventoryId, price, userId, reason ?? `delivery ${deliveryId} verified (ADR 0103 A1)`);
       if (!posted.ok)
         return {
           ok: false,
@@ -779,6 +821,116 @@ export class DeliveryStockService {
         papers: priced.value.papers,
       },
     };
+  }
+
+  /**
+   * r109 (DD-r108-20): a correction to a paper's money re-costs the lots it
+   * settled and restates the sales already made from them.
+   *
+   * Runs after `DocumentCorrectionService.correct` lands revision `revision`.
+   * Only a field that can move a cost (`movesCost`) reads anything. Only a
+   * delivery the paper is the INVOICE on, and that is VERIFIED, is re-costed:
+   * before VERIFIED its lots are provisional and verify will cost the corrected
+   * paper itself (`agreedPrices` reads the corrections). The derivation is
+   * verify's own (`finaliseAtVerified`): landed cost per bottle, charges shared
+   * the same way, posted through `finalise_delivery_cost`, which writes the
+   * prior cost to `inventory_lot_revaluations` with the reason
+   * `correction revision n of document X`, and writes nothing for a lot already
+   * at that cost (a replay posts nothing new).
+   *
+   * Supersedes ADR 0103 QA 10a (6) for a correction only: a lot whose line was
+   * CORRECTED is revalued; a lot revalued by hand is still only flagged.
+   *
+   * An item the corrected paper cannot cost (a unit that does not map, a price
+   * and total that now disagree) is NOT revalued: its lots keep the cost they
+   * had and `kept` says why. Draws already made keep their cost
+   * (`invoice_lot_wac` rows are not touched); a sale costed at the estimate,
+   * or restated before, follows the paper through `restate_sale_cost`, and only
+   * when the delivery has an order, because that is what a sale names.
+   */
+  async recostAfterCorrection(
+    restaurantId: string,
+    documentId: string,
+    revision: number,
+    userId: string | null,
+    path: string,
+  ): Promise<StockResult<CorrectionRecost>> {
+    if (!movesCost(path)) return { ok: true, value: { costField: false, deliveries: [] } };
+    const paper = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", documentId)
+      .maybeSingle();
+    if (paper.error)
+      return { ok: false, status: 500, error: `the paper ${documentId} could not be read to re-cost it: ${paper.error.message}. The correction stands; nothing was revalued.` };
+    if (!paper.data) return { ok: false, status: 404, error: "Document not found" };
+    const join = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("delivery_id, role")
+      .eq("document_id", documentId)
+      .eq("role", "invoice");
+    if (join.error)
+      return { ok: false, status: 500, error: `the deliveries this paper prices could not be read: ${join.error.message}. The correction stands; nothing was revalued.` };
+    const reason = `correction revision ${revision} of document ${documentId}`;
+    const out: CorrectionRecost = { costField: true, deliveries: [] };
+    const ids = [...new Set(((join.data ?? []) as { delivery_id: string }[]).map((r) => r.delivery_id))];
+    for (const deliveryId of ids) {
+      const delivery = await this.deliveryFor(restaurantId, deliveryId);
+      if (!delivery.ok) return delivery;
+      if (delivery.value.state !== "VERIFIED") {
+        out.deliveries.push({ deliveryId, recosted: [], kept: [], salesRestated: 0, drawnBefore: 0, note: `delivery ${deliveryId} is not verified yet, so its lots are still provisional; verifying it costs the corrected paper` });
+        continue;
+      }
+      const booked = await this.bookedSoFar(deliveryId);
+      if (!booked.ok) return booked;
+      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, undefined, reason);
+      if (!costed.ok) return costed;
+      const kept = costed.value.stillProvisional.map((k) => ({
+        inventoryId: k.inventoryId,
+        reason: `${k.reason.replace(/\s*The lot stays provisional[^]*$/, "")} Its lots keep the cost they had; nothing was revalued.`,
+      }));
+      let salesRestated = 0;
+      let drawnBefore = 0;
+      for (const item of costed.value.finalised) {
+        drawnBefore += Math.max(0, (booked.value.get(item.inventoryId) ?? 0) - item.bottlesMatched);
+        if (!delivery.value.orderId) continue;
+        const restated = await this.db.getClient().rpc("restate_sale_cost", {
+          p_restaurant_id: restaurantId,
+          p_inventory_id: item.inventoryId,
+          p_source_order_id: delivery.value.orderId,
+          p_unit_cost: item.unitCost,
+          p_performed_by: userId,
+        });
+        if (restated.error)
+          return { ok: false, status: 503, error: `the lots of item ${item.inventoryId} carry the corrected cost, but the sales already made from them were not restated: ${restated.error.message}. Correcting again, or verifying the delivery again, is safe.` };
+        salesRestated += Number((restated.data as { rows_restated?: number } | null)?.rows_restated ?? 0);
+      }
+      out.deliveries.push({ deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore });
+    }
+    return { ok: true, value: out };
+  }
+
+  /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
+  private async correctionsOf(documentIds: string[]): Promise<StockResult<Map<string, CorrectionRowLite[]>>> {
+    const out = new Map<string, CorrectionRowLite[]>();
+    for (let from = 0; ; from += 1000) {
+      const read = await this.db
+        .getClient()
+        .from("document_corrections")
+        .select("document_id, revision, kind, field_path, after")
+        .in("document_id", documentIds)
+        .order("revision", { ascending: true })
+        .range(from, from + 999);
+      if (read.error)
+        return { ok: false, status: 500, error: `the corrections to the invoices could not be read (${read.error.message}), so no cost is posted on a paper that may have been corrected. Retry is safe.` };
+      const rows = (read.data ?? []) as (CorrectionRowLite & { document_id: string })[];
+      for (const r of rows) out.set(r.document_id, [...(out.get(r.document_id) ?? []), r]);
+      if (rows.length < 1000) break;
+    }
+    return { ok: true, value: out };
   }
 
   /**
@@ -932,6 +1084,7 @@ export class DeliveryStockService {
         lotsMatched: Number(receipt.lots_matched ?? 0),
         lotsFinalised: Number(receipt.lots_finalised ?? 0),
         bottlesFinalised: Number(receipt.bottles_finalised ?? 0),
+        bottlesMatched: Number(receipt.bottles_matched ?? 0),
         source: price.source,
         ...(price.basis ? { basis: price.basis } : {}),
         ...(price.landed ? { landed: price.landed } : {}),
@@ -1392,6 +1545,7 @@ export class DeliveryStockService {
     // Each invoice's money columns: its charges and discount are shared over
     // its lines (F3), so a paper that cannot be read is not read as "none".
     let papers: PaperHeaderRow[] = [];
+    let corrections = new Map<string, CorrectionRowLite[]>();
     if (invoiceIds.length) {
       const heads = await this.db
         .getClient()
@@ -1408,6 +1562,11 @@ export class DeliveryStockService {
           error: `the invoices on delivery ${deliveryId} could not be read for their charges and discount: ${heads.error.message}`,
         };
       papers = (heads.data ?? []) as unknown as PaperHeaderRow[];
+      // r109 (DD-r108-20): a paper is costed as corrected, never as first read.
+      const read = await this.correctionsOf(invoiceIds);
+      if (!read.ok) return read;
+      corrections = read.value;
+      papers = papers.map((h) => overlayCorrections(h as unknown as Record<string, unknown>, [], corrections.get(h.id) ?? []).header as unknown as PaperHeaderRow);
     }
     // QA 15 (5): an unreadable house is not "no currency named". ADR 0359
     // C2: nor is it "has not said whether it reclaims tax" — the same read
@@ -1441,7 +1600,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
+          "document_id, line_no, inventory_id, qty, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
@@ -1453,7 +1612,7 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      const rows = (read.data ?? []) as unknown as LineRow[];
+      const rows = overlaid((read.data ?? []) as unknown as LineRow[], corrections, papers);
       // R8: a weighed line is costed per one of its ITEM's unit.
       const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
       if (!units.ok) return units;
