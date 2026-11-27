@@ -69,6 +69,7 @@ import {
   searchEmptyWords,
   setupLinkWords,
   storedKindsLine,
+  storesNonVendor,
   threadCountWords,
   todayLine,
   unsentWords,
@@ -475,6 +476,8 @@ function People({
   setupWords: string;
   /** Which kinds the house holds stored mail from, so the scope line can speak for the rows. */
   onStoredKinds: (kinds: string[] | null) => void;
+  /** What kinds the stored rows hold, handed up so the search hint can name them. */
+  onStoredKinds: (kinds: readonly string[] | null) => void;
 }) {
   const q = useMailPeople(waitingOnly, search, kind);
   const lookAhead = useMailLookAhead();
@@ -495,6 +498,10 @@ function People({
   const storedKey = storedKinds ? storedKinds.join(',') : null;
   useEffect(() => {
     onStoredKinds(storedKey === null ? null : storedKey.split(',').filter(Boolean));
+  }, [storedKey, onStoredKinds]);
+  const storedKey = storedKinds ? storedKinds.join('|') : null;
+  useEffect(() => {
+    onStoredKinds(storedKey === null ? null : storedKey.split('|'));
   }, [storedKey, onStoredKinds]);
   const house = useHouse();
   // Remember the unfiltered first-page count so the next cold load draws that many bars: a kind's page is shorter.
@@ -754,6 +761,7 @@ export function MailTab({
   const readAll = useReadAllGrants(canReply);
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
+  const [storedKinds, setStoredKinds] = useState<readonly string[] | null>(null);
   const [search, setSearch] = useState('');
   // r104 mail-4: "Who is writing" sits under the people. A search that matches
   // nobody collapses a 50-row list and the strip below it jumps up (CLS 0.012-
@@ -960,7 +968,7 @@ export function MailTab({
               type="search"
               data-testid="mail-search"
               aria-label="Search mail"
-              placeholder={readAll.reads ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
+              placeholder={readAll.reads || storesNonVendor(storedKinds) ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
               value={typed}
               maxLength={MAIL_SEARCH_MAX}
               onChange={(e) => setTyped(e.target.value)}
