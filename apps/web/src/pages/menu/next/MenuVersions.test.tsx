@@ -801,6 +801,21 @@ describe('a read in the background, several photos, the same file again (founder
     expect(turns).toEqual({ 0: 90 });
   });
 
+  it('a turn set while two photos were held still applies to the one left after the other is removed', async () => {
+    const menuPhotos = await import('../../../lib/menuPhotos');
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm10', current: false, pages: 1, itemsExtracted: 3, submissionsCreated: 0, items: [] });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [photo('p1.jpg'), photo('p2.jpg')] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn page 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove page 1' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Read/ }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    const [sent, , turn] = vi.mocked(menuPhotos.photoToJpegBase64).mock.calls.at(-1) as [File, number | undefined, number];
+    expect(sent.name).toBe('p2.jpg');
+    expect(turn).toBe(90);
+  });
+
   it('a PDF among photos is refused before anything is sent', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mount(true);
