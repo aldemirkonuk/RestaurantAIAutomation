@@ -85,6 +85,12 @@ export type DrawVia = "book" | "pour";
 export interface PlannedDraw {
   inventoryId: string;
   via: DrawVia;
+  /**
+   * The recipe measure this draw is counted in. One item reaches one via
+   * from one base unit (route is a function of the item's uom), so lines
+   * merged under one key always share it. The writer keys its carry by it.
+   */
+  baseUnit: BaseUnit;
   /** Exact draw, in millionths of the line's base unit (I7). */
   exactMicro: bigint;
   /** Base units in one ledger unit (10 for a ml, 1,000 for a g…). */
@@ -199,6 +205,7 @@ export function planRecipeDraw(
       merged.set(key, {
         inventoryId: line.inventoryId,
         via: r.via,
+        baseUnit: line.baseUnit,
         exactMicro,
         basePerUnit: r.basePerUnit,
         positions: [line.position],
@@ -235,4 +242,35 @@ export function settle(
   const units = total / unitMicro;
   if (units > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("draw too large to book");
   return { units: Number(units), carryOut: total % unitMicro };
+}
+
+/**
+ * Give back a booked draw, for a void (writer invariant W7). The exact draw
+ * leaves the carry, and the fewest whole units go back to the shelf that keep
+ * the carry a true remainder:
+ *
+ *   carryOut + exactMicro === carryIn + units * basePerUnit * MICRO
+ *   0n <= carryOut < basePerUnit * MICRO   (when carryIn is)
+ *
+ * When nothing drew the same good between a sale and its void, this gives
+ * back exactly the units the sale booked and puts the carry back where it
+ * was. When something did, the units can differ from the sale's by one, and
+ * the books still add up: booked units plus the carry equal the exact draws
+ * still standing. The recipe is never read again (I3): only the recorded
+ * exact draw is.
+ */
+export function unsettle(
+  exactMicro: bigint,
+  basePerUnit: bigint,
+  carryIn: bigint,
+): { units: number; carryOut: bigint } {
+  if (exactMicro < 0n || carryIn < 0n || basePerUnit <= 0n) {
+    throw new RangeError("unsettle takes a draw, a unit and a carry that are not negative");
+  }
+  const unitMicro = basePerUnit * MICRO;
+  if (exactMicro <= carryIn) return { units: 0, carryOut: carryIn - exactMicro };
+  const owed = exactMicro - carryIn;
+  const units = (owed + unitMicro - 1n) / unitMicro;
+  if (units > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("draw too large to give back");
+  return { units: Number(units), carryOut: units * unitMicro - owed };
 }
