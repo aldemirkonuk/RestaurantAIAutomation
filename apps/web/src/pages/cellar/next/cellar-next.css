@@ -1207,3 +1207,7 @@ textarea.cl-field {
   .cl-print-card ol { padding-left: 18px; margin: 12px 0; }
   .cl-print-card .cl-print-method { white-space: pre-wrap; }
 }
+
+/* The loose-lines line holds the height of its own button (30 px) from first paint, so the read landing does not
+   drop the page 11 px above 640 px; at 640 px and under .cl-offer-room already holds two lines. No motion. */
+@media (min-width: 641px) { .cl-loose-room { min-height: max(1lh, 30px); } }
