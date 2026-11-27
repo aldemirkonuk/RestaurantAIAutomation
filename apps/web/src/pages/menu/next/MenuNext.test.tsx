@@ -21,19 +21,9 @@ import { housePriceNote } from './menu-price-note';
 import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
-/** The body of every `@media (prefers-reduced-motion: reduce)` block, comments removed. */
-function reducedBlocks(source: string): string {
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, '');
-  const out: string[] = [];
-  const at = /@media \(prefers-reduced-motion: reduce\)\s*\{/g;
-  for (let m = at.exec(code); m; m = at.exec(code)) {
-    let depth = 1;
-    let i = at.lastIndex;
-    while (i < code.length && depth > 0) depth += code[i] === '{' ? 1 : code[i] === '}' ? -1 : 0, i++;
-    out.push(code.slice(at.lastIndex, i - 1));
-  }
-  return out.join('\n');
-}
+/** Each `@media (prefers-reduced-motion: reduce)` body (a media block closes at column 0). */
+const reducedBlocks = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').split('prefers-reduced-motion: reduce)').slice(1).map((b) => b.slice(0, b.indexOf('\n}'))).join('\n');
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
 // offers it only to them. A manager reads by default; one case reads as staff.
