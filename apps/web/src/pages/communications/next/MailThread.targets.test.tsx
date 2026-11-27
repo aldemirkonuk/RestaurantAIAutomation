@@ -92,7 +92,6 @@ const THREAD = {
   before: null as string | null,
 };
 
-type Routes = Record<string, (params: Record<string, string>) => unknown>;
 const THREAD_WAITING = {
   ...THREAD,
   waiting: true,
