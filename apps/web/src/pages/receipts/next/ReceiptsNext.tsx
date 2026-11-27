@@ -847,6 +847,46 @@ function PriceMovesNote({ docId }: { docId: string }) {
   );
 }
 
+/**
+ * Another vendor's lower price for the same good (r108 g14): one quiet line per
+ * paired line, only when the other price is lower. A text swap, no motion. The
+ * line's height is reserved while it loads and stays, so nothing under it moves.
+ * Owners and managers only: the gateway refuses anyone else, so staff never ask.
+ */
+function VendorPricesNote({ docId }: { docId: string }) {
+  const { activeRole, user } = useAuth();
+  const allowed = canSeeCreditLedger(activeRole, user?.role);
+  const q = useQuery({
+    queryKey: ['receipts-next', 'vendor-prices', docId],
+    queryFn: () => documentsApi.vendorPrices(docId),
+    staleTime: 60_000,
+    retry: false,
+    enabled: allowed,
+  });
+  if (!allowed) return null;
+  const cheaper = (q.data?.lines ?? []).flatMap((l) => (l.compared && l.cheaper && l.sentence ? [l] : []));
+  return (
+    <div data-testid="vendor-prices" style={{ minHeight: 16, margin: '8px 0 0', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+      {q.isError ? (
+        <p role="status" style={{ margin: 0 }}>
+          Other vendors&rsquo; prices could not be read, so none were compared.
+        </p>
+      ) : (
+        cheaper.length > 0 && (
+          <ul aria-label="Cheaper from another vendor" style={{ margin: 0, paddingLeft: 16 }}>
+            {cheaper.map((l) => (
+              <li key={l.lineId}>
+                Line {l.lineNo}
+                {l.description ? `, ${l.description}` : ''}: {l.sentence}.
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
+
 function CardPart({ label, first = false, children }: { label: string; first?: boolean; children: ReactNode }) {
   return (
     <div
@@ -1333,6 +1373,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       <CardPart label="The money">
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
         <PriceMovesNote docId={doc.id} />
+        <VendorPricesNote docId={doc.id} />
       </CardPart>
 
       {/*
