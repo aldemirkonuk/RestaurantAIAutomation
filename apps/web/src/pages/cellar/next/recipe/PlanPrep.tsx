@@ -3,7 +3,7 @@
  * (prepPlan.ts). No money, no on-hand stock. The house Sheet carries the motion (ADR 0112); paper
  * under html[data-print-prep]. An editor gets a link into a drink to link a line naming no good.
  */
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardList, Printer } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -81,13 +81,6 @@ export default function PlanPrep() {
   const key = planKey(activeRestaurantId, localDay());
   const [texts, setTexts] = useState<Record<string, string>>(() => planWas(key));
   const [printing, setPrinting] = useState(false);
-  // One number per ask: an answer counts only if it is still the latest ask for the house still open. The component does not
-  // remount on a house switch, so a slow read for the house left behind would otherwise land on the house now open.
-  const ask = useRef(0);
-  useEffect(() => {
-    ask.current += 1;
-    setRead(null);
-  }, [activeRestaurantId]);
 
   useEffect(() => () => document.documentElement.removeAttribute(FLAG), []);
   useEffect(() => {
@@ -108,12 +101,10 @@ export default function PlanPrep() {
     setTexts(planWas(key));
     if (!activeRestaurantId) return;
     setRead('reading');
-    const mine = ++ask.current;
     try {
-      const got = await dishesApi.prepCards(activeRestaurantId);
-      if (mine === ask.current) setRead(got);
+      setRead(await dishesApi.prepCards(activeRestaurantId));
     } catch {
-      if (mine === ask.current) setRead('unread');
+      setRead('unread');
     }
   };
 
