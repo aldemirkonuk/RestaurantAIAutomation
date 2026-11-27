@@ -72,7 +72,7 @@ function EditableCell({ value, placeholder, onSave }: EditableCellProps) {
       type="button"
       onClick={() => setEditing(true)}
       disabled={saving}
-      className="w-full text-left px-2 py-1 rounded-lg hover:bg-gray-100 text-sm transition-colors disabled:opacity-50"
+      className="w-full text-left px-2 py-1 rounded-lg hover:bg-gray-100 text-sm transition-colors disabled:opacity-50 max-sm:min-h-[44px]"
     >
       {saving ? (
         <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
@@ -229,7 +229,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
             <button
               type="button"
               onClick={() => setShowClean((v) => !v)}
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-2"
+              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-2 max-sm:min-h-[44px]"
             >
               <Check className="w-4 h-4 text-green-600" />
               {clean.length} more look good
@@ -275,7 +275,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
           <button
             type="button"
             onClick={() => setAddingRow(true)}
-            className="flex items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium mb-6"
+            className="flex items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium mb-6 max-sm:min-h-[44px]"
           >
             <Plus className="w-4 h-4" />
             Add a wine
@@ -283,7 +283,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
         )}
 
         <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
-          <button onClick={onSkip} className="text-sm text-gray-400 hover:text-gray-600">
+          <button onClick={onSkip} className="text-sm text-gray-400 hover:text-gray-600 max-sm:min-h-[44px]">
             Skip review
           </button>
           {madeNote ? (

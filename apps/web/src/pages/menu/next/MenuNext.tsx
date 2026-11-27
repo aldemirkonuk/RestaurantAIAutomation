@@ -248,7 +248,7 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
       </label>
       <input
         id="menu-add-name"
-        className="cl-field cl-focus"
+        className="cl-field cl-focus mdv-touch-field"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="What's on the menu"
@@ -259,7 +259,7 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
       </label>
       <input
         id="menu-add-category"
-        className="cl-field cl-focus"
+        className="cl-field cl-focus mdv-touch-field"
         value={category}
         onChange={(e) => setCategory(e.target.value)}
         placeholder="e.g. Reds"
@@ -272,7 +272,7 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
           </label>
           <input
             id="menu-add-glass"
-            className="cl-field cl-focus cl-num"
+            className="cl-field cl-focus cl-num mdv-touch-field"
             type="number"
             min={0}
             step="0.01"
@@ -285,7 +285,7 @@ function AddItemForm({ onAdd, adding, error, canPrice }: {
           </label>
           <input
             id="menu-add-bottle"
-            className="cl-field cl-focus cl-num"
+            className="cl-field cl-focus cl-num mdv-touch-field"
             type="number"
             min={0}
             step="0.01"
@@ -406,7 +406,7 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
   const box = (kind: 'glass' | 'bottle') => (
     <input
       ref={kind === 'glass' ? firstBox : undefined}
-      className="cl-field cl-focus cl-num"
+      className="cl-field cl-focus cl-num mdv-touch-field"
       inputMode="decimal"
       enterKeyHint="done"
       aria-label={`${kind === 'glass' ? 'Glass' : 'Bottle'} price of ${line.name}`}

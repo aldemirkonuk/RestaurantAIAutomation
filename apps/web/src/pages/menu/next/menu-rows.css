@@ -115,3 +115,11 @@
     text-align: left;
   }
 }
+
+/* The add form's fields and the version's date are 44 px on a phone (r109 walk: 19-30 px). Static. */
+@media (max-width: 599px) {
+  .mdv-touch-field {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+}

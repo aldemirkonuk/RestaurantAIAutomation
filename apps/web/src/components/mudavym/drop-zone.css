@@ -213,6 +213,16 @@
   flex: none;
 }
 
+/* Under 600 px the held file's Change, Clear and Add pages are 44 px targets (r109 walk: 18 px). Static. */
+@media (max-width: 599px) {
+  .mdv-drop__acts .mdv-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 @keyframes mdv-drop-breathe {
   0%,
   100% {

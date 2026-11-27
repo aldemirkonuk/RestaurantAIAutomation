@@ -475,7 +475,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               </label>
               <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 Date (optional: a day or a month)
-                <input aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
+                <input className="mdv-touch-field" aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
               </label>
             </div>
           </div>
