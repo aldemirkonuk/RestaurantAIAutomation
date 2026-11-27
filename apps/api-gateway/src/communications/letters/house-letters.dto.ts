@@ -1,10 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsEmail,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -108,6 +111,36 @@ export class QueueLetterDto {
   @IsOptional()
   @IsUUID()
   answers?: string;
+}
+
+/** One file for a letter, as bytes (base64). No URL and no path field exists. */
+export class LetterFileUploadDto {
+  @ApiProperty({ description: "The file's name as the person chose it; cut to a safe set before it reaches a header." })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  name: string;
+
+  @ApiProperty({ description: "A MIME type, type/subtype only." })
+  @IsString()
+  @MaxLength(127)
+  @Matches(/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/i)
+  contentType: string;
+
+  @ApiProperty({ description: "The bytes, base64. The server computes the sha-256 and the size." })
+  @IsString()
+  @MinLength(1)
+  contentBase64: string;
+}
+
+export class UploadLetterFilesDto {
+  @ApiProperty({ type: [LetterFileUploadDto] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @ValidateNested({ each: true })
+  @Type(() => LetterFileUploadDto)
+  files: LetterFileUploadDto[];
 }
 
 /**
