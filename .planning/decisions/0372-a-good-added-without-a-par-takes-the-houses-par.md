@@ -15,7 +15,7 @@ One house-wide low-stock par was written five ways: the `restaurant_inventory.th
 1. The inventory add paths (`createInventoryItem`, the bulk receive line) read the house value through the one reader the menu path uses (`readHouseThresholdMin`, `inventory/house-par.ts`) when the caller gave no par. A typed par, including 0, is kept and the house is not asked (PR #801 made `||` into `??`).
 2. A house that stated none takes the column's own default, 3, on both paths. 6 is gone from the add paths.
 3. The menu path's private fallback constant is removed; it calls the same reader.
-4. A read that fails is not "the house stated none". The reader throws a 503 ("The house's par could not be read; nothing was added.") so the add refuses and writes nothing, rather than holding a house that stated 12 to a guessed 3 (r103 review, ADR 0116).
+4. A read that fails is not "the house stated none". The reader throws a 503 ("The house's par could not be read; nothing was added.") so the add refuses and writes nothing, rather than holding a house that stated 12 to a guessed 3 (r103 review, ADR 0116). "Nothing was added" is true only because the read comes BEFORE the first write on every path (r102 review): the menu path reads it before the `make_menu_current` switch and before a current-menu line is inserted; a bulk receive reads it once, before any line resolves a library row, and only when some line states no par of its own. Paths that write nothing before the read (the single add) are unchanged.
 
 ## Rejected
 

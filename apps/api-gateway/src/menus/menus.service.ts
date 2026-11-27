@@ -1481,6 +1481,11 @@ export class MenusService {
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
       );
     }
+    // The house's par is read BEFORE the switch too (r102 review): it is the
+    // one read addToInventory makes that can refuse, and read after the RPC a
+    // refusal said "nothing was added" about a menu that was already current,
+    // and the retry answered already_current with no lines.
+    const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
     const { data, error } = await this.dbService.supabase.rpc("make_menu_current", {
       p_restaurant_id: restaurantId,
       p_menu_id: menuId,
@@ -1528,7 +1533,7 @@ export class MenusService {
     const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
       effectiveFrom: madeCurrentAt,
       menuId,
-    });
+    }, thresholdMin);
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     const counts: Record<string, number> = {};
@@ -1640,6 +1645,11 @@ export class MenusService {
   ): Promise<MenuImportReviewItem[]> {
     if (items.length === 0) return [];
 
+    // The house's par is read before ANY write (library rows, menu_items): it
+    // is the one read on the add path that can refuse, and a refusal that
+    // says "nothing was added" must be true (r102 review).
+    const thresholdMin = current ? await this.getDefaultThresholdMin(restaurantId) : undefined;
+
     // Resolve every item against master_wine_library BEFORE inserting
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
@@ -1749,7 +1759,7 @@ export class MenusService {
     // A line added to the CURRENT menu is dated now (the writer's default)
     // and names its menu (ADR 0193 round 3, L11).
     const { inventoryMap, priceSync } = current
-      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
+      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId }, thresholdMin)
       : {
           inventoryMap: Object.assign(new Map<string, string>(), {
             created: new Set<string>(),
@@ -1900,6 +1910,9 @@ export class MenusService {
     restaurantId: string,
     userId: string,
     dating: CarryDating,
+    // The house par, read by the caller BEFORE its first write. Absent only
+    // for a caller that has not written anything yet.
+    knownThresholdMin?: number,
   ): Promise<{
     inventoryMap: Map<string, string> & { created: Set<string> };
     priceSync: Map<string, PriceSyncEntry>;
@@ -1911,7 +1924,7 @@ export class MenusService {
     const validItems = menuItems.filter((i) => i.wine_library_id);
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
-    const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
+    const thresholdMin = knownThresholdMin ?? (await this.getDefaultThresholdMin(restaurantId));
 
     for (const item of validItems) {
       const { data: existing, error: existingErr } = await this.dbService.supabase
