@@ -410,3 +410,15 @@ export async function makeMenuCurrent(menuId: string, fingerprint: string): Prom
   const response = await apiClient.post<MakeCurrentResult>(`/menu-versions/${menuId}/make-current`, { fingerprint })
   return response.data
 }
+
+/**
+ * Read a menu from a web link (DD-r108-55/66). The gateway fetches the page
+ * itself (POST /menus/import-url); the browser never does, so CORS never
+ * decides. The house comes from the session on the gateway; restaurantId is
+ * sent because the route's DTO names it, as /menus/import does.
+ */
+export async function importMenuFromUrl(url: string): Promise<MenuImportResult> {
+  const restaurantId = getActiveRestaurantId()
+  const response = await apiClient.post<MenuImportResult>('/menus/import-url', { restaurantId, url })
+  return response.data
+}
