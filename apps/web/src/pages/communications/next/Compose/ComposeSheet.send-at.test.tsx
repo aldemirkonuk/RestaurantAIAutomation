@@ -111,12 +111,15 @@ describe('Send at… in the composer', () => {
     expect(mockPost.mock.calls.find(([u]) => u === '/communications/letters')?.[1]).not.toHaveProperty('sendAt');
   });
 
-  it('Escape closes the list, not the sheet, at once, and gives focus back', () => {
+  it('Escape closes the list, not the sheet, at once, and gives focus back', async () => {
     const { onClose } = open();
     const trigger = screen.getByTestId('letter-send-at');
     fireEvent.click(trigger);
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull(); // no exit animation keeps it mounted
+    expect(onClose).not.toHaveBeenCalled();
+    // The sheet never heard it: a held sheet tears and closes after its tuck.
+    await new Promise((r) => setTimeout(r, 1000));
     expect(onClose).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
