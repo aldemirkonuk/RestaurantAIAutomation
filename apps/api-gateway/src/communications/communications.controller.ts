@@ -29,6 +29,7 @@ import {
   MAX_ATTACHMENT_B64_LEN,
 } from "./gmail-mime";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
+import { receivingHouse } from "./shared-mailbox-house";
 import { DatabaseService } from "../database/database.service";
 import {
   LowStockAlertDto,
@@ -1284,12 +1285,23 @@ export class CommunicationsController {
             `${bodyText}\n\n[Attachments: ${attachments.map((a) => a.filename).join(", ")}]`.trim();
         }
 
+        // The house this letter was written to (QA round 25): the shared
+        // mailbox belongs to no house, so the event carries the one
+        // `receivingHouse` finds, or null, and a consumer that gets null
+        // attributes nothing.
+        const house = await receivingHouse(this.databaseService.supabase, {
+          from,
+          gmailThreadId: msg.threadId,
+        });
+
         // Publish to RabbitMQ for EmailParsingAgent to process
         try {
           await this.orchestratorService.publishEvent(
             "email.events",
             "email.inbound.received",
             {
+              restaurant_id: house.restaurantId,
+              house_resolution: house.how,
               gmail_message_id: msg.id,
               gmail_thread_id: msg.threadId,
               from,
@@ -1425,11 +1437,21 @@ export class CommunicationsController {
             `${bodyText}\n\n[Attachments: ${attachments.map((a) => a.filename).join(", ")}]`.trim();
         }
 
+        // The same house rule as the push path above (QA round 25). The
+        // caller's own house is not used: whoever recovers the shared
+        // mailbox recovers every house's letters.
+        const house = await receivingHouse(this.databaseService.supabase, {
+          from,
+          gmailThreadId: fullMsg.threadId,
+        });
+
         try {
           await this.orchestratorService.publishEvent(
             "email.events",
             "email.inbound.received",
             {
+              restaurant_id: house.restaurantId,
+              house_resolution: house.how,
               gmail_message_id: fullMsg.id,
               gmail_thread_id: fullMsg.threadId,
               from,
