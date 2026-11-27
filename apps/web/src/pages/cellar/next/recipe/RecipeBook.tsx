@@ -12,7 +12,8 @@ import { BookOpen } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { dishesApi, type DrinkCard, type CocktailRecipe } from '../../../../services/api/recipes';
 import { cardAllergens } from './RecipeCard';
-import { scaledAmount } from './recipeScale';
+import { MEASURE_FOOT, converts, inMeasure } from './measureDialect';
+import MeasureChips, { useMeasure } from './MeasureChips';
 import { useHouseDate } from './useHouseDate';
 
 const FLAG = 'data-print-book';
@@ -42,6 +43,8 @@ export default function RecipeBook() {
   const [reading, setReading] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [book, setBook] = useState<DrinkCard[] | null>(null);
+  // The bar's measures (r110 drinks-g2), the same choice as the card's: display only.
+  const [measure, setMeasure] = useMeasure();
 
   // The flag is only ever on while the book is the thing being printed.
   useEffect(() => () => document.documentElement.removeAttribute(FLAG), []);
@@ -84,6 +87,7 @@ export default function RecipeBook() {
         <BookOpen size={13} aria-hidden />
         Print the spec book
       </button>
+      <MeasureChips value={measure} onChange={setMeasure} testId="book-measures" />
       {said ? (
         <span className="cl-note" role="alert" data-testid="book-said" style={{ margin: 0 }}>
           {said}
@@ -112,13 +116,14 @@ export default function RecipeBook() {
                     <ol>
                       {c.lines.map((l, i) => (
                         <li key={i}>
-                          <b>{scaledAmount(l.qty, 1, l.unit)}</b> {l.name ?? l.label}
+                          <b>{inMeasure(l.qty, l.unit, measure)}</b> {l.name ?? l.label}
                         </li>
                       ))}
                     </ol>
                     {c.method ? <p className="cl-print-method">{c.method}</p> : null}
                     {c.garnish ? <p>Garnish: {c.garnish}</p> : null}
                     <p>{allergenWords(c.allergens)}</p>
+                    {converts(c.lines, measure) ? <p data-testid="book-measure-foot">{MEASURE_FOOT}</p> : null}
                   </section>
                 )),
               )}

@@ -382,3 +382,22 @@ describe('the Include cost tick is a thumb\'s size at a phone (r108 drinks-7, wa
     expect(block).toMatch(/\.cl-rcp-tick\s*\{\s*min-height:\s*44px/);
   });
 });
+
+describe('the card prints in the bar measures (r110 drinks-g2)', () => {
+  it('US oz converts the card and Make N, says so in the foot, and leaves the saved amount alone', async () => {
+    mount();
+    await screen.findByTestId('recipe-print');
+    expect(card()).toHaveTextContent('50 ml Plymouth gin');
+    expect(screen.queryByTestId('recipe-card-measure-foot')).toBeNull();
+    fireEvent.click(screen.getByTestId('recipe-measures-oz'));
+    // 50 ml is 1⅝ oz at the jigger ounce, 1.25 ml off: marked.
+    expect(card()).toHaveTextContent('≈ 1⅝ oz Plymouth gin');
+    expect(screen.getByTestId('recipe-card-measure-foot')).toHaveTextContent('≈ means rounded.');
+    fireEvent.change(screen.getByLabelText('Make'), { target: { value: '3' } });
+    expect(screen.getByTestId('recipe-make-preview')).toHaveTextContent('Make 3: 5 oz Plymouth gin');
+    fireEvent.click(screen.getByTestId('recipe-measures-ml'));
+    expect(card()).toHaveTextContent('150 ml Plymouth gin');
+    expect(screen.queryByTestId('recipe-card-measure-foot')).toBeNull();
+    expect((await screen.findAllByLabelText('Amount'))[0]).toHaveValue('50');
+  });
+});
