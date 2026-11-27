@@ -1,29 +1,15 @@
 -- A sale keeps the shelf it was costed on, so every paper restates it exactly (r109 g1).
 --
--- WHY. A pour is costed at the weighted average of the live lots on the shelf
--- (DD-r104-10), but restate_sale_cost (r102) keyed a restatement on the oldest
--- live lot's order alone and moved the whole line to that one delivery's
--- cost. A pour sold while two unchecked deliveries were on hand was restated
--- to whichever delivery came first, never to the blend it was sold at. And a
--- line costed on a part-checked average (invoice_lot_wac_partial, and
--- pour_lot_wac_partial from #2063) was never restated at all: the filter
--- named only last_purchase_price and invoice_restated.
+-- WHY. A pour is costed at the WAC of the live lots (DD-r104-10), but r102
+-- restated the whole line to the oldest lot's one delivery, and never restated
+-- a part-checked average (invoice_lot_wac_partial, pour_lot_wac_partial).
 --
--- WHAT. At sale the gateway writes cost_parts: one entry per live lot the
--- cost was read over, {order_id, lot_id, qty, unit_cost, invoiced}, at most
--- 20. Past 20 it writes cost_parts_capped = true and no parts; such a row is
--- never restated and the function counts it in rows_capped, which the verify
--- path logs in words.
---
--- restate_sale_cost v2, for a row that has parts: replace the checked
--- order's part(s) with the paper's cost (invoiced = true), recompute
--- WAC = sum(qty x cost) / sum(qty) over the parts, and scale the cost the sale
--- was first booked at by WAC / the unit cost it was first booked at. The
--- first booking comes from the row's earliest restatement, so restating twice
--- does not round twice. The basis becomes invoice_restated once every part is
--- invoiced; until then it says partly checked (invoice_lot_wac_partial, or
--- pour_lot_wac_partial for a pour). Before and after go to
--- wine_consumption_cost_restatements first.
+-- WHAT. At sale the gateway writes cost_parts, the live lots the cost was
+-- read over (at most 20; past that cost_parts_capped, never restated, counted
+-- in rows_capped). v2 replaces the checked order's part with the paper's cost,
+-- recomputes WAC = sum(qty x cost) / sum(qty) and scales the cost first booked
+-- (from the earliest restatement, so twice does not round twice). The basis
+-- is invoice_restated once every part is invoiced, partly checked until then.
 --
 -- Invariant: once every part's order has a checked paper,
 --   cost_at_sale = share x sum(qty_i x paper_cost_i) / sum(qty_i)
@@ -33,8 +19,7 @@
 -- row (FOR UPDATE) and each replaces only its own part, so the result does not
 -- depend on which seal wins the lock.
 --
--- A row with no parts (sold before this migration, or with no live lot)
--- keeps the r102 single-order rule and is never back-filled (D4).
+-- A row with no parts keeps the r102 rule and is never back-filled (D4).
 
 ALTER TABLE public.wine_consumption_log
   ADD COLUMN IF NOT EXISTS cost_parts jsonb,
@@ -162,7 +147,7 @@ BEGIN
     v_wac := v_cost / v_qty;
 
     -- What the sale was first booked at, so a second restatement scales the
-    -- original figure instead of rounding a rounded one.
+    -- original figure, not a rounded one (events use clock_timestamp()).
     SELECT prior_cost_at_sale, prior_unit_cost
       INTO v_base_cost, v_base_unit
       FROM public.wine_consumption_cost_restatements
@@ -184,11 +169,11 @@ BEGIN
     INSERT INTO public.wine_consumption_cost_restatements
       (restaurant_id, inventory_id, consumption_id, source_order_id,
        prior_cost_at_sale, prior_cost_basis, prior_unit_cost,
-       new_cost_at_sale, new_unit_cost, performed_by)
+       new_cost_at_sale, new_unit_cost, performed_by, created_at)
     VALUES
       (p_restaurant_id, p_inventory_id, v_row.id, p_source_order_id,
        v_row.cost_at_sale, v_row.cost_basis, v_row.cost_unit_at_sale,
-       v_new, round(v_wac, 6), p_performed_by);
+       v_new, round(v_wac, 6), p_performed_by, clock_timestamp());
     UPDATE public.wine_consumption_log
        SET cost_at_sale = v_new,
            cost_unit_at_sale = round(v_wac, 6),
