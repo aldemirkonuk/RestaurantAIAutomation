@@ -33,6 +33,7 @@ import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Stub, Wordmark } from '@/components/mudavym';
 import { ink } from '../../../lib/mudavym/motion';
+import { useAuth } from '../../../contexts/AuthContext';
 import {
   EM,
   GE,
@@ -41,6 +42,7 @@ import {
   SERIF,
   failedReadsSentence,
   fmtAsOf,
+  managesHouse,
   readAgainFailed,
   type FailedRead,
 } from './cm-format';
@@ -132,6 +134,10 @@ function GlanceFigure({
 
 export default function CommunicationsNext() {
   const data = useCommsNextData();
+  // The 30-day figure is every kind of letter for an owner or a manager and the
+  // vendors' alone for staff (the gateway's rule), so the label says who it counts.
+  const { user, activeRole } = useAuth();
+  const lettersInLabel = managesHouse(activeRole, user?.role) ? 'Letters in · 30 days' : 'Vendor replies · 30 days';
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
   const letterStanding = useLetterSenderStanding();
   const [compose, setCompose] = useState(false);
@@ -377,7 +383,7 @@ export default function CommunicationsNext() {
                 auto-reply or a second copy of one letter is not a reply, so the
                 two tabs give the same number for the same mail. Exact, no floor. */}
             <GlanceFigure
-              label="Replies · 30 days"
+              label={lettersInLabel}
               value={data.glance.repliesLast30}
               failed={data.failed.mail}
               at={data.mailAt}
