@@ -123,6 +123,8 @@ export interface PaperLineRow {
   printed?: unknown;
   /** Counts already scaled into the item's unit (r21 volume); a free line takes that unit. */
   in_item_unit?: boolean;
+  /** r110: credited price claims on this line, in its printed terms. */
+  credit?: number | null;
 }
 
 /** An invoice line and what the unit gatekeeper made of it. */
@@ -356,6 +358,7 @@ function feed(line: PaperLine, kind: LineKind | null, key: string | null): Fed {
     line_no: n,
     allowance: num(r.allowance),
     deposit: num(r.deposit),
+    credit: num(r.credit),
     price_tax_basis: null,
     vat_rate_percent: null,
     item_key: key,

@@ -14,6 +14,7 @@ import {
   PaperLine,
   PaperNote,
   notHouseMoney,
+  currencyOf,
 } from "./paper-landed-cost";
 import { CostTaxBasis, HouseTax, houseReclaims } from "../landed-cost";
 import { CorrectionRowLite, movesCost, overlayCorrections } from "./correction-overlay";
@@ -174,6 +175,10 @@ interface LineRow {
   /** The house item's own unit (`restaurant_inventory.uom`), attached after the read (R8). */
   item_uom?: string | null;
   in_item_unit?: boolean;
+  /** `procurement_document_lines.id`: what a credit claim names (r110). */
+  id?: string;
+  /** r110: credited price claims on this line, in its printed terms. */
+  credit?: number | null;
 }
 
 /** The weights a house item may be kept in (`restaurant_inventory_uom_check`, ADR 0070). */
@@ -913,6 +918,45 @@ export class DeliveryStockService {
     return { ok: true, value: out };
   }
 
+  /**
+   * The credited PRICE claims on these invoices, summed per line, read a page
+   * at a time (r110). A failed read is not "none" (ADR 0067): no cost is posted
+   * on a paper whose credits could not be seen.
+   */
+  private async creditedPriceClaims(
+    restaurantId: string,
+    documentIds: string[],
+  ): Promise<StockResult<Map<string, { amount: number; currencies: Set<string> }>>> {
+    const out = new Map<string, { amount: number; currencies: Set<string> }>();
+    if (!documentIds.length) return { ok: true, value: out };
+    for (let from = 0; ; from += 1000) {
+      const read = await this.db
+        .getClient()
+        .from("procurement_credits")
+        .select("id, document_line_id, credited_amount, currency")
+        .eq("restaurant_id", restaurantId)
+        .in("document_id", documentIds)
+        .eq("state", "credited")
+        .eq("reason", "price_variance")
+        .order("id", { ascending: true })
+        .range(from, from + 999);
+      if (read.error)
+        return { ok: false, status: 500, error: `the credits on the invoices could not be read (${read.error.message}), so no cost is posted on a paper that may have been credited. Retry is safe.` };
+      const rows = (read.data ?? []) as { document_line_id: string | null; credited_amount: number | string | null; currency: string | null }[];
+      for (const r of rows) {
+        if (!r.document_line_id || r.credited_amount == null) continue;
+        const was = out.get(r.document_line_id) ?? { amount: 0, currencies: new Set<string>() };
+        // Cents, so two credits of 0.10 and 0.20 are 0.30 and not 0.30000000000000004.
+        was.amount = Math.round(was.amount * 100 + Number(r.credited_amount) * 100) / 100;
+        const money = currencyOf(r.currency);
+        if (money) was.currencies.add(money);
+        out.set(r.document_line_id, was);
+      }
+      if (rows.length < 1000) break;
+    }
+    return { ok: true, value: out };
+  }
+
   /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
   private async correctionsOf(documentIds: string[]): Promise<StockResult<Map<string, CorrectionRowLite[]>>> {
     const out = new Map<string, CorrectionRowLite[]>();
@@ -1592,6 +1636,7 @@ export class DeliveryStockService {
     }
     const moneyOfPaper = new Map(papers.map((r) => [r.id, notHouseMoney(r.currency, houseCurrency)]));
 
+    const creditHeld = new Map<string, string>();
     const lineByKey = new Map<string, LineRow>();
     const invoiceLines: LineRow[] = [];
     const invoiceSet = new Set(invoiceIds);
@@ -1600,7 +1645,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
+          "id, document_id, line_no, inventory_id, qty, qty_bottles, free_goods_qty, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, allowance, deposit, printed, description, vendor_sku, format_ml",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
@@ -1613,6 +1658,21 @@ export class DeliveryStockService {
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
       const rows = overlaid((read.data ?? []) as unknown as LineRow[], corrections, papers);
+      // r110 (DD-r109-29): a credited PRICE claim lowers its line's cost.
+      const credited = await this.creditedPriceClaims(restaurantId, invoiceIds);
+      if (!credited.ok) return credited;
+      const paperMoney = new Map(papers.map((h) => [h.id, currencyOf(h.currency)]));
+      for (const line of rows) {
+        const c = line.id ? credited.value.get(line.id) : undefined;
+        if (!c) continue;
+        const money = paperMoney.get(line.document_id) ?? null;
+        if (c.currencies.size !== 1 || !money || !c.currencies.has(money)) {
+          // A credit in another money (or none) is not subtracted unconverted.
+          if (line.inventory_id) creditHeld.set(line.inventory_id, `a credit of ${c.amount} on line ${line.line_no} is not in the invoice's money (${[...c.currencies].join(", ") || "none named"} against ${money ?? "none named"}), so it is not taken off its cost. The lot stays provisional.`);
+          continue;
+        }
+        line.credit = c.amount;
+      }
       // R8: a weighed line is costed per one of its ITEM's unit.
       const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
       if (!units.ok) return units;
@@ -1648,6 +1708,10 @@ export class DeliveryStockService {
     const landed = landDelivery({ papers, lines: fed, booked, houseCurrency, houseTax });
     const refused = landed.refused;
     const held = landed.held;
+    for (const [id, why] of creditHeld) {
+      landed.byItem.delete(id);
+      held.set(id, why);
+    }
     for (const [id, p] of [...lineOnly]) {
       const why = held.get(id);
       // A line price in another currency is no stand-in either (QA 15 (5)).

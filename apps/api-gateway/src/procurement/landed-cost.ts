@@ -84,6 +84,15 @@ export interface LandedCostLineInput {
   accepted_bottles: number;
   /** False for a line that is not stock (a service, a crate). Default true. */
   stocked?: boolean;
+  /**
+   * r110 (DD-r109-29): what the vendor CREDITED back on this line's price, in
+   * the line's own printed terms (a price claim is drafted from those prices,
+   * so its settlement is in them too). It comes off the line's cost after the
+   * tax treatment and the charge shares, which stay as the paper billed them.
+   * More than the line's value, or a house whose tax answers are not known,
+   * and the line's cost stays open.
+   */
+  credit?: number | null;
   /** Lines with the same key are one item: their cost per bottle is pooled. */
   item_key?: string | null;
   /**
@@ -576,6 +585,25 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     }
     const r = reconcileLineValue(line);
     if (!r.ok) return { line, kind: "unresolved", sentence: r.sentence };
+    const credit = line.credit ?? 0;
+    if (credit !== 0) {
+      if (!isNum(credit) || credit < 0)
+        return { line, kind: "unresolved", sentence: `Line ${line.line_no} has a credit that is not an amount, so its cost cannot be said.` };
+      // DD-r104-12: a credit never exceeds what the line billed.
+      if (credit > r.net + 0.005)
+        return {
+          line,
+          kind: "unresolved",
+          sentence: `Line ${line.line_no} was credited ${m(credit)}, more than the ${m(r.net)} it billed, so its cost cannot be said.`,
+        };
+      // Whether the credit is before or after tax follows the house's answer.
+      if (reclaim.reclaims == null)
+        return {
+          line,
+          kind: "unresolved",
+          sentence: `Line ${line.line_no} was credited ${m(credit)}, and ${reclaim.why ?? "the house's tax answers are not known"}, so whether that credit is before or after tax is not known and its cost stays open.`,
+        };
+    }
     const { listed_bottles: listed, accepted_bottles: accepted } = line;
     const u = unitNoun(line.unit);
     const why =
@@ -695,7 +723,10 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     const cost_value = x.tax.cost;
     const discount_share = discountCents[i] > 0 ? -discountCents[i] : 0;
     const charge_share = chargeCents[i];
-    const landed_value = cost_value + discount_share + charge_share;
+    // The credit, in cost terms: the same tax treatment as the line's value.
+    const credit = x.line.credit ?? 0;
+    const credit_cost = credit > 0 && x.net > 0 ? (credit * cost_value) / x.net : 0;
+    const landed_value = cost_value + discount_share + charge_share - credit_cost;
     const listed = x.line.listed_bottles as number;
     const accepted = x.line.accepted_bottles;
     const accepted_landed_value = (landed_value * accepted) / listed;
@@ -723,6 +754,8 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
         `It carries ${m(-discount_share)} of the paper's discount, shared by line value${headerSaid(discountT)}.`,
       );
     }
+    if (credit_cost > 0)
+      said.push(`The vendor credited ${m(credit)} on this line, which comes off its cost: ${m(credit_cost)}.`);
     if ((x.line.deposit ?? 0) > 0)
       said.push(`Its deposit of ${m(x.line.deposit as number)} is not cost.`);
     if (accepted < listed) {
