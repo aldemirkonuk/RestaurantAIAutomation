@@ -101,6 +101,7 @@ describe('answering a guest (r104 mail-gap g1, ADR 0396)', () => {
     act.click();
     expect(onAnswer).toHaveBeenCalledWith(
       expect.objectContaining({ providerId: null, answers: 'g1', person: expect.objectContaining({ kind: 'guest', address: 'j@x.example' }) }),
+      { threadKey: 'gm:t1', personKey: 'guest:j@x.example' },
     );
   });
   it('offers it to a manager', async () => {
