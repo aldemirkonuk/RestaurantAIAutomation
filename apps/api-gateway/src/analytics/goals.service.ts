@@ -1264,6 +1264,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const add = (date: string, v: number) => {
       daily.set(date, (daily.get(date) || 0) + v);
     };
+    const checksByDay = new Map<string, number>();
 
     try {
       if (metricKey === "purchase_spend") {
@@ -1603,6 +1604,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         dailySeries: before.dailyDates.map((date, i) => ({
           date,
           revenue: before.dailySeries[i] ?? 0,
+          checks: before.dailyChecks?.[i] ?? 0,
+          pricedChecks: before.dailyPricedChecks?.[i] ?? 0,
         })),
       },
     };
@@ -1661,6 +1664,6 @@ export interface PosRevenueWindow {
     checkCount: number | null;
     /** The house day of the till's first check, set only when it falls after `from`. */
     since?: string;
-    dailySeries: Array<{ date: string; revenue: number }>;
+    dailySeries: Array<{ date: string; revenue: number; checks: number; pricedChecks: number }>;
   };
 }

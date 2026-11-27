@@ -77,7 +77,8 @@ export interface Register<T> {
    * over `shownDays` and says `readingDays` is being read. Never set across
    * houses, and never over a failure: a new window that fails says so.
    */
-  standIn?: { shownDays: number; readingDays: number };
+  /** `compare`: whether the kept read was the 2N compare read (#2072); it is drawn with the compare it was read with. */
+  standIn?: { shownDays: number; readingDays: number; compare?: boolean };
 }
 
 /**
@@ -519,7 +520,7 @@ export function useReportsNextData(
    * `#findMatchingObservers` matches by query hash), so `placeholderData`
    * never sees the previous window; the page keeps it itself.
    */
-  const lastWindow = useRef(new Map<AnalysisId, { rid: string; days: number; data: unknown }>());
+  const lastWindow = useRef(new Map<AnalysisId, { rid: string; days: number; compare: boolean; data: unknown }>());
 
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
@@ -528,7 +529,7 @@ export function useReportsNextData(
       if (!q) return;
       if (CATALOGUE[id].takesWindow && rid) {
         if (q.isSuccess) {
-          lastWindow.current.set(id, { rid, days: tillDays, data: q.data });
+          lastWindow.current.set(id, { rid, days: tillDays, compare: tillCompare, data: q.data });
         } else if (q.isPending && !heldBack.has(id)) {
           const kept = lastWindow.current.get(id);
           if (kept && kept.rid === rid && kept.days !== tillDays) {
@@ -537,7 +538,7 @@ export function useReportsNextData(
               loading: false,
               failure: null,
               refetch: () => void q.refetch(),
-              standIn: { shownDays: kept.days, readingDays: tillDays },
+              standIn: { shownDays: kept.days, readingDays: tillDays, compare: kept.compare },
             };
             return;
           }
@@ -573,7 +574,7 @@ export function useReportsNextData(
     return map;
     // `results` is a fresh array each render; the ids and their states are what
     // actually matter, and recomputing a map of eight entries is free.
-  }, [active, results, heldBack, activeRole, rid, tillDays]);
+  }, [active, results, heldBack, activeRole, rid, tillDays, tillCompare]);
 
   // One small read, cached with the registers, so every money figure on the
   // sheet prints in the house's own currency rather than `$` (audit G5).
