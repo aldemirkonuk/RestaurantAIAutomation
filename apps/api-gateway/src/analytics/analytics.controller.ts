@@ -1294,12 +1294,19 @@ export class AnalyticsController {
     description:
       "`consumption` also reads the per-wine breakdown for the window. Not read otherwise: no page draws it.",
   })
+  @ApiQuery({
+    name: "compare",
+    required: false,
+    description:
+      "`prior` also answers the same-length window just before this one, as `prior`. Any other value is ignored.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @CurrentUser() user?: { role?: string | null },
     @Query("include") include?: string,
+    @Query("compare") compare?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
@@ -1311,10 +1318,14 @@ export class AnalyticsController {
     if (!salesGateFor(user).withSales)
       return withheldPosRevenue(restaurantId, span);
     try {
-      const window = await this.goalsService.getPosRevenueWindow(
-        restaurantId,
-        span,
-      );
+      const window =
+        compare === "prior"
+          ? await this.goalsService.getPosRevenueWindow(
+              restaurantId,
+              span,
+              "prior",
+            )
+          : await this.goalsService.getPosRevenueWindow(restaurantId, span);
       // The breakdown is a whole-window read of the consumption log (every
       // page of it, in sequence, after every page of the checks). No reader
       // of this route draws it: /reports' till reads the figures and the
