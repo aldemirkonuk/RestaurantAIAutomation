@@ -69,6 +69,14 @@ export const READ_ALL_OFFER = 'Read every conversation, not only vendors';
 /** What the tab says about its own reach, so a quiet Team or Guests list is never mistaken for an empty one. */
 export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
 export const READS_ALL_LINE = 'This tab shows every conversation in the mailbox: vendors, team and guests.';
+/**
+ * Agreeing to the wide reading does not switch the house's own inbox on: the
+ * two are separate. Said when the first is agreed and the second is off, so
+ * "reading is switched off" and "shows every conversation" are not left to
+ * contradict each other (r77 w3 finding 4).
+ */
+export const READS_ALL_SWITCH_OFF_WORDS =
+  'Nothing is read yet: the house\u2019s \u201cRead this house\u2019s mailbox\u201d switch in Settings must also be on.';
 
 /**
  * Where one letter came from and went to, in one line. Null when the gateway
