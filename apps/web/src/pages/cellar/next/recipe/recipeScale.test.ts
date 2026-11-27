@@ -15,6 +15,11 @@ describe('recipeScale', () => {
     expect(scaledAmount(2, 12, 'dash')).toBe('24 dashes');
     expect(scaledAmount(30, 100, 'ml')).toBe('3000 ml');
   });
+  it('the lines are for the whole recipe: N serves is N / yieldServes of them (r107f)', () => {
+    expect(scaledAmount(200, 2, 'ml', 4)).toBe('100 ml');
+    expect(scaledAmount(200, 4, 'ml', 4)).toBe('200 ml');
+    expect(scaledAmount(50, 12, 'ml', 1)).toBe('600 ml');
+  });
   it('a large amount is shown to its precision, never as "about"', () => {
     expect(scaledAmount(1234.5678, 12, 'g')).toBe('14814.814 g');
   });

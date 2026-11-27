@@ -296,9 +296,9 @@ describe('the printable recipe card', () => {
       mount();
       await screen.findByTestId('recipe-print');
       fireEvent.change(make(), { target: { value: '12' } });
-      expect(card()).toHaveTextContent('Make 12');
+      expect(card()).toHaveTextContent('Make 12 serves');
       expect(card()).toHaveTextContent('600 ml Plymouth gin');
-      expect(screen.getByTestId('recipe-make-preview')).toHaveTextContent('Make 12: 600 ml Plymouth gin');
+      expect(screen.getByTestId('recipe-make-preview')).toHaveTextContent('Make 12 serves: 600 ml Plymouth gin');
       expect((await screen.findAllByLabelText('Amount'))[0]).toHaveValue('50');
     });
 
@@ -337,6 +337,23 @@ describe('the printable recipe card', () => {
       expect(card()).toHaveTextContent('100 ml Plymouth gin');
       expect(card()).toHaveTextContent('45 ml Sour mix');
       expect(screen.getByTestId('recipe-card-cost')).toHaveTextContent('Cost to make 2 £4.21 · Cost per serve £2.11');
+    });
+
+    it('a recipe that makes 4 serves: Make 2 prints half the lines and 2 serves of cost (r107f)', async () => {
+      const base = h.get.getMockImplementation()!;
+      h.get.mockImplementation(async (url: string) =>
+        url === `/recipes/${RID}/cocktails/${CID}`
+          ? { data: { ...negroni, current: { ...negroni.current, yieldServes: 4, lines: [{ ...gin, qtyEntered: 200, qtyBase: 2000 }] },
+              cost: { perServe: 3, priced: 1, of: 1, complete: true } } }
+          : base(url));
+      mount();
+      fireEvent.click(await screen.findByLabelText('Include cost'));
+      fireEvent.change(make(), { target: { value: '2' } });
+      expect(card()).toHaveTextContent('Makes 4 serves');
+      expect(card()).toHaveTextContent('Make 2 serves');
+      expect(card()).toHaveTextContent('100 ml Plymouth gin');
+      expect(card()).not.toHaveTextContent('400 ml');
+      expect(screen.getByTestId('recipe-card-cost')).toHaveTextContent('Cost to make 2 £6.00 · Cost per serve £3.00');
     });
 
     it('staff get scaled lines and still no money', async () => {

@@ -172,7 +172,7 @@ export default function RecipeCard({
       <div className="cl-make-room" data-testid="recipe-make-room">
         {n > 1 ? (
           <p className="cl-note" data-testid="recipe-make-preview">
-            {`Make ${n}: ${v.lines.map((l) => `${scaledAmount(l.qtyEntered, n, l.unitCode)} ${l.itemName ?? l.label}`).join(', ')}`}
+            {`Make ${n} ${words.unit}s: ${v.lines.map((l) => `${scaledAmount(l.qtyEntered, n, l.unitCode, v.yieldServes)} ${l.itemName ?? l.label}`).join(', ')}`}
           </p>
         ) : null}
       </div>
@@ -186,11 +186,11 @@ export default function RecipeCard({
             {!isDish && glass ? ` · ${glass}` : ''}
             {` · version ${v.version}${dated ? `, ${dated}` : ''}`}
           </p>
-          {n > 1 ? <p data-testid="recipe-card-make"><b>{`Make ${n}`}</b></p> : null}
+          {n > 1 ? <p data-testid="recipe-card-make"><b>{`Make ${n} ${words.unit}s`}</b></p> : null}
           <ol>
             {v.lines.map((l) => (
               <li key={l.id}>
-                <b>{scaledAmount(l.qtyEntered, n, l.unitCode)}</b> {l.itemName ?? l.label}
+                <b>{scaledAmount(l.qtyEntered, n, l.unitCode, v.yieldServes)}</b> {l.itemName ?? l.label}
               </li>
             ))}
           </ol>
