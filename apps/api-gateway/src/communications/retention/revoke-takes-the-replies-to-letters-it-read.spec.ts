@@ -19,10 +19,17 @@ const GRANT = "eeeeeeee-0000-4000-8000-eeeeeeeeeeee";
 
 type Row = Record<string, any>;
 
-function world(opts: { rows: Row[]; connections?: Row[]; failRepliesRead?: boolean }) {
+function world(opts: {
+  rows: Row[];
+  connections?: Row[];
+  failRepliesRead?: boolean;
+  failStray?: boolean;
+  windowDays?: number;
+}) {
   const tables: Record<string, Row[]> = {
     procurement_conversations: opts.rows,
     integration_oauth_connections: opts.connections ?? [],
+    house_mail_retention_windows: opts.windowDays ? [{ restaurant_id: HOUSE, figure_days: opts.windowDays }] : [],
   };
   const val = (r: Row, c: string) => {
     const [head, key] = c.split("->>");
@@ -34,6 +41,7 @@ function world(opts: { rows: Row[]; connections?: Row[]; failRepliesRead?: boole
     let body: Row = {};
     let range: [number, number] | null = null;
     let jsonIn = false;
+    let jsonIs = false;
     let ordered = false;
     const b: any = {};
     b.select = () => b;
@@ -43,7 +51,7 @@ function world(opts: { rows: Row[]; connections?: Row[]; failRepliesRead?: boole
       filters.push((r) => v.includes(val(r, c)));
       return b;
     };
-    b.is = (c: string, v: null) => (filters.push((r) => (val(r, c) ?? null) === v), b);
+    b.is = (c: string, v: null) => (c.includes("->>") && (jsonIs = true), filters.push((r) => (val(r, c) ?? null) === v), b);
     b.not = (c: string, _op: string, v: null) => (filters.push((r) => (val(r, c) ?? null) !== v), b);
     b.limit = () => b;
     b.order = () => ((ordered = true), b);
@@ -56,6 +64,9 @@ function world(opts: { rows: Row[]; connections?: Row[]; failRepliesRead?: boole
       let hit = rows.filter((r) => filters.every((f) => f(r)));
       if (opts.failRepliesRead && table === "procurement_conversations" && mode === "select" && jsonIn) {
         return Promise.resolve({ data: null, error: { message: "timeout" } }).then(resolve);
+      }
+      if (opts.failStray && table === "procurement_conversations" && mode === "select" && jsonIs) {
+        return Promise.resolve({ data: null, error: { message: "stray timeout" } }).then(resolve);
       }
       if (mode === "update") hit.forEach((r) => Object.assign(r, body));
       if (mode === "delete") tables[table] = rows.filter((r) => !hit.includes(r));
@@ -203,5 +214,41 @@ describe("revoking gmail_read_all and the replies to the letters it read", () =>
       expect(r.message_text).toBe("the house's own words to the vendor");
       expect(r.email_headers).toEqual({ answers: "vendor-v" });
     });
+  });
+
+  describe("the retention window deleting a team or guest letter whole", () => {
+    const old = new Date(Date.now() - 100 * 86400000).toISOString();
+    const windowRows = () => [
+      row("guest-in", { kind: "guest", mirrored_by_grant_id: GRANT, message_id: "<g1@mail>", received_at: old }),
+      reply("guest-reply", "guest-in"),
+      reply("guest-reply-by-header", null, { email_headers: { in_reply_to: "<g1@mail>" } }),
+      reply("unlinked-reply", null),
+    ];
+    const noArchive = { settingsFor: async () => ({ armed: false, mode: "off", says: "" }) } as any;
+    const sweep = (db: DatabaseService) => new RawMailRetentionService(db, undefined, noArchive).sweepHouse(HOUSE);
+
+    it("takes the house's replies to it in the same pass, so a later revoke has nothing to miss", async () => {
+      const { db, tables } = world({ rows: windowRows(), windowDays: 30 });
+      const run = await sweep(db);
+      expect(left(tables)).toEqual(["unlinked-reply"]);
+      expect(run.says).toMatch(/2 of the house's own sent replies to those letters went with them/);
+      await revoke(db);
+      expect(left(tables)).toEqual(["unlinked-reply"]);
+    });
+
+    it("holds the letter, and says why, when the replies to it could not be read", async () => {
+      const { db, tables } = world({ rows: windowRows(), windowDays: 30, failRepliesRead: true });
+      const run = await sweep(db);
+      expect(left(tables)).toContain("guest-in");
+      expect(left(tables)).toContain("guest-reply");
+      expect(run.error).toMatch(/could NOT be read/);
+    });
+  });
+
+  it("says when the count of replies naming no letter could not be read, instead of reporting none kept", async () => {
+    const { db } = world({ rows: rows(), failStray: true });
+    const run = await revoke(db);
+    expect(run.error).toMatch(/name no letter could NOT be read \(stray timeout\)/);
+    expect(run.says).not.toMatch(/name no letter they answer/);
   });
 });
