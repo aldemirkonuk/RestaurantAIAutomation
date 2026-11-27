@@ -28,6 +28,11 @@ export default function NoAccessScreen() {
   const user = useSession((s) => s.user);
   const signOut = useSession((s) => s.signOut);
 
+  // open-house says the address is verified and the server refuses an
+  // unverified one with a 403, so a session not yet verified goes to verify
+  // first; verify-email sends a verified houseless session on to open-house.
+  const verified = user?.emailVerified === true;
+
   return (
     <AuthShell
       title="No restaurant yet."
@@ -40,18 +45,19 @@ export default function NoAccessScreen() {
         <AppText variant="footnote">
           Opening your own restaurant? Start below, once your address is
           verified. Joining one? An owner or manager has to send you an invite
-          link. Open it on this phone, or type the code on the join screen.
+          link. Open it on this phone and tap Accept.
         </AppText>
       </AuthNotice>
 
       <AuthButton
-        label="I am opening a restaurant of my own"
-        onPress={() => router.push("/open-house" as never)}
-      />
-
-      <AuthLink
-        label="I have an invite code"
-        onPress={() => router.push("/register?type=join" as never)}
+        label={
+          verified
+            ? "I am opening a restaurant of my own"
+            : "Verify my address first"
+        }
+        onPress={() =>
+          router.push((verified ? "/open-house" : "/verify-email") as never)
+        }
       />
 
       <AuthLink

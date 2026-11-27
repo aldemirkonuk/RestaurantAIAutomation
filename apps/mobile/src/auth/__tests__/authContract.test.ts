@@ -228,8 +228,19 @@ describe("a houseless session has a way back to /open-house (r106)", () => {
   const noAccess = read(path.resolve(__dirname, "../../../app/no-access.tsx"));
 
   it("the no-access screen offers the open-house route, and that route exists", () => {
-    expect(noAccess).toContain('router.push("/open-house"');
+    expect(noAccess).toContain('"/open-house"');
     expect(fs.existsSync(path.resolve(__dirname, "../../../app/open-house.tsx"))).toBe(true);
+  });
+
+  it("an unverified session is sent to verify first, a verified one to open-house", () => {
+    expect(noAccess).toContain("user?.emailVerified === true");
+    expect(noAccess).toMatch(/verified\s*\?\s*"\/open-house"\s*:\s*"\/verify-email"/);
+    expect(noAccess).toContain("Verify my address first");
+  });
+
+  it("offers no door to /register, which sends a signed-in session straight back here", () => {
+    expect(noAccess).not.toContain("/register");
+    expect(noAccess).not.toContain("type the code");
   });
 });
 
