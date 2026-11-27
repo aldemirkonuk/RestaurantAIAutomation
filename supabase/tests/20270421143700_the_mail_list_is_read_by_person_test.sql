@@ -242,4 +242,152 @@ DO $$ DECLARE n int; BEGIN
   PERFORM pg_temp.ok(n = 0, 'H4 waiting-only leaves out unsent-only vendors');
 END $$;
 
+-- ── A letter can need no reply (r28 mail audit, gap 4) ──────────────────────
+-- House H4 (UTC). Vendor V8, thread gm:nr, in the thread's own order:
+--   n1 in  09:00  "Can you confirm?"      (answered by n2)
+--   n2 out 10:00  "Confirmed"
+--   n3 in  11:00  "Thanks!"
+--   n4 in  11:00  "See you Friday"         same time as n3, larger id: after it
+-- V8 also has thread gm:other (o1 in 08:00). V9 shares the key gm:nr (p1 in
+-- 10:30, before V8's marks). V10 has one thread (q1 in 07:00). House H5 has V8's key too (z1).
+ALTER TABLE public.mail_letter_no_reply_marks DROP CONSTRAINT IF EXISTS mail_letter_no_reply_marks_restaurant_id_fkey;
+INSERT INTO public.restaurants (id, name, slug, timezone) VALUES
+  ('44444444-4444-4444-8444-444444444444', 'No reply house', 'no-reply-house-test', 'UTC');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, received_at, sent_at, created_at, email_headers) VALUES
+  ('e8000000-0000-4000-8000-000000000001', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'Can you confirm?', 'RECEIVED', 'gm:nr', '2027-02-01 09:00+00', NULL, '2027-02-01 09:00+00', '{}'),
+  ('e8000000-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'outbound', 'email', 'Confirmed', 'SENT', 'gm:nr', NULL, '2027-02-01 10:00+00', '2027-02-01 10:00+00', '{}'),
+  ('e8000000-0000-4000-8000-000000000003', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'Thanks!', 'RECEIVED', 'gm:nr', '2027-02-01 11:00+00', NULL, '2027-02-01 11:00+00', '{}'),
+  ('e8000000-0000-4000-8000-000000000004', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'See you Friday', 'RECEIVED', 'gm:nr', '2027-02-01 11:00+00', NULL, '2027-02-01 11:00+00', '{}'),
+  ('e8000000-0000-4000-8000-0000000000a1', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'Another question', 'RECEIVED', 'gm:other', '2027-02-01 08:00+00', NULL, '2027-02-01 08:00+00', '{}'),
+  ('e9000000-0000-4000-8000-000000000001', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000009',
+   'inbound', 'email', 'Other vendor, same key', 'RECEIVED', 'gm:nr', '2027-02-01 10:30+00', NULL, '2027-02-01 10:30+00', '{}'),
+  ('ea000000-0000-4000-8000-000000000001', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-00000000000a',
+   'inbound', 'email', 'Price list', 'RECEIVED', 'gm:v10', '2027-02-01 07:00+00', NULL, '2027-02-01 07:00+00', '{}'),
+  ('e5000000-0000-4000-8000-000000000001', '55555555-5555-4555-8555-555555555555', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'Other house', 'RECEIVED', 'gm:nr', '2027-02-01 13:00+00', NULL, '2027-02-01 13:00+00', '{}');
+
+-- NR1: before any mark the thread waits since n3, the first letter after n2.
+DO $$ DECLARE r record; s record; BEGIN
+  SELECT * INTO r FROM public.mail_thread_states('44444444-4444-4444-8444-444444444444', true, NULL)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000008' AND thread_key = 'gm:nr';
+  PERFORM pg_temp.ok(r.waiting AND r.waiting_since = '2027-02-01 11:00+00', 'NR1 unmarked thread waits since n3');
+  SELECT * INTO s FROM public.mail_inbox_summary('44444444-4444-4444-8444-444444444444', true, 'UTC');
+  PERFORM pg_temp.ok(s.waiting_people = 3, 'NR1b three people wait (got ' || s.waiting_people || ')');
+END $$;
+
+-- NR2: what may be marked: only a letter of this house that it received.
+DO $$ BEGIN
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e8000000-0000-4000-8000-000000000002') = 'not_received', 'NR2 a letter the house sent cannot be marked');
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e5000000-0000-4000-8000-000000000001') = 'not_found', 'NR2b another house''s letter is not found');
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e0000000-0000-4000-8000-0000000000ff') = 'not_found', 'NR2c an unknown letter is not found');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.mail_letter_no_reply_marks), 'NR2d no refused mark was written');
+END $$;
+
+-- NR3: marking n3 settles n3 and the earlier n1, never n4 (same time, after it).
+DO $$ DECLARE r record; o record; BEGIN
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e8000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-0000000000aa') = 'marked', 'NR3 n3 marked');
+  SELECT bool_or(owes) FILTER (WHERE id = 'e8000000-0000-4000-8000-000000000001') AS n1,
+         bool_or(owes) FILTER (WHERE id = 'e8000000-0000-4000-8000-000000000003') AS n3,
+         bool_or(owes) FILTER (WHERE id = 'e8000000-0000-4000-8000-000000000004') AS n4
+    INTO o FROM public.mail_letter_rows('44444444-4444-4444-8444-444444444444', true, NULL);
+  PERFORM pg_temp.ok(o.n1 IS FALSE AND o.n3 IS FALSE, 'NR3b n1 and n3 owe nothing');
+  PERFORM pg_temp.ok(o.n4, 'NR3c n4, after n3 in the thread''s order, still owes');
+  SELECT * INTO r FROM public.mail_thread_states('44444444-4444-4444-8444-444444444444', true, NULL)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000008' AND thread_key = 'gm:nr';
+  PERFORM pg_temp.ok(r.waiting, 'NR3d the thread still waits on n4');
+END $$;
+
+-- NR4: marking n4 too settles the thread, and only that thread.
+DO $$ DECLARE r record; p record; v9 boolean; s record; tw boolean; BEGIN
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e8000000-0000-4000-8000-000000000004') = 'marked', 'NR4 n4 marked');
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e8000000-0000-4000-8000-000000000004') = 'marked', 'NR4b marking twice is still marked');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.mail_letter_no_reply_marks) = 2, 'NR4c one mark per letter');
+  SELECT * INTO r FROM public.mail_thread_states('44444444-4444-4444-8444-444444444444', true, NULL)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000008' AND thread_key = 'gm:nr';
+  PERFORM pg_temp.ok(r.waiting IS FALSE AND r.waiting_since IS NULL, 'NR4d the thread no longer waits');
+  PERFORM pg_temp.ok(r.message_count = 4 AND r.last_direction = 'inbound', 'NR4e its letters are all still there');
+  SELECT * INTO p FROM public.list_mail_people('44444444-4444-4444-8444-444444444444', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000008';
+  PERFORM pg_temp.ok(p.waiting AND p.waiting_since = '2027-02-01 08:00+00', 'NR4f V8''s other thread still waits');
+  SELECT waiting INTO v9 FROM public.mail_thread_states('44444444-4444-4444-8444-444444444444', true, NULL)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000009' AND thread_key = 'gm:nr';
+  PERFORM pg_temp.ok(v9, 'NR4g another vendor under the same key still waits');
+  SELECT DISTINCT thread_waiting INTO tw FROM public.mail_thread_letters('44444444-4444-4444-8444-444444444444', 'gm:nr',
+    'c0000000-0000-4000-8000-000000000008', true);
+  PERFORM pg_temp.ok(tw IS FALSE, 'NR4h the thread page says it is not waiting');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.mail_thread_letters('44444444-4444-4444-8444-444444444444', 'gm:nr',
+    'c0000000-0000-4000-8000-000000000008', true) WHERE no_reply_marked_at IS NOT NULL) = 2, 'NR4i the page names the two marked letters');
+END $$;
+
+-- NR5: marking V10's only letter takes V10 off the header count.
+DO $$ DECLARE s record; BEGIN
+  PERFORM public.mail_letter_mark_no_reply('44444444-4444-4444-8444-444444444444', 'ea000000-0000-4000-8000-000000000001');
+  SELECT * INTO s FROM public.mail_inbox_summary('44444444-4444-4444-8444-444444444444', true, 'UTC');
+  PERFORM pg_temp.ok(s.waiting_people = 2, 'NR5 the header counts two waiting (got ' || s.waiting_people || ')');
+  PERFORM pg_temp.ok(s.oldest_wait_at = '2027-02-01 08:00+00', 'NR5b the oldest wait is no longer V10''s');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.list_mail_people('44444444-4444-4444-8444-444444444444', true, true)
+    WHERE provider_id = 'c0000000-0000-4000-8000-00000000000a') = 0, 'NR5c V10 is off the waiting list');
+END $$;
+
+-- NR6: a mark is never another house's: H5 marks its own letter under the
+-- same vendor and key, and a later H4 letter still waits.
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, received_at, sent_at, created_at, email_headers) VALUES
+  ('e8000000-0000-4000-8000-000000000005', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'One more thing', 'RECEIVED', 'gm:nr', '2027-02-01 12:30+00', NULL, '2027-02-01 12:30+00', '{}'),
+  -- A letter the house has queued but not sent is newer, and answers nothing yet.
+  ('e8000000-0000-4000-8000-000000000006', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'outbound', 'email', 'Let me check', 'HOUSE_QUEUED', 'gm:nr', NULL, NULL, '2027-02-01 12:45+00', '{}');
+DO $$ DECLARE r record; tw boolean; BEGIN
+  PERFORM pg_temp.ok(public.mail_letter_mark_no_reply('55555555-5555-4555-8555-555555555555',
+    'e5000000-0000-4000-8000-000000000001') = 'marked', 'NR6 the other house marks its own letter');
+  SELECT * INTO r FROM public.mail_thread_states('44444444-4444-4444-8444-444444444444', true, NULL)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000008' AND thread_key = 'gm:nr';
+  PERFORM pg_temp.ok(r.waiting AND r.waiting_since = '2027-02-01 12:30+00',
+    'NR6b a letter after the mark waits again, from that letter, whatever another house marked');
+  SELECT DISTINCT thread_waiting INTO tw FROM public.mail_thread_letters('44444444-4444-4444-8444-444444444444', 'gm:nr',
+    'c0000000-0000-4000-8000-000000000008', false);
+  PERFORM pg_temp.ok(tw, 'NR6c the thread page says it waits again, a queued letter after it or not');
+END $$;
+
+-- NR7: taking a mark back.
+DO $$ DECLARE o record; BEGIN
+  PERFORM pg_temp.ok(public.mail_letter_unmark_no_reply('55555555-5555-4555-8555-555555555555',
+    'e8000000-0000-4000-8000-000000000004') = 'not_found', 'NR7 another house cannot take H4''s mark back');
+  PERFORM pg_temp.ok(public.mail_letter_unmark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e8000000-0000-4000-8000-000000000004') = 'unmarked', 'NR7b n4''s mark taken back');
+  PERFORM pg_temp.ok(public.mail_letter_unmark_no_reply('44444444-4444-4444-8444-444444444444',
+    'e8000000-0000-4000-8000-000000000004') = 'not_marked', 'NR7c twice: nothing to take back');
+  SELECT bool_or(owes) FILTER (WHERE id = 'e8000000-0000-4000-8000-000000000003') AS n3,
+         bool_or(owes) FILTER (WHERE id = 'e8000000-0000-4000-8000-000000000004') AS n4
+    INTO o FROM public.mail_letter_rows('44444444-4444-4444-8444-444444444444', true, NULL);
+  PERFORM pg_temp.ok(o.n4 AND o.n3 IS FALSE, 'NR7d n4 owes again; n3''s own mark still holds');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.mail_letter_no_reply_marks
+    WHERE conversation_id = 'e5000000-0000-4000-8000-000000000001') = 1, 'NR7e the other house''s mark is untouched');
+END $$;
+
+-- NR8: only the gateway reaches the marks.
+DO $$ BEGIN
+  PERFORM pg_temp.ok(NOT has_table_privilege('authenticated', 'public.mail_letter_no_reply_marks', 'SELECT'),
+    'NR8 the marks are not readable by authenticated');
+  PERFORM pg_temp.ok(NOT has_function_privilege('authenticated',
+    'public.mail_letter_mark_no_reply(uuid, uuid, uuid)', 'EXECUTE'), 'NR8b marking is not granted to authenticated');
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon',
+    'public.mail_letter_unmark_no_reply(uuid, uuid)', 'EXECUTE'), 'NR8c unmarking is not granted to anon');
+  PERFORM pg_temp.ok((SELECT relrowsecurity FROM pg_class WHERE oid = 'public.mail_letter_no_reply_marks'::regclass),
+    'NR8d row level security is on');
+END $$;
+
 rollback;
