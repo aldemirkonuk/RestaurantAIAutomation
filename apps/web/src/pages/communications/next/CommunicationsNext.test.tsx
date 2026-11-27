@@ -270,6 +270,14 @@ beforeEach(() => {
 });
 
 describe('CommunicationsNext', () => {
+  it('says vendor replies to staff, whose 30-day figure is the vendors\' alone', () => {
+    mockAuth.current = { user: { role: 'staff' }, activeRole: 'staff' };
+    mockData.current = { ...base, glance: { draftsPending: 1, sentLast30: 9, repliesLast30: 18 } };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Letters in · 30 days')).toBeNull();
+  });
+
   it('shows the glance strip from settled queries and EM for unanswered ones', () => {
     mockData.current = {
       ...base,
