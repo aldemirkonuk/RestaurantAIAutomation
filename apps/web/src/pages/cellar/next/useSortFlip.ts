@@ -10,7 +10,7 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { prefersReducedMotion, settle, type MotionToken } from '../../../lib/mudavym/motion';
 
 export const SORT_FLIP: MotionToken = { easing: settle.easing, ms: 180 };
-/** Past this many rows the slide is skipped: one animation per moved row is bounded (r108). */
+/** When more rows than this move, none slides: a part-slide has some rows crossing others in place, so it is all or nothing (r108). */
 export const FLIP_ROW_CAP = 60;
 
 const pageTop = (el: Element) => el.getBoundingClientRect().top + (typeof window === 'undefined' ? 0 : window.scrollY);
@@ -24,35 +24,41 @@ const pageTop = (el: Element) => el.getBoundingClientRect().top + (typeof window
  * the row was laid out, not from where it was seen, and jump by the residue.
  */
 export function useSortFlip(body: RefObject<HTMLElement | null>, sortKey: string): { before: () => void } {
-  const was = useRef<Map<string, number> | null>(null);
+  const was = useRef<{ key: string; rows: Map<string, number> } | null>(null);
+  const drawn = useRef(sortKey);
+  // Runs after every render, not only when the key changes: a snapshot is for the very next render, and
+  // one that renders no row change (a search keystroke that keeps the same rows) is dropped here, so it
+  // cannot play later against a different change (a refetch that adds a row).
   const running = useRef<Map<string, Animation>>(new Map());
   useLayoutEffect(() => {
-    const from = was.current;
+    const snap = was.current;
     was.current = null;
+    drawn.current = sortKey;
     const el = body.current;
-    if (!from || !el || prefersReducedMotion() || typeof Element.prototype.animate !== 'function') return;
-    // `from` was read with each running slide applied; read the new place without it.
+    if (!snap || snap.key === sortKey || !el || prefersReducedMotion() || typeof Element.prototype.animate !== 'function') return;
+    // `snap` was read with each running slide applied; read the new place without it.
     running.current.forEach((a) => a.cancel());
     running.current.clear();
-    let played = 0;
+    const moved: Array<[HTMLElement, number]> = [];
     el.querySelectorAll<HTMLElement>('tr[data-row]').forEach((row) => {
-      const key = row.dataset.row as string;
-      const start = from.get(key);
-      if (start == null || played >= FLIP_ROW_CAP) return;
+      const start = snap.rows.get(row.dataset.row as string);
+      if (start == null) return;
       const delta = start - pageTop(row);
-      if (Math.abs(delta) < 1) return;
-      played += 1;
-      const slide = row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], { duration: SORT_FLIP.ms, easing: SORT_FLIP.easing });
-      if (slide) running.current.set(key, slide);
+      if (Math.abs(delta) >= 1) moved.push([row, delta]);
     });
-  }, [body, sortKey]);
+    if (moved.length > FLIP_ROW_CAP) return;
+    for (const [row, delta] of moved) {
+      const slide = row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], { duration: SORT_FLIP.ms, easing: SORT_FLIP.easing });
+      if (slide) running.current.set(row.dataset.row as string, slide);
+    }
+  });
   return {
     before: () => {
       const el = body.current;
       if (!el) return;
       const m = new Map<string, number>();
       el.querySelectorAll<HTMLElement>('tr[data-row]').forEach((row) => m.set(row.dataset.row as string, pageTop(row)));
-      was.current = m;
+      was.current = { key: drawn.current, rows: m };
     },
   };
 }
