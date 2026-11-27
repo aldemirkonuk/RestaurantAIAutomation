@@ -231,3 +231,50 @@ describe("an owner and a manager still write goals", () => {
     expect(reached()).toBe(0);
   });
 });
+
+/**
+ * The role gate runs before the body is read, and a body that passes it still
+ * meets the service's own checks (r110 reports-8). The service here is the real
+ * `GoalsService.createGoal` up to its first read of the house, which answers a
+ * sentinel so no database is needed: reaching it means the body was accepted.
+ */
+describe("a goal body meets the role gate first, then the service's checks", () => {
+  const HOUSE_READ = "reached the house's zone read";
+  const realCreate = () =>
+    goals.createGoal.mockImplementationOnce(((rid: string, input: unknown, gate: unknown) =>
+      GoalsService.prototype.createGoal.call(
+        { dbService: { getClient: () => { throw new Error(HOUSE_READ); } } },
+        rid,
+        input as never,
+        gate as never,
+      )) as never);
+
+  it("[REVERT-FAILS] staff with an empty body answer 403, not 400: the body is never read", async () => {
+    const res = await call("POST", G, tokenFor("staff"), {});
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(res.body)).not.toMatch(/Unsupported metric|targetValue/);
+    expect(reached()).toBe(0);
+  });
+
+  it("[REVERT-FAILS] an owner with an empty body passes the gate and is refused by the service, 400", async () => {
+    realCreate();
+    const res = await call("POST", G, tokenFor("owner"), {});
+    expect(res.status).toBe(400);
+    expect(res.body?.message).toMatch(/^Unsupported metric 'undefined'/);
+    expect(goals.createGoal).toHaveBeenCalledTimes(1);
+  });
+
+  it("[REVERT-FAILS] an owner's valid body passes the gate and the service's checks, whole", async () => {
+    realCreate();
+    const body = { name: "x", metricKey: "wine_revenue", targetValue: 1 };
+    const res = await call("POST", G, tokenFor("owner"), body);
+    expect(res.body?.message).toBe(HOUSE_READ);
+    expect(goals.createGoal).toHaveBeenCalledWith(HOUSE_A, body, expect.anything());
+  });
+
+  it("a manager's valid body passes the same way", async () => {
+    realCreate();
+    const res = await call("POST", G, tokenFor("manager"), { name: "x", metricKey: "checks", targetValue: 40 });
+    expect(res.body?.message).toBe(HOUSE_READ);
+  });
+});
