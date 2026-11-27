@@ -438,6 +438,22 @@ export async function discardMenuItem(
   return response.data
 }
 
+/**
+ * Puts a discarded line back on the current menu (owner or manager). Writes only the
+ * line's status: the house's sale state is not touched. A failed call throws with the
+ * gateway's words (409 when the menu is no longer current).
+ */
+export async function restoreMenuItem(
+  restaurantId: string,
+  menuItemId: string
+): Promise<{ menuItemId: string; status: 'approved' }> {
+  const response = await apiClient.patch<{ menuItemId: string; status: 'approved' }>(
+    `/menus/${restaurantId}/items/${menuItemId}/restore`,
+    {}
+  )
+  return response.data
+}
+
 export async function getOnboardingProgress(): Promise<OnboardingProgress | null> {
   try {
     const response = await apiClient.get<OnboardingProgress>('/onboarding/progress')
@@ -676,6 +692,12 @@ export async function makeMenuCurrent(menuId: string, fingerprint: string): Prom
  */
 export async function removeFailedRead(menuId: string): Promise<{ menuId: string; removed: true }> {
   const response = await apiClient.post<{ menuId: string; removed: true }>(`/menu-versions/${menuId}/remove`)
+  return response.data
+}
+
+/** Puts a failed read that was taken off the kept list back (owner or manager). */
+export async function restoreFailedRead(menuId: string): Promise<{ menuId: string; restored: true }> {
+  const response = await apiClient.post<{ menuId: string; restored: true }>(`/menu-versions/${menuId}/restore`)
   return response.data
 }
 
