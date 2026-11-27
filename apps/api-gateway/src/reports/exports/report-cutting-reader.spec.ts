@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { AnalyticsController } from "../../analytics/analytics.controller";
 import { RecommendationActionsService } from "../../analytics/recommendation-actions.service";
+import { readerSees } from "../../analytics/report-registers-role";
 import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cuttings";
 
@@ -128,18 +129,23 @@ const BENCH_SOURCES = {
 };
 
 const PAGE: Record<ExportableCutting, PageRead> = {
-  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
-  till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
+  reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40", undefined, HOLDER) },
+  // The page doubles the window to compare (DD-r104-22), but an export never
+  // compares, so it reads the plain-window branch of the same path.
+  till: {
+    path: "`/analytics/pos-revenue/${rid}?days=${ctx.compare && compareOffered(ctx.days) ? ctx.days * 2 : ctx.days}`",
+    call: (c, d) => c.getPosRevenue(RID, String(d), undefined, HOLDER),
+  },
   goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: {
     sources: BENCH_SOURCES,
     call: async (c) => ({
-      cashflow: await c.getCashflow(RID),
+      cashflow: await c.getCashflow(RID, HOLDER),
       seasonality: await c.getSeasonality(RID),
       goals: await c.listGoals(RID, "active", HOLDER),
     }),
   },
-  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
+  pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID, HOLDER) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
   quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID) },
@@ -160,14 +166,16 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         ),
       )
       .join("\n");
+    // The page's path may wrap across lines; compare it as one line of text.
+    const webOneLine = web.replace(/\s+/g, " ");
     for (const [id, p] of Object.entries(PAGE)) {
       if ("path" in p) {
-        expect([id, web.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
+        expect([id, webOneLine.includes(`path: (rid${id === "till" ? ", ctx" : ""}) => ${p.path}`)]).toEqual([id, true]);
         continue;
       }
       // A composed cutting: its own path is null, and its `sources` block names
       // exactly these keys, each with exactly this path.
-      const block = /path: null,\s*sources: \{([\s\S]*?)\n\s*\},/.exec(web)?.[1] ?? "";
+      const block = /path: null,(?:\s*\/\/[^\n]*|\s*readers: \[[^\]]*\],)*\s*sources: \{([\s\S]*?)\n\s*\},/.exec(web)?.[1] ?? "";
       const named = [...block.matchAll(/(\w+): \(rid\) => (`[^`]*`)/g)].map((m) => [m[1], m[2]]);
       expect([id, Object.fromEntries(named)]).toEqual([id, p.sources]);
     }
@@ -207,11 +215,12 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const fromPage = (await PAGE[id].call(controller, days)) as Record<string, unknown>;
       const fromExport = await reader.read(RID, id, id === "till" ? days : null);
       if (id === "till") {
-        // The endpoint also attaches a per-wine consumption breakdown that the
-        // till cutting never reads; everything else must match.
-        const { consumption, ...rest } = fromPage;
-        expect(consumption).toBeDefined();
-        expect(fromExport).toEqual(rest);
+        // The page's call does not ask for the per-wine breakdown (r41 gap 8),
+        // so the endpoint and the export answer the same window, on the wire.
+        expect(fromPage.consumption).toBeUndefined();
+        expect(JSON.parse(JSON.stringify(fromExport))).toStrictEqual(
+          JSON.parse(JSON.stringify(fromPage)),
+        );
       } else if (id === "reading") {
         // The page's last step is the person's own snoozes (ADR 0191 round 3);
         // with no one looking it drops nothing and says it read no one's. The
@@ -243,14 +252,17 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     for (const [user, withSales] of cases) {
       const { controller } = build();
       const gate = { withSales };
-      const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args: unknown[] };
+      // The goal routes also hand on what the role may read of a goal (r108);
+      // Figures of record is answered before the service for a role without money.
+      const goalGate = { withSales, goalSees: readerSees(user) };
+      const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args?: unknown[] };
       const overview = (await controller.getOverview(RID, user)) as unknown as { args: unknown[] };
       const goals = (await controller.listGoalsWithProgress(RID, undefined, user)) as unknown as { args: unknown[] };
-      expect([user, fin.args, overview.args, goals.args]).toEqual([
+      expect([user, fin.args ?? fin, overview.args, goals.args]).toEqual([
         user,
-        [RID, 0, gate],
-        [RID, gate],
-        [RID, "active", gate],
+        withSales ? [RID, 0, gate] : { withheldForRole: true, register: "financial" },
+        [RID, goalGate],
+        [RID, "active", goalGate],
       ]);
     }
   });
@@ -270,8 +282,8 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const made = (await controller.createGoal(RID, { metricKey: "days_of_inventory" }, user)) as unknown as { args: unknown[] };
       expect([user, list.args, one.args, made.args]).toEqual([
         user,
-        [RID, "active", gate],
-        [RID, "g1", undefined, gate],
+        [RID, "active", { ...gate, goalSees: readerSees(user) }],
+        [RID, "g1", undefined, { ...gate, goalSees: readerSees(user) }],
         [RID, { metricKey: "days_of_inventory" }, gate],
       ]);
     }
@@ -303,7 +315,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
   it("reading: on a cold start both compute once, live, and persist — the same call", async () => {
     const page = build([]);
     const exp = build([]);
-    const fromPage = await page.controller.getInsights(RID, undefined, undefined, "40");
+    const fromPage = await page.controller.getInsights(RID, undefined, undefined, "40", undefined, HOLDER);
     const fromExport = await exp.reader.read(RID, "reading", null);
     expect(fromExport).toEqual(fromPage);
     expect(exp.insights.generate).toHaveBeenCalledWith(RID, { categories: undefined, persist: true });
@@ -320,7 +332,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     });
     page.insights.readStored.mockImplementation(allWithheld);
     exp.insights.readStored.mockImplementation(allWithheld);
-    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40")) as Record<string, unknown>;
+    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40", undefined, HOLDER)) as Record<string, unknown>;
     const fromExport = await exp.reader.read(RID, "reading", null);
     const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
     expect(fromExport).toEqual(rest);

@@ -33,6 +33,16 @@ import {
   actorOf,
 } from "./recommendation-actions.service";
 import { insightRowTarget } from "./insights/item-state";
+import {
+  feedSeesFor,
+  insightReadable,
+  insightsForRole,
+} from "./insights/insight-feed-role";
+import {
+  readerSees,
+  registerReadable,
+  withheldRegister,
+} from "./report-registers-role";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { goalScenarioBook } from "./goal-scenarios";
@@ -95,6 +105,11 @@ const MAX_FORECAST_HORIZON = 365;
  */
 function salesGateFor(user?: { role?: string | null }): SalesGate {
   return { withSales: policyFor(user?.role).sees.includes("sales") };
+}
+
+/** The gate the goal routes hand on: the till's, and what the role may read of a goal. */
+function goalGateFor(user?: { role?: string | null }): SalesGate {
+  return { ...salesGateFor(user), goalSees: readerSees(user) };
 }
 
 function parseHorizon(raw?: string): number | undefined {
@@ -204,6 +219,10 @@ export class AnalyticsController {
     @Query("labor") laborStr?: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
+    // Figures of record are the house's cost and margin: an owner's or a
+    // manager's. Staff are answered before the cellar is read (r108).
+    if (!registerReadable("financial", readerSees(user)))
+      return withheldRegister("financial");
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
@@ -455,17 +474,42 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
+    const sees = feedSeesFor(user);
+    // A forced compute of a type the caller may not read is not run: the
+    // caller names the type, so its sentence would be theirs alone.
+    if (candidateKey?.trim() && !insightReadable(candidateKey.trim(), sees))
+      return { source: "withheld", insights: [], withheldForRole: 1 };
     try {
-      const answer = await this.readInsights(
+      const raw = await this.readInsights(
         restaurantId,
         refresh,
         categoriesStr,
         limitStr,
         candidateKey,
       );
-      return await this.forViewer(restaurantId, user, answer);
+      // Staff read the sentences of the classes they see: never the till, a
+      // spend, a margin or a named server (ADR 0348). Said only when
+      // something was withheld, so a holder's answer is the one it was.
+      let answer: unknown = raw;
+      if (Array.isArray((raw as { insights?: unknown }).insights)) {
+        const held = insightsForRole(
+          (raw as { insights: unknown[] }).insights,
+          sees,
+        );
+        if (held.withheldForRole > 0)
+          answer = {
+            ...raw,
+            insights: held.kept,
+            withheldForRole: held.withheldForRole,
+          };
+      }
+      return await this.forViewer(
+        restaurantId,
+        user,
+        answer as { insights?: unknown },
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch insights",
@@ -907,7 +951,7 @@ export class AnalyticsController {
     return this.goalsService.listGoals(
       restaurantId,
       status || "active",
-      salesGateFor(user),
+      goalGateFor(user),
     );
   }
 
@@ -953,7 +997,7 @@ export class AnalyticsController {
       return await this.goalsService.listGoalsWithProgress(
         restaurantId,
         status || "active",
-        salesGateFor(user),
+        goalGateFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute goal progress");
@@ -1029,7 +1073,7 @@ export class AnalyticsController {
         restaurantId,
         goalId,
         undefined,
-        salesGateFor(user),
+        goalGateFor(user),
       );
     } catch (error) {
       throw lensFailure(error, "Failed to compute goal progress");
@@ -1156,7 +1200,12 @@ export class AnalyticsController {
     description:
       "30-day purchasing spend vs prior, Holt 4-week projection, committed open-order exposure.",
   })
-  async getCashflow(@Param("restaurantId") restaurantId: string) {
+  async getCashflow(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    if (!registerReadable("cashflow", readerSees(user)))
+      return withheldRegister("cashflow");
     return this.advanced.getCashflow(restaurantId);
   }
 
@@ -1181,7 +1230,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Sales revenue booked through the POS, over a day range",
     description:
-      "Sum of non-voided `pos_checks.total` plus the per-wine bottle/glass breakdown for the same window. " +
+      "Sum of non-voided `pos_checks.total` and, with `include=consumption`, the per-wine bottle/glass breakdown for the same window. " +
       "`posConnected: false` means this restaurant has never had a POS check land — `revenue` and `checkCount` " +
       "are then `null`, NOT `0`, and every consumer must render an empty state rather than a figure. " +
       "Reuses the same query goal progress runs on, so the two can never disagree. " +
@@ -1199,12 +1248,19 @@ export class AnalyticsController {
     description:
       "`prior` also answers the same-length window just before this one, as `prior`. Any other value is ignored.",
   })
+  @ApiQuery({
+    name: "include",
+    required: false,
+    description:
+      "`consumption` also reads the per-wine breakdown for the window. Not read otherwise: no page draws it.",
+  })
   @ApiResponse({ status: 200, description: "POS revenue window" })
   async getPosRevenue(
     @Param("restaurantId") restaurantId: string,
     @Query("days") days?: string,
     @Query("compare") compare?: string,
     @CurrentUser() user?: { role?: string | null },
+    @Query("include") include?: string,
   ) {
     const parsed = Number.parseInt(days ?? "", 10);
     const span = Number.isFinite(parsed)
@@ -1239,6 +1295,13 @@ export class AnalyticsController {
               "prior",
             )
           : await this.goalsService.getPosRevenueWindow(restaurantId, span);
+      // The breakdown is a whole-window read of the consumption log, every
+      // page of it after every page of the checks. No reader of this route
+      // draws it (the till reads the figures and the daily series; the export
+      // reads the window alone), so it is read only when asked for. The key is
+      // `undefined`, so the JSON body drops it.
+      if (!wantsConsumption(include))
+        return { ...window, consumption: undefined };
       // Skipped entirely when no POS is wired: there is nothing to break down,
       // and issuing the query anyway would only make "no POS" cost two round
       // trips to discover. Skipped too when the house has no zone: its days
@@ -1274,7 +1337,22 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.advanced.getOverview(restaurantId, salesGateFor(user));
+    const overview = await this.advanced.getOverview(
+      restaurantId,
+      goalGateFor(user),
+    );
+    // The overview carries the same registers by another door (r108): a role
+    // that may not read them is told so here, with no figure.
+    const sees = readerSees(user);
+    return {
+      ...overview,
+      financial: registerReadable("financial", sees)
+        ? overview.financial
+        : withheldRegister("financial"),
+      cashflow: registerReadable("cashflow", sees)
+        ? overview.cashflow
+        : withheldRegister("cashflow"),
+    };
   }
 
   @Get("recommendations/:restaurantId")
@@ -1667,4 +1745,15 @@ export class AnalyticsController {
       timestamp: new Date().toISOString(),
     };
   }
+}
+
+/**
+ * Whether `GET /analytics/pos-revenue` was asked for its per-wine breakdown:
+ * `include=consumption`, alone or in a comma list. Anything else is not asking.
+ */
+export function wantsConsumption(include: string | undefined): boolean {
+  return (include ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .includes("consumption");
 }

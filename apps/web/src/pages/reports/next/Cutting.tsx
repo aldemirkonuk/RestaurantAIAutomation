@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -379,7 +379,20 @@ export interface CuttingProps {
   flatOrder?: AnalysisId[];
 }
 
-export default function Cutting({
+/** What the router half hands the body: whether the link lays this card flat, and the two moves. */
+interface CuttingBodyProps extends CuttingProps {
+  flat: boolean;
+  onOpenFlat: () => void;
+  onCloseFlat: () => void;
+  /** Lay the neighbour `to` flat in this one's place (a replace, never a push). */
+  onStepFlat: (to: AnalysisId, dir: 'prev' | 'next') => void;
+  /** Laid flat by a step from that side: its dialog focuses the way it came. Undefined otherwise. */
+  steppedIn?: 'prev' | 'next';
+  /** Whether the link lays any cutting flat now (read on demand, so a step redraws no other card). */
+  anyFlat: () => boolean;
+}
+
+function CuttingBody({
   id,
   graph,
   register,
@@ -399,7 +412,13 @@ export default function Cutting({
   flatOrder,
   onFit,
   onControls,
-}: CuttingProps) {
+  flat: flatAsked,
+  onOpenFlat: openFlat,
+  onCloseFlat: closeFlat,
+  onStepFlat,
+  steppedIn,
+  anyFlat,
+}: CuttingBodyProps) {
   const spec = CATALOGUE[id];
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
@@ -486,28 +505,15 @@ export default function Cutting({
 
   const held = arrange.picked === id;
 
-  /* Laid flat: only with a register, only while reading, only for the id
-     the URL names (`get` answers the first, so two params open one dialog).
-     Opening pushes an entry marked with this id, so close goes back through
-     history and Back, Esc and the button agree; a cold `?flat=` has no entry
-     of ours, so close removes the param in place. */
-  const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
-  const location = useLocation();
+  // Laid flat: the router shell below reads the link (see `Cutting`).
   const canLayFlat = readsRegister(spec);
-  const flat = canLayFlat && !arranging && params.get(FLAT_PARAM) === id;
+  const flat = canLayFlat && !arranging && flatAsked;
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const flatLabel = `Show ${spec.title} full screen`;
 
-  const openFlat = () => {
-    const next = new URLSearchParams(params);
-    next.set(FLAT_PARAM, id);
-    setParams(next, { state: { rpFlat: id } });
-  };
-  // Previous and Next in the sheet's read order. A step replaces this entry, never adds one, so Back still
-  // leaves full screen in one press; the marker rides along only when the opener's entry was ours.
+  // Previous and Next in the sheet's read order. The router half (below) replaces the entry on a step, so
+  // Back still leaves full screen in one press; this body only says where it is and which way to go.
   const stepAt = flatOrder ? flatOrder.indexOf(id) : -1;
-  const stepState = location.state as { rpFlat?: unknown; rpStep?: 'prev' | 'next' } | null;
   const flatStep: FlatStep | undefined =
     flatOrder && stepAt !== -1 && flatOrder.length > 1
       ? {
@@ -517,24 +523,10 @@ export default function Cutting({
           nextTitle: stepAt < flatOrder.length - 1 ? CATALOGUE[flatOrder[stepAt + 1]].title : null,
           go: (dir) => {
             const to = flatOrder[stepAt + (dir === 'next' ? 1 : -1)];
-            if (!to) return;
-            const next = new URLSearchParams(params);
-            next.set(FLAT_PARAM, to);
-            const ours = stepState?.rpFlat === id;
-            setParams(next, { replace: true, state: ours ? { rpFlat: to, rpStep: dir } : { rpStep: dir } });
+            if (to) onStepFlat(to, dir);
           },
         }
       : undefined;
-  const closeFlat = () => {
-    const ours = (location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
-    if (ours) {
-      navigate(-1);
-      return;
-    }
-    const next = new URLSearchParams(params);
-    next.delete(FLAT_PARAM);
-    setParams(next, { replace: true });
-  };
 
   // A fitted card tells the sheet what its content needs, now and whenever a
   // block inside it changes size. Only while it is read as a table: a chart
@@ -578,7 +570,7 @@ export default function Cutting({
   const wasFlat = useRef(flat);
   useEffect(() => {
     // A step lays the neighbour flat: its dialog takes focus, this opener must not.
-    if (wasFlat.current && !flat && !params.get(FLAT_PARAM)) openerRef.current?.focus();
+    if (wasFlat.current && !flat && !anyFlat()) openerRef.current?.focus();
     wasFlat.current = flat;
   }, [flat]);
 
@@ -709,9 +701,74 @@ export default function Cutting({
           anchorRef={openerRef}
           onClose={closeFlat}
           step={flatStep}
-          initialFocus={stepState?.rpStep}
+          initialFocus={steppedIn}
         />
       )}
     </section>
+  );
+}
+
+/** Memoised: the page hands each cutting only what it reads (perf-p4-5, r108). */
+const CuttingBodyMemo = memo(CuttingBody);
+
+/**
+ * The router half of a cutting. The link changes on every till-window click
+ * (`?days=`), and a component that reads it redraws with it, so only this
+ * shell reads the link; the body below is handed a boolean and two functions
+ * that stay the same, and redraws only when what it draws changes.
+ *
+ * Laid flat: only with a register, only while reading, only for the id the
+ * URL names (`get` answers the first, so two params open one dialog). Opening
+ * pushes an entry marked with this id, so close goes back through history and
+ * Back, Esc and the button agree; a cold `?flat=` has no entry of ours, so
+ * close removes the param in place.
+ */
+export default function Cutting(props: CuttingProps) {
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const router = useRef({ params, setParams, navigate, location });
+  router.current = { params, setParams, navigate, location };
+  const { id } = props;
+  const onOpenFlat = useCallback(() => {
+    const r = router.current;
+    const next = new URLSearchParams(r.params);
+    next.set(FLAT_PARAM, id);
+    r.setParams(next, { state: { rpFlat: id } });
+  }, [id]);
+  const onCloseFlat = useCallback(() => {
+    const r = router.current;
+    if ((r.location.state as { rpFlat?: unknown } | null)?.rpFlat === id) {
+      r.navigate(-1);
+      return;
+    }
+    const next = new URLSearchParams(r.params);
+    next.delete(FLAT_PARAM);
+    r.setParams(next, { replace: true });
+  }, [id]);
+  // A step replaces this entry; the marker rides along only when the opener's entry was ours.
+  const onStepFlat = useCallback(
+    (to: AnalysisId, dir: 'prev' | 'next') => {
+      const r = router.current;
+      const next = new URLSearchParams(r.params);
+      next.set(FLAT_PARAM, to);
+      const ours = (r.location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
+      r.setParams(next, { replace: true, state: ours ? { rpFlat: to, rpStep: dir } : { rpStep: dir } });
+    },
+    [id],
+  );
+  const anyFlat = useCallback(() => router.current.params.get(FLAT_PARAM) != null, []);
+  const flat = params.get(FLAT_PARAM) === id;
+  const rpStep = (location.state as { rpStep?: 'prev' | 'next' } | null)?.rpStep;
+  return (
+    <CuttingBodyMemo
+      {...props}
+      flat={flat}
+      onOpenFlat={onOpenFlat}
+      onCloseFlat={onCloseFlat}
+      onStepFlat={onStepFlat}
+      steppedIn={flat ? rpStep : undefined}
+      anyFlat={anyFlat}
+    />
   );
 }

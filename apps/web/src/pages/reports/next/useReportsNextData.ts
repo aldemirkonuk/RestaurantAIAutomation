@@ -35,8 +35,8 @@ import { apiClient } from '@/services/api/client';
 import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { useAuthStore } from '@/stores/authStore';
-import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
-import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
+import { failureOf, heldBackFailure, isWithheldAnswer, num, RegisterWithheld, type Failure } from './rp-format';
+import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingFeed } from './rp-catalogue';
 import { readsRegister } from './rp-spec';
 import type { ComboPick } from './rp-combo';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
@@ -57,7 +57,7 @@ import {
   type SheetState,
 } from './rp-sheet';
 
-export type { ReadingRow } from './rp-catalogue';
+export type { ReadingFeed, ReadingRow } from './rp-catalogue';
 
 /* ────────────────────────────────────────────── one register's state ───── */
 
@@ -251,7 +251,7 @@ export interface ReportsNextData {
   /** One entry per analysis currently being read. Absent = not on the sheet. */
   registers: Partial<Record<AnalysisId, Register<unknown>>>;
   /** Always read, on the sheet or not: the ⌘K palette searches it. */
-  reading: Register<ReadingRow[]>;
+  reading: Register<ReadingFeed>;
   /** The till window is the ONLY period control on the page — see the note. */
   tillDays: number;
   setTillDays: (days: number) => void;
@@ -432,7 +432,7 @@ export function useReportsNextData(
         queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null, spec.takesWindow && tillCompare ? 'prior' : null],
         enabled: !!rid && !heldBack.has(id),
         staleTime: 60_000,
-        retry: 1,
+        retry: (n: number, e: unknown) => !(e instanceof RegisterWithheld) && n < 1,
         placeholderData: () => (heldBack.has(id) ? undefined : warmFor(warmKey)),
         queryFn: async () => {
           const ctx = { days: tillDays, compare: tillCompare };
@@ -444,6 +444,10 @@ export function useReportsNextData(
             const settled = await Promise.allSettled(
               keys.map((k) => readRaw(spec.sources![k](rid as string, ctx))),
             );
+            // One half kept from this role holds the whole composed register:
+            // half a comparison is not drawn as though the rest were empty.
+            if (settled.some((r) => r.status === 'fulfilled' && isWithheldAnswer(r.value)))
+              throw new RegisterWithheld();
             return keep(
               spec.select(
                 Object.fromEntries(
@@ -466,39 +470,64 @@ export function useReportsNextData(
               readRaw(shownUrl),
             ]);
             if (whole.status === 'rejected') throw whole.reason;
-            return keep(
-              spec.withShown(spec.select(whole.value), shown.status === 'fulfilled' ? spec.select(shown.value) : null),
-              shown.status === 'fulfilled',
-            );
+            // The gateway answered that this role may not read the register
+            // (r108): that is a held-back register, not an empty one.
+            if (isWithheldAnswer(whole.value)) throw new RegisterWithheld();
+            // A withheld shown read is a dash too, never a figure, and the read is not whole.
+            const shownRead = shown.status === 'fulfilled' && !isWithheldAnswer(shown.value) ? { raw: shown.value } : null;
+            return keep(spec.withShown(spec.select(whole.value), shownRead ? spec.select(shownRead.raw) : null), shownRead != null);
           }
-          return keep(spec.select(await readRaw(spec.path!(rid as string, ctx))), true);
+          const raw = await readRaw(spec.path!(rid as string, ctx));
+          // The gateway answered that this role may not read the register
+          // (r108): that is a held-back register, not an empty one.
+          if (isWithheldAnswer(raw)) throw new RegisterWithheld();
+          return keep(spec.select(raw), true);
         },
       };
     }),
   });
 
+  /**
+   * The register handed out last time, per id, with what it was made from. A
+   * register whose read has not changed is the SAME object again, so a cutting
+   * memoised on it does not redraw for another cutting's read (perf-p4-5,
+   * r108): a till-window click changes the till's register and no other.
+   */
+  const kept = useRef<
+    Partial<Record<AnalysisId, { reg: Register<unknown>; from: readonly unknown[] }>>
+  >({});
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
+    const same = (id: AnalysisId, from: readonly unknown[], make: () => Register<unknown>) => {
+      const prev = kept.current[id];
+      if (prev && prev.from.length === from.length && prev.from.every((v, k) => v === from[k])) {
+        map[id] = prev.reg;
+        return;
+      }
+      const reg = make();
+      kept.current[id] = { reg, from };
+      map[id] = reg;
+    };
     active.forEach((id, i) => {
       const q = results[i];
       if (!q) return;
       const readers = CATALOGUE[id].readers;
       if (readers && heldBack.has(id)) {
         // Not in flight, not refused by the gateway, not empty: withheld.
-        map[id] = {
+        same(id, ['held', activeRole], () => ({
           data: undefined,
           loading: false,
           failure: heldBackFailure(readers, activeRole),
           refetch: () => {},
-        };
+        }));
         return;
       }
-      map[id] = {
+      same(id, ['read', q.data, q.isPending, q.error, q.refetch], () => ({
         data: q.data,
         loading: q.isPending,
         failure: q.isError ? failureOf(q.error) : null,
         refetch: () => void q.refetch(),
-      };
+      }));
     });
     return map;
     // `results` is a fresh array each render; the ids and their states are what
@@ -540,7 +569,7 @@ export function useReportsNextData(
     loading: true,
     failure: null,
     refetch: () => {},
-  }) as Register<ReadingRow[]>;
+  }) as Register<ReadingFeed>;
 
   const saveSheet = useCallback(
     async (next: SheetState): Promise<void> => {

@@ -230,8 +230,26 @@ export interface Failure {
   heldBack?: { readers: readonly HouseRole[]; known: boolean };
 }
 
+/** Said whenever sentences were kept back, so a short feed is never read as a quiet house. */
+export function withheldSentenceWords(n: number): string {
+  return `${n} ${n === 1 ? 'sentence is' : 'sentences are'} about sales, money, suppliers or people, kept to owners and managers. Nothing about ${n === 1 ? 'it' : 'them'} is claimed here.`;
+}
+
+/** Thrown when the gateway answers `withheldForRole: true` for a whole register. */
+export class RegisterWithheld extends Error {
+  constructor() {
+    super('withheld for this role');
+  }
+}
+
+/** A register's own answer that this role may not read it (never the feed's count). */
+export function isWithheldAnswer(raw: unknown): boolean {
+  return (raw as { withheldForRole?: unknown } | null)?.withheldForRole === true;
+}
+
 export function failureOf(error: unknown): Failure | null {
   if (!error) return null;
+  if (error instanceof RegisterWithheld) return heldBackFailure(['owner', 'manager'], 'staff');
   const response = (error as { response?: { status?: unknown; data?: unknown } })?.response;
   const status = num(response?.status);
   const message = (error as { message?: string })?.message || 'the request failed';

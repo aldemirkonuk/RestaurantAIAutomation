@@ -85,6 +85,8 @@ export interface GoalsRegister {
   truncated: boolean;
   metrics: Array<{ key: string; label: string; unit: string }>;
   basis: Array<string | null | undefined>;
+  /** Goals the gateway kept back from this reader's role (r108): counted, never drawn as a goal. */
+  withheld: number;
 }
 
 /**
@@ -815,7 +817,10 @@ export const goals = analysis<GoalsRegister>({
     'The desk — where a goal is set, edited and archived — lives on the Table drawing, because it is a list of records with controls, not a picture. Bars draw the one thing every goal shares: how much of its own target it has reached. No line, area, scatter or heat map: goals are not a sequence and share no axis.',
   select: (raw) => {
     const d = obj(raw);
-    const rows = arr(d.goals).map((entry): GoalRow => {
+    const held = arr(d.goals).filter((entry) => entry.withheldForRole === true).length;
+    const rows = arr(d.goals)
+      .filter((entry) => entry.withheldForRole !== true)
+      .map((entry): GoalRow => {
       const g = obj(entry.goal);
       const unreadable = entry.unreadable === true ? str(entry.reason) || 'reason not given' : null;
       return {
@@ -845,7 +850,8 @@ export const goals = analysis<GoalsRegister>({
     const basis = obj(d.basis);
     return {
       goals: rows,
-      total: num(d.total) ?? rows.length,
+      total: Math.max((num(d.total) ?? rows.length + held) - held, rows.length),
+      withheld: held,
       truncated: d.truncated === true,
       metrics: arr(d.supportedMetrics).map((m) => ({
         key: str(m.key),
@@ -927,6 +933,9 @@ export const goals = analysis<GoalsRegister>({
         ctx.goals
           ? null
           : 'The desk is not wired on this rendering, so this cutting is read-only here.',
+        reg.withheld > 0
+          ? `${countOf(reg.withheld, 'goal is', 'goals are')} about the till, money or suppliers, kept to owners and managers. Nothing about ${reg.withheld === 1 ? 'it' : 'them'} is claimed here.`
+          : null,
         'Every figure is this house against its own baseline. No other restaurant’s books are in it.',
       ].filter((n): n is string => n !== null),
       basis: reg.basis,

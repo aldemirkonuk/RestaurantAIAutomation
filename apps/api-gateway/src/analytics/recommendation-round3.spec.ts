@@ -1014,8 +1014,10 @@ describe("the controller's doors, round 3", () => {
         return { ...personalView(items, targetOf, book), personalSnoozesReadable: true };
       },
     };
+    // A holder's role: this case is about the snoozes, not the role gate.
     const out = await self.getInsights(RID, undefined, undefined, undefined, undefined, {
       userId: "u-staff",
+      role: "manager",
     });
     expect(asked).toEqual(["u-staff"]);
     expect(out.insights).toHaveLength(1);

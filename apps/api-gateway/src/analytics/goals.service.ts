@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { AnalyticsService, SalesGate } from "./analytics.service";
+import { goalsForRole } from "./report-registers-role";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
@@ -167,7 +168,7 @@ export class GoalsService {
   async listGoals(
     restaurantId: string,
     status = "active",
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     const q = this.dbService
       .getClient()
@@ -178,7 +179,12 @@ export class GoalsService {
     const { data, error } =
       status === "all" ? await q : await q.eq("status", status);
     if (error) throw new Error(error.message);
-    return data || [];
+    const rows = data || [];
+    // A role that may not read a goal's metric is handed its id and the fact
+    // that it is withheld, never its name, target or reading (r108).
+    if (!gate.goalSees) return rows;
+    const { readable, withheld } = goalsForRole(rows, gate.goalSees);
+    return withheld.length === 0 ? rows : [...readable, ...withheld];
   }
 
   /**
@@ -427,7 +433,11 @@ export class GoalsService {
       this.listGoals(restaurantId, status, gate),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
-    const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
+    // Withheld stubs are not computed: no query reads a purchase for a role
+    // that may not see it, and they do not use up the screenful.
+    const held = goals.filter((g: any) => g?.withheldForRole === true);
+    const readableGoals = goals.filter((g: any) => g?.withheldForRole !== true);
+    const computed = readableGoals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
     const progress = await Promise.all(
       computed.map(async (g: any) => {
         try {
@@ -453,10 +463,14 @@ export class GoalsService {
     );
     return {
       status,
-      goals: progress,
+      goals: [
+        ...progress,
+        ...held.map((g: any) => ({ goal: g, withheldForRole: true })),
+      ],
       total: goals.length,
       computed: computed.length,
-      truncated: goals.length > computed.length,
+      truncated: readableGoals.length > computed.length,
+      ...(held.length > 0 ? { withheldForRole: held.length } : {}),
       supportedMetrics: Object.entries(GoalsService.SUPPORTED_METRICS).map(
         ([key, m]) => ({ key, label: m.label, unit: m.unit }),
       ),
@@ -498,6 +512,13 @@ export class GoalsService {
         : readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
     if (error || !goal) throw new Error(error?.message || "Goal not found");
+    // A goal whose metric this role may not read is answered as withheld
+    // before any figure is computed (r108).
+    if (
+      _gate.goalSees &&
+      goalsForRole([goal], _gate.goalSees).withheld.length > 0
+    )
+      return { goal: { id: goal.id, withheldForRole: true }, withheldForRole: true };
 
     const spec = GoalsService.SUPPORTED_METRICS[goal.metric_key];
     // The goal's window opens on the house date it was created (ADR 0296),

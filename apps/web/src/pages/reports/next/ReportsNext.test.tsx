@@ -34,7 +34,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_ON, DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
-import { heldBackFailure } from './rp-format';
+import { heldBackFailure, withheldSentenceWords } from './rp-format';
 import { isStrip, STRIP_ROWS } from './rp-strip';
 
 /**
@@ -363,9 +363,9 @@ function base() {
     restaurantId: 'r1',
     goalsDesk: deskStub,
     exportDesk: exportStub,
-    reading: ok(READING),
+    reading: ok({ rows: READING, withheld: 0 }),
     registers: {
-      reading: ok(READING),
+      reading: ok({ rows: READING, withheld: 0 }),
       till: ok(TILL),
       goals: ok(decode('goals', GOALS)),
       bench: ok(decode('bench', BENCH)),
@@ -864,6 +864,19 @@ describe('ReportsNext — the palette never fabricates', () => {
         /insight register could not be read \(gateway down\)/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] a feed kept whole from this role says so, in the opening and in Ask the book (r108)', () => {
+    const held = ok({ rows: [], withheld: 3 });
+    hook.current = { ...base(), reading: held, registers: { ...base().registers, reading: held } };
+    paint();
+    const said = withheldSentenceWords(3);
+    expect(within(screen.getByRole('banner')).getByText(said)).toBeInTheDocument();
+    expect(screen.queryByText('The engine has nothing to say about this restaurant yet.')).toBeNull();
+    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    const dialog = screen.getByRole('dialog', { name: 'Ask the book' });
+    expect(within(dialog).getByText(said)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/no sentence for this restaurant yet/)).toBeNull();
   });
 });
 
@@ -2911,5 +2924,30 @@ describe('the till grain is kept in the page link (r109 g3)', () => {
     fireEvent.click(within(grainGroup()!).getByRole('button', { name: 'Day' }));
     expect(screen.getByTestId('link').textContent).toBe('?keep=1');
     expect(saveSheet).not.toHaveBeenCalled();
+  });
+});
+
+describe('a till-window click redraws the till card and no other (perf-p4-5, r108)', () => {
+  const drawnOf = (ids: readonly string[]) => ids.map((id) => vi.spyOn(CATALOGUE[id as keyof typeof CATALOGUE], 'window'));
+  const tillChip = (name: string) =>
+    within(screen.getByRole('region', { name: 'Through the till' })).getByRole('button', { name });
+
+  it.each(['/reports', '/reports?compare=prior'])('[REVERT-FAILS] %s: every other card is drawn once, the till again', (at) => {
+    // `window` is read by a cutting's body and by nothing on the page around it,
+    // so its call count is how many times that card was drawn.
+    const others = DEFAULT_ON.filter((id) => id !== 'till');
+    const spies = drawnOf(others);
+    const [till] = drawnOf(['till']);
+    hook.current = base();
+    paint(at);
+    const drawnBefore = spies.map((s) => s.mock.calls.length);
+    expect(drawnBefore.every((n) => n > 0)).toBe(true);
+    const tillBefore = till.mock.calls.length;
+
+    fireEvent.click(tillChip('90 days'));
+
+    expect(till.mock.calls.length).toBeGreaterThan(tillBefore);
+    expect(spies.map((s) => s.mock.calls.length)).toEqual(drawnBefore);
+    [...spies, till].forEach((s) => s.mockRestore());
   });
 });

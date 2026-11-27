@@ -31,8 +31,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Panel } from '@/components/mudavym/Sheet';
-import { failureLine } from './rp-format';
-import type { ReadingRow, Register } from './useReportsNextData';
+import { failureLine, withheldSentenceWords } from './rp-format';
+import type { ReadingFeed, ReadingRow, Register } from './useReportsNextData';
 
 /** Question scaffolding carries no signal — dropping it lets "why did tuesday
  *  dip?" match on `tuesday`, instead of failing on `why`. */
@@ -73,7 +73,7 @@ export function rank(rows: ReadingRow[], query: string): ReadingRow[] {
 export interface AskTheBookProps {
   open: boolean;
   onClose: () => void;
-  reading: Register<ReadingRow[]>;
+  reading: Register<ReadingFeed>;
 }
 
 export function AskTheBook({ open, onClose, reading }: AskTheBookProps) {
@@ -87,7 +87,7 @@ export function AskTheBook({ open, onClose, reading }: AskTheBookProps) {
     if (open) setQuery('');
   }, [open]);
 
-  const results = useMemo(() => rank(reading.data ?? [], query), [reading.data, query]);
+  const results = useMemo(() => rank(reading.data?.rows ?? [], query), [reading.data, query]);
   if (!open) return null;
 
   return (
@@ -127,9 +127,11 @@ export function AskTheBook({ open, onClose, reading }: AskTheBookProps) {
           <p className="rp-quiet">Reading the insight register…</p>
         ) : results.length === 0 ? (
           <p className="rp-quiet">
-            {(reading.data ?? []).length === 0
-              ? 'The engine has produced no sentence for this restaurant yet.'
-              : `Nothing the engine has said mentions that. It has ${(reading.data ?? []).length} sentences in total.`}
+            {(reading.data?.rows ?? []).length === 0
+              ? (reading.data?.withheld ?? 0) > 0
+                ? withheldSentenceWords(reading.data!.withheld)
+                : 'The engine has produced no sentence for this restaurant yet.'
+              : `Nothing the engine has said mentions that. It has ${(reading.data?.rows ?? []).length} sentences in total.`}
           </p>
         ) : (
           <ul className="rp-list">

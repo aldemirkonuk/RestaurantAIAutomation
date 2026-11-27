@@ -73,6 +73,13 @@ export interface PosConsumptionRow {
  */
 export interface SalesGate {
   withSales?: boolean;
+  /**
+   * The data classes the caller's role sees, set only by a route that
+   * answers a role (r108). Present, a goal whose metric the role may not
+   * read comes back as a withheld stub; absent (an internal caller), every
+   * goal comes back as before.
+   */
+  goalSees?: readonly import("../ask-readings/reading-data-classes").DataClass[];
 }
 
 @Injectable()

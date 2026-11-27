@@ -63,7 +63,7 @@ import { projectCuttings, useArrange } from './rp-arrange';
 import { readsRegister } from './rp-spec';
 import { isUndoKey, pushStep, undoLabel, undoneWords, type UndoStep } from './rp-undo';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { failureLine } from './rp-format';
+import { failureLine, withheldSentenceWords } from './rp-format';
 import { warmWords } from './rp-warm';
 import {
   ANALYSIS_IDS,
@@ -143,7 +143,14 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // by going back one entry, and that entry predates the pick, so carrying
   // the mark would close onto the old window. Without it the view closes in
   // place and keeps the window; Back still returns to the window before.
-  const [params, setParams] = useSearchParams();
+  const [params, setParamsNow] = useSearchParams();
+  // react-router hands a new setter whenever the link changes, so a window
+  // click would hand every memoised cutting a new `onDays` and redraw it
+  // (perf-p4-5, r108). The setters below read the latest one from a ref and
+  // stay the same function for the life of the page.
+  const setParamsRef = useRef(setParamsNow);
+  setParamsRef.current = setParamsNow;
+  const setParams = useCallback<typeof setParamsNow>((...a) => setParamsRef.current(...a), []);
   const tillDays = tillDaysOf(params.get(DAYS_PARAM));
   const setTillDays = useCallback(
     (d: number) =>
@@ -555,8 +562,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const opening = useMemo(() => {
     if (data.reading.failure) return failureLine('insight register', data.reading.failure);
     if (data.reading.loading || !data.reading.data) return 'Reading the registers…';
-    const top = data.reading.data[0];
-    return top ? top.sentence : 'The engine has nothing to say about this restaurant yet.';
+    const top = data.reading.data.rows[0];
+    if (top) return top.sentence;
+    // Every sentence kept back for this role is not a quiet house (r108).
+    return data.reading.data.withheld > 0
+      ? withheldSentenceWords(data.reading.data.withheld)
+      : 'The engine has nothing to say about this restaurant yet.';
   }, [data.reading]);
 
   const swapOptions = useMemo(
@@ -612,8 +623,49 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     }),
     [data.goalsDesk, tillDays, tillCompare, currencyCode, saving],
   );
-  // The grain is the till card's alone: the sparklines and strips keep their days.
-  const tillCtx = useMemo(() => ({ ...ctx, grain: tillGrain }), [ctx, tillGrain]);
+  // Each cutting is handed only what it reads, so a till-window click redraws
+  // the till and not the other cards (perf-p4-5, re-expressed on the compare
+  // chain in r108). The window and compare matter to the one register that
+  // takes a window (ViewCtx says so); the desk to the goals cutting alone;
+  // every other cutting gets a context that changes only with the currency.
+  // The page-level reads (sparklines, strips, the compare hold) keep `ctx`.
+  const windowCtx = useMemo(
+    // The grain is the till card's alone: the sparklines and strips keep their days.
+    () => ({ days: tillDays, compare: tillCompare, currency: currencyCode, grain: tillGrain }),
+    [tillDays, tillCompare, currencyCode, tillGrain],
+  );
+  const goalsCtx = useMemo(
+    () => ({ days: DEFAULT_TILL_DAYS, goals: { ...data.goalsDesk, placeBlocked: saving }, currency: currencyCode }),
+    [data.goalsDesk, currencyCode, saving],
+  );
+  const plainCtx = useMemo(() => ({ days: DEFAULT_TILL_DAYS, currency: currencyCode }), [currencyCode]);
+  const ctxFor = (id: AnalysisId) =>
+    CATALOGUE[id].takesWindow ? windowCtx : id === 'goals' ? goalsCtx : plainCtx;
+  // The handlers close over an id only: made once per id, the same function
+  // until the sheet's own editors change.
+  const handlers = useMemo(
+    () =>
+      Object.fromEntries(
+        ANALYSIS_IDS.map((id) => [
+          id,
+          {
+            onGraph: (g: GraphType) => onGraph(id, g),
+            onSwap: (to: AnalysisId) => onSwap(id, to),
+            onRemove: () => onRemove(id),
+            onComboPick: (p: ComboPick) => onComboPick(id, p),
+          },
+        ]),
+      ) as Record<
+        AnalysisId,
+        {
+          onGraph: (g: GraphType) => void;
+          onSwap: (to: AnalysisId) => void;
+          onRemove: () => void;
+          onComboPick: (p: ComboPick) => void;
+        }
+      >,
+    [onGraph, onSwap, onRemove, onComboPick],
+  );
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =
     data.currency?.state === 'unstated'
@@ -633,9 +685,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const sparksPending = SPARK_IDS.some((id) => data.registers[id]?.loading);
 
   // Full screen steps along the sheet as the phone reads it: the one-column order, only what has a register.
-  const flatOrder = projectCuttings(view.cuttings, 1)
+  // Kept by its ids, so the memoised cuttings (perf-p4-5) are handed the same array until the order changes.
+  const flatKey = projectCuttings(view.cuttings, 1)
     .map((c) => c.id)
-    .filter((id) => readsRegister(CATALOGUE[id]));
+    .filter((id) => readsRegister(CATALOGUE[id]))
+    .join(',');
+  const flatOrder = useMemo(() => (flatKey ? (flatKey.split(',') as AnalysisId[]) : []), [flatKey]);
 
   // The hold follows what the till card draws, stand-in included (Cutting's own rule).
   const tillRead = drawnRegister(!!CATALOGUE.till.takesWindow, data.registers.till as Register<unknown> | undefined, ctx, tillLast);
@@ -666,15 +721,15 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         onControls={onControls}
         graph={c.graph}
         register={data.registers[c.id]}
-        ctx={c.id === 'till' ? tillCtx : ctx}
+        ctx={ctxFor(c.id)}
         arranging={editing}
         swapOptions={swapOptions}
         arrange={arrange}
         comboPick={data.sheetKnown ? c.combo : comboHeld[c.id]}
-        onComboPick={(p) => onComboPick(c.id, p)}
-        onGraph={(g) => onGraph(c.id, g)}
-        onSwap={(to) => onSwap(c.id, to)}
-        onRemove={() => onRemove(c.id)}
+        onComboPick={handlers[c.id].onComboPick}
+        onGraph={handlers[c.id].onGraph}
+        onSwap={handlers[c.id].onSwap}
+        onRemove={handlers[c.id].onRemove}
         onDays={setTillDays}
         onCompare={setTillCompare}
         onGrain={setTillGrain}
