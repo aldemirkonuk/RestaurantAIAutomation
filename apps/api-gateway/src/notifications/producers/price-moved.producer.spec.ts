@@ -28,6 +28,7 @@ class Q {
   private f: Array<(r: Row) => boolean> = [];
   private nested: Array<(l: Row) => boolean> = [];
   private lim: number | null = null;
+  private rng: [number, number] | null = null;
   private ord: { col: string; asc: boolean } | null = null;
   constructor(private rows: Row[]) {}
   select() { return this; }
@@ -50,6 +51,7 @@ class Q {
   or() { return this; }
   order(col: string, o?: { ascending?: boolean }) { this.ord = { col, asc: o?.ascending !== false }; return this; }
   limit(n: number) { this.lim = n; return this; }
+  range(a: number, z: number) { this.rng = [a, z]; return this; }
   private run() {
     let out = this.rows.filter((r) => this.f.every((t) => t(r)));
     if (this.nested.length) {
@@ -66,6 +68,7 @@ class Q {
       const { col, asc } = this.ord;
       out = [...out].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (asc ? 1 : -1));
     }
+    if (this.rng) out = out.slice(this.rng[0], this.rng[1] + 1);
     return this.lim == null ? out : out.slice(0, this.lim);
   }
   maybeSingle() { return Promise.resolve({ data: this.run()[0] ?? null, error: null }); }
@@ -77,6 +80,7 @@ function build() {
   const tables: Record<string, Row[]> = {
     procurement_documents: [],
     procurement_document_lines: [],
+    document_corrections: [] as Row[],
     providers: [{ id: "prov-1", name: "Anadolu Wines", restaurant_id: null }],
     restaurants: [{ id: TENANT, currency: "USD" }, { id: OTHER, currency: "USD" }],
     user_restaurant_access: [
@@ -85,8 +89,11 @@ function build() {
       { restaurant_id: TENANT, user_id: STAFF, role: "staff", is_active: true },
     ],
   };
+  const failing = new Set<string>();
   const client = {
     from(t: string) {
+      if (failing.has(t))
+        return { select() { return this; }, in() { return this; }, order() { return this; }, range() { return this; }, then: (res: any) => Promise.resolve({ data: null, error: { message: `${t} is down` } }).then(res) };
       // The lines live on their paper for the embedded read, flat for the list.
       if (t === "procurement_documents")
         return new Q(
@@ -101,7 +108,7 @@ function build() {
   const notifications = fakeNotifications(MEMBERS);
   const ledger = new ProducerLedgerService(fakeDatabase(db, MEMBERS) as any, notifications as any);
   const producer = new PriceMovedProducer({ getClient: () => client } as any, ledger);
-  return { tables, notifications, producer };
+  return { tables, notifications, producer, failing };
 }
 
 let n = 0;
@@ -193,5 +200,47 @@ describe("PriceMovedProducer", () => {
     expect(who.length).toBeGreaterThan(0);
     expect(who).not.toContain(STAFF);
     expect(new Set(who)).toEqual(new Set([OWNER, MANAGER]));
+  });
+
+  // r109 invoices walk: a correction writes document_corrections, never the line columns.
+  const fix = (document_id: string, path: string, value: number, over: Row = {}) => ({
+    id: `c-${document_id}-${path}`, document_id, revision: 2, kind: "correction", field_path: path, after: { value }, ...over,
+  });
+
+  it("[REVERT-FAILS] a line total the owner corrected is priced as corrected, not as first read", async () => {
+    const { tables, notifications, producer } = build();
+    earlier(tables); // 5.00 a bottle
+    paper(tables, { id: "doc-new" }, [{ line_total: 120 }]); // read as 10.00: +100 percent
+    tables.document_corrections.push(fix("doc-new", "lines[0].netAmount", 60)); // corrected to 5.00
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(sent(notifications)).toHaveLength(0);
+    expect(tally.emitted).toBe(0);
+  });
+
+  it("[REVERT-FAILS] the basis paper is read as corrected too", async () => {
+    const { tables, notifications, producer } = build();
+    earlier(tables, {}); // stored 5.00 a bottle ...
+    tables.document_corrections.push(fix("doc-old", "lines[0].netAmount", 120)); // ... corrected to 10.00
+    paper(tables, { id: "doc-new" }, [{ line_total: 120 }]); // 10.00: no move from 10.00
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(sent(notifications)).toHaveLength(0);
+  });
+
+  it("a correction to the basis makes a real move visible, and a correction to another paper does not leak", async () => {
+    const { tables, notifications, producer } = build();
+    earlier(tables, {});
+    paper(tables, { id: "doc-new" }, [{ line_total: 84 }]); // 7.00 against 5.00
+    tables.document_corrections.push(fix("someone-else", "lines[0].netAmount", 1));
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(sent(notifications)[0].message).toBe("Anadolu Wines, invoice 4471: House Red up 40% (5.00 -> 7.00).");
+  });
+
+  it("[REVERT-FAILS] an unreadable corrections table fails the run and sends nothing", async () => {
+    const { tables, notifications, producer, failing } = build();
+    earlier(tables);
+    paper(tables, { id: "doc-new" }, [{ line_total: 84 }]);
+    failing.add("document_corrections");
+    await expect(producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW)).rejects.toThrow(/corrections to these papers could not be read/);
+    expect(sent(notifications)).toHaveLength(0);
   });
 });

@@ -7,6 +7,8 @@ type Sim = Record<string, any> & { papers?: SimPaper[]; papersError?: unknown };
 const HOUSE: Sim = {
   procurement_documents: { data: { id: "d1", currency: "USD" }, error: null },
   restaurants: { data: { currency: "USD" }, error: null },
+  // No paper here has been corrected (r109): the corrections read answers empty.
+  document_corrections: { data: [], error: null },
 };
 const LN = "procurement_document_lines.";
 const hit = (r: Row, op: string, col: string, v: any) => {
@@ -42,6 +44,7 @@ function controllerWith(results: Sim) {
         for (const op of ["eq", "neq", "ilike", "in", "gt"]) b[op] = (c: string, v: unknown) => (f.push([op, c, v]), b);
         b.not = (c: string, op: string, v: string) => (f.push(["not" + op, c, v.replace(/[()]/g, "").split(",")]), b);
         b.limit = (n: number) => ((limit = n), b);
+        b.range = () => b;
         b.maybeSingle = () => Promise.resolve((results as any)[table]);
         b.then = (res: any, rej: any) => {
           calls.push({ table, f, limit });
