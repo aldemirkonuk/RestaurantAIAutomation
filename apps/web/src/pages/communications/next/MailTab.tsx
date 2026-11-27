@@ -26,7 +26,7 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -733,6 +733,16 @@ export function MailTab({
   // r28 mail gap 16: what is typed, and the term sent 300 ms after typing stops.
   const [typed, setTyped] = useState('');
   const [search, setSearch] = useState('');
+  // r104 mail-4: "Who is writing" sits under the people. A search that matches
+  // nobody collapses a 50-row list and the strip below it jumps up (CLS 0.012-
+  // 0.021 at 1440). So while a search is applied the people region keeps the
+  // height it had when no search was; clearing the search lets it go.
+  const peopleRef = useRef<HTMLDivElement>(null);
+  const [peopleHeld, setPeopleHeld] = useState(0);
+  useLayoutEffect(() => {
+    if (search || !peopleRef.current) return;
+    setPeopleHeld(peopleRef.current.offsetHeight);
+  });
   useEffect(() => {
     const term = mailSearchTerm(typed);
     if (term === search) return;
@@ -971,6 +981,11 @@ export function MailTab({
             ))}
           </div>
           <ReadScope canAnswer={canReply} inboxSwitchedOff={mailboxDoor.state === 'switched_off'} />
+          <div
+            ref={peopleRef}
+            data-testid="people-hold"
+            style={search && peopleHeld > 0 ? { minHeight: peopleHeld } : undefined}
+          >
           <People
             on={on}
             waitingOnly={waitingOnly}
@@ -986,6 +1001,7 @@ export function MailTab({
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
           />
+          </div>
           {whoIsWriting}
         </>
       )}

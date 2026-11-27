@@ -211,6 +211,28 @@ describe('the list', () => {
     expect(people.compareDocumentPosition(who) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // r104 mail-4: a search that matches nobody collapsed the list and the strip
+  // below it jumped up (CLS 0.012-0.021 at 1440). The people region keeps the
+  // height it had before the search, and lets it go when the search is cleared.
+  it('holds the people list height while a search is applied, and releases it when cleared', async () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 640 });
+    try {
+      mount();
+      await screen.findAllByTestId('mail-person');
+      const hold = screen.getByTestId('people-hold');
+      expect(hold.style.minHeight).toBe('');
+      routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
+      fireEvent.change(screen.getByTestId('mail-search'), { target: { value: 'zzznomatch' } });
+      await waitFor(() => expect(screen.getByTestId('people-hold').style.minHeight).toBe('640px'));
+      fireEvent.click(screen.getByTestId('search-clear'));
+      await waitFor(() => expect(screen.getByTestId('people-hold').style.minHeight).toBe(''));
+    } finally {
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', desc);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
+    }
+  });
+
   it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('no "Who is writing" at ?%s', (q) => {
     mount(`/communications?tab=mail&${q}`);
     expect(screen.queryByTestId('who-is-writing')).toBeNull();
