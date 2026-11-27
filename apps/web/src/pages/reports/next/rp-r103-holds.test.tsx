@@ -68,9 +68,10 @@ describe('Draw as keeps the figures list its slot (phone)', () => {
     expect(held(one.container)[0].getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('[REVERT-FAILS] a held row takes its space on a phone only, and is invisible there', () => {
+  it('[REVERT-FAILS] a held row takes its space where the sheet is a stack (not by viewport width), and is invisible there', () => {
     const t = readFileSync(join(__dirname, 'reports-next.css'), 'utf8');
     expect(t).toMatch(/\.rp-fig\[data-held\] \{\s*display: none;/);
-    expect(t).toMatch(/@media \(max-width: 767px\) \{[^@]*\.rp-fig\[data-held\] \{\s*display: flex;\s*visibility: hidden;/);
+    expect(t).toMatch(/\.rp-sheet\[data-layout='stack'\] \.rp-fig\[data-held\] \{\s*display: flex;\s*visibility: hidden;/);
+    expect(t).not.toMatch(/^\s+\.rp-fig\[data-held\] \{\s*display: flex/m);
   });
 });
