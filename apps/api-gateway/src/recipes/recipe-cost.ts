@@ -126,7 +126,8 @@ const CONTAINERS = new Set(["bottle", "keg"]);
 // unrecorded volume. They are counted in pieces, so their size is not known.
 const PACKS = new Set(["case", "pack", "glass", "shot"]);
 
-type Why = "size_not_known" | "pack_size_not_known" | "unit_mismatch";
+export type ShelfWhy = "size_not_known" | "pack_size_not_known" | "unit_mismatch";
+type Why = ShelfWhy;
 type BaseCost = { perBase: number; weighed?: StatedBridge } | { why: Why; needs?: BridgeNeeded };
 
 const WEIGHTS = new Set(["mg", "g", "kg"]);
@@ -139,30 +140,78 @@ function stated(v: number | string | null | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** The cost of one base unit by the good's own unit alone, with no stated weight. */
-function directCost(uom: string, item: CostItem, unitCost: number, baseUnit: BaseUnit): BaseCost {
+/**
+ * How many base units one shelf unit of the good holds, by the good's own unit
+ * alone, with no stated weight; or why that is not known. The one table of
+ * factors: a line's cost divides by it, and the stock on hand multiplies by
+ * it (r108 g11), so the two can never read one good two ways.
+ */
+export function shelfToBase(
+  uom: string,
+  item: Pick<CostItem, "bottle_size_ml">,
+  baseUnit: BaseUnit,
+): { perShelf: number } | { why: Why } {
   if (baseUnit === "ml10") {
     if (CONTAINERS.has(uom)) {
       const size = Number(item.bottle_size_ml);
-      return Number.isFinite(size) && size > 0 ? { perBase: unitCost / (size * 10) } : { why: "size_not_known" };
+      return Number.isFinite(size) && size > 0 ? { perShelf: size * 10 } : { why: "size_not_known" };
     }
-    if (uom === "ml") return { perBase: unitCost / 10 };
-    if (uom === "l") return { perBase: unitCost / 10000 };
+    if (uom === "ml") return { perShelf: 10 };
+    if (uom === "l") return { perShelf: 10000 };
     if (PACKS.has(uom)) return { why: "pack_size_not_known" };
     return { why: "unit_mismatch" };
   }
   if (baseUnit === "mg") {
-    if (uom === "mg") return { perBase: unitCost };
-    if (uom === "g") return { perBase: unitCost / 1000 };
-    if (uom === "kg") return { perBase: unitCost / 1000000 };
+    if (uom === "mg") return { perShelf: 1 };
+    if (uom === "g") return { perShelf: 1000 };
+    if (uom === "kg") return { perShelf: 1000000 };
     if (PACKS.has(uom)) return { why: "pack_size_not_known" };
     return { why: "unit_mismatch" };
   }
   // A piece meets only a thing the shelf counts in pieces: one bottle of a
   // bottle item is never assumed, since "1 lime" linked to a case of limes
   // would cost the case.
-  if (uom === "each") return { perBase: unitCost / 1000 };
+  if (uom === "each") return { perShelf: 1000 };
   return { why: "unit_mismatch" };
+}
+
+/** The cost of one base unit by the good's own unit alone, with no stated weight. */
+function directCost(uom: string, item: CostItem, unitCost: number, baseUnit: BaseUnit): BaseCost {
+  const s = shelfToBase(uom, item, baseUnit);
+  return "perShelf" in s ? { perBase: unitCost / s.perShelf } : s;
+}
+
+/**
+ * Base units in one shelf unit of the good, through a weight the house stated
+ * where the line and the shelf are measured differently: the same bridges
+ * `baseUnitCost` prices through, and no others (r108 g11).
+ */
+export function baseUnitsPerShelf(item: CostItem, baseUnit: BaseUnit): { perShelf: number } | { why: Why } {
+  const uom = String(item.uom ?? "").toLowerCase();
+  const direct = shelfToBase(uom, item, baseUnit);
+  if ("perShelf" in direct) return direct;
+  const mismatch = { why: "unit_mismatch" as const };
+  if (baseUnit === "each_milli" && WEIGHTS.has(uom)) {
+    // One thousandth of a piece weighs pieceG mg.
+    const pieceG = stated(item.piece_grams);
+    return pieceG === null ? mismatch : { perShelf: (shelfToBase(uom, item, "mg") as { perShelf: number }).perShelf / pieceG };
+  }
+  if (baseUnit === "mg" && uom === "each") {
+    const pieceG = stated(item.piece_grams);
+    return pieceG === null ? mismatch : { perShelf: pieceG * 1000 };
+  }
+  if (baseUnit === "ml10" && WEIGHTS.has(uom)) {
+    // A tenth of a ml weighs mlG x 100 mg.
+    const mlG = stated(item.ml_grams);
+    return mlG === null ? mismatch : { perShelf: (shelfToBase(uom, item, "mg") as { perShelf: number }).perShelf / (mlG * 100) };
+  }
+  if (baseUnit === "mg" && (uom === "ml" || uom === "l" || CONTAINERS.has(uom))) {
+    const ml10 = shelfToBase(uom, item, "ml10");
+    if (!("perShelf" in ml10)) return ml10;
+    const mlG = stated(item.ml_grams);
+    return mlG === null ? mismatch : { perShelf: ml10.perShelf * mlG * 100 };
+  }
+  return direct;
 }
 
 /**

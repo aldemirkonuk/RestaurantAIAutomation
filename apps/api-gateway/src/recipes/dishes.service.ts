@@ -10,6 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BASE_UNIT_WORDS, BaseUnit, CostItem, recipeCost } from "./recipe-cost";
+import { servesFromStock, type StockItem } from "./serves-from-stock";
 import { serveNutrition, type Allergen, type AllergenStatus } from "./recipe-nutrition";
 import { CreateDishDto, SetYieldDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, MAX_LINE_QTY, RecipesService } from "./recipes.service";
@@ -450,7 +451,7 @@ export class DishesService {
     const client = this.db.getClient();
     const item = await client
       .from("restaurant_inventory")
-      .select("id")
+      .select("id, uom, bottle_size_ml, piece_grams, ml_grams, stock_live")
       .eq("id", itemId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -460,7 +461,7 @@ export class DishesService {
     const used = await this.all<any>("item line read", sentence, (from, to) =>
       client
         .from("recipe_lines")
-        .select("id, version_id, position, label, qty_entered, unit_code")
+        .select("id, version_id, position, label, qty_entered, unit_code, qty_base, base_unit, usable_pct")
         .eq("restaurant_id", restaurantId)
         .eq("inventory_id", itemId)
         .order("id", { ascending: true })
@@ -491,7 +492,19 @@ export class DishesService {
             );
       for (const r of rows) current.set(r.version_id, owner === "dish" ? r.dish_id : r.cocktail_id);
     }
-    return { used, ownerIds: [...new Set(current.values())] };
+    return { item: item.data as StockItem, used, ownerIds: [...new Set(current.values())] };
+  }
+
+  /**
+   * How many serves the stock on hand makes of one owner's current recipe
+   * (r108 g11), from this item's own lines in it. Not money: every role.
+   */
+  private servesIn(item: StockItem, used: any[], f: DishFigures | undefined) {
+    if (!f) return { servesFromStock: null, servesWhy: null };
+    const lines = used
+      .filter((l) => l.version_id === f.versionId)
+      .map((l) => ({ qtyBase: l.qty_base, baseUnit: l.base_unit as BaseUnit, usablePct: l.usable_pct ?? null }));
+    return servesFromStock(item, lines, f.yieldServes);
   }
 
   /** This item's own lines in one owner's current version, in recipe order. */
@@ -509,7 +522,7 @@ export class DishesService {
   async dishesUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const { used, ownerIds } = await this.currentUses(restaurantId, itemId, "dish", DISH_USE_UNREAD);
+    const { item, used, ownerIds } = await this.currentUses(restaurantId, itemId, "dish", DISH_USE_UNREAD);
     if (!ownerIds.length) return { dishes: [] };
 
     const dishes: any[] = [];
@@ -539,6 +552,7 @@ export class DishesService {
             price: money && d.price != null ? Number(d.price) : null,
             ...this.figureFields(f),
             uses: this.usesIn(used, f),
+            ...this.servesIn(item, used, f),
           };
         })
         // A pointer that moved since the lines were read leaves a dish with no line of this item: not listed.
@@ -556,7 +570,7 @@ export class DishesService {
   async drinksUsingItem(restaurantId: string, itemId: string, role: string | null | undefined) {
     const money = seesHouseAmounts(role);
     const client = this.db.getClient();
-    const { used, ownerIds } = await this.currentUses(restaurantId, itemId, "cocktail", DRINK_USE_UNREAD);
+    const { item, used, ownerIds } = await this.currentUses(restaurantId, itemId, "cocktail", DRINK_USE_UNREAD);
     if (!ownerIds.length) return { drinks: [] };
 
     const drinks: any[] = [];
@@ -586,6 +600,7 @@ export class DishesService {
             price: money && d.price != null ? Number(d.price) : null,
             ...this.figureFields(f),
             uses: this.usesIn(used, f),
+            ...this.servesIn(item, used, f),
           };
         })
         .filter((d) => d.uses.length > 0)
