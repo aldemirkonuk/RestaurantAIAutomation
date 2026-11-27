@@ -930,6 +930,36 @@ export class HouseLettersService {
       ...(answered?.threadKey ? { thread_key: answered.threadKey } : {}),
     };
 
+    // The files of a letter sent from a draft are tied to the draft's own row
+    // BEFORE it becomes the letter, so a bind that fails leaves the draft a
+    // draft: converting first and failing the row after would destroy the
+    // Mudavym-written draft (and the credit claim it answers) with no copy to
+    // write again from.
+    const tiedToDraft = Boolean(draft && files.length && this.files);
+    const untieDraft = async () => {
+      if (!draft || !this.files) return;
+      try {
+        await this.files.unbind(restaurantId, draft.id, files);
+      } catch (err) {
+        this.logger.error(
+          `Draft ${draft.id}: its files could not be freed after the send stopped (${err instanceof Error ? err.message : String(err)}).`,
+        );
+      }
+    };
+    if (draft && tiedToDraft && this.files) {
+      try {
+        await this.files.bind(restaurantId, draft.id, files);
+      } catch (err) {
+        await untieDraft();
+        if (claimed && dto.requestId && this.requests) {
+          await this.requests.unclaim(restaurantId, dto.requestId, userId);
+        }
+        throw new ConflictException(
+          `The files could not be tied to this letter (${err instanceof Error ? err.message : String(err)}), so it was stopped before it left. The draft is still a draft. Nothing was sent.`,
+        );
+      }
+    }
+
     // From a draft, the draft row BECOMES the letter — conditional on it still
     // being a draft, so a second send of the same draft finds nothing to claim.
     const { data, error } = draft
@@ -947,6 +977,7 @@ export class HouseLettersService {
           .select("id")
           .single();
 
+    if (tiedToDraft && (error || !data)) await untieDraft();
     if (draft && !error && !data) {
       // A release that took a staff request gives it back here too: no letter
       // was queued, so the request is still asking (#436 merging main, 2026-09-27).
@@ -969,7 +1000,7 @@ export class HouseLettersService {
     // The files are tied to the letter now that it exists. A file that could
     // not be tied stops the letter before it leaves: release would refuse it
     // anyway, and the writer is still looking (DD-r107-11, never a partial letter).
-    if (files.length && this.files) {
+    if (files.length && this.files && !tiedToDraft) {
       const letterId = String((data as Record<string, unknown>).id);
       try {
         await this.files.bind(restaurantId, letterId, files);
@@ -1115,6 +1146,21 @@ export class HouseLettersService {
       );
     }
 
+    // Pulled back, the letter leaves its files free: bind ties a file to a
+    // letter for good, and a file still tied would be refused ("already on
+    // another letter") when the writer sends again. Said when it cannot be done.
+    let filesNote = "";
+    if (this.files) {
+      try {
+        await this.files.unbind(params.restaurantId, params.id);
+      } catch (err) {
+        this.logger.error(
+          `Letter ${params.id} was pulled back, but its files could not be freed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        filesNote = " Its files could not be freed; attach them again.";
+      }
+    }
+
     // UNDO RE-WAITS (founder, 2026-09-21, verbatim: "Decline/withdraw; undo
     // re-waits"). A letter a manager released from a staff member's request
     // and then pulled back inside the undo window puts that request back to
@@ -1161,7 +1207,7 @@ export class HouseLettersService {
     return {
       id: params.id,
       status: LETTER_STATUS.CANCELLED,
-      says: `Pulled back. It was never sent, and the book records it as cancelled rather than deleting it.${requestNote}`,
+      says: `Pulled back. It was never sent, and the book records it as cancelled rather than deleting it.${requestNote}${filesNote}`,
       requestWaitsAgain,
     };
   }

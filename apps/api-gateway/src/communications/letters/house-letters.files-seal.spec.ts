@@ -155,4 +155,57 @@ describe("queueing a letter with files", () => {
     );
     expect(t.queued()[0].status).toBe("HOUSE_FAILED");
   });
+
+  // A Mudavym-written draft (maybe carrying a credit claim) must survive a bind that fails.
+  it("a draft whose files cannot be tied stays a draft, with its files free", async () => {
+    const t = build();
+    const [a] = await t.upload("manager", [{ name: "a.pdf", bytes: "aa" }]);
+    t.db.tables.procurement_conversations.push({
+      id: "draft-1", restaurant_id: HOUSE, provider_id: PROVIDER, order_id: null, status: "HOUSE_DRAFT", direction: "outbound",
+      message_text: "Drafted by Mudavym", email_headers: { credit_id: "credit-1", drafted_by: "mudavym" },
+    });
+    const dto = { ...DRAFT, draftId: "draft-1", fileIds: [a.id] } as any;
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto, role: "manager" });
+    t.files.bind = async () => {
+      throw new Error("write refused");
+    };
+    await expect(t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto, challenge, role: "manager" })).rejects.toThrow(
+      /could not be tied to this letter .*The draft is still a draft/,
+    );
+    const row = t.db.tables.procurement_conversations.find((r) => r.id === "draft-1")!;
+    expect(row.status).toBe("HOUSE_DRAFT");
+    expect(row.message_text).toBe("Drafted by Mudavym");
+    expect(row.email_headers.credit_id).toBe("credit-1");
+    expect(t.db.tables.house_letter_files[0].letter_id ?? null).toBeNull();
+  });
+
+  it("a draft with files that ties them becomes the queued letter, files tied to it once", async () => {
+    const t = build();
+    const [a] = await t.upload("manager", [{ name: "a.pdf", bytes: "aa" }]);
+    t.db.tables.procurement_conversations.push({
+      id: "draft-2", restaurant_id: HOUSE, provider_id: PROVIDER, order_id: null, status: "HOUSE_DRAFT", direction: "outbound",
+      message_text: "Drafted", email_headers: { drafted_by: "mudavym" },
+    });
+    const dto = { ...DRAFT, draftId: "draft-2", fileIds: [a.id] } as any;
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto, role: "manager" });
+    const out = await t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto, challenge, role: "manager" });
+    expect(out.id).toBe("draft-2");
+    expect(t.db.tables.procurement_conversations.find((r) => r.id === "draft-2")!.status).toBe("HOUSE_QUEUED");
+    expect(t.db.tables.house_letter_files[0].letter_id).toBe("draft-2");
+  });
+
+  it("pulling a letter back frees its files, so the writer can send again", async () => {
+    const t = build();
+    const [a] = await t.upload("manager", [{ name: "a.pdf", bytes: "aa" }]);
+    const dto = { ...DRAFT, fileIds: [a.id] } as any;
+    const first = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto, role: "manager" });
+    const out = await t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto, challenge: first.challenge, role: "manager" });
+    expect(t.db.tables.house_letter_files[0].letter_id).toBe(out.id);
+    await t.letters.cancel({ restaurantId: HOUSE, userId: MANAGER, id: out.id, role: "manager" });
+    expect(t.db.tables.house_letter_files[0].letter_id ?? null).toBeNull();
+    // The same file seals and queues again: no "already on another letter".
+    const second = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto, role: "manager" });
+    const again = await t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto, challenge: second.challenge, role: "manager" });
+    expect(t.db.tables.house_letter_files[0].letter_id).toBe(again.id);
+  });
 });

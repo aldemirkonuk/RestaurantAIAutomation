@@ -211,6 +211,25 @@ export class HouseLetterFilesService {
     }
   }
 
+  /**
+   * Free files a letter no longer carries: a letter pulled back inside its
+   * window, or a draft whose send stopped. Conditional on this house's and on
+   * the letter named, so it never frees a file that travels on another letter.
+   * `only` narrows it to the files a failed send had just tied. Throws on a
+   * failed write: the caller says so, because a file left tied cannot be
+   * attached again.
+   */
+  async unbind(restaurantId: string, letterId: string, only?: readonly SealedFile[]): Promise<void> {
+    let q = this.db.supabase
+      .from("house_letter_files")
+      .update({ letter_id: null })
+      .eq("restaurant_id", restaurantId)
+      .eq("letter_id", letterId);
+    if (only?.length) q = q.in("id", only.map((f) => f.id));
+    const { error } = await q;
+    if (error) throw new Error(error.message);
+  }
+
   private async forget(paths: string[]): Promise<void> {
     if (!paths.length) return;
     try {
