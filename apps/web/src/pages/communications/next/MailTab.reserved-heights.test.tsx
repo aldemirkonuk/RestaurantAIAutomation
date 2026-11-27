@@ -8,7 +8,7 @@
  * the header loads at 155 px (375) and 111 px (1440), the read-scope blocks at 38.4/19.7 (one) and 126/45 (two).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -20,8 +20,8 @@ const auth = vi.hoisted(() => ({
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => auth.current }));
 vi.mock('./QueuedPullBack', () => ({ QueuedPullBack: () => null }));
 
-import { MailTab } from './MailTab';
-import { MAIL_HEADER_RESERVE, READ_SCOPE_HOLD } from './mail-format';
+import { MailTab, readLastHeaderHeight, rememberHeaderHeight } from './MailTab';
+import { MAIL_HEADER_RESERVE, MAIL_HEADLINE_HOLD, READ_SCOPE_HOLD } from './mail-format';
 
 const SUMMARY = {
   waitingPeople: 0,
@@ -63,11 +63,45 @@ beforeEach(() => {
 
 describe('the reserved heights are pinned', () => {
   it('names the header block and the two read-scope holds', () => {
-    expect(MAIL_HEADER_RESERVE).toBe('min-h-[156px] md:min-h-[112px]');
+    expect(MAIL_HEADER_RESERVE).toBe('min-h-[176px] md:min-h-[112px]');
     expect(READ_SCOPE_HOLD).toEqual({
       one: 'min-h-[39px] md:min-h-[20px]',
       two: 'min-h-[127px] md:min-h-[46px]',
     });
+  });
+});
+
+describe('the header holds the height it settled at (r108 mail-r108-6)', () => {
+  it('reserves 176 px below md for the three-line time-zone sentence, and the headline holds two lines', async () => {
+    expect(MAIL_HEADER_RESERVE).toContain('min-h-[176px]');
+    expect(MAIL_HEADLINE_HOLD).toBe('min-h-[45px] md:min-h-0');
+    mount();
+    expect((await screen.findByTestId('mail-header')).className).toContain(MAIL_HEADLINE_HOLD);
+  });
+
+  it('remembers the settled content height per house and starts the next load there', async () => {
+    window.sessionStorage.clear();
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const t = this.getAttribute('data-testid');
+      return { top: 100, bottom: t === 'mail-header-block' ? 100 : 262.2, height: 0, left: 0, right: 0, width: 0, x: 0, y: 0, toJSON() {} } as DOMRect;
+    });
+    try {
+      mount();
+      await vi.waitFor(() => expect(readLastHeaderHeight('r1')).toBe(163));
+      expect(screen.getByTestId('mail-header-block').style.minHeight).toBe('');
+      cleanup();
+      mount();
+      expect((await screen.findByTestId('mail-header-block')).style.minHeight).toBe('163px');
+    } finally {
+      rect.mockRestore();
+      window.sessionStorage.clear();
+    }
+  });
+
+  it('keeps nothing when the height is nonsense', () => {
+    rememberHeaderHeight('r1', 0);
+    rememberHeaderHeight('', 150);
+    expect(readLastHeaderHeight('r1')).toBeNull();
   });
 });
 
