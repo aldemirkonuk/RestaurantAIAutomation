@@ -27,6 +27,7 @@
  * read answers, or when it fails, the drink is the used-in read's one line,
  * and a failed read says its cards could not be read, with Read again.
  */
+import { useState } from 'react';
 import { Link, useInRouterContext } from 'react-router-dom';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
 import {
@@ -42,6 +43,8 @@ import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 import { formatHouseNumber, formatHousePercent } from '../../../lib/house-number';
 import { pourCostShare } from '../../cellar/next/recipe/DrinkCards';
 import { UNSET_TAX, shareBasis, type ListTax } from '../../cellar/next/recipe/listTax';
+import { SwapSheet } from '../../cellar/next/recipe/SwapGood';
+import type { ShelfItem } from '../../../services/api/recipes';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
@@ -308,6 +311,7 @@ export default function ItemUsedIn({
   onRetry,
   onRetryDishes,
   onRetryDrinks,
+  good,
 }: {
   load: UsedInLoad;
   dishes: DishesLoad;
@@ -320,7 +324,10 @@ export default function ItemUsedIn({
   onRetry: () => void;
   onRetryDishes: () => void;
   onRetryDrinks?: () => void;
+  /** The good this drawer shows: an owner or manager can replace it in every recipe (r110 g4). */
+  good?: ShelfItem;
 }) {
+  const [replacing, setReplacing] = useState(false);
   // Menu prices are money: owners and managers only, as on every card above.
   const menu = (l: ItemMenuLine) => ({
     key: l.menuItemId,
@@ -431,6 +438,14 @@ export default function ItemUsedIn({
       <h3 id="ivd-used-title" className="iv-sec">
         Used in
       </h3>
+      {canManage && good ? (
+        <p className="iv-note">
+          <button type="button" className="iv-linkish iv-focus" data-testid="ivd-used-replace" onClick={() => setReplacing(true)}>
+            Replace it in recipes
+          </button>
+        </p>
+      ) : null}
+      {replacing && good ? <SwapSheet initialFrom={good} onClose={() => setReplacing(false)} /> : null}
       {body}
       <section className="ivd-used-g" data-testid="ivd-used-recipes">
         <h4 className="ivd-used-h">In dish recipes</h4>

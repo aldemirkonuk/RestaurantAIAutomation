@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LooseDrink, LooseLines as Answer } from '../../../../services/api/recipes';
-import SwapGood, { costWords, familyOf } from './SwapGood';
+import SwapGood, { SwapSheet, costWords, familyOf } from './SwapGood';
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const h = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn() }));
@@ -63,18 +63,39 @@ const threeDrinks = () =>
     [drink('c-col', 'Collins', 'ml10', [lime]), 'ml10'],
   ]);
 
+/** GET /dishes/:id as the gateway sends it: a tart with 30 ml of gin (usable 90%) and a made line. */
+const dishLine = (over: object) => ({ id: 'x', position: 1, componentId: null, itemName: null, itemKind: null, qtyBase: 0, status: 'ok', ...over });
+const tartLines = () => [
+  dishLine({ role: 'stocked', inventoryId: 'i-flour', label: 'Flour', qtyEntered: 200, unitCode: 'g', usablePct: null, baseUnit: 'mg' }),
+  dishLine({ role: 'stocked', inventoryId: 'i-gin', label: 'Gin', qtyEntered: 30, unitCode: 'ml', usablePct: 90, baseUnit: 'ml10' }),
+];
+let dishes: Array<{ dishId: string; name: string }>;
+let dishRecipe: Record<string, unknown>;
+const dishAnswer = (id: string, name: string, lines: unknown[]) => ({
+  dish: { id, name, section: null, price: null, description: null },
+  current: { versionId: `v-${id}`, version: 3, yieldServes: 8, method: 'Bake.', glass: null, garnish: 'Mint', createdAt: '', lines },
+  cost: null,
+  versionCount: 3,
+  legacyLines: [],
+});
+
 let inFlight = 0;
 let most = 0;
 let afterCost: object;
 
 beforeEach(() => {
   uses = threeDrinks();
+  dishes = [];
+  dishRecipe = { 'd-tart': dishAnswer('d-tart', 'Gin tart', tartLines()) };
   inFlight = 0;
   most = 0;
   afterCost = { perServe: 2.91, perServeExact: 2.91, priced: 1, of: 1, complete: true, partial: 0, lines: [] };
   h.get.mockReset().mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null } };
     if (url === `/recipes/${RID}/drinks/loose-lines?linkedTo=i-gin`) return { data: uses };
+    if (url === `/recipes/${RID}/items/i-gin/dishes`) return { data: { dishes } };
+    const d = url.match(/\/dishes\/([^/]+)$/);
+    if (d && dishRecipe[d[1]]) return { data: dishRecipe[d[1]] };
     throw new Error(`unexpected GET ${url}`);
   });
   h.post.mockReset().mockImplementation(async (_url: string, body: { lines: Array<{ inventoryId: string | null }> }) => {
@@ -107,13 +128,13 @@ async function choose(toName: string) {
 }
 
 describe('swap a good in every drink (r108 drinks-g10)', () => {
-  it('says how many lines use the good, and that its dishes are not changed', async () => {
+  it('says how many lines use the good, and which dishes do', async () => {
     mount();
     fireEvent.click(screen.getByTestId('swap-open'));
     fireEvent.click(screen.getByText('pick House gin'));
     expect(await screen.findByTestId('swap-uses')).toHaveTextContent('3 lines in 3 drinks pour from it.');
-    expect(screen.getByTestId('swap-dishes')).toHaveTextContent('2 dishes use it too; they are not changed here.');
-    expect(screen.getByText('Each drink keeps its earlier version.')).toBeInTheDocument();
+    expect(await screen.findByTestId('swap-dishes')).toHaveTextContent("No dish's current recipe uses House gin.");
+    expect(screen.getByText('Each drink and dish keeps its earlier version.')).toBeInTheDocument();
   });
 
   it('the good being swapped out cannot be its own replacement', async () => {
@@ -215,5 +236,97 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
     expect(['ml', 'l', 'bottle', 'keg'].map(familyOf)).toEqual(['ml10', 'ml10', 'ml10', 'ml10']);
     expect(['mg', 'g', 'kg'].map(familyOf)).toEqual(['mg', 'mg', 'mg']);
     expect(['each', 'case', null].map(familyOf)).toEqual(['each_milli', 'each_milli', 'each_milli']);
+  });
+});
+
+describe('replace a good in dishes too, from the drawer (r110 inventory g4)', () => {
+  const GIN = { id: 'i-gin', name: 'House gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 };
+  let qc: QueryClient;
+  function open() {
+    qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <SwapSheet initialFrom={GIN} onClose={vi.fn()} />
+      </QueryClientProvider>,
+    );
+  }
+  async function to(name: string) {
+    open();
+    await screen.findByTestId('swap-dishes');
+    fireEvent.click(screen.getByText(`pick ${name}`));
+    return screen.findByTestId('swap-plan');
+  }
+  beforeEach(() => {
+    uses = answer([]);
+    dishes = [{ dishId: 'd-tart', name: 'Gin tart' }];
+  });
+
+  it('opens with the drawer’s good chosen and names the dishes that use it', async () => {
+    open();
+    expect(screen.getByTestId('swap-from')).toHaveTextContent('Swap out House gin');
+    expect(await screen.findByTestId('swap-dishes')).toHaveTextContent('1 dish uses it.');
+  });
+
+  it('previews a dish through the dish cost-preview route, and saves it with one PUT: the version read, only the good changed', async () => {
+    const plan = await to('Better gin');
+    await waitFor(() => expect(plan).toHaveTextContent('Gin tart: cost a serve ₺2,55 -> ₺2,91, keeps usable 90%'));
+    expect(h.post.mock.calls.map(([u]) => u)).toEqual([`/recipes/${RID}/dishes/d-tart/cost-preview`, `/recipes/${RID}/dishes/d-tart/cost-preview`]);
+    expect(screen.getByTestId('swap-confirm')).toHaveTextContent('Swap in 1 dish');
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    const [url, body] = h.put.mock.calls[0];
+    expect(url).toBe(`/recipes/${RID}/dishes/d-tart`);
+    expect(JSON.stringify(body)).toBe(
+      JSON.stringify({
+        expectedVersionId: 'v-d-tart',
+        yieldServes: 8,
+        method: 'Bake.',
+        glass: null,
+        garnish: 'Mint',
+        lines: [
+          { role: 'stocked', inventoryId: 'i-flour', label: 'Flour', qty: 200, unit: 'g', componentId: null, usablePct: null },
+          { role: 'stocked', inventoryId: 'i-gin2', label: 'Gin', qty: 30, unit: 'ml', componentId: null, usablePct: 90 },
+        ],
+      }),
+    );
+    expect(await screen.findByTestId('swap-outcomes')).toHaveTextContent('Gin tart: saved, House gin swapped for Better gin.');
+    const keys = spy.mock.calls.map(([f]) => JSON.stringify((f as { queryKey: unknown }).queryKey));
+    expect(keys).toEqual(expect.arrayContaining([JSON.stringify(['inventory', 'item', RID]), JSON.stringify(['recipes', RID, 'dishes'])]));
+  });
+
+  it('a dish line measured another way than the new good is refused, and never sent', async () => {
+    const plan = await to('Limes');
+    expect(plan).toHaveTextContent('Gin tart: not swapped: counted in pieces');
+    expect(screen.getByTestId('swap-confirm')).toBeDisabled();
+    expect(h.post).not.toHaveBeenCalled();
+  });
+
+  it('someone saving the dish first is said, and the dish is left as it is', async () => {
+    h.put.mockReset().mockRejectedValueOnce({ response: { status: 409, data: { message: 'stale' } } });
+    await to('Better gin');
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    expect(await screen.findByTestId('swap-outcomes')).toHaveTextContent('Someone saved Gin tart first; open it to swap this good.');
+  });
+
+  it('a dish with a made line says its cost could not be previewed; one whose recipe could not be read is named and never sent', async () => {
+    dishes = [{ dishId: 'd-tart', name: 'Gin tart' }, { dishId: 'd-gone', name: 'Gin jelly' }];
+    dishRecipe = { 'd-tart': dishAnswer('d-tart', 'Gin tart', [...tartLines(), dishLine({ role: 'made', inventoryId: null, componentId: 'd-syrup', label: 'Syrup', qtyEntered: 20, unitCode: 'ml', usablePct: null, baseUnit: 'ml10' })]) };
+    const plan = await to('Better gin');
+    expect(screen.getByTestId('swap-dishes')).toHaveTextContent('1 dish uses it. Gin jelly: the recipe could not be read, so it is not changed.');
+    await waitFor(() => expect(plan).toHaveTextContent('Gin tart: its cost could not be previewed'));
+    await act(async () => fireEvent.click(screen.getByTestId('swap-confirm')));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines[2]).toEqual({ role: 'made', inventoryId: null, label: 'Syrup', qty: 20, unit: 'ml', componentId: 'd-syrup', usablePct: null });
+  });
+
+  it('a failed read of which dishes use it is said, never "none"', async () => {
+    h.get.mockImplementation(async (url: string) => {
+      if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null } };
+      if (url.includes('loose-lines')) return { data: uses };
+      throw new Error('down');
+    });
+    open();
+    expect(await screen.findByTestId('swap-dishes')).toHaveTextContent('Which dishes use House gin could not be read just now; none is changed here.');
   });
 });
