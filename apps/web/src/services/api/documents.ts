@@ -132,6 +132,37 @@ export interface OrderCurrencyBlock {
   failure: string | null
 }
 
+export interface ListOpts {
+  status?: string
+  docType?: string
+  limit?: number
+  /** Part of a vendor's name or a document number (r104 g2). */
+  q?: string
+  /** Only papers created before this time: the older page (r104 g2). */
+  before?: string
+  /** The last row's id, to break a tie on `before` (r106). */
+  beforeId?: string
+}
+
+export interface DocumentsPage {
+  items: ProcurementDocument[]
+  hasMore: boolean
+}
+
+async function fetchDocumentsPage(opts: ListOpts): Promise<DocumentsPage> {
+  const { data } = await apiClient.get('/procurement/documents', {
+    params: {
+      status: opts.status,
+      docType: opts.docType,
+      limit: opts.limit ?? 100,
+      q: opts.q || undefined,
+      before: opts.before,
+      beforeId: opts.beforeId,
+    },
+  })
+  return { items: data.items ?? [], hasMore: data.hasMore === true }
+}
+
 export const documentsApi = {
   /** Documents linked to one order. Empty when none are attached yet. */
   async forOrder(orderId: string): Promise<ProcurementDocument[]> {
@@ -160,28 +191,13 @@ export const documentsApi = {
   },
 
   /** All documents for the restaurant, optionally filtered by status (needs_review / verified). */
-  async list(opts: {
-    status?: string
-    docType?: string
-    limit?: number
-    /** Part of a vendor's name or a document number (r104 g2). */
-    q?: string
-    /** Only papers created before this time: the older page (r104 g2). */
-    before?: string
-    /** The last row's id, to break a tie on `before` (r106). */
-    beforeId?: string
-  } = {}): Promise<ProcurementDocument[]> {
-    const { data } = await apiClient.get('/procurement/documents', {
-      params: {
-        status: opts.status,
-        docType: opts.docType,
-        limit: opts.limit ?? 100,
-        q: opts.q || undefined,
-        before: opts.before,
-        beforeId: opts.beforeId,
-      },
-    })
-    return data.items ?? []
+  async list(opts: ListOpts = {}): Promise<ProcurementDocument[]> {
+    return (await fetchDocumentsPage(opts)).items
+  },
+
+  /** One page with the server's own answer to "are there older ones" (r106): never guessed from a full page. */
+  async listPage(opts: ListOpts = {}): Promise<DocumentsPage> {
+    return fetchDocumentsPage(opts)
   },
 
   async detail(id: string): Promise<{
