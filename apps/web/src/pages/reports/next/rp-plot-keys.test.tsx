@@ -217,7 +217,7 @@ describe('Shift and the arrow keys read a stretch', () => {
       ...tillView().cats!,
       stretch: (a, b) => {
         const r = readStretch(withheld, WEEK, a, b);
-        return r ? stretchWords(r, money) : undefined;
+        return r ? stretchWords(r, (v) => money(Number(v))) : undefined;
       },
     };
     const { container } = render(<CatPlot series={series} kind="bars" />);
