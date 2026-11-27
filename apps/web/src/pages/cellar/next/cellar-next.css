@@ -1188,8 +1188,7 @@ textarea.cl-field {
   .cl-print-book .cl-print-method { white-space: pre-wrap; }
 }
 
-/* Plan prep (r109 drinks-g3): the house Sheet carries the motion; nothing here animates.
-   On paper it prints alone while html[data-print-prep] is set, the card's pattern. */
+/* Plan prep (r109 drinks-g3): nothing here animates. */
 .cl-prep { display: grid; gap: 10px; }
 .cl-prep-drinks { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .cl-prep-drinks li { display: grid; grid-template-columns: minmax(0, 1fr) 72px auto; align-items: center; gap: 8px; font-size: 13px; }

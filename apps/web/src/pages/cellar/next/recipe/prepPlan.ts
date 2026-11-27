@@ -1,24 +1,13 @@
 /**
- * Plan a shift's prep (r109 drinks-g3): planned serves per drink in, a pull
- * list per good and the batches of each house-made component out. Pure.
- *
- *   need = qtyBase x serves / yieldServes x 100 / usablePct
- *
- * Invariant: a good's total is the exact sum of its per-drink needs, rounded
- * ONCE at the end and up (whole ml, g or piece), so a pull list never
- * under-pulls and never carries one rounding per line. Sums are per (good,
- * base unit): a good poured in ml on one drink and weighed on another stays
- * two rows, never added across families. A stocked line with no good is
- * listed as not linked and is never summed into a good; a line that is not
- * counted is listed by its label. It never reads on-hand stock (DD-r105-31
- * ground): it says what to pull and make, not what can be made.
+ * Plan a shift's prep (r109 drinks-g3), pure. need = qtyBase x serves / yieldServes x 100 / usablePct.
+ * Invariant: a good's total is the exact sum of its needs per (good, base unit), never across families,
+ * rounded ONCE at the end and up. A stocked line with no good is never summed. Never reads on-hand stock.
  */
 import type { CardComponent, DrinkCard } from '../../../../services/api/recipes';
 
 export const SERVES_MAX = 999;
 export const SERVES_SAID = `Planned serves are a whole number from 0 to ${SERVES_MAX}.`;
 
-/** "12" to 12; empty is 0; anything else is null. */
 export function readServes(text: string): number | null {
   const s = text.trim();
   if (s === '') return 0;
@@ -26,27 +15,22 @@ export function readServes(text: string): number | null {
   return Number(s);
 }
 
-/** What one base unit is to a person, and how many of it make one. */
 const UNIT: Record<string, { word: string; per: number }> = {
   ml10: { word: 'ml', per: 10 },
   mg: { word: 'g', per: 1000 },
   each_milli: { word: 'each', per: 1000 },
 };
 
-/** Float slack: an exact whole amount is never pushed up a unit by noise. */
-const EPS = 1e-9;
-
 /** A base amount as a person pulls it, rounded up once: "112 ml", "3 each". */
 export function pullWords(base: number, baseUnit: string): string {
   const u = UNIT[baseUnit];
-  return u ? `${Math.ceil(base / u.per - EPS)} ${u.word}` : `${base} ${baseUnit}`;
+  return u ? `${Math.ceil(base / u.per - 1e-9)} ${u.word}` : `${base} ${baseUnit}`;
 }
 
 export interface PullRow {
   inventoryId: string;
   name: string;
   baseUnit: string;
-  /** The exact sum in base units, unrounded. */
   base: number;
   drinks: string[];
 }
@@ -55,7 +39,6 @@ export interface MakeRow {
   name: string;
   baseUnit: string;
   base: number;
-  /** Whole batches, or null when the component's yield is not set in this family. */
   batches: number | null;
   yieldBase: number | null;
   drinks: string[];
@@ -63,7 +46,6 @@ export interface MakeRow {
 export interface NamedRow {
   label: string;
   drinks: string[];
-  /** The first drink it is on, so an editor can open that drink and link the line. */
   firstDrinkId: string;
 }
 export interface PrepPlan {
@@ -71,7 +53,6 @@ export interface PrepPlan {
   make: MakeRow[];
   notLinked: NamedRow[];
   notCounted: NamedRow[];
-  /** Planned drinks, in serves. */
   planned: number;
 }
 
@@ -123,7 +104,7 @@ export function planPrep(cards: DrinkCard[], components: CardComponent[], serves
         make.set(k, { ...e, base: e.base + need, drinks: addDrink(e.drinks, card.name) });
         continue;
       }
-      // A stocked line with no good, a made line with no component, or one whose amount was not read: never summed.
+      // No good, no component, or no amount read: named, never summed.
       named(notLinked, l.label || l.name || '', card);
     }
   }
@@ -131,7 +112,7 @@ export function planPrep(cards: DrinkCard[], components: CardComponent[], serves
   return {
     pull: [...pull.values()].sort(byName),
     make: [...make.values()]
-      .map((m) => ({ ...m, batches: m.yieldBase ? Math.ceil(m.base / m.yieldBase - EPS) : null }))
+      .map((m) => ({ ...m, batches: m.yieldBase ? Math.ceil(m.base / m.yieldBase - 1e-9) : null }))
       .sort(byName),
     notLinked: [...notLinked.values()].sort(byName),
     notCounted: [...notCounted.values()].sort(byName),
@@ -146,7 +127,7 @@ export function makeWords(m: MakeRow): string {
   return `${m.name}: ${m.batches} ${m.batches === 1 ? 'batch' : 'batches'} (${need} needed, one makes ${pullWords(m.yieldBase, m.baseUnit)})`;
 }
 
-/** Planned serves are kept in this browser per house and per day: a convenience, never state. */
+/** Serves kept per house and day in this browser: a convenience. */
 export const planKey = (houseId: string | null | undefined, day: string) => `mudavym.prepPlan.v1:${houseId ?? '-'}:${day}`;
 
 export function planWas(key: string): Record<string, string> {
@@ -168,7 +149,6 @@ export function keepPlan(key: string, texts: Record<string, string>): void {
   }
 }
 
-/** Today in this browser's own day, "2026-11-27". */
 export function localDay(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;

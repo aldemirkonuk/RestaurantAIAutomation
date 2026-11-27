@@ -1,14 +1,7 @@
 /**
- * Plan prep on /cocktails (r109 drinks-g3): any role types how many of each
- * drink the shift expects, and reads what to pull from the shelf and how many
- * batches of each house-made component to make (`prepPlan.ts`). The serves
- * are kept in this browser per house and per day (a convenience). No money,
- * and no on-hand stock: it says what to pull, not what can be made.
- *
- * The sheet is the house Sheet (its panel band, no exit animation, none under
- * reduced motion, ADR 0112). It prints alone while `html[data-print-prep]` is
- * set, the card's pattern. An owner or manager gets a way to link a line that
- * names no good: it opens that drink's recipe sheet.
+ * Plan prep on /cocktails (r109 drinks-g3), any role: serves per drink in, pull list and batches out
+ * (prepPlan.ts). No money, no on-hand stock. The house Sheet carries the motion (ADR 0112); paper
+ * under html[data-print-prep]. An editor gets a link into a drink to link a line naming no good.
  */
 import { useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';

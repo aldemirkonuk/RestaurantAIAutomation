@@ -62,17 +62,11 @@ describe('Plan prep', () => {
     expect(screen.queryByTestId('prep-pull')).toBeNull();
   });
 
-  it('a failed read, or an older gateway with no line roles, is unread and never a shorter list', async () => {
-    h.get.mockRejectedValueOnce(new Error('down'));
+  it.each(['down', 'old'])('a failed read (%s gateway) is unread, never a shorter list', async (k) => {
+    if (k === 'down') h.get.mockRejectedValueOnce(new Error('down'));
+    else h.get.mockResolvedValueOnce({ data: { drinks: [{ ...cards.drinks[0], lines: [{ label: 'gin', qty: 30, unit: 'ml', name: null }] }], components: [] } });
     mount('staff');
     fireEvent.click(screen.getByTestId('prep-open'));
     expect(await screen.findByTestId('prep-unread')).toHaveTextContent(PREP_UNREAD);
-  });
-
-  it('an older gateway with no line roles is unread too', async () => {
-    h.get.mockResolvedValueOnce({ data: { drinks: [{ ...cards.drinks[0], lines: [{ label: 'gin', qty: 30, unit: 'ml', name: null }] }], components: [] } });
-    mount('staff');
-    fireEvent.click(screen.getByTestId('prep-open'));
-    expect(await screen.findByTestId('prep-unread')).toBeInTheDocument();
   });
 });

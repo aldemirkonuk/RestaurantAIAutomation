@@ -571,7 +571,7 @@ export const dishesApi = {
     return r.data.drinks;
   },
 
-  /** The same read with the components the lines draw, for a prep plan. An older gateway that sends no line roles is unread. */
+  /** The same read plus components, for a prep plan; an older gateway (no line roles) is unread. */
   async prepCards(restaurantId: string): Promise<{ drinks: DrinkCard[]; components: CardComponent[] }> {
     const r = await apiClient.get<{ drinks: DrinkCard[]; components?: CardComponent[] }>(`${base(restaurantId)}/drinks/cards`);
     if (!Array.isArray(r.data?.drinks) || !Array.isArray(r.data?.components)) throw new Error('The recipe cards came back without their rows.');
