@@ -1971,7 +1971,7 @@ export default function ReceiptsNext() {
             {/* the verified lane — the record, one click away, read-only
                 (opus-fidelity R-1: "everything from all of the orders" must
                 not shrink the verified book to a header integer) */}
-            {data.verifiedKnown && (data.verified.length > 0 || data.verifiedTerm !== '') && (
+            {(data.verifiedTerm !== '' || (data.verifiedKnown && data.verified.length > 0)) && (
               <div style={{ marginTop: 16 }} data-testid="verified-lane">
                 <button
                   type="button"
@@ -2014,7 +2014,12 @@ export default function ReceiptsNext() {
                         Find
                       </button>
                     </form>
-                    {data.verified.length === 0 && (
+                    {data.verifiedError && (
+                      <p role="alert" style={{ fontSize: 12, color: 'var(--ink-1, #211C16)', margin: '4px 0 8px' }}>
+                        The verified papers could not be read: {data.verifiedError}. Search again, or clear the search to see the newest.
+                      </p>
+                    )}
+                    {!data.verifiedError && data.verified.length === 0 && (
                       <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '4px 0 8px' }}>
                         No verified paper matches &ldquo;{data.verifiedTerm}&rdquo;.
                       </p>
