@@ -892,7 +892,12 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     api.doorPending = false;
     api.unverified = { items: [] };
     const answered = render(<ReceiptsNext />, { wrapper });
-    await waitFor(() => expect(screen.queryByText('Reading…')).toBeNull());
+    // Wait for the door read to LAND, not for "Reading…" to be absent: that is
+    // true on the first frame, before any read, and the count below would then
+    // compare the pending render with itself (r106 mutant: it passed with the
+    // unknown line drawn in both). "Caught up" is said only once the door is known.
+    expect(await screen.findByText('Nothing awaits review — the paper trail is caught up.')).toBeTruthy();
+    expect(screen.queryByText('Reading…')).toBeNull();
     expect(above(answered.container)).toBe(whilePending);
   });
 
