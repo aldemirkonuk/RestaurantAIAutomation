@@ -611,16 +611,10 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
   }
 }
 
-/* ── the spread: forgot, reset, verify, no-access, invite, get-started ───
-   `AuthSpread` is the book again for the doors that are not sign-in. Same
-   endpaper, same ruled leaf; what it adds is one heading and one field
-   grammar, so a stranger meets the same page at every door.
-
-   - the heading is the page's one H1, set in Fraunces;
-   - a field is 52px tall and written on a one-pixel hairline;
-   - a plate is 52px tall and as wide as the column;
-   - the leaf's contents rise in, one after another, on transform and
-     opacity only, and not at all under reduced motion. */
+/* ── the spread: get-started (AuthSpread) ───
+   The same endpaper and ruled leaf, plus one Fraunces H1 and one field
+   grammar (52px fields on a hairline, 52px plates). The leaf's contents rise
+   in on transform and opacity, never under reduced motion. */
 
 .mdv-spread-main {
   display: block;
@@ -726,39 +720,13 @@ html .mudavym.mdv-endpaper .mdv-spread :is(input:not([type]), input[type='text']
 }
 
 /* get-started's own parts, in the same grammar */
-.mdv-spread .mdv-label,
-.mdv-spread legend.mdv-label {
+.mdv-spread .mdv-label {
   display: block;
   font: 500 10.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);
   padding: 0;
-}
-.mdv-spread fieldset {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-}
-.mdv-spread-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-.mdv-spread-chip {
-  min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid var(--mdv-ep-line);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--ink-1);
-  font-size: 14px;
-}
-.mdv-spread-chip[aria-pressed='true'] {
-  border-color: var(--seal);
-  background: var(--seal-tint);
 }
 .mdv-spread-textlink {
   display: inline-flex;
@@ -774,15 +742,13 @@ html .mudavym.mdv-endpaper .mdv-spread :is(input:not([type]), input[type='text']
   text-underline-offset: 4px;
   cursor: pointer;
 }
-.mdv-spread-links {
+.mdv-spread-links,
+.mdv-spread-facts-line {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 24px;
 }
 .mdv-spread-facts-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 24px;
   font-size: 13px;
   color: var(--ink-3);
 }
@@ -812,16 +778,4 @@ html .mudavym.mdv-endpaper .mdv-spread :is(input:not([type]), input[type='text']
   margin-top: 10px;
   font-size: 14px;
   color: var(--ink-3);
-}
-.mdv-spread-settling {
-  padding: 18px 0;
-  border-top: 1px solid var(--mdv-ep-rule);
-  border-bottom: 1px solid var(--mdv-ep-rule);
-  font: 400 22px/1.7 'Fraunces', Georgia, serif;
-  color: var(--ink-1);
-}
-.mdv-spread-settling > p {
-  margin: 0;
-  font: inherit;
-  color: inherit;
 }

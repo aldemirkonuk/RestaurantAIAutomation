@@ -569,7 +569,6 @@ export default function GetStarted() {
                 nameTouched.current = true
                 setName(event.target.value)
               }}
-             
             />
           </label>
         )}
