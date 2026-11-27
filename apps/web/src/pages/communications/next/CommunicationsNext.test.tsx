@@ -11,6 +11,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 
+const mockAuth = vi.hoisted(() => ({ role: 'owner' as string }));
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: mockAuth.role, user: { role: mockAuth.role } }),
+}));
+
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
 // Only the HOOK is replaced. `COMMS_SERVER_WINDOWS` passes through from the real
@@ -234,13 +239,25 @@ beforeEach(() => {
 });
 
 describe('CommunicationsNext', () => {
+  it('says vendor replies to staff, whose 30-day figure is the vendors\' alone', () => {
+    mockAuth.role = 'staff';
+    try {
+      mockData.current = { ...base, glance: { draftsPending: 1, sentLast30: 9, repliesLast30: 18 } };
+      render(<CommunicationsNext />);
+      expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
+      expect(screen.queryByText('Letters in · 30 days')).toBeNull();
+    } finally {
+      mockAuth.role = 'owner';
+    }
+  });
+
   it('shows the glance strip from settled queries and EM for unanswered ones', () => {
     mockData.current = {
       ...base,
       glance: { draftsPending: 1, sentLast30: null, repliesLast30: null },
     };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
+    expect(screen.getByText('Letters in · 30 days')).toBeInTheDocument();
     // COMMS-W3: no figure counts a list the page does not show
     expect(screen.queryByText('Threads')).toBeNull();
     // two unanswered figures render as em dashes, never zeros
@@ -272,7 +289,7 @@ describe('CommunicationsNext', () => {
       failedSources: ['the count of letters in'],
     };
     render(<CommunicationsNext />);
-    expect(screen.getByLabelText('Replies · 30 days: could not be read')).toBeInTheDocument();
+    expect(screen.getByLabelText('Letters in · 30 days: could not be read')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
@@ -1081,7 +1098,7 @@ describe('Mail and Letters', () => {
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
     expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
     // Letters' own figures and lists stand with Letters.
-    expect(screen.queryByText('Replies · 30 days')).toBeNull();
+    expect(screen.queryByText('Letters in · 30 days')).toBeNull();
     expect(screen.queryByRole('region', { name: 'To send' })).toBeNull();
   });
 
@@ -1142,7 +1159,7 @@ describe('Mail and Letters', () => {
     at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1&senders=open');
     fireEvent.click(tabs()[1]);
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
-    expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
+    expect(screen.getByText('Letters in · 30 days')).toBeInTheDocument();
   });
 
   it("hands Mail the orders that have a drafted reply, and Mail's reply act opens it", () => {
