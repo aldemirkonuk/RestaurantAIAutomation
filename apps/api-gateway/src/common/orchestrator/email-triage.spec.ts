@@ -243,6 +243,22 @@ describe("senderAuthOf — the sender check kept on a letter (r108 mail-gap g8)"
     ).toBe("mail.v.example");
   });
 
+  it("names the signer that speaks for the From domain, not the first one that passed", () => {
+    const ar =
+      "mx.google.com; dkim=pass header.i=@evil.example header.s=a; dkim=pass header.d=fikritarim.com header.s=b; spf=pass; dmarc=pass header.from=fikritarim.com";
+    expect(senderAuthOf({ "authentication-results": ar }, "Vendor <orders@mail.fikritarim.com>")?.signedBy).toBe("fikritarim.com");
+    // Nobody speaks for the From: the first is recorded, and the check is judged later against From.
+    expect(
+      senderAuthOf({ "authentication-results": "mx.google.com; dkim=pass header.i=@evil.example; dmarc=fail" }, "orders@fikritarim.com"),
+    ).toEqual({ spf: null, dkim: true, dmarc: false, signedBy: "evil.example" });
+  });
+
+  it("counts a later passing signature as DKIM passing when the first failed", () => {
+    expect(
+      senderAuthOf({ "authentication-results": "mx.google.com; dkim=fail header.d=a.example; dkim=pass header.d=fikritarim.com" }, "orders@fikritarim.com")?.dkim,
+    ).toBe(true);
+  });
+
   it("says a failed check failed and names no signer", () => {
     expect(
       senderAuthOf({ "authentication-results": "mx.google.com; dkim=fail header.d=v.example; spf=softfail; dmarc=fail" }),
