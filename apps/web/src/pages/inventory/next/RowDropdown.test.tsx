@@ -382,6 +382,12 @@ describe('Suggested to par reads what is on its way, as the Order more sheet doe
     renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(6, 'bottle', 6)], unsent: [], arrivingInBookUnit: 6 } });
     expect(toPar()).toBe('none, with what is on its way');
   });
+
+  it('hands the Order more sheet the same load, so the sheet suggests the same 3', async () => {
+    renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(3, 'bottle', 3)], unsent: [], arrivingInBookUnit: 3 } });
+    fireEvent.click(screen.getByRole('button', { name: 'Order more' }));
+    expect((await screen.findByTestId('iv-order-to-par')).textContent).toBe('3 bring it to par (10): 3 more are on their way on 1 order.');
+  });
 });
 
 describe('RowDropdown counts read with grouped digits, as money does (INV-W33)', () => {
