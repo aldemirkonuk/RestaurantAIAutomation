@@ -79,6 +79,7 @@ import {
   readSentence,
   MAP_WORDS,
   mapTone,
+  SORT_LABEL,
   sortRows,
   sortWords,
   fmtCount,
@@ -767,6 +768,7 @@ export default function InventoryNext() {
           { value: 'name', label: 'Name' },
           { value: 'value', label: 'Value at cost' },
           { value: 'pace', label: 'Fastest moving' },
+          { value: 'used', label: SORT_LABEL.used },
         ]}
       />
       <span className="iv-toggle" role="group" aria-label="View">

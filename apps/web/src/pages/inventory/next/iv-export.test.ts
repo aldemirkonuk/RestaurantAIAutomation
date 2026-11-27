@@ -1,3 +1,4 @@
+/** The valuation file says an unread cost, and carries what uses each good, never a 0 for a count nobody read (r106 g5). */
 import { describe, expect, it } from 'vitest';
 import { COST_NOT_READ, valuationColumns } from './iv-export';
 import type { InvRow } from './useInventoryNextData';
@@ -16,5 +17,22 @@ describe('the valuation CSV says when a cost could not be read', () => {
     expect(cell('Value at cost', row({ wac: 12.5, value: 50 }))).toBe('50.00');
     expect(cell('WAC', row({}))).toBe('');
     expect(cell('Value at cost', row({}))).toBe('');
+  });
+});
+
+const usedCol = valuationColumns('EUR').find((c) => c.header === 'Used in (recipes)');
+const usedCell = (usedIn: number | null | undefined) => usedCol?.value({ usedIn } as unknown as InvRow);
+
+describe('Used in (recipes) column', () => {
+  it('is in the file', () => {
+    expect(usedCol).toBeDefined();
+  });
+  it('writes the number, and 0 for a good that was counted and unused', () => {
+    expect(usedCell(4)).toBe(4);
+    expect(usedCell(0)).toBe(0);
+  });
+  it('writes words, never 0, when the count could not be read or is not read yet', () => {
+    expect(usedCell(null)).toBe('could not be read');
+    expect(usedCell(undefined)).toBe('not read yet');
   });
 });
