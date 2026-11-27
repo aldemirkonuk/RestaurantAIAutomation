@@ -65,6 +65,11 @@ function reasonOf(err: unknown): string {
   return e?.message || 'no reason was given';
 }
 
+/** Prices of a menu that are still to reach the house (a choice made, a carry cut off). */
+function toCarry(plan: Pick<Plan, 'counts'>): number {
+  return plan.counts.change + plan.counts.new_wine;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -73,8 +78,12 @@ function plural(n: number, one: string, many: string): string {
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
 ): string {
-  if (plan.current)
-    return "This is already the current menu. If a carry of its prices was cut off, carrying them again finishes it; a price set since it was chosen stays.";
+  if (plan.current) {
+    const left = toCarry(plan);
+    return left > 0
+      ? `This is already the current menu, but ${plural(left, 'price has', 'prices have')} not reached the house yet. Choosing it again carries ${left === 1 ? 'it' : 'them'}.`
+      : 'This is already the current menu. Choosing it again changes nothing.';
+  }
   const c = plan.counts;
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
@@ -437,7 +446,7 @@ export function MenuPlan({
       ) : null}
 
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
-        {canManage ? (
+        {canManage && (!plan.current || toCarry(plan) > 0) ? (
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
@@ -445,12 +454,8 @@ export function MenuPlan({
             onClick={() => choose.mutate(plan.fingerprint)}
           >
             {plan.current
-              ? choose.isPending
-                ? 'Carrying its prices…'
-                : 'Carry its prices again'
-              : choose.isPending
-                ? 'Making it current…'
-                : 'Make it current'}
+              ? choose.isPending ? 'Carrying…' : `Finish carrying ${plural(toCarry(plan), 'price', 'prices')}`
+              : choose.isPending ? 'Making it current…' : 'Make it current'}
           </button>
         ) : null}
         {onCancel ? (

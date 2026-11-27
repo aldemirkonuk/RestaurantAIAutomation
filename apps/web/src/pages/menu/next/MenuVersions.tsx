@@ -363,9 +363,9 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={v.current ? `Carry ${versionLabel(v)} prices again` : `Make ${versionLabel(v)} current`}
+            aria-label={v.current ? `Finish carrying the prices of ${versionLabel(v)}` : `Make ${versionLabel(v)} current`}
           >
-            {planning ? 'See below' : v.current ? 'Carry its prices again' : 'Make current'}
+            {planning ? 'See below' : v.current ? 'Finish carrying its prices' : 'Make current'}
           </button>
         ) : null}
       </td>
