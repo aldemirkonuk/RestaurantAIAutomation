@@ -1491,10 +1491,12 @@ export class InventoryService {
   }
 
   async getInventorySummary(restaurantId: string) {
-    const rawInventory =
-      await this.dbService.getRestaurantInventory(restaurantId);
+    // Neither read needs the other's answer, so they are asked together.
+    const [rawInventory, rawLowStock] = await Promise.all([
+      this.dbService.getRestaurantInventory(restaurantId),
+      this.dbService.getLowStockItems(restaurantId),
+    ]);
     const inventory = rawInventory ?? [];
-    const rawLowStock = await this.dbService.getLowStockItems(restaurantId);
     const lowStock = rawLowStock ?? [];
 
     const totalItems = inventory.length;
