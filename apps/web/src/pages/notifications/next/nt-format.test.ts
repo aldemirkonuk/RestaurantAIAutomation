@@ -146,6 +146,8 @@ describe('the mark drawn in the emoji’s place', () => {
       // Its rows landed under *Other* until this row existed, which is exactly
       // how a new register goes invisible.
       ['grant_suspended', 'Connections'],
+      // DD-r108-17: notifications/producers/menu-due.producer.ts.
+      ['menu_due', 'Menu'],
       ['mcp_tool_added', 'Connections'],
       ['overdue_order', 'Orders'],
       ['order_inquiry', 'Orders'],

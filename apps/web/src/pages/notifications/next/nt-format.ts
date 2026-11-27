@@ -13,6 +13,7 @@ import {
   CreditCard,
   FileText,
   Inbox,
+  BookOpen,
   Lightbulb,
   Mail,
   Package,
@@ -119,6 +120,10 @@ export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   // note's link opens on the Connections page (`ConnectionsNext.tsx`), and the
   // founder's own word for it elsewhere is "POS".
   pos_import_refused: 'Point of sale',
+  // The current menu is due for a newer read by its own cadence (DD-r108-17):
+  // api-gateway notifications/producers/menu-due.producer.ts. Its link opens
+  // /menu, so its register is the page's own name.
+  menu_due: 'Menu',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',
@@ -178,6 +183,7 @@ const ICON_BY_KIND: Record<string, LucideIcon> = {
   // Connections page draws on its "Point of sale" row (`ConnectionsNext.tsx`),
   // so the line, its register's name and the row its link opens all agree.
   'Point of sale': Store,
+  Menu: BookOpen,
   System: Settings,
   Other: Inbox,
 };
@@ -259,6 +265,7 @@ export const KIND_ORDER = [
   'Market',
   'Connections',
   'Point of sale',
+  'Menu',
   'System',
   'Other',
 ] as const;
