@@ -131,10 +131,10 @@ const base = {
   refetchQueued: vi.fn(),
 };
 
-function open() {
+function open(onQueued?: () => void) {
   return render(
     <MemoryRouter initialEntries={['/communications']}>
-      <ComposeSheet open onClose={() => {}} />
+      <ComposeSheet open onClose={() => {}} onQueued={onQueued} />
     </MemoryRouter>,
   );
 }
@@ -219,12 +219,16 @@ describe('the house composer', () => {
             },
       ),
     );
-    open();
+    const onQueued = vi.fn();
+    open(onQueued);
     pickRecipient();
+    expect(onQueued).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('letter-send'));
     await waitFor(() => expect(screen.getByTestId('letter-queued')).toBeInTheDocument());
     expect(screen.getByTestId('letter-queued')).toHaveTextContent('has not been sent');
     expect(screen.getByText(/Pull it back/)).toBeInTheDocument();
+    // r109 g2: the page is told, so a reply held on its thread is let go.
+    expect(onQueued).toHaveBeenCalledTimes(1);
   });
 
   it('renders a refused letter as words, and says nothing was queued', async () => {
