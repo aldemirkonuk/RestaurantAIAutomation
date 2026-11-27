@@ -77,18 +77,6 @@ const HOUSE_MAILBOX = {
   missing: [],
 };
 
-const SUBDOMAIN = {
-  ...NO_SENDER,
-  sendOrAsk: MAY_SEND,
-  kind: 'mudavym_subdomain' as const,
-  address: 'siparis@mail.mudavym.com',
-  sendable: true,
-  ceremony: 'seal' as const,
-  undoMs: null,
-  words: 'Sends as siparis@mail.mudavym.com, the house’s own line on Mudavym’s sending domain.',
-  missing: [],
-};
-
 const BOOK = [
   {
     providerId: 'p1',
