@@ -8,6 +8,7 @@ import {
   Inject,
   forwardRef,
 } from "@nestjs/common";
+import { readHouseThresholdMin } from "./house-par";
 import { DatabaseService } from "../database/database.service";
 import { readViewWhole } from "./read-view-whole";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
@@ -1077,7 +1078,9 @@ export class InventoryService {
       // `??`, not `||`: a par of 0 is the house saying "do not stock this"
       // (a garnish, a wine being run down), and `|| 6` turned it into 6 (QA
       // round 2, U-3). Only a par the caller left out gets the default.
-      threshold_min: dto.thresholdMin ?? 6,
+      threshold_min:
+        dto.thresholdMin ??
+        (await readHouseThresholdMin(this.dbService.getClient(), restaurantId)),
       threshold_max: dto.thresholdMax ?? 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
@@ -1223,6 +1226,15 @@ export class InventoryService {
     const source = dto.source || "bulk_receive";
     const results: Array<Record<string, any>> = [];
 
+    // The house's par is read ONCE, before any line resolves, and only if some
+    // line states none of its own. Read per line and after resolveBulkLineWine
+    // had upserted a library row, a failed read orphaned that row under a
+    // message saying nothing was added, and cost one pooler round trip per
+    // line. A failed read refuses the whole request here (r102 review).
+    const housePar = dto.items.some((l) => l.thresholdMin == null)
+      ? await readHouseThresholdMin(this.dbService.getClient(), restaurantId)
+      : undefined;
+
     for (let index = 0; index < dto.items.length; index++) {
       const line = dto.items[index];
       const wineName =
@@ -1237,6 +1249,7 @@ export class InventoryService {
           resolved.masterWineId,
           source,
           dto.reason,
+          housePar,
         );
         // A NEW row's price goes through the one writer, by the person
         // (receiveBulkLine no longer puts it in the insert). An existing
@@ -1389,6 +1402,7 @@ export class InventoryService {
     masterWineId: string,
     source: string,
     reason?: string,
+    housePar?: number,
   ): Promise<{ status: string; inventoryId: string }> {
     const client = this.dbService.getClient();
     const qty = line.stockLive ?? 0;
@@ -1432,7 +1446,10 @@ export class InventoryService {
         master_wine_id: masterWineId,
         provider_id: line.providerId || null,
         stock_live: 0, // lots are the source of truth; booked via the RPC below
-        threshold_min: line.thresholdMin ?? 6,
+        threshold_min:
+          line.thresholdMin ??
+          housePar ??
+          (await readHouseThresholdMin(client, restaurantId)),
         threshold_max: line.thresholdMax ?? 24,
         is_active: true,
       };
