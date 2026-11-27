@@ -77,8 +77,8 @@ export class ReportCuttingReader {
         });
       }
       // GET /analytics/pos-revenue/:rid?days= — AnalyticsController.getPosRevenue.
-      // The handler also attaches a per-wine consumption breakdown; the till
-      // cutting reads none of it, so neither does its export.
+      // The handler attaches a per-wine consumption breakdown only when asked
+      // (`include=consumption`); the page does not ask, nor does the export.
       case "till":
         return this.goals.getPosRevenueWindow(restaurantId, days ?? 30);
       // GET /analytics/goals/:rid/progress — the handler's default status.
