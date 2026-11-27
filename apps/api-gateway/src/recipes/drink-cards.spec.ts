@@ -74,10 +74,43 @@ describe("the spec book (drinks/cards)", () => {
     const n = drinks.find((d) => d.cocktailId === NEGRONI)!;
     expect(n).toMatchObject({ section: "Aperitivo", glass: "Coupe", method: "Stir with ice", garnish: "Orange", yieldServes: 1, version: 4, versionDate: "2026-11-07T10:00:00Z" });
     // In recipe order, each with the good it names where it names one.
-    expect(n.lines).toEqual([
+    expect(n.lines.map(({ label, qty, unit, name }) => ({ label, qty, unit, name }))).toEqual([
       { label: "gin", qty: 30, unit: "ml", name: "Plymouth gin" },
       { label: "vermouth", qty: 30, unit: "ml", name: null },
     ]);
+  });
+
+  // r109 drinks-g3: what a prep plan sums by. Quantities only.
+  it("each line carries its role, good or component, base quantity and usable share", async () => {
+    const r = rows();
+    r.recipe_lines.find((l) => l.id === "l2")!.usable_pct = "45.00";
+    r.recipe_lines.push(lineRow("l5", V_SOUR, HOUSE_A, 2, "syrup", null, { role: "made", component_dish_id: SOUP, qty_base: 150, usable_pct: 50 }));
+    const { drinks } = await service(r).svc.drinkCards(HOUSE_A);
+    const n = drinks.find((d) => d.cocktailId === NEGRONI)!;
+    expect(n.lines[0]).toEqual({ label: "gin", qty: 30, unit: "ml", name: "Plymouth gin", role: "stocked", inventoryId: GIN, componentId: null, qtyBase: 300, baseUnit: "ml10", usablePct: 45 });
+    expect(n.lines[1]).toMatchObject({ role: "stocked", inventoryId: null, usablePct: null });
+    // A share is a stocked line's only: a made line's stored value is not passed on.
+    expect(drinks.find((d) => d.cocktailId === SOUR)!.lines[1]).toMatchObject({ role: "made", componentId: SOUP, qtyBase: 150, usablePct: null });
+  });
+
+  it("components lists each one a line draws, with its yield, from this house only", async () => {
+    const r = rows();
+    const B_SYRUP = "d0000000-0000-4000-8000-0000000000b9";
+    r.dishes = [
+      { id: SOUP, restaurant_id: HOUSE_A, name: "House syrup", deleted_at: null, yield_qty_base: 10000, yield_base_unit: "ml10" },
+      { id: B_SYRUP, restaurant_id: HOUSE_B, name: "B-SECRET syrup", deleted_at: null, yield_qty_base: 5000, yield_base_unit: "ml10" },
+    ];
+    r.recipe_lines.push(lineRow("l5", V_SOUR, HOUSE_A, 2, "syrup", null, { role: "made", component_dish_id: SOUP }));
+    r.recipe_lines.push(lineRow("l6", V_SOUR, HOUSE_A, 3, "stolen", null, { role: "made", component_dish_id: B_SYRUP }));
+    const out = await service(r).svc.drinkCards(HOUSE_A);
+    expect(out.components).toEqual([{ id: SOUP, name: "House syrup", yieldQtyBase: 10000, yieldBaseUnit: "ml10" }]);
+    expect(JSON.stringify(out)).not.toMatch(/B-SECRET/);
+  });
+
+  it("a component with no yield set says null, never 0", async () => {
+    const r = rows();
+    r.recipe_lines.push(lineRow("l5", V_SOUR, HOUSE_A, 2, "syrup", null, { role: "made", component_dish_id: SOUP }));
+    expect((await service(r).svc.drinkCards(HOUSE_A)).components).toEqual([{ id: SOUP, name: "House syrup", yieldQtyBase: null, yieldBaseUnit: null }]);
   });
 
   it("a made line names its component", async () => {
@@ -155,7 +188,9 @@ describe("the spec book (drinks/cards)", () => {
       if (Array.isArray(v)) v.forEach(walk);
       else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) (keys.push(k), walk(x));
     };
-    walk(await service().svc.drinkCards(HOUSE_A));
+    const r = rows();
+    r.recipe_lines.push(lineRow("l5", V_SOUR, HOUSE_A, 2, "syrup", null, { role: "made", component_dish_id: SOUP }));
+    walk(await service(r).svc.drinkCards(HOUSE_A));
     expect(keys.filter((k) => /price|cost|margin|pour|money|tax/i.test(k))).toEqual([]);
     // The prices in the rows are 12, 11 and 9; the only numbers in a card are quantities, serves and versions.
     expect(nums.filter((n) => [12, 11, 9].includes(n))).toEqual([]);

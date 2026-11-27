@@ -115,9 +115,36 @@ export interface DrinkCard {
   yieldServes: number;
   version: number;
   versionDate: string | null;
-  lines: Array<{ label: string; qty: number; unit: string | null; name: string | null }>;
+  /**
+   * Each line as the card prints it, plus what a prep plan sums by (r109
+   * drinks-g3): the good or component it draws, its base quantity for the
+   * recipe's yield, and its usable share. Quantities only, never money.
+   */
+  lines: Array<{
+    label: string;
+    qty: number;
+    unit: string | null;
+    name: string | null;
+    role: "stocked" | "untracked" | "made";
+    inventoryId: string | null;
+    componentId: string | null;
+    qtyBase: number | null;
+    baseUnit: string | null;
+    usablePct: number | null;
+  }>;
   allergens: RowAllergens;
 }
+
+/** A house-made component a card's made line draws, with what one batch of it makes (null while unset). */
+export interface CardComponent {
+  id: string;
+  name: string | null;
+  yieldQtyBase: number | null;
+  yieldBaseUnit: string | null;
+}
+
+/** A stored number, or null when it is absent or not a finite number. */
+const num = (v: unknown): number | null => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
 type Read = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
 
@@ -669,7 +696,7 @@ export class DishesService {
    * 503 with a sentence, never a shorter book (ADR 0020); a failed allergen read says
    * so on the card and never reads as allergen-free.
    */
-  async drinkCards(restaurantId: string): Promise<{ drinks: DrinkCard[] }> {
+  async drinkCards(restaurantId: string): Promise<{ drinks: DrinkCard[]; components: CardComponent[] }> {
     const client = this.db.getClient();
     const drinks = await this.all<any>("card drink read", DRINK_CARDS_UNREAD, (from, to) =>
       client
@@ -710,7 +737,7 @@ export class DishesService {
         this.all<any>("card line read", DRINK_CARDS_UNREAD, (from, to) =>
           client
             .from("recipe_lines")
-            .select("id, version_id, position, label, role, inventory_id, component_dish_id, qty_entered, unit_code, qty_base, base_unit")
+            .select("id, version_id, position, label, role, inventory_id, component_dish_id, qty_entered, unit_code, qty_base, base_unit, usable_pct")
             .eq("restaurant_id", restaurantId)
             .in("version_id", ids)
             .order("id", { ascending: true })
@@ -741,7 +768,7 @@ export class DishesService {
         this.all<any>("card component read", DRINK_CARDS_UNREAD, (from, to) =>
           client
             .from("dishes")
-            .select("id, name")
+            .select("id, name, yield_qty_base, yield_base_unit")
             .eq("restaurant_id", restaurantId)
             .in("id", ids)
             .order("id", { ascending: true })
@@ -774,11 +801,24 @@ export class DishesService {
           qty: Number(l.qty_entered),
           unit: (l.unit_code ?? null) as string | null,
           name: ((l.inventory_id && goodName.get(l.inventory_id)) || (l.component_dish_id && madeName.get(l.component_dish_id)) || null) as string | null,
+          role: l.role,
+          inventoryId: (l.inventory_id ?? null) as string | null,
+          componentId: (l.component_dish_id ?? null) as string | null,
+          qtyBase: num(l.qty_base),
+          baseUnit: (l.base_unit ?? null) as string | null,
+          usablePct: l.role === "stocked" ? num(l.usable_pct) : null,
         })),
         allergens: rowAllergens(rows, yieldServes, stated),
       });
     }
-    return { drinks: cards };
+    // Only components this house's lines draw, read from this house's dishes (a made line naming another house's dish finds none).
+    const components: CardComponent[] = madeNames.flat().map((r) => ({
+      id: r.id as string,
+      name: (r.name ?? null) as string | null,
+      yieldQtyBase: num(r.yield_qty_base),
+      yieldBaseUnit: (r.yield_base_unit ?? null) as string | null,
+    }));
+    return { drinks: cards, components };
   }
 
   /**
