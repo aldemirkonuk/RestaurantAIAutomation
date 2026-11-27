@@ -23,7 +23,8 @@ export function verdictWords(r: StatementTieoutRow, currency: string | null): st
       return `Amount differs by ${fmtMoney(Math.abs(d), currency)}; the statement says ${d > 0 ? 'more' : 'less'}`;
     }
     case 'never_received':
-      return 'Never received. Its goods may sit on an estimate cost';
+      // A credit memo has no goods to sit on a cost (r110 F4).
+      return r.kind === 'credit' ? 'Credit not on file' : 'Never received. Its goods may sit on an estimate cost';
     default:
       return `Not compared: ${r.reason ?? 'no reason was given'}`;
   }
@@ -74,12 +75,19 @@ export function ReceiptsStatementTieout({ docId }: { docId: string }) {
             <li key={p.id} style={ROW}>
               <span style={{ flex: '1 1 auto' }}>
                 {head(p.docNumber, p.docDate, p.kind)}
-                {p.total != null ? ` · ${fmtMoney(Number(p.total), t.currency)}` : ''}
+                {/* Said in the paper's OWN money, never the statement's (r110 F3). */}
+                {p.total != null && p.currency ? ` · ${fmtMoney(Number(p.total), p.currency)}` : ''}
               </span>
               <span style={{ flex: '0 1 60%', textAlign: 'right' }}>On file, not on this statement</span>
             </li>
           ))}
         </ul>
+      )}
+      {(t.notOnStatementOtherMoney ?? 0) > 0 && (
+        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+          {t.notOnStatementOtherMoney === 1 ? 'One paper' : `${t.notOnStatementOtherMoney} papers`} from this vendor in another money, or with
+          no money read, {t.notOnStatementOtherMoney === 1 ? 'is' : 'are'} left out of this list.
+        </p>
       )}
       {t.paymentsIgnored > 0 && (
         <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>

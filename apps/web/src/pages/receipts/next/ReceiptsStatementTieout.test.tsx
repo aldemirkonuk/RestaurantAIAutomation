@@ -82,7 +82,7 @@ const TIE = {
     row({ docNumber: '77', kind: 'credit', amount: '40.00', verdict: 'on_file_not_checked', paperId: 'cm77' }),
     row({ docNumber: '9', verdict: 'not_compared', reason: 'the paper is in TRY and the statement in USD' }),
   ],
-  notOnStatement: [{ id: 'd103', docNumber: '103', docDate: '2026-11-07', total: '312.40', kind: 'invoice' }],
+  notOnStatement: [{ id: 'd103', docNumber: '103', docDate: '2026-11-07', total: '312.40', currency: 'USD', kind: 'invoice' }],
 };
 
 beforeEach(() => {
@@ -109,6 +109,33 @@ describe('the check card, a statement against your papers', () => {
     expect(items[4].textContent).toMatch(/Not compared: the paper is in TRY and the statement in USD/);
     expect(screen.getByLabelText('On file, not on this statement').textContent).toMatch(/Invoice 103/);
     expect(screen.getByText(/One payment on the statement is not\s+read here, and nothing is marked paid/)).toBeTruthy();
+  });
+
+  it('a credit the house never got says Credit not on file, not goods on an estimate cost (r110 F4)', async () => {
+    api.tie.mockResolvedValue({ ...TIE, rows: [row({ docNumber: 'CR-1', kind: 'credit', verdict: 'never_received', paperId: null })] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const li = (await screen.findByLabelText('Against your papers')).querySelector('li')!;
+    expect(li.textContent).toMatch(/Credit not on file/);
+    expect(li.textContent).not.toMatch(/goods/);
+  });
+
+  it('a paper in another money is said in its own money and the left-out ones are counted (r110 F3)', async () => {
+    api.tie.mockResolvedValue({
+      ...TIE,
+      notOnStatement: [
+        { id: 'r1', docNumber: 'R102-1', docDate: '2026-11-26', total: '120.00', currency: 'TRY', kind: 'invoice' },
+        { id: 'n1', docNumber: 'N-1', docDate: '2026-11-26', total: '9.00', currency: null, kind: 'invoice' },
+      ],
+      notOnStatementOtherMoney: 3,
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const off = await screen.findByLabelText('On file, not on this statement');
+    expect(off.textContent).not.toMatch(/\$/);
+    expect(off.textContent).toMatch(/120/);
+    expect(off.querySelectorAll('li')[1].textContent).not.toMatch(/9\.00/);
+    expect(screen.getByText(/3 papers from this vendor in another money, or with\s+no money read, are left out of this list/)).toBeTruthy();
   });
 
   it('while it reads it holds one 44px row', async () => {

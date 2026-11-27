@@ -536,6 +536,9 @@ export interface StatementTieout {
   notCompared: 'vendor_unknown' | null
   entriesRead: number
   rows: StatementTieoutRow[]
-  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; kind: 'invoice' | 'credit' }[]
+  /** Only papers in the statement's money; each row says its own money (r110 F3). */
+  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; currency: string | null; kind: 'invoice' | 'credit' }[]
+  /** Papers left out of notOnStatement because their money is another or not known. */
+  notOnStatementOtherMoney?: number
   paymentsIgnored: number
 }
