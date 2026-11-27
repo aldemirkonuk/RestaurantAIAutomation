@@ -19,6 +19,22 @@ import { apiClient } from './client'
  */
 import { sealed, rethrowSpoken } from './seal'
 
+export interface SealedChangeEvent {
+  at: string
+  stockValueDelta: string
+  bottles: number
+  salesCostDelta: string
+  sales: number
+  notKnown: number
+}
+export interface SealedChanges extends Omit<SealedChangeEvent, 'at'> {
+  status: string
+  currency: string | null
+  orders: string[]
+  otherPapers: number
+  events: SealedChangeEvent[]
+}
+
 export interface ProcurementDocument {
   id: string
   /** The rate the paper was filed at (newest conversion on its audit trail); null when never converted. */
@@ -215,6 +231,20 @@ export const documentsApi = {
   }> {
     const { data } = await apiClient.get(`/procurement/documents/${id}`)
     return data
+  },
+
+  /**
+   * What sealing this paper changed (r108 g17): stock value and the till's
+   * cost of sales, as exact decimal text in the house's money. Owners and
+   * managers only; anyone else is refused in words.
+   */
+  async sealedChanges(id: string): Promise<SealedChanges> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/changes`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**
