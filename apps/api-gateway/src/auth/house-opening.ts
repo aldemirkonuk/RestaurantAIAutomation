@@ -126,6 +126,36 @@ export function tooLong(label: string, max: number): string {
 }
 
 /**
+ * The sentence for a required field that did not arrive. A missing field used
+ * to fall through to the length rule (a missing string is not "within" a cap
+ * to `@MaxLength`) and be called "longer than 249 characters", or to the bare
+ * type rule and be told "city must be a string". Said once, in the house's
+ * words, and the length rule below stays silent on it.
+ */
+export function needed(label: string): ValidationOptions {
+  return { message: `${label} is needed, so nothing was recorded.` };
+}
+
+/**
+ * `@MaxLength` for a required string field: it says "too long" only of a
+ * string. A missing or non-string value is the type rule's to say (`needed`),
+ * so one fault is never answered by two sentences.
+ */
+export function FitsLength(max: number, options: ValidationOptions) {
+  return (target: object, propertyName: string): void =>
+    registerDecorator({
+      name: "fitsLength",
+      target: target.constructor,
+      propertyName,
+      options,
+      validator: {
+        validate: (value: unknown): boolean =>
+          typeof value !== "string" || value.length <= max,
+      },
+    });
+}
+
+/**
  * Each sign-up field's cap, at its column: the restaurant name is 249 because
  * the organization is named `${restaurantName} Group` in varchar(255). The keys
  * are short so a decorated DTO field stays on one line, which the mobile

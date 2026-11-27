@@ -9,24 +9,55 @@ import {
   Max,
   MaxLength,
   Min,
+  registerDecorator,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ISO_4217_CODES } from "../../common/iso-4217";
 import {
   CAP,
   FitsInBytes,
+  FitsLength,
+  needed,
   GOOGLE_PLACE_ID_MAX_BYTES,
   PLACE_ID_TOO_LONG,
 } from "../house-opening";
 
+const NAME_NEEDED = "Your name is needed, so nothing was recorded.";
+
+/**
+ * The 255-character rule for the name, for a string only. A missing or
+ * non-string name is the type rule's to say ("needed"); this rule used to fail
+ * on it too and say the same words a second time.
+ */
+function NameFitsLength(
+  target: object,
+  propertyName: string,
+): void {
+  registerDecorator({
+    name: "nameFitsLength",
+    target: target.constructor,
+    propertyName,
+    options: CAP.person,
+    validator: {
+      validate: (value: unknown): boolean =>
+        typeof value !== "string" || value.length <= 255,
+    },
+  });
+}
+
 export class RegisterRestaurantDto {
-  @IsString() @MaxLength(255, CAP.person) name: string;
+  // A missing name used to read "Your name is longer than 255 characters, so
+  // nothing was recorded" beside the type message: the length rule also fails
+  // on undefined. Each rule now says only what is true of the value it saw.
+  @IsString({ message: NAME_NEEDED })
+  @NameFitsLength
+  name: string;
   @IsEmail() email: string;
   @MinLength(8) password: string;
-  @IsString() @MaxLength(249, CAP.name) restaurantName: string;
-  @IsString() address: string;
-  @IsString() @MaxLength(100, CAP.city) city: string;
-  @IsString() @MaxLength(100, CAP.country) country: string;
+  @IsString(needed("The restaurant name")) @FitsLength(249, CAP.name) restaurantName: string;
+  @IsString(needed("The address")) address: string;
+  @IsString(needed("The city")) @FitsLength(100, CAP.city) city: string;
+  @IsString(needed("The country")) @FitsLength(100, CAP.country) country: string;
   @IsOptional() @IsString() @MaxLength(100, CAP.state) stateProvince?: string; // US: "IL", Turkey: "Antalya", UK: "Greater London"
   @IsOptional() @IsString() @MaxLength(20, CAP.postal) postalCode?: string; // US: "60601", UK: "SW1A 1AA", TR: "07050"
   @IsOptional()
