@@ -115,7 +115,8 @@ export default function HouseContents() {
     countryRead.current ??= (async () => {
       try {
         const money = await settingsApi.houseCurrency()
-        return money?.country ?? undefined
+        // The house stores its country as written ("Turkey"); the catalogue keys on the ISO code ("TR").
+        return countryByName(money?.country)?.code ?? undefined
       } catch {
         return undefined
       }
