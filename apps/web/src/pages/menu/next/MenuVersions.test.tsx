@@ -724,6 +724,52 @@ describe('MenuVersions -- the row for a read is held from the click (r103 menu-7
     expect(rows).toHaveLength(2);
     expect(within(rows[0]).getByText('being read now')).toBeInTheDocument();
   });
+
+  it('keeps the held row when the list is read again before the read settles, and drops it once it has (review r103 #5)', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version({ menuId: 'old', readState: 'done' })] });
+    let fail: (e: Error) => void = () => {};
+    mockImport.mockReturnValue(new Promise((_res, rej) => { fail = rej; }));
+    render(
+      <QueryClientProvider client={client}>
+        <MenuVersions canManage={true} />
+      </QueryClientProvider>,
+    );
+    await screen.findAllByTestId('menu-version-row');
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [new File(['x'], 'p1.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByText('being read now')).toBeInTheDocument();
+    const before = mockList.mock.calls.length;
+    // The poll, or anything else that reads the list again: the server has no row for this read yet.
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ['menu', 'versions'] });
+      await new Promise((r) => setTimeout(r, 20)); // react-query hands its result to React on a timer
+    });
+    expect(mockList.mock.calls.length).toBeGreaterThan(before);
+    expect(screen.getAllByTestId('menu-version-row')).toHaveLength(2);
+    expect(screen.getByText('being read now')).toBeInTheDocument();
+    // A read that fails settles it: the row goes once the list has been read again.
+    await act(async () => { fail(new Error('The read did not go through.')); });
+    await waitFor(() => expect(screen.getAllByTestId('menu-version-row')).toHaveLength(1));
+  });
+
+  it('says what it is: the sending of a file, the date the person typed, and no rename of a real row (review r103 #6)', async () => {
+    const same = local(2026, 11, 27, 13, 6);
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version({ menuId: 'old', readState: 'done', extractedAt: same })] });
+    mockImport.mockReturnValue(new Promise(() => {}));
+    mount(true);
+    await screen.findAllByTestId('menu-version-row');
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [new File(['name,bottle_price\nA,1\n'], 'm.csv', { type: 'text/csv' })] } });
+    fireEvent.change(screen.getByLabelText('How often it changes'), { target: { value: 'monthly' } });
+    fireEvent.change(screen.getByLabelText('Menu date'), { target: { value: '2026-10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    const held = (await screen.findByText('being read now')).closest('tr')!;
+    expect(held).toHaveTextContent('the 2026-10 menu (monthly)');
+    expect(held).toHaveTextContent('sending the file');
+    expect(held.textContent).not.toMatch(/read before menus were kept|no file/);
+    const real = screen.getAllByTestId('menu-version-row').find((r) => r !== held)!;
+    expect(real.textContent).not.toContain('of 2');
+  });
 });
 
 // Menu r21: the founder's goal says dates in the house's time zone. A house in
