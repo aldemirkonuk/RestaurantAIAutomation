@@ -130,6 +130,18 @@ describe('Copy a drink', () => {
     expect(screen.queryByTestId('cocktail-draft')).toBeNull();
   });
 
+  it('carries a stocked line\'s usable share, so the copy costs what the source costs (r108 fix)', async () => {
+    h.get.mockResolvedValue({ data: source([L({ usablePct: 40, qtyEntered: 120, unitCode: 'g' }), L({ id: 'l2', label: 'Lemon', inventoryId: 'inv-2' })]) });
+    mount();
+    fireEvent.click(await screen.findByTestId('cocktail-copy'));
+    save();
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines).toEqual([
+      { role: 'stocked', inventoryId: 'inv-1', label: 'Bourbon', qty: 120, unit: 'g', usablePct: 40 },
+      { role: 'stocked', inventoryId: 'inv-2', label: 'Lemon', qty: 50, unit: 'ml' },
+    ]);
+  });
+
   it('carries a made line as the same component id and unit, and never copies the component', async () => {
     const made = L({ id: 'l4', role: 'made', inventoryId: null, componentId: COMPONENT, label: 'Sour mix', itemName: null, qtyEntered: 22.5, unitCode: 'ml', status: 'linked' });
     h.get.mockResolvedValue({ data: source([L({}), made]) });
