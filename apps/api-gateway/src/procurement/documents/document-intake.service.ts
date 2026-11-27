@@ -1653,7 +1653,10 @@ export class DocumentIntakeService {
       unmatchedOrderLineIds: [],
     };
 
-    const [{ data: docLines }, { data: links }] = await Promise.all([
+    const [
+      { data: docLines, error: docLinesErr },
+      { data: links, error: linksErr },
+    ] = await Promise.all([
       this.db
         .getClient()
         .from("procurement_document_lines")
@@ -1670,10 +1673,21 @@ export class DocumentIntakeService {
         .eq("restaurant_id", restaurantId),
     ]);
 
+    // ADR 0020: a read that failed is not a paper with nothing to pair. The
+    // check used to answer "0 written, 0 waiting" for a database that was down.
+    if (docLinesErr)
+      throw new Error(
+        `The lines on this paper could not be read: ${docLinesErr.message}`,
+      );
+    if (linksErr)
+      throw new Error(
+        `The order this paper is linked to could not be read: ${linksErr.message}`,
+      );
+
     const orderIds = (links ?? []).map((l) => l.order_id);
     if (!docLines?.length || !orderIds.length) return empty;
 
-    const { data: orderLines } = await this.db
+    const { data: orderLines, error: orderLinesErr } = await this.db
       .getClient()
       .from("procurement_order_items")
       .select(
@@ -1681,6 +1695,10 @@ export class DocumentIntakeService {
       )
       .eq("restaurant_id", restaurantId)
       .in("order_id", orderIds);
+    if (orderLinesErr)
+      throw new Error(
+        `The lines on the order could not be read: ${orderLinesErr.message}`,
+      );
     if (!orderLines?.length) return empty;
 
     const openDocLines = docLines.filter((l) => !l.order_line_id);
@@ -1712,6 +1730,10 @@ export class DocumentIntakeService {
         })),
     );
 
+    // A pairing whose save failed was NOT written. Reporting it as written told
+    // the person the record held a link it did not; it goes back to them as a
+    // pairing still waiting for their confirmation.
+    const saved: LineMatch[] = [];
     for (const m of result.applied) {
       const { error } = await this.db
         .getClient()
@@ -1730,11 +1752,17 @@ export class DocumentIntakeService {
         })
         .eq("id", m.documentLineId)
         .eq("restaurant_id", restaurantId);
-      if (error)
+      if (error) {
         this.logger.warn(
           `failed to link document line ${m.documentLineId}: ${error.message}`,
         );
+        result.suggested.push({
+          ...m,
+          reason: `${m.reason} It could not be saved just now; confirm it to try again.`,
+        });
+      } else saved.push(m);
     }
+    result.applied = saved;
 
     // ADR 0059. Everything the matcher considered and did not write, recorded
     // before anyone answers. These are the near-misses: the negative class of
