@@ -186,7 +186,11 @@ export default function CommunicationsNext() {
   const openCompose = () => {
     // The composer stays mounted, so a held letter is still in it. A reply
     // opened from Mail and left unwritten is not a new letter: a fresh sheet.
-    if ((answerFrom || writeTo) && !letters.words('new')) {
+    if (answerFrom || writeTo) {
+      // A reply or a write-to sheet replaced the composer that held letter A, so A
+      // lives only in the stub. With A held, Resume hands A back on a fresh sheet
+      // (dropping the stub below must not lose it); with none, it is a blank sheet.
+      setComposeFrom(letters.words('new'));
       setAnswerFrom(null);
       setWriteTo(null);
       setComposeKey((k) => k + 1);
@@ -778,12 +782,14 @@ export default function CommunicationsNext() {
                         letters.discard('new');
                         setComposeFrom(null);
                         setAnswerFrom(null);
+                        setWriteTo(null);
                         setComposeKey((k) => k + 1);
                       }}
                       onRestore={() => {
                         letters.restore('new');
                         setComposeFrom(h.words);
                         setAnswerFrom(null);
+                        setWriteTo(null);
                         setComposeKey((k) => k + 1);
                       }}
                       footer={`${h.words.to ? `To ${h.words.to.providerName}. ` : ''}Not sent. Kept on this page until you leave it.`}

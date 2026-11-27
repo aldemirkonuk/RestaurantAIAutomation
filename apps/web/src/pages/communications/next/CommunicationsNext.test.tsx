@@ -50,13 +50,17 @@ vi.mock('./Compose/ComposeSheet', async () => {
     onHold,
   }: {
     open: boolean;
-    prefill?: { draftId?: string; subject?: string; body?: string } | null;
+    prefill?: { draftId?: string; subject?: string; body?: string; writeToVendor?: boolean; answers?: unknown } | null;
     onClose: () => void;
     onHold?: (w: typeof HELD_LETTER) => void;
   }) {
     const [mount] = useState(() => ++composerMounts.n);
     return open ? (
-      <div data-testid="composer" data-draft={prefill?.draftId ?? ''} data-body={prefill?.body ?? ''} data-mount={mount}>
+      <div data-testid="composer" data-draft={prefill?.draftId ?? ''} data-body={prefill?.body ?? ''} data-mount={mount}
+        data-write-to={prefill?.writeToVendor ? 'true' : ''} data-answers={prefill?.answers ? 'true' : ''}>
+        <button type="button" onClick={onClose}>
+          Close empty
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -154,15 +158,25 @@ vi.mock('./MailTab', () => ({
   MailTab: ({
     draftedOrderIds,
     onOpenReply,
+    onWriteTo,
+    onAnswer,
     whoIsWriting,
   }: {
     draftedOrderIds: ReadonlySet<string>;
     onOpenReply: (id: string) => void;
+    onWriteTo: (providerId: string) => void;
+    onAnswer: (a: { providerId: string | null; subject: string; answers: string; person: unknown }) => void;
     whoIsWriting?: React.ReactNode;
   }) => (
     <section aria-label="Mail" data-testid="mail-tab-stub" data-drafted={[...draftedOrderIds].join(',')}>
       <button type="button" onClick={() => onOpenReply([...draftedOrderIds][0] ?? '')}>
         stub open reply
+      </button>
+      <button type="button" onClick={() => onWriteTo('p1')}>
+        stub write to vendor
+      </button>
+      <button type="button" onClick={() => onAnswer({ providerId: 'p1', subject: 'Re: stock', answers: 'm1', person: null })}>
+        stub answer
       </button>
       {whoIsWriting}
     </section>
@@ -1083,6 +1097,27 @@ describe('Mail and Letters', () => {
     mockData.current = { ...base };
     mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
     mockMailSummary.current = { data: undefined };
+  });
+
+  // A letter held on Letters, then a Mail sheet (write to a vendor, or a reply) opened and
+  // closed empty: Resume on the stub must still hand back the held letter, not a blank sheet.
+  it.each([
+    ['stub write to vendor', 'data-write-to'],
+    ['stub answer', 'data-answers'],
+  ])('a held letter survives %s opened from Mail and closed empty', (opener, flag) => {
+    at('/communications');
+    fireEvent.click(screen.getByText('Write a letter'));
+    fireEvent.click(screen.getByText('Leave with words'));
+    expect(screen.getByRole('group', { name: 'Held here · unwritten' })).toBeInTheDocument();
+    fireEvent.click(tabs()[0]);
+    fireEvent.click(screen.getByText(opener));
+    expect(screen.getByTestId('composer').getAttribute(flag)).toBe('true');
+    fireEvent.click(screen.getByText('Close empty'));
+    fireEvent.click(tabs()[1]);
+    fireEvent.click(screen.getByText('Resume'));
+    const composer = screen.getByTestId('composer');
+    expect(composer.getAttribute('data-body')).toBe('Six cases, as every week.');
+    expect(composer.getAttribute(flag)).toBe('');
   });
 
   it('opens on Letters, with the one line that points to Mail where the book was', () => {
