@@ -212,3 +212,21 @@ describe('the till offers the stretch', () => {
     expect(view.cats).toBeUndefined();
   });
 });
+
+describe('the keyboard step (DD-r108-41)', () => {
+  it('[REVERT-FAILS] the first Shift+Arrow anchors where the keyboard was, and reads at once', () => {
+    const s = stretchStep(NO_STRETCH, { type: 'key', from: 2, to: 3 });
+    expect(stretchSpan(s)).toEqual([2, 3]);
+    expect(s.settled).toBe(true);
+    expect(s.down).toBe(false);
+  });
+
+  it('a day already marked stays the anchor; the key moves only the last day', () => {
+    const tapped = [{ type: 'down', at: 5 }, { type: 'up', at: 5 }] as StretchEvent[];
+    const s = [...tapped, { type: 'key', from: 5, to: 4 } as StretchEvent, { type: 'key', from: 4, to: 3 } as StretchEvent].reduce(
+      stretchStep,
+      NO_STRETCH,
+    );
+    expect(stretchSpan(s)).toEqual([3, 5]);
+  });
+});
