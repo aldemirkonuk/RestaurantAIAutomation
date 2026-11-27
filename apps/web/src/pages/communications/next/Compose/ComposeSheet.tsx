@@ -77,7 +77,7 @@ type SeeState =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'shown'; letter: AsItLeaves }
-  | { kind: 'failed'; message: string };
+  | { kind: 'failed'; message: string; /** The sentence is the whole message: it is not a failure of the read. */ plain?: boolean };
 
 type SendState =
   | { kind: 'idle' }
@@ -342,6 +342,12 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
   /** Ask the gateway for the header block and body the send would write. Queues nothing. */
   const seeIt = useCallback(async () => {
     if (!letter) return;
+    // An empty subject is the writer's to fill, and the gateway's validator sentence for it is
+    // not words for a person: say what to do and ask nothing (r109 walk, P2).
+    if (!letter.subject) {
+      setSee({ kind: 'failed', message: 'Add a subject to see it.', plain: true });
+      return;
+    }
     const askedFor = letterKey;
     setSee({ kind: 'loading' });
     try {
@@ -664,7 +670,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
           </button>
           {see.kind === 'failed' && (
             <p role="alert" data-testid="letter-see-failed" style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--alarm-deep, #8C3322)' }}>
-              It could not be shown as it leaves: {see.message}
+              {see.plain ? see.message : `It could not be shown as it leaves: ${see.message}`}
             </p>
           )}
           {see.kind === 'shown' && (

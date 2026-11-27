@@ -188,6 +188,17 @@ describe('See it as it leaves', () => {
     expect(screen.queryByTestId('letter-queued')).toBeNull();
   });
 
+  it('an empty subject says "Add a subject to see it." and asks the gateway nothing (r110 mail-r110-7)', () => {
+    open();
+    fireEvent.click(screen.getByText('Fikri Tarım Gıda'));
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba,' } });
+    fireEvent.click(screen.getByTestId('letter-see'));
+    const failed = screen.getByTestId('letter-see-failed');
+    expect(failed).toHaveTextContent(/^Add a subject to see it\.$/);
+    expect(failed.textContent).not.toMatch(/longer than|characters/);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it('a header the builder refuses is said in the sentence the send would give', async () => {
     mockPost.mockRejectedValue({
       response: { data: { message: 'Refusing to write the From header: its value contains a line break or control character. Nothing was queued and nothing was sent.' } },
