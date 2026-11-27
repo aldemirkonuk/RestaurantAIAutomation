@@ -6,7 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { DataTermsSignInGate } from './DataTermsSignInGate';
 import type { DataTermsReadout } from '../../services/api/dataTerms';
@@ -46,9 +46,9 @@ function readout(over: Partial<DataTermsReadout> = {}): DataTermsReadout {
   };
 }
 
-function mount() {
+function mount(entry = '/') {
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[entry]}>
       <DataTermsSignInGate />
     </MemoryRouter>,
   );
@@ -147,5 +147,16 @@ describe('when the sheet shows, and when it never does', () => {
     });
     mount();
     expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+  });
+});
+
+describe("the terms are never put off for a good's drawer (ADR 0207 §19: must accept to continue)", () => {
+  it('an owner with unaccepted terms is met on /inventory?open= and ?highlight= as on any page', () => {
+    dataTermsMock.data = readout();
+    for (const entry of ['/inventory?open=item-1', '/inventory?highlight=item-1', '/inventory', '/orders?open=o1']) {
+      mount(entry);
+      expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+      cleanup();
+    }
   });
 });

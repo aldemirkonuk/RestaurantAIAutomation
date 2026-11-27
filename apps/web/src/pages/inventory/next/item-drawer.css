@@ -188,6 +188,15 @@ button.ivd-card:active {
   padding-top: 8px;
   border-top: 1px solid var(--paper-2);
 }
+.ivd-arrive {
+  /* What replaces a "Reading…" note comes in with a short fade, not a hard text swap. */
+  animation: ivd-ev-in 160ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ivd-arrive {
+    animation: none;
+  }
+}
 .ivd-used-g {
   margin-top: 8px;
 }
