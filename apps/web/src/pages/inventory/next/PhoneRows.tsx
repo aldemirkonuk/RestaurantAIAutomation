@@ -10,7 +10,7 @@
  * An unread count is a dash, never zero. A manager still sets the price from
  * the card: the price sits beside the tap target, not inside it.
  */
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import { cellMoney, fmtCount, SEVERITY_GROUP, severity, statusWord, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
@@ -68,6 +68,15 @@ export default function PhoneRows(props: PhoneRowsProps) {
   const win = useRowWindow({ n: rows.length, offsets, listRef, anchor: anchor !== null && anchor >= 0 ? anchor : null, focused });
   const openAt = openId === null ? -1 : rows.findIndex((r) => r.id === openId);
   const { jumpTo, start: winStart, end: winEnd } = win;
+  // A card a link named is already drawn at the first paint (the anchor above); the page is put on it
+  // before that paint, at once, so a phone is not left at the top above a blank spacer (r107 review F3).
+  useLayoutEffect(() => {
+    if (anchor === null || anchor < 0) return;
+    const el = listRef.current?.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`);
+    (el?.closest('.ivc-card') ?? el)?.scrollIntoView?.({ block: 'center', behavior: 'instant' });
+    // Only the first paint; a later open is the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (openAt < 0 || (openAt >= winStart && openAt < winEnd)) return;
     jumpTo(openAt);
