@@ -168,7 +168,7 @@ export class ItemFiguresService {
           : "Money is the gap at the current average cost.";
       const parts = rows.length
         ? ["The last 5 counts, newest first.", peopleError ? "Who counted could not be read." : "", moneyNote]
-        : ["Never counted."];
+        : ["Record a count to see the gap."];
       countGap = { readable: true, last, source: parts.filter(Boolean).join(" ") };
     }
 

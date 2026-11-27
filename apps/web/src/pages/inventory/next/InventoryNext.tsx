@@ -1251,11 +1251,11 @@ export default function InventoryNext() {
                   onClick={() =>
                     setCounting({
                       rows: visible,
-                      what: visible.length === 1 ? 'the listed title' : `the ${fmtCount(visible.length)} listed titles`,
+                      what: visible.length === 1 ? `the listed ${words.one}` : `the ${fmtCount(visible.length)} listed ${words.many}`,
                     })
                   }
                 >
-                  Count the listed titles
+                  Count the listed {words.many}
                 </button>
                 {/* A mapping decides what a sale takes off the shelf: a manager's,
                     as the gateway now says too (inventory r28, gap 6). */}
