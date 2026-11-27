@@ -100,3 +100,16 @@
     min-width: 44px;
   }
 }
+
+/* r108 menu-g14: a section's sub-heading inside the menu's table. */
+.mdv-section-row th {
+  text-align: left;
+  padding: 14px 12px 6px;
+  border-bottom: 1px solid var(--paper-2);
+}
+
+@media (max-width: 599px) {
+  .mdv-cards .mdv-section-row th {
+    display: block;
+  }
+}
