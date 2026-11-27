@@ -37,6 +37,7 @@ import {
   ChartArea,
   ChartColumn,
   ChartLine,
+  ChartNoAxesCombined,
   ChartScatter,
   Grid3x3,
   Hash,
@@ -46,6 +47,7 @@ import {
 import {
   BigFigure,
   CatPlot,
+  ComboPlot,
   DataTable,
   FigureRow,
   HeatGrid,
@@ -58,6 +60,7 @@ import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { Grip, PlacingBar } from './Placing';
 import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
+import type { ComboPick } from './rp-combo';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
 import type { Register } from './useReportsNextData';
@@ -70,6 +73,7 @@ import type { Register } from './useReportsNextData';
 const GRAPH_ICON: Record<GraphType, typeof ChartLine> = {
   line: ChartLine,
   bars: ChartColumn,
+  combo: ChartNoAxesCombined,
   area: ChartArea,
   heatmap: Grid3x3,
   scatter: ChartScatter,
@@ -114,10 +118,12 @@ function Drawing({
   view,
   graph,
   windowLine,
+  combo,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
+  combo?: ComboControl;
 }) {
   if (view.say) return <Nothing>{view.say}</Nothing>;
   switch (graph) {
@@ -125,6 +131,12 @@ function Drawing({
     case 'area':
     case 'bars':
       return view.cats ? <CatPlot series={view.cats} kind={graph} /> : <Undrawable graph={graph} />;
+    case 'combo':
+      return view.cats?.measures?.length ? (
+        <ComboPlot series={view.cats} pick={combo?.pick} onPick={combo?.onPick} />
+      ) : (
+        <Undrawable graph={graph} />
+      );
     case 'scatter':
       return view.points ? <PointPlot series={view.points} /> : <Undrawable graph={graph} />;
     case 'heatmap':
@@ -165,10 +177,13 @@ function Body({
   graph,
   windowLine,
   workingOpen = false,
+  combo,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
+  /** Which measure is the bars and which the line, when the drawing is `combo`. */
+  combo?: ComboControl;
   /** Start with the server's working shown — the flat view has the room. */
   workingOpen?: boolean;
 }) {
@@ -178,7 +193,7 @@ function Body({
     graph === 'table' && view.node ? [] : graph === 'figure' ? view.figures.slice(1) : view.figures;
   return (
     <>
-      <Drawing view={view} graph={graph} windowLine={windowLine} />
+      <Drawing view={view} graph={graph} windowLine={windowLine} combo={combo} />
       {figures.length > 0 && (
         <dl className="rp-dl">
           {figures.map((f) => (
@@ -196,6 +211,12 @@ function Body({
   );
 }
 
+/** The bars-and-line choice. With no `onPick` the drawing keeps its own (the full-screen view). */
+interface ComboControl {
+  pick?: Partial<ComboPick>;
+  onPick?: (p: ComboPick) => void;
+}
+
 export interface CuttingProps {
   id: AnalysisId;
   graph: GraphType;
@@ -207,6 +228,9 @@ export interface CuttingProps {
   swapOptions: Array<{ id: AnalysisId; taken: boolean }>;
   /** The keyboard/button path over the same layout state (`rp-arrange.ts`). */
   arrange: ArrangeApi;
+  /** The page's memory of which measure is bars and which is the line, by cutting. */
+  comboPick?: Partial<ComboPick>;
+  onComboPick?: (p: ComboPick) => void;
   onGraph: (g: GraphType) => void;
   onSwap: (to: AnalysisId) => void;
   onRemove: () => void;
@@ -221,6 +245,8 @@ export default function Cutting({
   arranging,
   swapOptions,
   arrange,
+  comboPick,
+  onComboPick,
   onGraph,
   onSwap,
   onRemove,
@@ -231,7 +257,7 @@ export default function Cutting({
   const windowLine = spec.window(ctx);
 
   // One body, two places: the sheet, and the flat view (working open).
-  const bodyFor = (g: GraphType, workingOpen = false) =>
+  const bodyFor = (g: GraphType, workingOpen = false, flatView = false) =>
     spec.path ? (
       <RegisterBody
         register={spec.register}
@@ -246,6 +272,7 @@ export default function Cutting({
             graph={g}
             windowLine={windowLine}
             workingOpen={workingOpen}
+            combo={{ pick: comboPick, onPick: flatView ? undefined : onComboPick }}
           />
         )}
       </RegisterBody>
@@ -255,6 +282,7 @@ export default function Cutting({
         graph={g}
         windowLine={windowLine}
         workingOpen={workingOpen}
+        combo={{ pick: comboPick, onPick: flatView ? undefined : onComboPick }}
       />
     );
   const body = bodyFor(drawn);
@@ -391,7 +419,7 @@ export default function Cutting({
           windowLine={windowLine}
           graphs={spec.graphs}
           initialGraph={drawn}
-          renderBody={(g) => bodyFor(g, true)}
+          renderBody={(g) => bodyFor(g, true, true)}
           windowControl={
             spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
           }
