@@ -12,6 +12,7 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { proofStanding, readProof, type ProofStanding } from '../lib/firstProof'
 import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
 import { settingsApi } from '../services/api/settings'
+import { countryByName } from '../lib/countries'
 
 /** The menu row's sentence for the first proof (r28 gap 6: never "in ink" over no drink). */
 function proofSaid(standing: ProofStanding): string {
@@ -85,7 +86,8 @@ export default function HouseContents() {
       countryRead.current ??= (async () => {
         try {
           const money = await settingsApi.houseCurrency()
-          return money?.country ?? undefined
+          // The house stores its country as written ("Turkey"); the catalogue keys on the ISO code ("TR").
+          return countryByName(money?.country)?.code ?? undefined
         } catch {
           return undefined
         }

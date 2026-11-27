@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   getOnboardingProgress.mockResolvedValue({ vendor_added: false })
-  houseCurrency.mockResolvedValue({ country: 'TR' })
+  houseCurrency.mockResolvedValue({ country: 'Turkey' })
   addCustomProvider.mockResolvedValue({ id: 'p1', name: 'Mine', email: '' })
   addProviderFromCatalogue.mockResolvedValue({ id: 'p2', name: 'Suvla', email: 'orders@suvla.com' })
   matchVendorCatalogue.mockResolvedValue([row('c1', 'Suvla Wines', 'Antalya', 'orders@suvla.com'), row('c2', 'Suvla Foods', null, null)])
