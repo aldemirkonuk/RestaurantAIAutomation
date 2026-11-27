@@ -540,15 +540,32 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ? 'The house’s currency could not be read, so money is printed as plain numbers.'
         : null;
 
-  const sparks = SPARK_IDS.map((id) => sparkOf(id, data.registers[id], ctx)).filter(
-    (s): s is SparkSeries => s !== null,
-  );
+  /* A register read again (the till laid beside the window before it) keeps the
+     sparkline it last drew, so its line is not drawn a second time (r107). Kept
+     only for the house that drew it. */
+  const lastSparks = useRef<{ rid: string | null; byId: Partial<Record<string, SparkSeries>> }>({
+    rid: null,
+    byId: {},
+  });
+  if (lastSparks.current.rid !== data.restaurantId) lastSparks.current = { rid: data.restaurantId, byId: {} };
+  const sparkKept = (id: (typeof SPARK_IDS)[number]): SparkSeries | null => {
+    const reg = data.registers[id];
+    const s = sparkOf(id, reg, ctx);
+    if (s) {
+      lastSparks.current.byId[id] = s;
+      return s;
+    }
+    return reg?.loading ? (lastSparks.current.byId[id] ?? null) : null;
+  };
+  const sparks = SPARK_IDS.map((id) => sparkKept(id)).filter((s): s is SparkSeries => s !== null);
 
   /* While the reads behind the headline are in flight its room is held (r75):
      the sentence runs to three lines at 40 px and each sparkline is 66 px tall,
      and a head that grew when they arrived pushed the whole sheet down. */
   const readingPending = data.reading.loading;
-  const sparksPending = SPARK_IDS.some((id) => data.registers[id]?.loading);
+  const sparksPending = SPARK_IDS.some(
+    (id) => data.registers[id]?.loading && !lastSparks.current.byId[id],
+  );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => {
     const fit = !editing && FIT_IDS.includes(c.id);
