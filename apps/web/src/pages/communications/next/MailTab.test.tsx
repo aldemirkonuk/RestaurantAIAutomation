@@ -6,7 +6,7 @@
  * MailTab.thread.test.tsx.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
@@ -26,7 +26,7 @@ vi.mock('./QueuedPullBack', () => ({
   QueuedPullBack: ({ id }: { id: string }) => <span data-testid="pull-back" data-id={id} />,
 }));
 
-import { MailTab, readLastRowCount, rememberRowCount } from './MailTab';
+import { MailTab, readLastListHeight, readLastRowCount, rememberListHeight, rememberRowCount } from './MailTab';
 import { communicationsTour } from '../../../guidance/content/communications';
 import type { MailMessage, MailSummary } from './mail-format';
 
@@ -207,7 +207,7 @@ describe('the list', () => {
     mount();
     await screen.findAllByTestId('mail-person');
     const people = screen.getByRole('region', { name: 'People' });
-    const who = screen.getByTestId('who-is-writing');
+    const who = await screen.findByTestId('who-is-writing');
     expect(people.compareDocumentPosition(who) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -231,6 +231,34 @@ describe('the list', () => {
       if (desc) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', desc);
       else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
     }
+  });
+
+  // r107 mail-gap g6: its two reads wait for the people list, then an idle moment.
+  it('"Who is writing" is not mounted before the people list has answered, and is after', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    routes['/mail/people'] = () => gate.then(() => ({ people: [person(1)], next: null, storedKinds: ['vendor'] })) as never;
+    api.get.mockImplementation(async (url: string, cfg?: { params?: Record<string, string> }) => {
+      const h = routes[url];
+      if (!h) throw new Error(`unexpected GET ${url}`);
+      return { data: await h(cfg?.params ?? {}) };
+    });
+    mount();
+    await screen.findByTestId('mail-header');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(screen.queryByTestId('who-is-writing')).toBeNull();
+    release();
+    await screen.findAllByTestId('mail-person');
+    expect(await screen.findByTestId('who-is-writing')).toBeInTheDocument();
+  });
+
+  it('"Who is writing" still mounts when the people list could not be read', async () => {
+    routes['/mail/people'] = fail503;
+    mount();
+    await screen.findByTestId('people-unread');
+    expect(await screen.findByTestId('who-is-writing')).toBeInTheDocument();
   });
 
   it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('no "Who is writing" at ?%s', (q) => {
@@ -322,6 +350,38 @@ describe('the list', () => {
     expect(window.sessionStorage.getItem('mail-people-rows:r2')).toBeNull();
   });
 
+  it('the settled height of the unfiltered list is remembered, and a later cold read holds that height while it waits', async () => {
+    window.sessionStorage.clear();
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { height: this.tagName === 'UL' && this.querySelector('[data-testid="mail-person"]') ? 435 : 0 } as DOMRect;
+    });
+    try {
+      routes['/mail/people'] = () => ({ people: [person(1), person(2)], next: null, storedKinds: ['vendor'] });
+      mount();
+      expect((await screen.findAllByTestId('mail-person')).length).toBe(2);
+      await waitFor(() => expect(readLastListHeight('r1')).toBe(435));
+      cleanup();
+      const base = api.get.getMockImplementation()!;
+      api.get.mockImplementation((url: string, cfg?: { params?: Record<string, string> }) =>
+        url === '/mail/people' ? new Promise(() => {}) : base(url, cfg),
+      );
+      mount();
+      expect((await screen.findByTestId('people-placeholder')).style.minHeight).toBe('435px');
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it('a first visit holds no measured height, and a blocked store reads as unknown', () => {
+    window.sessionStorage.clear();
+    expect(readLastListHeight('r1')).toBeNull();
+    window.sessionStorage.setItem('mail-people-height:r1:wide', 'junk');
+    expect(readLastListHeight('r1')).toBeNull();
+    rememberListHeight('r1', 0);
+    rememberListHeight('', 300);
+    expect(window.sessionStorage.length).toBe(1);
+  });
+
   it('row-count memory survives blocked storage and bad values', () => {
     window.sessionStorage.clear();
     expect(readLastRowCount('r1')).toBe(4);
@@ -393,6 +453,7 @@ describe('the tour on the Mail tab', () => {
   it('the list draws three steps of its own', async () => {
     mount();
     await screen.findAllByTestId('mail-person');
+    await screen.findByTestId('who-is-writing');
     expect(drawn()).toEqual([
       '[data-tour="mail-status"]',
       'section[aria-label="People"]',

@@ -132,16 +132,19 @@ export function newestDraftPerOrder<T extends { orderId: string; createdAt: stri
   return [...byOrder.values()];
 }
 
-export function useCommsNextData() {
+export function useCommsNextData({ enabled = true }: { enabled?: boolean } = {}) {
+  // r107 mail-gap g6: Mail's list reads neither the book nor the drafts, so a cold
+  // load of ?tab=mail asks for neither; a thread, a person, a draft or a reply, or
+  // Letters, asks for them (once; they are the same cache entries after that).
   // Every query this page reads lives in a shared hook whose key carries the
   // house (`scripts/check_windowed_figures.py` W7 reads those keys). The two
   // page-local keys that also carried it left with their sources, 2026-09-25.
-  const historyQ = useProcurementConversationHistory();
+  const historyQ = useProcurementConversationHistory({ enabled });
   // Drafts awaiting action come from the same live source the orders DraftRail
   // uses — the history endpoint filters drafts out at the SQL level, so
   // deriving "drafts waiting" from it was a structurally guaranteed false
   // zero (communications-audit.md, BLOCKER 2).
-  const activeQ = useActiveConversations();
+  const activeQ = useActiveConversations({ enabled });
   // "Vendor replies · 30 days" (D6). The same query the tab label reads, so it is one
   // fetch however many places read it; it polls only while Mail is shown.
   const mailQ = useMailSummary(false);

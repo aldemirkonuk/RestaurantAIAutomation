@@ -287,3 +287,47 @@ describe('useCommsNextData — one waiting draft per order (COMMS-W24)', () => {
     expect(result.current.glance.draftsPending).toBe(2);
   });
 });
+
+// r107 mail-gap g6: Mail's list reads neither the book nor the drafts.
+describe('useCommsNextData — enabled (r107 mail-gap g6)', () => {
+  const urls = () => [...mockAxiosGet.mock.calls, ...mockApiGet.mock.calls].map(([u]) => String(u));
+  const history = () => urls().filter((u) => u.includes('/conversations/history'));
+  const active = () => urls().filter((u) => u.includes('/conversations/active'));
+
+  it('asks for neither the history nor the active drafts while disabled', async () => {
+    auth('active-rest-B');
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => useCommsNextData({ enabled: false }), { wrapper: wrapper(qc) });
+    await waitFor(() => expect(urls().some((u) => u.includes('/mail/summary'))).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(history()).toHaveLength(0);
+    expect(active()).toHaveLength(0);
+  });
+
+  it('asks for each exactly once when it turns on, and by default', async () => {
+    auth('active-rest-B');
+    mockApiGet.mockImplementation((url: string) =>
+      Promise.resolve({ data: String(url).includes('/mail/summary') ? { configured: false } : [] }),
+    );
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = renderHook(({ on }: { on: boolean }) => useCommsNextData({ enabled: on }), {
+      wrapper: wrapper(qc),
+      initialProps: { on: false },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(history()).toHaveLength(0);
+    rerender({ on: true });
+    await waitFor(() => expect(history()).toHaveLength(1));
+    await waitFor(() => expect(active()).toHaveLength(1));
+    rerender({ on: true });
+    expect(history()).toHaveLength(1);
+    expect(active()).toHaveLength(1);
+
+    mockAxiosGet.mockClear();
+    mockApiGet.mockClear();
+    const qc2 = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderHook(() => useCommsNextData(), { wrapper: wrapper(qc2) });
+    await waitFor(() => expect(history()).toHaveLength(1));
+    await waitFor(() => expect(active()).toHaveLength(1));
+  });
+});

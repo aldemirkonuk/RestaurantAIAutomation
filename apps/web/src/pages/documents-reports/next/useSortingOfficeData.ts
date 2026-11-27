@@ -240,7 +240,7 @@ export function useSortingOfficeData(): SortingOfficeData {
         since: c.createdAt,
         title: `Draft reply${c.providerName ? ` to ${c.providerName}` : ''} awaits approval`,
         detail: c.wineName ?? c.orderNumber ?? 'vendor exchange',
-        href: '/communications',
+        href: '/communications?tab=letters',
       });
     }
     for (const u of unverifiedQ.data.items) {

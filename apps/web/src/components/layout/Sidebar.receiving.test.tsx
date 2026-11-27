@@ -46,6 +46,11 @@ vi.mock('../../hooks/queries/useOrderQueries', () => ({
   usePendingOrdersCount: () => ({ data: 0 }),
 }))
 
+vi.mock('../../pages/communications/next/useMailWaiting', () => ({
+  SIDEBAR_WAITING_ON: 'the house',
+  useMailWaiting: () => 0,
+}))
+
 vi.mock('../../hooks/queries/useInventoryQueries', () => ({
   useLowStockItems: () => ({ data: [] }),
 }))

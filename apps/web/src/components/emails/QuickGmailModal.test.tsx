@@ -40,7 +40,7 @@ describe('QuickGmailModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /write it in communications/i }))
 
-    expect(assign).toHaveBeenCalledWith('/communications')
+    expect(assign).toHaveBeenCalledWith('/communications?tab=letters')
     expect(post).not.toHaveBeenCalled()
   })
 })

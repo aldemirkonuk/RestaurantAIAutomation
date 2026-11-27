@@ -57,6 +57,7 @@ import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
 import { CODE_HOLD_STRIP_PX, CodeHold, loaders } from './mail-code';
 import { mailTabLabel, type MailAnswer } from './mail-format';
+import { tabMove } from './mail-keys';
 import { useMailSummary } from './useMailData';
 
 // Who is writing is drawn only on the Mail list, so its code is fetched when that list shows it.
@@ -136,7 +137,28 @@ function GlanceFigure({
 }
 
 export default function CommunicationsNext() {
-  const data = useCommsNextData();
+  const [params, setParams] = useSearchParams();
+  const tabParam = params.get('tab');
+  // r107 mail-gap g4: a bare /communications opens Mail (the founder's goal: a Mail
+  // tab inside /communications), so the sidebar, the palette and a one-tap notice land
+  // where every conversation is. Only an address that names Letters opens Letters: the
+  // tab itself, or the drafted letter (`?draft=`) or the drafted reply (`?reply=`) that
+  // live there. A person, thread, setup or senders link is Mail whatever else it carries.
+  const mailLink = params.has('with') || params.has('thread') || params.has('setup') || params.has('senders');
+  const tab: 'mail' | 'letters' =
+    tabParam === 'letters'
+      ? 'letters'
+      : tabParam === 'mail' || mailLink
+        ? 'mail'
+        : params.has('draft') || params.has('reply')
+          ? 'letters'
+          : 'mail';
+  // r107 mail-gap g6: the book and the drafts are Letters' own reads. Mail's list needs
+  // neither, so a cold ?tab=mail asks for neither; a thread (its facts and its drafted
+  // reply), a person, a draft or a reply asks for them, once.
+  const data = useCommsNextData({
+    enabled: tab === 'letters' || params.has('thread') || params.has('with') || params.has('draft') || params.has('reply'),
+  });
   const { user, activeRole } = useAuth();
   const manages = managesHouse(activeRole, user?.role);
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
@@ -150,7 +172,6 @@ export default function CommunicationsNext() {
   // Drafts Mudavym wrote (ADR 0230). `?draft=<id>` is the credit claim's link
   // to its letter; it opens that draft once the drafts list has answered.
   const houseDrafts = useHouseDrafts();
-  const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState<HouseDraft | null>(null);
   // COMMS-W34: words a person left a sheet with stay on a stub where it was
   // opened — "new" for Write a letter, a drafted letter by its id, "t" for the
@@ -225,6 +246,8 @@ export default function CommunicationsNext() {
     setDraft(null);
     houseDrafts.refetch();
     if (linked) {
+      // The link was what put the page on Letters; the tab is named before it goes (g4).
+      params.set('tab', 'letters');
       params.delete('draft');
       setParams(params, { replace: true });
     }
@@ -247,6 +270,7 @@ export default function CommunicationsNext() {
   }, [replyLinked, replyHit]);
   const dropReply = () => {
     if (!params.has('reply')) return;
+    params.set('tab', 'letters');
     params.delete('reply');
     setParams(params, { replace: true });
   };
@@ -305,29 +329,21 @@ export default function CommunicationsNext() {
 
   /* Mail and Letters (founder /goal 2026-11-07). The tab is in the address so
      a refresh, a shared link and Back keep it: `?tab=mail`, or a person
-     (`?with=`) or thread (`?thread=`) link, opens Mail; `?draft=` and
-     `?reply=` keep opening on Letters exactly as before. Switching tabs is a
+     (`?with=`) or thread (`?thread=`) link, opens Mail, and so does a bare
+     `/communications` (r107 g4); `?tab=letters`, `?draft=` and `?reply=` open
+     Letters. Switching tabs is a
      step Back can undo, so it pushes; opening inside Mail replaces. */
-  const tabParam = params.get('tab');
-  const tab: 'mail' | 'letters' =
-    tabParam === 'letters'
-      ? 'letters'
-      : tabParam === 'mail' ||
-          params.has('with') ||
-          params.has('thread') ||
-          params.has('setup') ||
-          // "Who is writing" lives in Mail (r21): a notice's
-          // `?senders=open` link lands on it, register open.
-          params.has('senders')
-        ? 'mail'
-        : 'letters';
   // The label's waiting count: read once on Letters, polled only on Mail.
   const mailSummary = useMailSummary(tab === 'mail');
   const showTab = (next: 'mail' | 'letters') => {
     if (next === tab) return;
     const p = new URLSearchParams(params);
     if (next === 'mail') p.set('tab', 'mail');
-    else for (const k of ['tab', 'with', 'thread', 'setup', 'senders']) p.delete(k);
+    else {
+      for (const k of ['with', 'thread', 'setup', 'senders']) p.delete(k);
+      // A bare address is Mail now, so Letters is named (g4).
+      p.set('tab', 'letters');
+    }
     setParams(p);
   };
   const draftedOrderIds = new Set(data.drafts.map((d) => d.orderId));
@@ -414,13 +430,44 @@ export default function CommunicationsNext() {
           )}
         </header>
 
-        {/* Mail and Letters. A tab is a place in the address, not a toggle. */}
-        <nav aria-label="Mail and letters" data-tour="comms-tabs" className="mb-5 flex gap-1" style={{ fontFamily: SANS, borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
+        {/* Mail and Letters. A tab is a place in the address, not a toggle.
+            A tablist: one Tab stop, Left/Right/Home/End move and select (as a
+            click does, so Back undoes it); the underline changes by a colour
+            step only, none under reduced motion (r107 mail-gap g3). */}
+        <style>{`
+          .comms-tab { transition: border-bottom-color 160ms ease-out, color 160ms ease-out }
+          @media (prefers-reduced-motion: reduce) { .comms-tab { transition: none } }
+        `}</style>
+        <nav
+          aria-label="Mail and letters"
+          data-tour="comms-tabs"
+          className="mb-5"
+          style={{ fontFamily: SANS, borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}
+        >
+        <div
+          role="tablist"
+          aria-label="Mail and letters"
+          className="flex gap-1"
+          onKeyDown={(e) => {
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const order = ['mail', 'letters'] as const;
+            const to = tabMove(e.key, order.indexOf(tab), order.length);
+            if (to === null) return;
+            e.preventDefault();
+            showTab(order[to]);
+            document.getElementById(`comms-tab-${order[to]}`)?.focus();
+          }}
+        >
           {(['mail', 'letters'] as const).map((t) => (
             <button
               key={t}
+              id={`comms-tab-${t}`}
               type="button"
-              aria-current={tab === t ? 'page' : undefined}
+              role="tab"
+              className="comms-tab"
+              aria-selected={tab === t}
+              aria-controls="comms-panel"
+              tabIndex={tab === t ? 0 : -1}
               onClick={() => showTab(t)}
               style={{
                 fontSize: 13,
@@ -437,8 +484,10 @@ export default function CommunicationsNext() {
               {t === 'mail' ? mailTabLabel(mailSummary.data ?? null) : 'Letters'}
             </button>
           ))}
+        </div>
         </nav>
 
+        <div role="tabpanel" id="comms-panel" aria-labelledby={`comms-tab-${tab}`}>
         {tab === 'mail' ? (
           <MailTab
             draftedOrderIds={draftedOrderIds}
@@ -831,6 +880,7 @@ export default function CommunicationsNext() {
             the page still mounts it, as MailTab's whoIsWriting. */}
         </>
         )}
+        </div>
       </div>
 
       <ComposeSheet

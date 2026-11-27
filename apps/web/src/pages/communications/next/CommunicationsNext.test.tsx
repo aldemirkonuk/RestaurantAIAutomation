@@ -14,13 +14,18 @@ import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversat
 const mockAuth = vi.hoisted(() => ({ current: { user: { role: 'staff' }, activeRole: 'staff' } as Record<string, unknown> }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => mockAuth.current }));
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+// What the page asked of the hook (r107 mail-gap g6).
+const mockAsked = vi.hoisted(() => ({ last: undefined as { enabled?: boolean } | undefined }));
 
 // Only the HOOK is replaced. `COMMS_SERVER_WINDOWS` passes through from the real
 // module so the strip's floor note reads the same register the guard checks —
 // a mock that restated the cap would be a second, silently-drifting copy of it.
 vi.mock('./useCommsNextData', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./useCommsNextData')>()),
-  useCommsNextData: () => mockData.current,
+  useCommsNextData: (o?: { enabled?: boolean }) => {
+    mockAsked.last = o;
+    return mockData.current;
+  },
 }));
 
 // ADR 0118 — the two legacy builders are no longer mounted from this page, so
@@ -175,7 +180,7 @@ import { roomForAct } from '../../../lib/mudavym/counterRead';
 
 // The template sheet persists through `useTemplates` (P1), so the page tree now
 // needs a query client. A fresh one per render keeps the tests independent.
-function render(ui: React.ReactElement, at = '/communications') {
+function render(ui: React.ReactElement, at = '/communications?tab=letters') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return rtlRender(
     <MemoryRouter initialEntries={[at]}>
@@ -668,7 +673,7 @@ describe('the counter link to a waiting reply', () => {
     );
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?reply=o1');
     fireEvent.click(screen.getAllByRole('button', { name: 'Leave it waiting' })[0]);
-    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=letters$/);
   });
 
   it('says nothing while the drafts are still being read', () => {
@@ -927,7 +932,7 @@ describe('what the address keeps (COMMS-W35)', () => {
     return <output data-testid="where">{l.pathname + l.search}</output>;
   }
   const qc = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const tree = (client: QueryClient, at = '/communications') => (
+  const tree = (client: QueryClient, at = '/communications?tab=letters') => (
     <MemoryRouter initialEntries={[at]}>
       <QueryClientProvider client={client}>
         <CommunicationsNext />
@@ -945,12 +950,12 @@ describe('what the address keeps (COMMS-W35)', () => {
     mockDrafts.current = { ...mockDrafts.current, drafts: [DRAFT] };
     rtlRender(tree(qc()));
     fireEvent.click(screen.getByText('Credit request — invoice INV-77'));
-    expect(screen.getByTestId('where')).toHaveTextContent('/communications?draft=D1');
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=letters&draft=D1');
     fireEvent.click(screen.getByText('Leave with words'));
-    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=letters$/);
     // Resume writes it again; the held words still come back with it.
     fireEvent.click(screen.getByText('Resume'));
-    expect(screen.getByTestId('where')).toHaveTextContent('/communications?draft=D1');
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=letters&draft=D1');
     expect(screen.getByTestId('composer').getAttribute('data-body')).toBe('Six cases, as every week.');
   });
 
@@ -970,14 +975,14 @@ describe('what the address keeps (COMMS-W35)', () => {
     const client = qc();
     const { rerender } = rtlRender(tree(client));
     fireEvent.click(screen.getByTestId('open-drafted-reply'));
-    expect(screen.getByTestId('where')).toHaveTextContent('/communications?reply=o1');
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=letters&reply=o1');
     mockData.current = { ...base, drafts: [] };
     rerender(tree(client));
     expect(screen.queryByTestId('reply-link-missing')).toBeNull();
     mockData.current = { ...base, drafts: [waiting] };
     rerender(tree(client));
     fireEvent.click(screen.getAllByRole('button', { name: 'Leave it waiting' })[0]);
-    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=letters$/);
   });
 });
 
@@ -1004,7 +1009,7 @@ describe('the outline and the title’s ink (COMMS-W36)', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'The house has written · 2 waiting' }).style.lineHeight).toBe('2rem');
     expect(screen.queryByRole('heading', { level: 2, name: /The house has written/ })).toBeNull();
     const tabs = screen.getByRole('navigation', { name: 'Mail and letters' });
-    expect(within(tabs).getAllByRole('button').map((b) => b.textContent)).toEqual(['Mail · —', 'Letters']);
+    expect(within(tabs).getAllByRole('tab').map((b) => b.textContent)).toEqual(['Mail · —', 'Letters']);
   });
 });
 
@@ -1078,16 +1083,25 @@ describe('Mail and Letters', () => {
         </QueryClientProvider>
       </MemoryRouter>,
     );
-  const tabs = () => within(screen.getByRole('navigation', { name: 'Mail and letters' })).getAllByRole('button');
+  const tabs = () => within(screen.getByRole('navigation', { name: 'Mail and letters' })).getAllByRole('tab');
   beforeEach(() => {
     mockData.current = { ...base };
     mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
     mockMailSummary.current = { data: undefined };
   });
 
-  it('opens on Letters, with the one line that points to Mail where the book was', () => {
+  // r107 mail-gap g4: a bare address opens Mail; only an address that names Letters opens Letters.
+  it('a bare /communications opens on Mail and fires no Letters act', () => {
     at('/communications');
-    expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText('Write a letter')).toBeNull();
+    expect(screen.queryByText('Replies · 30 days')).toBeNull();
+  });
+
+  it('?tab=letters opens on Letters, with the one line that points to Mail where the book was', () => {
+    at('/communications?tab=letters');
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
     expect(screen.getByRole('region', { name: 'Every letter' })).toHaveTextContent(
       'Every letter in and out, by vendor and by thread, is under Mail.',
@@ -1097,13 +1111,58 @@ describe('Mail and Letters', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
   });
 
+  // r107 mail-gap g6: Mail's list reads neither the book nor the drafts.
+  it.each([
+    ['/communications', false],
+    ['/communications?tab=mail', false],
+    ['/communications?tab=mail&setup=1', false],
+    ['/communications?tab=mail&thread=gm%3Aabc', true],
+    ['/communications?tab=mail&with=vendor%3Ap1', true],
+    ['/communications?tab=letters', true],
+    ['/communications?draft=D1', true],
+    ['/communications?reply=o1', true],
+  ])('%s asks the data hook with enabled=%s', (url, enabled) => {
+    at(url);
+    expect(mockAsked.last).toEqual({ enabled });
+  });
+
+  it('from a bare address, Letters is named in the address, so a refresh keeps it', () => {
+    at('/communications');
+    fireEvent.click(tabs()[1]);
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=letters');
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
+  });
+
   it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc'], ['?setup=1'], ['?senders=open']])('%s opens on Mail', (q) => {
     at(`/communications${q}`);
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
-    expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
     // Letters' own figures and lists stand with Letters.
     expect(screen.queryByText('Vendor replies · 30 days')).toBeNull();
     expect(screen.queryByRole('region', { name: 'To send' })).toBeNull();
+  });
+
+  // r107 mail-gap g3: the two places are a tablist; the arrows move and select as a click does.
+  it('is a tablist with one Tab stop; ArrowRight/ArrowLeft/Home/End switch tab and the address, like a click', () => {
+    at('/communications?tab=mail');
+    expect(tabs().map((t) => t.getAttribute('tabindex'))).toEqual(['0', '-1']);
+    expect(tabs().map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+    const list = screen.getByRole('tablist', { name: 'Mail and letters' });
+    tabs()[0].focus();
+    fireEvent.keyDown(tabs()[0], { key: 'ArrowRight' });
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs().map((t) => t.getAttribute('tabindex'))).toEqual(['-1', '0']);
+    expect(document.activeElement).toBe(tabs()[1]);
+    expect(screen.getByTestId('where')).not.toHaveTextContent('tab=mail');
+    fireEvent.keyDown(list, { key: 'ArrowLeft' });
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
+    expect(document.activeElement).toBe(tabs()[0]);
+    fireEvent.keyDown(list, { key: 'End' });
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(list, { key: 'Home' });
+    expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tabs()[0].id);
   });
 
   // Spec (h): the counter's and the credit's links still land where they did.
@@ -1111,7 +1170,7 @@ describe('Mail and Letters', () => {
     mockData.current = { ...base, drafts: [waiting] };
     at('/communications?reply=o1');
     expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
-    expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
+    expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
   });
 
@@ -1162,7 +1221,7 @@ describe('Mail and Letters', () => {
   it('Letters leaves the person, thread, mail setup and the senders register behind', () => {
     at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1&senders=open');
     fireEvent.click(tabs()[1]);
-    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=letters$/);
     expect(screen.getByText('Vendor replies · 30 days')).toBeInTheDocument();
   });
 

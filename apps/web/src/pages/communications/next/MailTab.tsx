@@ -94,6 +94,7 @@ import {
 } from './useMailData';
 import { useMailSetup } from './useMailSetup';
 import { RetryRead, useReadAgain } from './MailRetry';
+import { hasModifier, inOverlay, isTypingTarget, listMove } from './mail-keys';
 
 const SR_ONLY = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' } as const;
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
@@ -216,14 +217,41 @@ export function rememberRowCount(house: string, count: number): void {
   }
 }
 
+/** The first-page list is a different height on a phone (long snippets wrap), so the height is kept per width class. */
+function listHeightKey(house: string): string {
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 640;
+  return `mail-people-height:${house}:${narrow ? 'narrow' : 'wide'}`;
+}
+
+/** The height the settled first-page list measured last time in this tab, or null when unknown. Storage may throw. */
+export function readLastListHeight(house: string): number | null {
+  try {
+    const raw = house ? window.sessionStorage.getItem(listHeightKey(house)) : null;
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberListHeight(house: string, px: number): void {
+  if (!house || !Number.isFinite(px) || px < 1) return;
+  try {
+    window.sessionStorage.setItem(listHeightKey(house), String(Math.round(px)));
+  } catch {
+    /* storage blocked: the bars hold their own height instead */
+  }
+}
+
 /**
  * The status line is placed over the bars, not above them, so it adds no height:
  * the list is exactly as tall as the rows that will replace it. role="status" is
  * a polite live region, so the words are still read aloud.
  */
-function PeoplePlaceholder({ rows }: { rows: number }) {
+function PeoplePlaceholder({ rows, heldHeight }: { rows: number; heldHeight: number | null }) {
   return (
-    <div data-testid="people-placeholder" style={{ position: 'relative' }}>
+    // heldHeight is what the settled list measured last time: bars of one fixed height cannot match rows that wrap.
+    <div data-testid="people-placeholder" style={{ position: 'relative', minHeight: heldHeight ?? undefined }}>
       <p
         role="status"
         aria-live="polite"
@@ -263,12 +291,15 @@ function PersonRow({
   onOpen,
   onLook,
   enterPlace,
+  tabStop = true,
 }: {
   p: MailPersonRow;
   on: WaitingOn;
   onOpen: () => void;
   onLook: () => void;
   enterPlace?: number;
+  /** The one row in the Tab order; the arrows reach the rest (roving tabindex). */
+  tabStop?: boolean;
 }) {
   const unsent = unsentWords(p.unsentStatus ?? null);
   return (
@@ -281,6 +312,7 @@ function PersonRow({
         type="button"
         data-testid="mail-person"
         data-mail-key={p.key}
+        tabIndex={tabStop ? 0 : -1}
         onClick={onOpen}
         onPointerEnter={onLook}
         onFocus={onLook}
@@ -477,8 +509,11 @@ function People({
   onOpenPerson,
   onSetup,
   setupWords,
+  onSettled,
   onStoredKinds,
 }: {
+  /** The list has answered, with people or with a failure (r107 g6: "Who is writing" waits for it). */
+  onSettled?: () => void;
   /** Who a waiting vendor waits on, in this reader's words (r36 mail gap 14). */
   on: WaitingOn;
   waitingOnly: boolean;
@@ -535,6 +570,17 @@ function People({
   useEffect(() => {
     if (settled) rememberRowCount(house, firstPageCount);
   }, [settled, house, firstPageCount]);
+  const peopleListRef = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (settled && peopleListRef.current) rememberListHeight(house, peopleListRef.current.getBoundingClientRect().height);
+  }, [settled, house, firstPageCount]);
+  const settledNow = Boolean(q.data) || q.isError;
+  useEffect(() => {
+    if (settledNow) onSettled?.();
+  }, [settledNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Roving tabindex: the row last focused (else the first) is the list's one Tab stop.
+  const [roving, setRoving] = useState<string | null>(null);
+  const tabStopKey = people.some((p) => p.key === roving) ? roving : (people[0]?.key ?? null);
   const listRef = useRef<HTMLElement>(null);
   const again = useReadAgain(q, listRef);
   return (
@@ -550,7 +596,7 @@ function People({
           <RetryRead testId="people-read-again" busy={again.busy} onClick={again.onPress} onRetry={() => void q.refetch()} />
         </p>
       ) : !q.data ? (
-        <PeoplePlaceholder rows={readLastRowCount(house)} />
+        <PeoplePlaceholder rows={readLastRowCount(house)} heldHeight={readLastListHeight(house)} />
       ) : people.length === 0 && search ? (
         <p data-testid="search-empty" role="status" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch', overflowWrap: 'anywhere' }}>
           {searchEmptyWords(search, { waitingOnly, on })}{' '}
@@ -581,11 +627,32 @@ function People({
           // A new search, filter or kind is a different list: it crossfades in as a whole. More of the same list
           // adds only the new rows, each fading in; the rows already there never move (r102 mail-motion-4).
           key={shown.current}
+          ref={peopleListRef}
           className="mail-fade-in"
           style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}
+          onFocus={(e) => {
+            const k = (e.target as HTMLElement).getAttribute?.('data-mail-key');
+            if (k) setRoving(k);
+          }}
+          onKeyDown={(e) => {
+            if (hasModifier(e) || e.shiftKey) return;
+            const rows = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[data-testid="mail-person"]'));
+            const to = listMove(e.key, rows.indexOf(e.target as HTMLElement), rows.length);
+            if (to === null || !rows.includes(e.target as HTMLElement)) return;
+            e.preventDefault();
+            rows[to].focus();
+          }}
         >
           {people.map((p) => (
-            <PersonRow key={p.key} p={p} on={on} onOpen={() => onOpenPerson(p.key)} onLook={() => lookAhead.threads(p.key)} enterPlace={entering.get(p.key)} />
+            <PersonRow
+              key={p.key}
+              p={p}
+              on={on}
+              onOpen={() => onOpenPerson(p.key)}
+              onLook={() => lookAhead.threads(p.key)}
+              enterPlace={entering.get(p.key)}
+              tabStop={p.key === tabStopKey}
+            />
           ))}
         </ul>
       )}
@@ -819,6 +886,22 @@ export function MailTab({
     setSearch('');
   };
   const [sheet, setSheet] = useState(false);
+  // r107 mail-gap g6: "Who is writing" reads its own two lists when it mounts. It mounts once the
+  // people list has answered, in an idle moment (a 200 ms timer where there is no idle callback),
+  // so the list is not queued behind it. It is the last thing in the flow: nothing below it moves.
+  const [peopleSettled, setPeopleSettled] = useState(false);
+  const [whoOn, setWhoOn] = useState(false);
+  useEffect(() => {
+    if (!peopleSettled || whoOn) return;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(() => setWhoOn(true), { timeout: 1000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(() => setWhoOn(true), 200);
+    return () => clearTimeout(t);
+  }, [peopleSettled, whoOn]);
+  const searchRef = useRef<HTMLInputElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const summaryQ = useMailSummary(true);
@@ -882,6 +965,25 @@ export function MailTab({
   // One name per view, so a view change keeps the place (g2): deeper = further from the list.
   const view = setup ? 'setup' : threadKey ? `thread:${threadKey}` : withKey ? `with:${withKey}` : 'list';
   const place = useViewPlace(view, setup || threadKey ? 2 : withKey ? 1 : 0);
+  // Keys that are the page's, not the reader's typing: `/` finds, Escape goes back (g3).
+  const keyAct = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyAct.current = (e) => {
+    if (e.defaultPrevented || hasModifier(e) || isTypingTarget(e.target) || inOverlay(e.target) || sheet || setup) return;
+    if (e.key === '/' && view === 'list') {
+      if (!searchRef.current) return;
+      e.preventDefault();
+      searchRef.current.focus();
+    } else if (e.key === 'Escape' && view !== 'list') {
+      e.preventDefault();
+      if (threadKey) back({ thread: null });
+      else back({ with: null });
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyAct.current(e);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const tone = status.tone === 'warn' ? 'var(--warn, #96601A)' : status.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
 
   return (
@@ -1011,6 +1113,7 @@ export function MailTab({
             <input
               type="search"
               data-testid="mail-search"
+              ref={searchRef}
               aria-label="Search mail"
               placeholder={readAll.reads || storesNonVendor(storedKinds) ? SEARCH_PLACEHOLDER_ALL : SEARCH_PLACEHOLDER_VENDOR}
               value={typed}
@@ -1075,10 +1178,11 @@ export function MailTab({
             }}
             onSetup={openSetup}
             setupWords={setupLinkWords(canReply)}
+            onSettled={() => setPeopleSettled(true)}
             onStoredKinds={setStoredKinds}
           />
           </div>
-          {whoIsWriting}
+          {whoOn ? whoIsWriting : null}
         </>
       )}
       </div>

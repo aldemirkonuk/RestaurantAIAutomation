@@ -202,7 +202,7 @@ export function openRouteForAction(action: ActionItem): string {
       // passed: `gmail_send` carries only `{ templates }` and `gmail_contextual`
       // only `{ recipient, subject }`, and Communications has no thread- or
       // compose-from-query-string entry point to hand them to.
-      return '/communications'
+      return '/communications?tab=letters'
     default:
       return '/'
   }
