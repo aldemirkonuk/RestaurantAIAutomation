@@ -19,7 +19,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, restoreMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
@@ -37,6 +37,7 @@ vi.mock('../../../services/api/menus', async () => {
     ...actual,
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
+    restoreMenuItem: vi.fn(),
     addMenuItem: vi.fn(),
     getMenuSheet: vi.fn(),
     reviewMenuItem: vi.fn(),
@@ -81,6 +82,7 @@ vi.mock('../../../services/api/settings', async () => {
 const mockGetMenu = vi.mocked(getMenu);
 const mockVersions = vi.mocked(listMenuVersions);
 const mockDiscard = vi.mocked(discardMenuItem);
+const mockRestoreLine = vi.mocked(restoreMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
 const mockReview = vi.mocked(reviewMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
@@ -134,6 +136,7 @@ function mount() {
 beforeEach(() => {
   mockGetMenu.mockReset();
   mockDiscard.mockReset();
+  mockRestoreLine.mockReset();
   mockAdd.mockReset();
   mockReview.mockReset();
   role = 'manager';
@@ -374,6 +377,35 @@ describe('MenuNext — add', () => {
   });
 });
 
+describe('MenuNext — the kept source beside the lines (r107 menu-8)', () => {
+  afterEach(() => {
+    role = 'manager';
+  });
+  const keptVersions = () =>
+    mockVersions.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [{ menuId: 'm1', status: 'current', source: { kept: true, mime: 'application/pdf', bytes: 10, failure: null }, linesExtracted: 1 }],
+    } as never);
+
+  it('offers a manager the kept source of the current menu, closed until asked for', async () => {
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm1', items: [line({ name: 'Raki' })] }));
+    keptVersions();
+    mount();
+    expect(await screen.findByRole('button', { name: 'Show the kept menu with the lines' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: 'The kept menu' })).not.toBeInTheDocument();
+  });
+
+  it('offers staff nothing, and a menu with no kept file offers nothing either', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ menuId: 'm1', items: [line({ name: 'Raki' })] }));
+    keptVersions();
+    mount();
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-source-pane')).not.toBeInTheDocument();
+  });
+});
+
 describe('MenuNext — discard', () => {
   afterEach(() => {
     role = 'manager';
@@ -405,6 +437,36 @@ describe('MenuNext — discard', () => {
     fireEvent.click(discardRaki);
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     await waitFor(() => expect(mockVersions).toHaveBeenCalledTimes(2));
+  });
+
+  // r107 menu-4 (DD-r106-18): a wrong tap had no way back.
+  it('says the line was taken off and puts it back on a click, in words that never touch its sale state', async () => {
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mockRestoreLine.mockResolvedValue({ menuItemId: 'l9', status: 'approved' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const said = await screen.findByTestId('menu-off-list-said');
+    expect(said).toHaveTextContent('Taken off the list.');
+    expect(said).toHaveAttribute('role', 'status');
+    fireEvent.click(screen.getByRole('button', { name: 'Put Raki back' }));
+    await waitFor(() => expect(mockRestoreLine).toHaveBeenCalledWith('r1', 'l9'));
+    expect(await screen.findByTestId('menu-off-list-said')).toHaveTextContent('Raki is back on the menu.');
+    expect(screen.getByTestId('menu-off-list-said')).not.toHaveTextContent(/sale/i);
+    expect(await screen.findByText('Raki')).toBeInTheDocument();
+  });
+
+  it('says the gateway\'s words when the line cannot be put back (the menu is no longer current)', async () => {
+    const said = 'The menu this line was on is no longer the current one, so it cannot be put back on the menu. Nothing was changed.';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mockRestoreLine.mockRejectedValue({ response: { status: 409, data: { statusCode: 409, message: said } } });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Put Raki back' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(said);
   });
 
   it('discards on click, and reports a failure without pretending the line is gone', async () => {
@@ -934,5 +996,51 @@ describe('MenuNext — the menu reads in its printed order, under its own sectio
     mount();
     await screen.findAllByTestId('menu-row');
     expect(screen.queryAllByTestId('menu-section-row')).toHaveLength(0);
+  });
+});
+
+describe('MenuNext — the taken-off sentence is in view, and the controls are 44 px on a phone (r108 menu-3)', () => {
+  const proto = Element.prototype as { scrollIntoView?: unknown };
+  const had = Object.prototype.hasOwnProperty.call(proto, 'scrollIntoView');
+  const before = proto.scrollIntoView;
+  afterEach(() => {
+    if (had) proto.scrollIntoView = before;
+    else delete proto.scrollIntoView;
+  });
+
+  it('jumps the sentence into view the moment a line is taken off: instant, once, never before', async () => {
+    const spy = vi.fn();
+    proto.scrollIntoView = spy;
+    mockGetMenu.mockResolvedValueOnce(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mount();
+    const discard = await screen.findByRole('button', { name: 'Discard Raki' });
+    expect(spy).not.toHaveBeenCalled();
+    fireEvent.click(discard);
+    const said = await screen.findByTestId('menu-off-list-said');
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    expect(spy.mock.instances[0]).toBe(said);
+    expect(spy).toHaveBeenCalledWith({ block: 'nearest', behavior: 'instant' });
+  });
+
+  it('keeps the sentence clear of the sticky header and the phone bottom bar when it is jumped to (r108 walk: it landed under the 53 px header at 375)', () => {
+    const next = readFileSync('src/pages/menu/next/MenuNext.tsx', 'utf8');
+    const m = next.match(/scrollMarginTop: (\d+), scrollMarginBottom: (\d+) \}\}\s+data-testid="menu-off-list-said"/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThanOrEqual(64);
+    expect(Number(m![2])).toBeGreaterThanOrEqual(64);
+  });
+
+  it('puts the controls on the 44 px rule, and the rule is static', () => {
+    const next = readFileSync('src/pages/menu/next/MenuNext.tsx', 'utf8');
+    expect(next).toMatch(/className="cl-btn cl-focus mdv-touch" disabled=\{putting\}/);
+    expect(next).toMatch(/type="submit" className="cl-btn cl-focus mdv-touch"/);
+    expect(readFileSync('src/pages/menu/next/MenuSheetButton.tsx', 'utf8')).toMatch(/className="mdv-link cl-focus mdv-touch"/);
+    const css = readFileSync('src/pages/menu/next/menu-rows.css', 'utf8');
+    const rule = css.slice(css.lastIndexOf('@media (max-width: 599px)'));
+    expect(rule).toContain('.mdv-touch');
+    expect(rule).toContain('min-height: 44px');
+    expect(rule).not.toMatch(/transition|animation/);
   });
 });
