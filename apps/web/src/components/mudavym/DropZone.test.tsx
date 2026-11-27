@@ -145,6 +145,29 @@ describe('on a touch device', () => {
     expect(screen.queryByRole('button', { name: 'Take the next page' })).toBeNull();
   });
 
+  it('a single-file host never offers Take the next page or Add pages', () => {
+    coarse(true);
+    const one = new File(['x'], 'p1.jpg', { type: 'image/jpeg' });
+    mount({ files: [one], multiple: false });
+    expect(screen.queryByRole('button', { name: 'Take the next page' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add pages' })).toBeNull();
+  });
+
+  it('a phone holding a PDF offers no Take the next page, and a desktop no Add pages', () => {
+    coarse(true);
+    const { unmount } = mount({ files: [pdf] });
+    expect(screen.queryByRole('button', { name: 'Take the next page' })).toBeNull();
+    unmount();
+    coarse(false);
+    mount({ files: [pdf] });
+    expect(screen.queryByRole('button', { name: 'Add pages' })).toBeNull();
+  });
+
+  it('the add-pages picker takes photos only', () => {
+    mount({ files: [new File(['x'], 'p1.jpg', { type: 'image/jpeg' })] });
+    expect(screen.getByLabelText('Menu to read: add pages').getAttribute('accept')).toBe('image/*');
+  });
+
   it('on a desktop, Add pages opens a second picker and what it picks is added', () => {
     const one = new File(['x'], 'p1.jpg', { type: 'image/jpeg' });
     const two = new File(['x'], 'p2.jpg', { type: 'image/jpeg' });

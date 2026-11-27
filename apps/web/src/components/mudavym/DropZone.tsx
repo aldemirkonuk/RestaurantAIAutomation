@@ -21,6 +21,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyArt } from './emptyArt';
 import { formatBytes } from '../../lib/uploadAccept';
+import { isPhoto } from '../../lib/menuPhotos';
 import './drop-zone.css';
 
 export interface DropZoneProps {
@@ -107,6 +108,8 @@ export function DropZone({
   const coarse = useCoarsePointer();
 
   const held = files.length > 0;
+  // More pages only join photos: a PDF or sheet held makes any further file a dead end (uploadShapeOf refuses the pair).
+  const morePages = multiple && files.every(isPhoto);
   const state = reading && held ? 'reading' : held ? 'held' : dragging ? 'dragging' : 'idle';
   const first = files[0];
   const size = useMemo(() => files.reduce((n, f) => n + f.size, 0), [files]);
@@ -145,7 +148,7 @@ export function DropZone({
         type="file"
         className="mdv-drop__input"
         multiple
-        accept={accept}
+        accept="image/*"
         aria-label={`${inputLabel}: add pages`}
         disabled={disabled}
         tabIndex={-1}
@@ -234,7 +237,7 @@ export function DropZone({
             </div>
             {!reading ? (
               <div className="mdv-drop__acts">
-                {multiple && coarse ? (
+                {morePages && coarse ? (
                   <button
                     type="button"
                     className="mdv-btn mdv-drop__next"
@@ -244,7 +247,7 @@ export function DropZone({
                     Take the next page
                   </button>
                 ) : null}
-                {multiple && !coarse ? (
+                {morePages && !coarse ? (
                   <button
                     type="button"
                     className="mdv-link"
