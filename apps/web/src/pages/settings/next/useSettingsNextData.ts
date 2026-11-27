@@ -38,6 +38,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient } from '@/services/api/client';
+import { clearHoursUnsaved } from '@/lib/houseHoursNote';
 import { useAuth, type RestaurantBranch } from '@/contexts/AuthContext';
 import {
   integrationsApi,
@@ -964,6 +965,9 @@ export function useSettingsNextData() {
     (next: OperatingHours | null) =>
       writer.run('hours', async () => {
         hours.set(await restaurantsApi.putOperatingHours(rid as string, next));
+        // /house says the hours from Google were not saved until they are. A
+        // stated "we do not know" saves nothing, so the note stays for that.
+        if (next !== null) clearHoursUnsaved();
       }),
     [writer, hours, rid],
   );
