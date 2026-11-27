@@ -6,8 +6,8 @@
 
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import Cutting from './Cutting';
 import { Working } from './rp-plot';
 import { CATALOGUE } from './rp-catalogue';
@@ -106,6 +106,7 @@ function paint(node: React.ReactNode, entries: string[] = ['/reports']) {
 }
 
 const where = () => screen.getByTestId('where').textContent;
+const dialogOf = (name: string) => screen.getByRole('dialog', { name });
 const opener = (title: string) =>
   screen.getByRole('button', { name: `Show ${title} full screen` });
 
@@ -284,6 +285,201 @@ describe('the working', () => {
       expect(collided).toBe(false);
     } finally {
       errors.mockRestore();
+    }
+  });
+});
+
+describe('Fill the screen (r109 g1)', () => {
+  const proto = HTMLElement.prototype as unknown as { requestFullscreen?: unknown };
+  let fsEl: Element | null = null;
+  const exit = vi.fn();
+  const request = vi.fn();
+
+  function enable() {
+    fsEl = null;
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: true });
+    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => fsEl });
+    request.mockImplementation(function (this: Element) {
+      fsEl = this;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    exit.mockImplementation(() => {
+      fsEl = null;
+      document.dispatchEvent(new Event('fullscreenchange'));
+      return Promise.resolve();
+    });
+    proto.requestFullscreen = request;
+    Object.defineProperty(document, 'exitFullscreen', { configurable: true, value: exit });
+  }
+
+  afterEach(() => {
+    request.mockReset();
+    exit.mockReset();
+    delete proto.requestFullscreen;
+    for (const k of ['fullscreenEnabled', 'fullscreenElement', 'exitFullscreen']) {
+      delete (document as unknown as Record<string, unknown>)[k];
+    }
+  });
+
+  it('Fill the screen asks the browser for the dialog; Back gives it back and the lock count returns to 0', async () => {
+    enable();
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    const fill = within(dialog).getByRole('button', { name: 'Fill the screen' });
+    expect(fill).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(fill);
+    expect(request).toHaveBeenCalledTimes(1);
+    // The page element, which outlives any one cutting's dialog.
+    expect(request.mock.instances[0]).toBe(document.documentElement);
+    expect(request).toHaveBeenCalledWith({ navigationUI: 'hide' });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Leave full screen' })).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Back to the sheet' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(exit).toHaveBeenCalledTimes(1);
+    expect(document.body.style.overflow).toBe('');
+  });
+
+  /** Two cuttings and a button that swaps the open one for the other, as a Previous / Next step does. */
+  function Pair() {
+    const navigate = useNavigate();
+    return (
+      <>
+        <button type="button" data-testid="step" onClick={() => navigate('/reports?flat=week', { replace: true })}>
+          step
+        </button>
+        {(['till', 'week'] as const).map((id) => (
+          <Cutting
+            key={id}
+            id={id}
+            graph={CATALOGUE[id].graphs[0] ?? 'table'}
+            register={id === 'till' ? answered(TILL) : inFlight()}
+            ctx={{ days: 30 }}
+            arranging={false}
+            swapOptions={swapOptions}
+            arrange={arrangeStub}
+            onGraph={vi.fn()}
+            onSwap={vi.fn()}
+            onRemove={vi.fn()}
+            onDays={vi.fn()}
+          />
+        ))}
+      </>
+    );
+  }
+
+  it('[REVERT-FAILS] a step keeps the filled screen and the landscape lock; only closing gives them back (r109)', async () => {
+    enable();
+    const lock = vi.fn(() => Promise.resolve());
+    const unlock = vi.fn();
+    Object.defineProperty(window.screen, 'orientation', { configurable: true, value: { lock, unlock } });
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      paint(<Pair />);
+      fireEvent.click(opener('Through the till'));
+      fireEvent.click(within(dialogOf('Through the till')).getByRole('button', { name: 'Fill the screen' }));
+      await waitFor(() => expect(lock).toHaveBeenCalledWith('landscape'));
+      expect(document.fullscreenElement).toBe(document.documentElement);
+
+      fireEvent.click(screen.getByTestId('step'));
+      const next = dialogOf(CATALOGUE.week.title);
+      await act(async () => {});
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      expect(document.fullscreenElement).toBe(document.documentElement);
+      expect(exit).not.toHaveBeenCalled();
+      expect(unlock).not.toHaveBeenCalled();
+      // The new dialog knows the screen is already filled: no second tap.
+      expect(within(next).getByRole('button', { name: 'Leave full screen' })).toHaveAttribute('aria-pressed', 'true');
+
+      fireEvent.click(within(next).getByRole('button', { name: 'Back to the sheet' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() => expect(exit).toHaveBeenCalledTimes(1));
+      expect(unlock).toHaveBeenCalledTimes(1);
+      expect(document.fullscreenElement).toBeNull();
+    } finally {
+      window.matchMedia = mm;
+      delete (window.screen as unknown as Record<string, unknown>).orientation;
+    }
+  });
+
+  it("the browser's own Escape leaves its full screen and puts the label back; the flat stays open", async () => {
+    enable();
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fill the screen' }));
+    await waitFor(() => within(dialog).getByRole('button', { name: 'Leave full screen' }));
+    fsEl = null;
+    document.dispatchEvent(new Event('fullscreenchange'));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Fill the screen' })).toHaveAttribute('aria-pressed', 'false'),
+    );
+    expect(screen.getByRole('dialog', { name: 'Through the till' })).toBeInTheDocument();
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('no button when fullscreenEnabled is false (iPhone Safari)', () => {
+    enable();
+    Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, value: false });
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(within(dialog).queryByRole('button', { name: /full screen|Fill the screen/i })).toBeNull();
+  });
+
+  it('no button when the root cannot ask for full screen', () => {
+    enable();
+    delete proto.requestFullscreen;
+    paint(<Harness id="till" register={answered(TILL)} />);
+    fireEvent.click(opener('Through the till'));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    expect(within(dialog).queryByRole('button', { name: 'Fill the screen' })).toBeNull();
+  });
+
+  it('a phone-sized touch screen asks for landscape once in, and gives the lock back on close', async () => {
+    enable();
+    const lock = vi.fn(() => Promise.resolve());
+    const unlock = vi.fn();
+    Object.defineProperty(window.screen, 'orientation', { configurable: true, value: { lock, unlock } });
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      paint(<Harness id="till" register={answered(TILL)} />);
+      fireEvent.click(opener('Through the till'));
+      const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fill the screen' }));
+      await waitFor(() => expect(lock).toHaveBeenCalledWith('landscape'));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Back to the sheet' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(unlock).toHaveBeenCalledTimes(1);
+    } finally {
+      window.matchMedia = mm;
+      delete (window.screen as unknown as Record<string, unknown>).orientation;
+    }
+  });
+
+  it('a refused lock fails silently', async () => {
+    enable();
+    const lock = vi.fn(() => Promise.reject(new Error('NotSupportedError')));
+    Object.defineProperty(window.screen, 'orientation', { configurable: true, value: { lock, unlock: vi.fn() } });
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} })) as never;
+    try {
+      paint(<Harness id="till" register={answered(TILL)} />);
+      fireEvent.click(opener('Through the till'));
+      const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fill the screen' }));
+      await waitFor(() => expect(lock).toHaveBeenCalled());
+      expect(within(dialog).getByRole('button', { name: 'Leave full screen' })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = mm;
+      delete (window.screen as unknown as Record<string, unknown>).orientation;
     }
   });
 });
