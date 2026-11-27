@@ -248,6 +248,7 @@
   "POST /communications/letters/requests (HouseLettersController.ask)": "open",
   "POST /communications/letters/requests/:id/decline (HouseLettersController.declineRequest)": "open",
   "POST /communications/letters/requests/:id/withdraw (HouseLettersController.withdrawRequest)": "open",
+  "POST /communications/letters/preview (HouseLettersController.preview)": "open",
   "GET /conversations (ConversationsController.listConversations)": [
     "owner",
     "manager",
