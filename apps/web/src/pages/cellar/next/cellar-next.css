@@ -1192,7 +1192,10 @@ textarea.cl-field {
 
 /* Batch for a bottle (r109 drinks-g2): opens at once, nothing animates. */
 .cl-rcp-batch-wrap { margin: 0 0 8px; }
-.cl-rcp-batch { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px solid var(--paper-2); border-radius: 8px; }
+.cl-rcp-batch { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px solid var(--paper-2); border-radius: 8px; animation: cl-rcp-batch-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+/* Opens by its own toggle (input, not layout shift); closes at once. Transform and opacity only. */
+@keyframes cl-rcp-batch-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cl-rcp-batch { animation: none; } }
 .cl-rcp-batch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
 .cl-rcp-batch-in { width: 72px; text-align: right; }
 .cl-rcp-batch-tick { display: inline-flex; align-items: center; gap: 6px; margin: 0; min-height: 30px; }
