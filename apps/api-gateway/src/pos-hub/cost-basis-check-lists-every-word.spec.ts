@@ -21,6 +21,7 @@ const NAMED_BASES = [
   "invoice_restated",
   "pour_lot_wac",
   "pour_lot_wac_partial",
+  "ledger_lot_draw",
 ];
 
 /** The words a migration's ADD CONSTRAINT ... IN (...) names, or null if it does not add this CHECK. */

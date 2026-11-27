@@ -10,7 +10,10 @@
 -- last_purchase_price rows, and a pour costed at the last price paid keeps that
 -- word so a verified invoice can still restate it.
 --
--- The list is the whole set of seven words on purpose. Several open PRs each
+-- r105 follow-up: a whole-bottle line costed from the lots its ledger row says it
+-- drew is worded ledger_lot_draw, so invoice_lot_wac means a recorded WAC again.
+--
+-- The list is the whole set of eight words on purpose. Several open PRs each
 -- re-add this CHECK (agreed_lot_wac, invoice_restated, the pour words), a migration
 -- is numbered at merge, and the last one to run owns the list: a shorter list
 -- would take another PR's words back out and the database would refuse those
@@ -22,7 +25,7 @@ ALTER TABLE public.wine_consumption_log
   ADD CONSTRAINT wine_consumption_log_cost_basis_check
   CHECK (cost_basis IS NULL OR cost_basis IN
     ('invoice_lot_wac', 'invoice_lot_wac_partial', 'agreed_lot_wac', 'last_purchase_price',
-     'invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial'));
+     'invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial', 'ledger_lot_draw'));
 
 COMMENT ON COLUMN public.wine_consumption_log.cost_basis IS
-  'What the cost was read from at sale: invoice_lot_wac, invoice_lot_wac_partial, agreed_lot_wac, last_purchase_price, pour_lot_wac or pour_lot_wac_partial (a pour has no ledger row, r105); invoice_restated once a verified invoice moved it.';
+  'What the cost was read from at sale: invoice_lot_wac, invoice_lot_wac_partial, agreed_lot_wac, last_purchase_price, pour_lot_wac or pour_lot_wac_partial (a pour has no ledger row, r105), ledger_lot_draw (read from the lots the sale drew); invoice_restated once a verified invoice moved it.';
