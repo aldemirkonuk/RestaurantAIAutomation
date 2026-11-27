@@ -43,7 +43,27 @@ export interface SaleCostSource {
    * `loadSaleCosts` builds a fresh source per check.
    */
   lotQtyLeft: number;
+   * r109 g1: every live lot the unit cost was read over, so each delivery's
+   * paper restates its own share of the WAC. Null when there were none, or
+   * when there were more than COST_PARTS_CAP (then `partsCapped`).
+   */
+  parts: CostPart[] | null;
+  /** More live lots than COST_PARTS_CAP: the row keeps no parts and is never restated. */
+  partsCapped: boolean;
 }
+
+/** One live lot on the shelf at sale: what a paper restates, part by part. */
+export interface CostPart {
+  order_id: string | null;
+  lot_id: string | null;
+  qty: number;
+  unit_cost: number;
+  /** The lot's cost came from a checked paper (cost_provenance = invoice). */
+  invoiced: boolean;
+}
+
+/** A sale keeps at most this many parts; past it, it says it cannot be restated. */
+export const COST_PARTS_CAP = 20;
 
 /** The four columns a consumption row keeps for its cost. */
 export interface CostSnapshot {
@@ -53,6 +73,9 @@ export interface CostSnapshot {
   cost_unit_at_sale: number | null;
   cost_source_lot_id: string | null;
   cost_source_order_id: string | null;
+  /** r109 g1: the shelf the unit cost was read over (restate_sale_cost v2). */
+  cost_parts: CostPart[] | null;
+  cost_parts_capped: boolean;
 }
 
 export const NO_COST_SNAPSHOT: CostSnapshot = {
@@ -61,6 +84,8 @@ export const NO_COST_SNAPSHOT: CostSnapshot = {
   cost_unit_at_sale: null,
   cost_source_lot_id: null,
   cost_source_order_id: null,
+  cost_parts: null,
+  cost_parts_capped: false,
 };
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
@@ -100,6 +125,8 @@ export function pickSaleCostSource(
   let lotId: string | null = null;
   let orderId: string | null = null;
   let lotQtyLeft = 0;
+  let parts: CostPart[] | null = null;
+  let partsCapped = false;
   {
     // The lot FIFO draws first, whatever the basis: a line costed at the last
     // price paid still came off a delivery, and the invoice that verifies that
@@ -117,8 +144,24 @@ export function pickSaleCostSource(
       orderId = first.source_order_id ? String(first.source_order_id) : null;
       lotQtyLeft = Number(first.qty);
     }
+    // r109 g1: the same live lots the rollup's WAC is read over (live, priced,
+    // not a sample), each with its own qty and cost. A paper replaces its own
+    // order's part, so a lot spent before its paper is checked still restates.
+    // `live` above is every live lot (FIFO naming, r102 F2), costed or not; the
+    // WAC is read over the priced, non-sample ones only, so the parts are too:
+    // an uncosted lot as a part would enter the restated average at 0.
+    const priced = live.filter((l) => l.unit_cost != null && l.cost_provenance !== "sample");
+    if (priced.length > COST_PARTS_CAP) partsCapped = true;
+    else if (priced.length > 0)
+      parts = priced.map((l) => ({
+        order_id: l.source_order_id ? String(l.source_order_id) : null,
+        lot_id: l.id ? String(l.id) : null,
+        qty: Number(l.qty),
+        unit_cost: Number(l.unit_cost),
+        invoiced: l.cost_provenance === "invoice",
+      }));
   }
-  return { unitCost, basis: costBasis, lotId, orderId, lotQtyLeft };
+  return { unitCost, basis: costBasis, lotId, orderId, lotQtyLeft, parts, partsCapped };
 }
 
 /** The depletion row a whole-bottle sale wrote (inventory_transactions), as read back by its key. */
@@ -228,6 +271,11 @@ export function snapshotLineCost(
     cost_unit_at_sale: drawn ? drawn.unitCost : source.unitCost,
     cost_source_lot_id: named ? source.lotId : null,
     cost_source_order_id: named ? source.orderId : null,
+    // r109 g1: the WAC's parts, for a line costed AT the WAC. A whole-bottle
+    // line priced from its ledger row is the lots it really drew, not the
+    // shelf's average, so it keeps no parts (the r102 single-order rule).
+    cost_parts: drawn ? null : (source.parts ?? null),
+    cost_parts_capped: drawn ? false : (source.partsCapped ?? false),
   };
 }
 

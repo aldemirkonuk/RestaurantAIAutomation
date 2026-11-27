@@ -6237,6 +6237,14 @@ export class ProcurementService {
         );
       }
       const salesRestated = (restated as any)?.rows_restated ?? 0;
+      // r109 g1: a sale with over 20 lots on the shelf is never restated.
+      const salesCapped = (restated as any)?.rows_capped ?? 0;
+      if (salesCapped > 0) {
+        this.logger.warn(
+          `verifyReceipt left ${salesCapped} sale(s) of ${inventoryId} unrestated on order ${orderId}: ` +
+            `more than 20 lots were on the shelf when they sold, so their cost stays as it was read.`,
+        );
+      }
       if (salesRestated > 0) {
         this.logger.log({
           message: "Receipt verification restated sales",
