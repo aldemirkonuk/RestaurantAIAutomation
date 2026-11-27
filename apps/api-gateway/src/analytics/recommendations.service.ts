@@ -1,4 +1,13 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
+import {
+  datedReading,
+  figureOrNull,
+  goalShape,
+  readOnIfNotToday,
+  scoreGoal,
+  storedGoalSchedule,
+} from "./goal-score";
+import { readHouseZone } from "../common/house-day";
 import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
@@ -326,6 +335,7 @@ export class RecommendationsService {
       goals,
       priceAdviceRes,
       priceLocksRes,
+      houseZoneRes,
     ] = await Promise.allSettled([
       this.analyticsService.getFinancialSummary(restaurantId, 0, {
         withSales: opts.withSales === true,
@@ -352,6 +362,9 @@ export class RecommendationsService {
             return r;
           })
         : Promise.reject(new Error("price locks are not wired into this build")),
+      // The goal rule schedules a goal on the house's clock, as the goals
+      // desk does (goal-score.ts `storedGoalSchedule`, ADR 0296).
+      readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -413,6 +426,7 @@ export class RecommendationsService {
       goals: ok(goals) ?? [],
       priceAdvice: ok(priceAdviceRes) as HouseAdvice | null,
       priceLocks: ok(priceLocksRes) as LockReadout | null,
+      zone: (ok(houseZoneRes)?.zone ?? null) as string | null,
     };
     const priceAdviceReason =
       priceAdviceRes.status === "rejected"
@@ -793,35 +807,47 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
+    // A goal with a deadline and a dated reading whose pace could not be
+    // judged because the house's zone read failed: the rule's silence about
+    // it is named in `sourcesUnread`, never left to read as "on pace". Named
+    // only when it held a goal back, so a house without goals hears nothing.
+    let paceWantedZone = false;
     for (const g of ctx.goals.slice(0, 3)) {
       // A goal whose stored value is withheld from this caller (a
-      // days-of-stock goal without sales, GoalsService.withholdTillGoalValues)
-      // or was never read is not "0% done": it is left out, never called
-      // behind.
-      if (g.current_value === null || g.current_value === undefined) continue;
-      const target = Number(g.target_value) || 0;
-      const current = Number(g.current_value) || 0;
-      const behind =
-        g.deadline &&
-        target > 0 &&
-        current / target <
-          Math.max(
-            0,
-            1 -
-              Math.max(
-                0,
-                (new Date(g.deadline).getTime() - Date.now()) / 86400000,
-              ) /
-                Math.max(
-                  1,
-                  (new Date(g.deadline).getTime() -
-                    new Date(g.created_at).getTime()) /
-                    86400000,
-                ),
-          ) *
-            0.9;
-      rule(`goal_behind_${g.id}`, !!behind, () => ({
-        observation: `Goal "${g.name}" is behind its linear pace (${Math.round((current / target) * 100)}% done).`,
+      // days-of-stock goal without sales, GoalsService.withholdTillGoalValues),
+      // whose latest reading was refused, or which has no dated reading is not
+      // "0% done": it is left out, never called behind. A dated reading is
+      // judged when it was taken, by the scorer the goals desk uses
+      // (goal-score.ts), so a "keep at most" goal under its ceiling is not
+      // behind, and a level is paced from its baseline (reports lane r2). Its
+      // schedule is the desk's too: the house midnights that open the day it
+      // was created and its deadline day, never the raw creation instant or
+      // UTC's midnight. With no zone there is no schedule, as on the desk.
+      const reading = datedReading(g);
+      if (!reading) continue;
+      if (houseZoneRes.status === "rejected" && g.deadline) paceWantedZone = true;
+      const { start, end } = storedGoalSchedule(g, ctx.zone);
+      const score = scoreGoal({
+        direction: g.direction,
+        shape: goalShape(g.metric_key),
+        current: reading.current,
+        target: figureOrNull(g.target_value),
+        baseline: figureOrNull(g.baseline_value),
+        start,
+        end,
+        at: reading.at,
+      });
+      const behind = score.onTrack === false && score.progressPct !== null;
+      const share = Math.round((score.progressPct ?? 0) * 100);
+      const readOn = readOnIfNotToday(reading.at, ctx.zone);
+      const asOf = readOn ? `, read on ${readOn}` : "";
+      rule(`goal_behind_${g.id}`, behind, () => ({
+        observation:
+          score.direction === "at_most"
+            ? score.met === false
+              ? `Goal "${g.name}" is over its ceiling (${share}% of it${asOf}).`
+              : `Goal "${g.name}" is on course to go over its ceiling (${share}% of it used${asOf}).`
+            : `Goal "${g.name}" is behind its pace (${share}% done${asOf}).`,
         recommendation:
           "Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.",
         rationale:
@@ -831,6 +857,9 @@ export class RecommendationsService {
         score: 2.2,
       }));
     }
+
+    if (paceWantedZone && !sourcesUnread.includes("house time zone"))
+      sourcesUnread.push("house time zone");
 
     // ---- Merge stored manager disposition (dismiss/snooze/done/pin) --------
     const dispositions = await this.actions.readDispositions(restaurantId);
