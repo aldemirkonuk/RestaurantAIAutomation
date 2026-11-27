@@ -637,3 +637,111 @@ describe('leaving with changed words keeps them (COMMS-W34)', () => {
     expect(onHold).not.toHaveBeenCalled();
   });
 });
+
+describe('a reply opened from Mail (r28 gap 3)', () => {
+  const REPLY = { providerId: 'p1', subject: 'Re: Standing order', answers: 'm6' };
+  const QUEUED = { id: 'L1', dispatchAt: new Date(Date.now() + 120000).toISOString(), says: 'Queued.', undoMs: 120000, notices: [], insightsRecorded: 0 };
+  const sealThenQueue = () =>
+    mockPost.mockImplementation((path: string) =>
+      Promise.resolve(path === '/communications/letters/seal-challenge' ? { data: { challenge: 'seal-1' } } : { data: QUEUED }),
+    );
+
+  it("is addressed to the vendor's own book address and names the letter it answers", async () => {
+    mockData.current = {
+      ...base,
+      sender: HOUSE_MAILBOX,
+      book: [{ ...BOOK[0], email: 'rep@fikritarim.com', contactName: 'Rep', source: 'contact' as const }, ...BOOK],
+    };
+    sealThenQueue();
+    render(<ComposeSheet open onClose={() => {}} prefill={REPLY} />);
+    expect(screen.getByLabelText('Subject')).toHaveValue('Re: Standing order');
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Thursday is fine.' } });
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+    expect(mockPost.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ providerId: 'p1', to: 'fikri@fikritarim.com', answers: 'm6' }),
+    );
+  });
+
+  it('written to another vendor instead, it answers nothing', async () => {
+    mockData.current = {
+      ...base,
+      sender: HOUSE_MAILBOX,
+      book: [...BOOK, { providerId: 'p2', providerName: 'Ege Şarap', contactName: 'Ege', email: 'ege@egesarap.com', source: 'provider' as const }],
+    };
+    sealThenQueue();
+    render(<ComposeSheet open onClose={() => {}} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    // "Change" frees the recipient; the reply's vendor is not chosen again.
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(await screen.findByText('Ege Şarap'));
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Hello.' } });
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+    expect(mockPost.mock.calls[1][1].providerId).toBe('p2');
+    expect(mockPost.mock.calls[1][1].answers).toBeUndefined();
+  });
+
+  it('closed unwritten, a reply holds nothing (so the next new letter is blank)', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).not.toHaveBeenCalled();
+  });
+
+  it('closed with words in it, a reply is held still addressed and still answering', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Thursday is fine.' } });
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: expect.objectContaining({ providerId: 'p1' }),
+        subject: 'Re: Standing order',
+        body: 'Thursday is fine.',
+        answers: 'm6',
+      }),
+    );
+  });
+
+  it('a reply whose subject was edited is held', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Re: Standing order, Thursday' } });
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledTimes(1);
+  });
+
+  it('a reply turned to another vendor is held', async () => {
+    mockData.current = {
+      ...base,
+      sender: HOUSE_MAILBOX,
+      book: [...BOOK, { providerId: 'p2', providerName: 'Ege Şarap', contactName: 'Ege', email: 'ege@egesarap.com', source: 'provider' as const }],
+    };
+    const onHold = vi.fn();
+    render(<ComposeSheet open onClose={() => {}} onHold={onHold} prefill={REPLY} />);
+    await waitFor(() => expect(screen.getByText('fikri@fikritarim.com')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Change'));
+    fireEvent.click(await screen.findByText('Ege Şarap'));
+    fireEvent.click(screen.getByText('Close'));
+    expect(onHold).toHaveBeenCalledWith(expect.objectContaining({ to: expect.objectContaining({ providerId: 'p2' }) }));
+  });
+
+  it('a plain letter names nothing it answers', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    sealThenQueue();
+    open();
+    pickRecipient();
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+    expect(mockPost.mock.calls[1][1].answers).toBeUndefined();
+  });
+});
