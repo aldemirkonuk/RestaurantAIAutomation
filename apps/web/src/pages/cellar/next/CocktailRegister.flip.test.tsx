@@ -131,7 +131,7 @@ describe('sorting slides the rows', () => {
 
 describe('a filter or the search slides the rows that stay (r108 DD-r108-33)', () => {
   const search = () => screen.getByPlaceholderText(/Search cocktail/i);
-  const movedRows = () => animate.mock.instances.map((el) => (el as HTMLElement).dataset.row);
+  const movedRows = () => animate.mock.instances.map((el) => (el as unknown as HTMLElement).dataset.row);
 
   it('motion on: rows that stay slide, a row that left is gone, a row that enters appears in place', async () => {
     await mount();

@@ -277,11 +277,11 @@ export default function CocktailRegister({
         }).map((c) => c.id)
       : [];
   // A switch narrows the list only while what it narrows by is read: unread, the list stays whole and the switch says so.
-  const figuresRead = Boolean(figures.byId);
-  const costsRead = figuresRead && !figures.costsUnread;
+  const listFiguresRead = Boolean(figures.byId);
+  const costsRead = listFiguresRead && !figures.costsUnread;
   const rows = !seesCost
     ? byAllergen
-    : onlyBare && figuresRead
+    : onlyBare && listFiguresRead
       ? byAllergen.filter((c) => bareIds.includes(c.id))
       : onlyUncosted && !onlyBare && costsRead
         ? byAllergen.filter((c) => uncostedIds.includes(c.id))
@@ -624,7 +624,7 @@ export default function CocktailRegister({
                 // The line lands when the figures do (about 225 ms in), so its room is held from the first paint:
                 // empty while they load and for a house where every drink has a recipe, never given back (r104 FAIL 14).
                 <div className="cl-said cl-norecipe-room" data-testid="no-recipe-room">
-                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} read={figuresRead} onOnly={(v) => { flip.before(); setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
+                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} read={listFiguresRead} onOnly={(v) => { flip.before(); setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
                 </div>
               ) : null}
               {seesCost ? (

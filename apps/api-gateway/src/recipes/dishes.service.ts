@@ -381,15 +381,10 @@ export class DishesService {
     // The allergens are read beside the pricing, never after it.
     const allergenRead = opts.allergens ? this.allergensOf(restaurantId, itemIds, sentence) : Promise.resolve(null);
     let priced = money;
-    // What a house-made component costs a base unit, for the lines that draw one: the
-    // same figure the drawer reads, so a list row and its sheet never say two costs.
-    let components = new Map<string, { name: string; perBase: number | null; partial?: boolean }>();
     if (money) {
       let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }> = [];
       try {
         reads = await inWaves(chunks(itemIds, 100), (ids) => this.recipes.readPricing(restaurantId, ids, true));
-        const madeIds = [...new Set([...lines.values()].flat().map((l) => l.component_dish_id).filter(Boolean))] as string[];
-        components = await this.recipes.componentRates(restaurantId, madeIds, true, 1);
       } catch (e) {
         if (!opts.pricingUnread) {
           await allergenRead;
@@ -408,7 +403,7 @@ export class DishesService {
     // A made line is priced through its component, by the same read the drawer uses,
     // so the list and the drawer name one cost for one drink.
     const madeIds = [...new Set([...lines.values()].flat().map((l) => l.component_dish_id).filter(Boolean))] as string[];
-    let components = new Map<string, { name: string; perBase: number | null }>();
+    let components = new Map<string, { name: string; perBase: number | null; partial?: boolean; baseUnit?: string | null }>();
     if (priced && madeIds.length) {
       try {
         components = await this.recipes.componentRates(restaurantId, madeIds, money, 1);
