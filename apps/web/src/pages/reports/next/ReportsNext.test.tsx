@@ -34,7 +34,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_ON, DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
-import { heldBackFailure } from './rp-format';
+import { heldBackFailure, withheldSentenceWords } from './rp-format';
 import { isStrip, STRIP_ROWS } from './rp-strip';
 
 /**
@@ -363,9 +363,9 @@ function base() {
     restaurantId: 'r1',
     goalsDesk: deskStub,
     exportDesk: exportStub,
-    reading: ok(READING),
+    reading: ok({ rows: READING, withheld: 0 }),
     registers: {
-      reading: ok(READING),
+      reading: ok({ rows: READING, withheld: 0 }),
       till: ok(TILL),
       goals: ok(decode('goals', GOALS)),
       bench: ok(decode('bench', BENCH)),
@@ -862,6 +862,19 @@ describe('ReportsNext — the palette never fabricates', () => {
         /insight register could not be read \(gateway down\)/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] a feed kept whole from this role says so, in the opening and in Ask the book (r108)', () => {
+    const held = ok({ rows: [], withheld: 3 });
+    hook.current = { ...base(), reading: held, registers: { ...base().registers, reading: held } };
+    paint();
+    const said = withheldSentenceWords(3);
+    expect(within(screen.getByRole('banner')).getByText(said)).toBeInTheDocument();
+    expect(screen.queryByText('The engine has nothing to say about this restaurant yet.')).toBeNull();
+    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    const dialog = screen.getByRole('dialog', { name: 'Ask the book' });
+    expect(within(dialog).getByText(said)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/no sentence for this restaurant yet/)).toBeNull();
   });
 });
 

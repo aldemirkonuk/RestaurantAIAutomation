@@ -28,6 +28,7 @@ import {
   weekLabel,
   weekStart,
   weekdayIndex,
+  withheldSentenceWords,
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { Cat, Cell, Measure } from './rp-view';
@@ -42,7 +43,16 @@ export interface ReadingRow {
   entityLabel: string | null;
 }
 
-const reading = analysis<ReadingRow[]>({
+/**
+ * The feed as this reader may read it: the sentences, and how many the gateway
+ * kept back for the reader's role (`withheldForRole`, ADR 0348).
+ */
+export interface ReadingFeed {
+  rows: ReadingRow[];
+  withheld: number;
+}
+
+const reading = analysis<ReadingFeed>({
   title: 'The reading',
   register: 'insight register',
   answers: 'What the engine has noticed, in its own sentences',
@@ -51,8 +61,9 @@ const reading = analysis<ReadingRow[]>({
   graphs: ['table', 'bars'],
   graphNote:
     'Bars count the sentences in each category — nothing more. There is no line, area or heat map here because a sentence has no magnitude and no date to plot it against.',
-  select: (raw) =>
-    arr(obj(raw).insights)
+  select: (raw) => ({
+    withheld: Math.max(0, Math.trunc(num(obj(raw).withheldForRole) ?? 0)),
+    rows: arr(obj(raw).insights)
       .map((row) => {
         const candidate = str(row.candidate_key ?? row.candidateKey);
         const entity = str(row.entity_key ?? row.entityKey);
@@ -66,10 +77,14 @@ const reading = analysis<ReadingRow[]>({
       })
       .filter((r) => r.sentence !== '')
       .sort((a, b) => b.score - a.score),
-  view: (rows) => {
+  }),
+  view: ({ rows, withheld }) => {
     if (rows.length === 0)
       return {
-        say: 'The engine has produced no insight for this restaurant yet. It computes hourly and on demand — there is nothing to say, rather than nothing to show.',
+        say:
+          withheld > 0
+            ? `This reader sees none of the engine's sentences. ${withheldSentenceWords(withheld)}`
+            : 'The engine has produced no insight for this restaurant yet. It computes hourly and on demand — there is nothing to say, rather than nothing to show.',
         figures: [],
         notes: [],
         basis: [],
@@ -93,6 +108,7 @@ const reading = analysis<ReadingRow[]>({
       ],
       notes: [
         'Sentences are printed as the engine wrote them. This page never composes one.',
+        ...(withheld > 0 ? [withheldSentenceWords(withheld)] : []),
       ],
       basis: [
         `${countOf(rows.length, 'sentence', 'sentences')} read from the stored insight feed; every number in them was computed by the engine from this restaurant's own rows.`,
@@ -470,6 +486,8 @@ const pacing = analysis<PacingRegister>({
   answers: 'Whether buying is running hot or cold against the month before',
   window: () => '180 days of purchasing, compared in two 30-day windows',
   path: (rid) => `/analytics/cashflow/${rid}`,
+  // What was bought and what is committed: an owner's or a manager's (r108).
+  readers: ['owner', 'manager'],
   graphs: ['bars', 'table', 'figure'],
   graphNote:
     'Two windows are two bars; a line through two points would draw a trend that has not been measured. The four-week projection is printed rather than plotted — a weekly figure and a 30-day total do not share an axis.',
