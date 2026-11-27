@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { KeepOnPhone } from '../components/onboarding/KeepOnPhone'
+import { HouseInvoiceAddress } from '../components/onboarding/HouseInvoiceAddress'
 import {
   addCustomProvider,
   addProviderFromCatalogue,
@@ -542,6 +543,9 @@ export default function HouseContents() {
               </span>
             )}
           </div>
+
+          {/* onboarding-r110-g1: forward an invoice here and it lands on Receipts. */}
+          <HouseInvoiceAddress />
 
           <KeepOnPhone />
 
