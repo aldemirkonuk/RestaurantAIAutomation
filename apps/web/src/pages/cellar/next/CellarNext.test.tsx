@@ -80,6 +80,13 @@ const mock = vi.hoisted(() => ({
 vi.mock('./recipe/RecipeSheet', () => ({
   default: ({ cocktailId }: { cocktailId: string }) => <div data-testid="recipe-sheet-mounted">{cocktailId}</div>,
 }));
+// The cocktail list prints through the house's money (`useHouseMoney`), which
+// reads the signed-in house; this page suite mounts no AuthProvider, so the
+// house is a lira one here. Its own behaviour is CocktailRegister.recipe.test.
+vi.mock('./recipe/useRecipe', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  useHouseMoney: () => (n: number | null | undefined) => (n == null ? '—' : `₺${n.toFixed(2)}`),
+}));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarNextData: () => mock.current,

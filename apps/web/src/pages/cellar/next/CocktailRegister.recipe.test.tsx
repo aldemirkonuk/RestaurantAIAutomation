@@ -229,3 +229,37 @@ describe('CocktailRegister with the real recipe sheet', () => {
     expect(h.put.mock.calls[0][1].expectedVersionId).toBe(VA);
   });
 });
+
+describe("the cocktail list prints the house's money", () => {
+  // r7 browser check (2026-11-12): on a lira house the list read "$14.00"
+  // while the same drink's cards read "₺14.00". The list and the ledger now
+  // print through the same `useHouseMoney` the cards use.
+  it('a lira house reads lira on the list and on the ledger, never $', async () => {
+    const register = {
+      house: { readable: true, reason: null },
+      stocking: { reason: '' },
+      counts: { houseRows: 1 },
+      rows: [
+        {
+          key: 'h1',
+          name: 'Aperol Spritz',
+          house: { books: [], onMenu: { bottlePrice: null, glassPrice: 14 }, poured: { qty: 3, revenue: 42 } },
+        },
+      ],
+    } as unknown as Parameters<typeof CocktailRegister>[0]['register'];
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter initialEntries={['/cocktails']}>
+        <QueryClientProvider client={qc}>
+          <CocktailRegister register={register} registerLoading={false} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const [list] = screen.getAllByRole('table');
+    expect(await within(list).findAllByText('₺450.00')).toHaveLength(2);
+    const ledger = screen.getByTestId('cocktail-ledger');
+    expect(within(ledger).getByText('₺14.00')).toBeInTheDocument();
+    expect(within(ledger).getByText('₺42.00')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\$\d/);
+  });
+});
