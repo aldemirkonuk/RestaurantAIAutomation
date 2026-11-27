@@ -117,6 +117,14 @@ export interface ParsedLine {
   priceBaseUom: Uom | null;
 
   /**
+   * BT-152 — the tax rate printed BESIDE THIS LINE, a percentage (10 for a
+   * till receipt's "%10"). Null or absent when the line prints none; never a
+   * rate taken from the tax rows or from the country. Read by the landed cost
+   * only when the rates make the paper's own tax (paper-tax-facts.ts).
+   */
+  vatRatePercent?: number | null;
+
+  /**
    * The literal glyphs the document printed, keyed by the field they belong to
    * (`qty`, `unitPrice`, `lineTotal`, `allowance`, `deposit`).
    *
