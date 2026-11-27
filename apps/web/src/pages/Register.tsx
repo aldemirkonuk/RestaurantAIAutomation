@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
+import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, AlertCircle, Mail, Lock, User } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
@@ -20,6 +20,7 @@ import { apiClient } from '../services/api/client'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
+import { Pending } from '@/components/onboarding/Pending'
 
 /*
  * THE HOUSE PATH (ADR 0133 §Decision 1). `usePublicDesign()` is the public
@@ -350,7 +351,7 @@ export function Register() {
           {/* Status icon */}
           {validating && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <Loader2 className={on ? 'w-5 h-5 text-inkm-3 animate-spin' : 'w-5 h-5 text-gray-400 animate-spin'} />
+              <Pending decorative size="md" className={on ? 'text-inkm-3' : 'text-gray-400'} />
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
@@ -364,6 +365,10 @@ export function Register() {
             </div>
           )}
         </div>
+        {/* The ring in the box is decorative; under reduced motion these words are the whole signal. */}
+        {validating && (
+          <Pending className={on ? 'mt-2 text-xs text-inkm-3' : 'mt-2 text-xs text-gray-500'} label="Checking the code…" />
+        )}
       </div>
 
       {/* Trust card (valid) */}
@@ -549,7 +554,7 @@ export function Register() {
             {/* Status icon */}
             {joinEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
+                <Pending decorative className={on ? 'text-inkm-3' : 'text-gray-400'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
@@ -649,13 +654,11 @@ export function Register() {
       >
         {loading ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            Joining...
+            <Pending label="Joining..." />
           </>
         ) : joinEmailCheck.checking ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            Checking email…
+            <Pending label="Checking email…" />
           </>
         ) : (
           'Join Restaurant'
@@ -736,7 +739,7 @@ export function Register() {
             {/* Status icon */}
             {createEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
+                <Pending decorative className={on ? 'text-inkm-3' : 'text-gray-400'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (
@@ -858,8 +861,7 @@ export function Register() {
       >
         {createEmailCheck.checking ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            Checking email…
+            <Pending label="Checking email…" />
           </>
         ) : (
           <>Create account <ArrowRight className="w-4 h-4 ml-1" /></>
@@ -1352,8 +1354,7 @@ export function Register() {
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Creating your restaurant…
+                      <Pending label="Opening the house…" />
                     </>
                   ) : (
                     'Create Restaurant →'
