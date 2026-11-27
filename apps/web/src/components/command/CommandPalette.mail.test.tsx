@@ -100,6 +100,15 @@ describe('the palette Mail section', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail&with=vendor%3Ap1');
   });
 
+  it('tells staff the house is the one waited on, never "you"', async () => {
+    auth.current = { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' };
+    mount();
+    type('bodega');
+    await act(async () => void vi.advanceTimersByTime(400));
+    expect(screen.getByText('Bodega Álvaro · Waiting on the house')).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting on you/)).toBeNull();
+  });
+
   it('fails quietly: a refused search is no rows and no error', async () => {
     api.get.mockImplementation(async (url: string) => {
       if (url === '/mail/people') throw new Error('boom');

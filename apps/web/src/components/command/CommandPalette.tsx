@@ -23,6 +23,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw, Mail as MailIcon } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
+import { managesHouse } from "../../pages/communications/next/cm-format";
+import { waitingChipWords, waitingOn } from "../../pages/communications/next/mail-format";
 import { LANDING_KEY } from "./CommandProvider";
 import {
   Command,
@@ -120,6 +122,8 @@ export function CommandPalette({
   // Who may read which kinds is the gateway's job; with no house or no known role nothing is asked.
   const mailHouse = activeRestaurantId ?? restaurantId ?? "";
   const mailRole = activeRole ?? user?.role ?? null;
+  // Mail's own rule for who a waiting person waits on: staff cannot answer, so it is the house.
+  const mailWaiting = waitingChipWords(waitingOn(managesHouse(activeRole, user?.role)));
   const [mailRows, setMailRows] = useState<Command[]>([]);
   const mailTerm = query.trim();
   useEffect(() => {
@@ -141,7 +145,7 @@ export function CommandPalette({
               const who = p.name?.trim() || p.key.slice(p.key.indexOf(":") + 1);
               return {
                 id: `mail-${p.key}`,
-                title: p.waiting ? `${who} · Waiting on you` : who,
+                title: p.waiting ? `${who} · ${mailWaiting}` : who,
                 section: "Mail",
                 icon: MailIcon,
                 href: `/communications?tab=mail&with=${encodeURIComponent(p.key)}`,
@@ -155,7 +159,7 @@ export function CommandPalette({
       clearTimeout(t);
       ctl.abort();
     };
-  }, [open, mailTerm, mailHouse, mailRole]);
+  }, [open, mailTerm, mailHouse, mailRole, mailWaiting]);
 
   // Reset + focus management on open/close.
   useEffect(() => {
