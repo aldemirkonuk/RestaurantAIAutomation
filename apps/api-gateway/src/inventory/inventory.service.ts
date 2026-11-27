@@ -33,6 +33,7 @@ import {
   SETTLED_PRICES,
   settledMovesFrom,
   type SettledMove,
+  type SettledLot,
   type SettledRow,
 } from "./settled-price-moves";
 
@@ -230,29 +231,57 @@ export class InventoryService {
   ): Promise<{ map: Map<string, SettledMove>; ok: boolean; capped: boolean }> {
     try {
       const client = this.dbService.getClient();
-      const rows: SettledRow[] = [];
-      let capped = false;
-      for (let page = 0; page < SETTLED_READ_PAGES; page += 1) {
-        const { data, error, count } = await client
-          .from("inventory_lot_revaluations")
-          .select("inventory_id, source_order_id, new_unit_cost, new_cost_provenance, created_at", {
-            count: "exact",
-          })
-          .eq("restaurant_id", restaurantId)
-          .in("new_cost_provenance", [...SETTLED_PRICES])
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: false })
-          .range(rows.length, rows.length + SETTLED_PAGE - 1);
-        if (error) throw error;
-        rows.push(...((data ?? []) as SettledRow[]));
-        // The end is the exact count, not a short page: a server that caps a
-        // response below SETTLED_PAGE would otherwise stop the read at page 1.
-        const got = (data ?? []).length;
-        if (typeof count === "number" ? rows.length >= count : got < SETTLED_PAGE) break;
-        if (got === 0) break;
-        if (page === SETTLED_READ_PAGES - 1) capped = true;
-      }
-      return { map: settledMovesFrom(rows), ok: true, capped };
+      const pages = async <T,>(
+        page: (from: number, to: number) => PromiseLike<{ data: any; error: any; count?: number | null }>,
+      ) => {
+        const out: T[] = [];
+        let capped = false;
+        for (let n = 0; n < SETTLED_READ_PAGES; n += 1) {
+          const { data, error, count } = await page(out.length, out.length + SETTLED_PAGE - 1);
+          if (error) throw error;
+          const got = (data ?? []).length;
+          out.push(...((data ?? []) as T[]));
+          // The end is the exact count, not a short page: a server that caps a
+          // response below SETTLED_PAGE would otherwise stop the read at page 1.
+          if (typeof count === "number" ? out.length >= count : got < SETTLED_PAGE) break;
+          if (got === 0) break;
+          if (n === SETTLED_READ_PAGES - 1) capped = true;
+        }
+        return { rows: out, capped };
+      };
+      // Lots that settled at the door (a delivery finalised) and revaluations of
+      // lots since spent: a lot is deleted once used up, the revaluation stays.
+      const [revals, lots] = await Promise.all([
+        pages<SettledRow>((from, to) =>
+          client
+            .from("inventory_lot_revaluations")
+            .select("inventory_id, lot_id, source_order_id, new_unit_cost, new_cost_provenance, created_at", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            .in("new_cost_provenance", [...SETTLED_PRICES])
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+        ),
+        // A cost booked final straight away (a manual receipt, a bulk receive,
+        // add-to-inventory) has no revaluation row: the lot is its only record.
+        pages<SettledLot>((from, to) =>
+          client
+            .from("inventory_lots")
+            .select("id, inventory_id, source_order_id, delivery_id, unit_cost, cost_provenance, received_at", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            .eq("cost_state", "final")
+            .in("cost_provenance", [...SETTLED_PRICES])
+            .order("received_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+        ),
+      ]);
+      const capped = revals.capped || lots.capped;
+      return { map: settledMovesFrom(revals.rows, lots.rows), ok: true, capped };
     } catch (err: any) {
       this.logger.warn(`fetchSettledMoves failed: ${err?.message}`);
       return { map: new Map(), ok: false, capped: false };
