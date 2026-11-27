@@ -315,7 +315,7 @@ CREATE OR REPLACE FUNCTION public.mail_thread_states(
   last_any_at timestamp with time zone,
   last_visible_at timestamp with time zone,
   last_direction text,
-  last_line text,
+  last_id uuid,
   channels text[],
   waiting boolean,
   waiting_since timestamp with time zone,
@@ -335,15 +335,26 @@ WITH matched AS (
            l.order_id,
            l.order_number_snapshot,
            l.channel,
-           l.message_text,
-           l.email_headers,
            l.status,
            l.dir,
            l.at,
            l.visible,
            l.owes,
-           l.automatic
+           l.automatic,
+           -- The subject a letter names: the header the bridge stored, else
+           -- the "Subject: ..." line it writes at the top of message_text.
+           -- Read here, once per letter, so the sorts below carry this short
+           -- text and never a letter's whole words (r35 mail, gap 12).
+           s.subject
     FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, p_provider_id) l
+    CROSS JOIN LATERAL (
+        SELECT COALESCE(
+                 NULLIF(btrim(l.email_headers->>'subject'), ''),
+                 NULLIF(btrim(l.email_headers->>'Subject'), ''),
+                 NULLIF(btrim(substring(left(l.message_text, 2000)
+                                        FROM '^\s*[Ss]ubject:[ \t]*([^\r\n]*)')), '')
+               ) AS subject
+    ) s
     -- A second copy of a letter is not part of any thread.
     WHERE NOT l.duplicate
 ),
@@ -375,26 +386,20 @@ per_thread AS (
              AS unanswered_since,
            max(r.dir) FILTER (WHERE r.visible AND r.vis_rank = 1) AS last_direction,
            bool_or(r.owes) FILTER (WHERE r.visible AND r.vis_rank = 1) AS last_owes,
-           max(r.message_text) FILTER (WHERE r.visible AND r.vis_rank = 1) AS last_text,
+           -- The newest visible letter itself, by id: its one-line preview is
+           -- worked out only by a reader that shows it, for the rows it shows
+           -- (mail_preview; r35 mail, gap 12).
+           (array_agg(r.id) FILTER (WHERE r.visible AND r.vis_rank = 1))[1] AS last_id,
            array_agg(DISTINCT lower(r.channel)) FILTER (WHERE r.visible) AS channels,
            (array_agg(r.order_id ORDER BY r.at DESC, r.id DESC)
               FILTER (WHERE r.order_id IS NOT NULL))[1] AS order_id,
            (array_agg(r.order_number_snapshot ORDER BY r.at DESC, r.id DESC)
               FILTER (WHERE r.order_number_snapshot IS NOT NULL))[1] AS order_number_snapshot,
-           -- The first message that names a subject: the header the bridge
-           -- stored, else the "Subject: ..." line it writes at the top of
-           -- message_text. Headers themselves never leave this function.
-           (array_agg(s.subject ORDER BY r.at ASC, r.id ASC)
-              FILTER (WHERE s.subject IS NOT NULL))[1] AS subject
+           -- The first message that names a subject. Headers themselves never
+           -- leave this function.
+           (array_agg(r.subject ORDER BY r.at ASC, r.id ASC)
+              FILTER (WHERE r.subject IS NOT NULL))[1] AS subject
     FROM ranked r
-    CROSS JOIN LATERAL (
-        SELECT COALESCE(
-                 NULLIF(btrim(r.email_headers->>'subject'), ''),
-                 NULLIF(btrim(r.email_headers->>'Subject'), ''),
-                 NULLIF(btrim(substring(left(r.message_text, 2000)
-                                        FROM '^\s*[Ss]ubject:[ \t]*([^\r\n]*)')), '')
-               ) AS subject
-    ) s
     GROUP BY r.provider_id, r.thread_key
 )
 SELECT t.provider_id,
@@ -404,14 +409,7 @@ SELECT t.provider_id,
        t.last_any_at,
        t.last_visible_at,
        t.last_direction,
-       -- The newest visible message, its leading "Subject: ..." line removed
-       -- and whitespace folded, cut to 160 characters for a one-line preview.
-       CASE WHEN t.last_text IS NULL THEN NULL
-            ELSE left(btrim(regexp_replace(
-                   regexp_replace(left(t.last_text, 4000),
-                                  '^\s*[Ss]ubject:[^\n]*(\n|$)', ''),
-                   '\s+', ' ', 'g')), 160)
-       END AS last_line,
+       t.last_id,
        COALESCE(t.channels, ARRAY[]::text[]) AS channels,
        COALESCE(t.last_owes, false) AS waiting,
        CASE WHEN COALESCE(t.last_owes, false) THEN t.unanswered_since END AS waiting_since,
@@ -487,6 +485,29 @@ COMMENT ON FUNCTION public.mail_search_pattern(text) IS
   'standing for its accented and Turkish forms, all else literal (r28 mail gap 16).';
 
 
+-- A letter's one-line preview: its leading "Subject: ..." line removed,
+-- whitespace folded, cut to 160 characters. Its own function since r35 (mail
+-- gap 12) so a list works it out only for the rows it shows: run over every
+-- thread of a house, this regex was most of each poll's time (PGlite, 6,000
+-- letters: about 450 of 650 ms).
+CREATE OR REPLACE FUNCTION public.mail_preview(p_text text)
+RETURNS text
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE
+    SET search_path = ''
+    AS $$
+SELECT CASE WHEN p_text IS NULL THEN NULL
+            ELSE left(btrim(regexp_replace(
+                   regexp_replace(left(p_text, 4000),
+                                  '^\s*[Ss]ubject:[^\n]*(\n|$)', ''),
+                   '\s+', ' ', 'g')), 160)
+       END;
+$$;
+
+COMMENT ON FUNCTION public.mail_preview(text) IS
+  'A letter''s one-line preview for the Mail list: leading Subject line removed, whitespace '
+  'folded, 160 characters (r35 mail gap 12).';
+
+
 CREATE OR REPLACE FUNCTION public.list_mail_people(
   p_restaurant_id uuid,
   p_withhold_house_letters boolean DEFAULT true,
@@ -529,7 +550,7 @@ WITH t AS (
 -- and were never meant to be.
 unsent AS (
     SELECT DISTINCT ON (l.provider_id)
-           l.provider_id, l.at, l.status, l.channel, l.message_text
+           l.provider_id, l.id, l.at, l.status, l.channel
     FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, NULL) l
     WHERE l.dir = 'outbound'
       AND l.status IN ('HOUSE_QUEUED', 'SENDING', 'AUTO_SENDING', 'SCHEDULED',
@@ -559,7 +580,7 @@ hits AS (
 ),
 newest AS (
     SELECT DISTINCT ON (t.provider_id)
-           t.provider_id, t.last_visible_at, t.last_line, t.last_direction
+           t.provider_id, t.last_visible_at, t.last_id, t.last_direction
     FROM t
     ORDER BY t.provider_id, t.last_visible_at DESC, t.thread_key DESC
 ),
@@ -589,7 +610,7 @@ keyed AS (
     SELECT ('vendor:' || p.provider_id::text) COLLATE "C" AS key,
            p.provider_id,
            n.last_visible_at AS last_at,
-           n.last_line,
+           n.last_id,
            n.last_direction,
            p.waiting,
            p.waiting_since,
@@ -606,12 +627,7 @@ keyed AS (
     SELECT ('vendor:' || u.provider_id::text) COLLATE "C",
            u.provider_id,
            u.at,
-           CASE WHEN u.message_text IS NULL THEN NULL
-                ELSE left(btrim(regexp_replace(
-                       regexp_replace(left(u.message_text, 4000),
-                                      '^\s*[Ss]ubject:[^\n]*(\n|$)', ''),
-                       '\s+', ' ', 'g')), 160)
-           END,
+           u.id,
            'outbound',
            false,
            NULL::timestamptz,
@@ -622,34 +638,44 @@ keyed AS (
            u.status
     FROM unsent u
     WHERE NOT EXISTS (SELECT 1 FROM person p WHERE p.provider_id = u.provider_id)
+),
+page AS (
+    SELECT k.*, pr.name::text AS name
+    FROM keyed k
+    LEFT JOIN public.providers pr ON pr.id = k.provider_id
+    CROSS JOIN q
+    WHERE (p_waiting_only IS NOT TRUE OR k.waiting)
+      -- A person matches by their name, or is one of the search's hits.
+      AND (q.pat IS NULL
+           OR pr.name::text ~* q.pat
+           OR k.provider_id IN (SELECT h.provider_id FROM hits h))
+      AND (p_after_at IS NULL
+           OR k.last_at < p_after_at
+           OR (k.last_at = p_after_at AND k.key > (p_after_key COLLATE "C")))
+    ORDER BY k.last_at DESC, k.key ASC
+    LIMIT greatest(1, least(COALESCE(p_limit, 50), 500))
 )
-SELECT k.key::text,
+-- Each row's line is its newest letter's preview, worked out for this page
+-- only (r35 mail, gap 12). The letter was read through mail_letter_rows
+-- above, so a letter withheld from this caller is never the one named.
+SELECT p.key::text,
        'vendor'::text AS kind,
-       k.provider_id,
-       pr.name::text AS name,
-       k.last_at,
-       k.last_line,
-       k.last_direction,
-       k.waiting,
-       k.waiting_since,
-       k.open_threads,
-       k.channels,
-       k.newest_open_order_id,
-       k.newest_open_order_number,
-       k.unsent_status
-FROM keyed k
-LEFT JOIN public.providers pr ON pr.id = k.provider_id
-CROSS JOIN q
-WHERE (p_waiting_only IS NOT TRUE OR k.waiting)
-  -- A person matches by their name, or is one of the search's hits.
-  AND (q.pat IS NULL
-       OR pr.name::text ~* q.pat
-       OR k.provider_id IN (SELECT h.provider_id FROM hits h))
-  AND (p_after_at IS NULL
-       OR k.last_at < p_after_at
-       OR (k.last_at = p_after_at AND k.key > (p_after_key COLLATE "C")))
-ORDER BY k.last_at DESC, k.key ASC
-LIMIT greatest(1, least(COALESCE(p_limit, 50), 500));
+       p.provider_id,
+       p.name,
+       p.last_at,
+       public.mail_preview(lc.message_text) AS last_line,
+       p.last_direction,
+       p.waiting,
+       p.waiting_since,
+       p.open_threads,
+       p.channels,
+       p.newest_open_order_id,
+       p.newest_open_order_number,
+       p.unsent_status
+FROM page p
+LEFT JOIN public.procurement_conversations lc
+  ON lc.id = p.last_id AND lc.restaurant_id = p_restaurant_id
+ORDER BY p.last_at DESC, p.key ASC;
 $$;
 
 COMMENT ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text) IS
@@ -927,6 +953,7 @@ REVOKE ALL ON FUNCTION public.mail_thread_states(uuid, boolean, uuid)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_fold(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_search_pattern(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.mail_preview(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer)
@@ -940,6 +967,7 @@ GRANT EXECUTE ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) TO servic
 GRANT EXECUTE ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_fold(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_search_pattern(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.mail_preview(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean) TO service_role;
