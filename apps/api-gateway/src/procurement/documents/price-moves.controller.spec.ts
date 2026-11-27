@@ -2,13 +2,19 @@ import { DocumentsController } from "./documents.controller";
 
 /** A thenable fake db: one canned answer per table, every call chains. */
 const HOUSE = { procurement_documents: { data: { id: "d1", currency: "USD" }, error: null }, restaurants: { data: { currency: "USD" }, error: null } };
-function controllerWith(results: Record<string, { data: unknown; error: unknown }>) {
+type Call = { table: string; method: string; args: unknown[] };
+function controllerWith(results: Record<string, { data: unknown; error: unknown }>, calls: Call[] = []) {
   results = { ...HOUSE, ...results };
   const db = {
     getClient: () => ({
       from: (table: string) => {
         const b: any = {};
-        for (const m of ["select", "eq", "order", "limit", "in", "not"]) b[m] = () => b;
+        // Every call is recorded, so a test can say which filters were asked for.
+        for (const m of ["select", "eq", "order", "limit", "in", "not", "lt"])
+          b[m] = (...args: unknown[]) => {
+            calls.push({ table, method: m, args });
+            return b;
+          };
         b.maybeSingle = () => Promise.resolve(results[table]);
         b.then = (res: any, rej: any) => Promise.resolve(results[table]).then(res, rej);
         return b;
@@ -39,6 +45,22 @@ describe("DocumentsController.priceMoves — a cost that jumped with no PO to ca
     });
     const out = await c.priceMoves("d1", user);
     expect(out.lines[0]).toMatchObject({ compared: true, moved: true, sentence: "was 10.00, now 11.80, up 18 percent" });
+  });
+
+  it("asks the lot table for this house's INVOICED lots, newest first (the fixture alone cannot prove it)", async () => {
+    const calls: Call[] = [];
+    const c = controllerWith(
+      {
+        procurement_document_lines: { data: [line({})], error: null },
+        inventory_lots: { data: [lot(10, "2026-11-01")], error: null },
+      },
+      calls,
+    );
+    await c.priceMoves("d1", user);
+    const lots = calls.filter((x) => x.table === "inventory_lots");
+    expect(lots).toContainEqual({ table: "inventory_lots", method: "eq", args: ["restaurant_id", "rest-1"] });
+    expect(lots).toContainEqual({ table: "inventory_lots", method: "eq", args: ["cost_provenance", "invoice"] });
+    expect(lots).toContainEqual({ table: "inventory_lots", method: "order", args: ["received_at", { ascending: false }] });
   });
 
   it("has no sentence when the good has no previous cost", async () => {
