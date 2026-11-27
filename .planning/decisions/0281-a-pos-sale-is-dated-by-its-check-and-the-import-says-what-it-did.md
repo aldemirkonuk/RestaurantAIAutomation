@@ -408,3 +408,7 @@ SELECT public.undo_pos_rows_redate('<run_id>');  -- one run
 ## Amendment 2026-11-27 (r109 onboarding g3)
 
 A till's past item sales brought in with `POST /pos-hub/import/:restaurantId/history` do not deplete. They are saved to `pos_sales_history`, one row per house-local day and item, and never to `pos_checks`, so no stock or consumption row is written for them. The closed-checks-deplete rule above is unchanged for every other import.
+
+## Amendment 2026-11-27 (r110 onboarding: a till's day is counted once)
+
+A house-day the till itself reported (any `pos_checks` row, dated `COALESCE(closed_at, opened_at)` in the house's zone) is that day's record. `import_pos_sales_history` refuses such a day and names it (`daysHeldByChecks`). A check that lands on, or is closed onto, a day holding history deletes that history in its own transaction (trigger `pos_checks_replace_history_day`), and the ingest names the day (`historyReplaced`). Both sides take one advisory lock per (house, day) before reading, so an import and a check racing cannot both pass. Migration `a_till_day_is_counted_once`, DD-r110-19. Rejected: refusing the live check instead (the till is the truth, history is the stand-in); a nightly sweep (a day reads twice until it runs); deleting in the gateway (other writers of `pos_checks` would skip it, and it is not one transaction).
