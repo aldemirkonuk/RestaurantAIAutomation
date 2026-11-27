@@ -25,6 +25,21 @@ afterEach(() => {
   sayHouseNumbers({ state: 'reading', code: null });
 });
 
+describe('money on a card or row carries the same decimal mark as its quantity (r103 FAIL 12)', () => {
+  it('a lira house reads a cost and a quantity in one form; a pound house keeps its own', () => {
+    sayHouseNumbers(TRY);
+    expect(fmtCount(1250)).toBe('1.250');
+    expect(cellMoney(1250, TRY)).toBe('₺1.250');
+    expect(cellMoney(2.55, TRY)).toBe('₺2,55');
+    expect(cellMoney(2.55, TRY)).not.toContain('2.55');
+    sayHouseNumbers(GBP);
+    expect(fmtCount(1250)).toBe('1,250');
+    expect(cellMoney(1250.5, GBP)).toBe('£1,250.50');
+    // A money no country owns keeps the fixed form it always had.
+    expect(cellMoney(1250.5, { state: 'recorded', code: 'EUR' })).toBe('€1,250.50');
+  });
+});
+
 describe('the drawer writes a quantity in the house form', () => {
   it('a lira house reads 1,755 kg on its On hand card; a pound house reads 1.755 kg', () => {
     expect(drawn(TRY)).toContain('1,755 kg');
