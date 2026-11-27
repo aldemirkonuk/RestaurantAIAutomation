@@ -152,7 +152,7 @@ export default function RecipeCard({
         </label>
         {makeRead == null ? <span className="cl-note" role="alert" data-testid="recipe-make-said">{MAKE_SAID}</span> : null}
         {canSeeCost ? (
-          <label htmlFor={boxId} className="cl-note" style={{ margin: 0, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          <label htmlFor={boxId} className="cl-note cl-rcp-tick" style={{ margin: 0, display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             <input id={boxId} type="checkbox" checked={withCost} onChange={(e) => {
                 setWithCost(e.target.checked);
                 keepBox(storeKey, e.target.checked);
@@ -162,11 +162,13 @@ export default function RecipeCard({
         ) : null}
       </div>
 
-      {n > 1 ? (
-        <p className="cl-note" data-testid="recipe-make-preview">
-          {`Make ${n}: ${v.lines.map((l) => `${scaledAmount(l.qtyEntered, n, l.unitCode)} ${l.itemName ?? l.label}`).join(', ')}`}
-        </p>
-      ) : null}
+      <div className="cl-make-room" data-testid="recipe-make-room">
+        {n > 1 ? (
+          <p className="cl-note" data-testid="recipe-make-preview">
+            {`Make ${n}: ${v.lines.map((l) => `${scaledAmount(l.qtyEntered, n, l.unitCode)} ${l.itemName ?? l.label}`).join(', ')}`}
+          </p>
+        ) : null}
+      </div>
 
       {/* Out of the app's own tree, so paper can hide everything else and leave one page (r104 walk: visibility alone left blank sheets). */}
       {createPortal(

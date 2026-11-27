@@ -3,12 +3,15 @@
  * (FLIP: First and Last measured, Inverted with a transform, then Played), 180 ms on the house curve. Only
  * `transform` moves, so nothing is laid out again. Under reduced motion no
  * animation is made at all: no slide and no fade (MOTIONS.md, ADR 0112). Only
- * rows already on the page move; one that has just arrived does not.
+ * rows already on the page move; one that has just arrived does not, and one that
+ * left is simply gone. A filter or the search changing the row set plays the same slide.
  */
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { prefersReducedMotion, settle, type MotionToken } from '../../../lib/mudavym/motion';
 
 export const SORT_FLIP: MotionToken = { easing: settle.easing, ms: 180 };
+/** Past this many rows the slide is skipped: one animation per moved row is bounded (r108). */
+export const FLIP_ROW_CAP = 60;
 
 const pageTop = (el: Element) => el.getBoundingClientRect().top + (typeof window === 'undefined' ? 0 : window.scrollY);
 
@@ -24,11 +27,13 @@ export function useSortFlip(body: RefObject<HTMLElement | null>, sortKey: string
     was.current = null;
     const el = body.current;
     if (!from || !el || prefersReducedMotion() || typeof Element.prototype.animate !== 'function') return;
+    let played = 0;
     el.querySelectorAll<HTMLElement>('tr[data-row]').forEach((row) => {
       const start = from.get(row.dataset.row as string);
-      if (start == null) return;
+      if (start == null || played >= FLIP_ROW_CAP) return;
       const delta = start - pageTop(row);
       if (Math.abs(delta) < 1) return;
+      played += 1;
       row.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], { duration: SORT_FLIP.ms, easing: SORT_FLIP.easing });
     });
   }, [body, sortKey]);

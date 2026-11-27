@@ -466,6 +466,10 @@
   align-items: center;
   gap: 10px;
   padding: 10px 16px 12px;
+  /* Two lines held from first paint: 'read 06:07:23 · again in 60 s' lands after the first read and wraps
+     the foot from 38 to 53 px, which moved the said log above it (r107 walk F4, staff 1440 CLS 0.065). */
+  box-sizing: border-box;
+  min-height: 53px;
   border-top: 1px solid var(--paper-2);
   font-family: var(--mdv-mono);
   font-size: 10px;

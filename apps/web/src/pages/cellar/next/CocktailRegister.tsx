@@ -281,7 +281,10 @@ export default function CocktailRegister({
   const numbersOf = (c: (typeof rows)[number]) => drinkNumbers(c.price ?? null, figures.byId?.get(c.id), figuresRead, tax);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null);
   const bodyRef = useRef<HTMLTableSectionElement | null>(null);
-  const flip = useSortFlip(bodyRef, `${sort?.key ?? ''}:${sort?.dir ?? ''}`);
+  // Rows that stay slide when a filter or the search changes the row set, as they do for a sort (r108 DD-r108-33):
+  // `before()` runs in the change, and the set's ids join the key so the layout effect runs once the new rows are drawn.
+  const flip = useSortFlip(bodyRef, `${sort?.key ?? ''}:${sort?.dir ?? ''}:${rows.map((c) => c.id).join(',')}`);
+  const slid = <T,>(set: (v: T) => void) => (v: T) => { flip.before(); set(v); };
   const pressSort = (key: SortKey) => {
     flip.before();
     setSort((cur) => {
@@ -406,7 +409,7 @@ export default function CocktailRegister({
           type="search"
           placeholder="Search cocktail, section, method…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => { flip.before(); setQuery(e.target.value); }}
           style={{ minWidth: 220, flex: '1 1 220px' }}
         />
         {manages ? (
@@ -586,13 +589,16 @@ export default function CocktailRegister({
                 // The line lands when the figures do (about 225 ms in), so its room is held from the first paint:
                 // empty while they load and for a house where every drink has a recipe, never given back (r104 FAIL 14).
                 <div className="cl-said cl-norecipe-room" data-testid="no-recipe-room">
-                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={(v) => { setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
+                  <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} onOnly={(v) => { flip.before(); setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
                 </div>
               ) : null}
               {seesCost ? (
-                <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} onOnly={(v) => { setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
+                // Lands with the figures like the no-recipe line, so its room is held the same way (r107 walk F2: 31 px table shift at 1440).
+                <div className="cl-norecipe-room" data-testid="no-cost-room">
+                  <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} onOnly={(v) => { flip.before(); setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
+                </div>
               ) : null}
-              <AllergenCheck value={allergen} onChange={setAllergen} hidden={searched.length - byAllergen.length} noun="drinks" />
+              <AllergenCheck value={allergen} onChange={slid(setAllergen)} hidden={searched.length - byAllergen.length} noun="drinks" />
             </>
           ) : null}
 
