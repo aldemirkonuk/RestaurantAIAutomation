@@ -293,3 +293,97 @@ describe("a press is taken at most once a minute, and the minute is in the datab
     expect(g.urls).toHaveLength(0);
   });
 });
+
+describe("a read that runs long keeps its lease, or stops when it lost it", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /** Gmail whose clock jumps 100 s on every message fetch, and who watches the lease. */
+  function slowGmail(cursor: Cursor, ids: string[], onFetch?: (n: number) => void) {
+    let t = T0;
+    jest.spyOn(Date, "now").mockImplementation(() => t);
+    const g = gmail(ids);
+    g.open();
+    const seen = { signals: [] as unknown[], until: [] as Array<string | null> };
+    let n = 0;
+    const impl = (async (input: unknown, init?: { signal?: unknown }) => {
+      seen.signals.push(init?.signal);
+      if (!String(input).includes("/messages?")) {
+        n += 1;
+        seen.until.push(cursor.reading_until);
+        onFetch?.(n);
+        t += 100_000;
+      }
+      return (g.impl as unknown as (i: unknown, o?: unknown) => Promise<unknown>)(input, init);
+    }) as unknown as typeof fetch;
+    return { impl, seen };
+  }
+
+  it("gives every Gmail request a deadline, so a hung one cannot hold the lease", async () => {
+    const { db, cursor } = house();
+    const { service } = serviceOver(db);
+    const s = slowGmail(cursor, ["m1"]);
+    service.fetchImpl = s.impl;
+    await service.readDue(T0);
+    expect(s.seen.signals.length).toBeGreaterThan(1);
+    expect(s.seen.signals.every((x) => x instanceof AbortSignal)).toBe(true);
+  });
+
+  it("pushes the lease out while it is still reading", async () => {
+    const { db, cursor } = house();
+    const { service, publish } = serviceOver(db);
+    const s = slowGmail(cursor, ["m1", "m2", "m3"]);
+    service.fetchImpl = s.impl;
+    await service.readDue(T0);
+    expect(publish).toHaveBeenCalledTimes(3);
+    // The lease the claim took, then a later one once 100 s had passed.
+    expect(s.seen.until[2]).not.toBe(s.seen.until[0]);
+    expect(Date.parse(s.seen.until[2]!)).toBeGreaterThan(Date.parse(s.seen.until[0]!));
+  });
+
+  it("stops and files nothing more when another read has taken the lease, leaving the cursor to it", async () => {
+    const { db, cursor } = house();
+    const { service, publish } = serviceOver(db);
+    const before = cursor.last_internal_date;
+    const s = slowGmail(cursor, ["m1", "m2", "m3"], (n) => {
+      if (n === 2) cursor.reading_token = "lease-taken";
+    });
+    service.fetchImpl = s.impl;
+    const run = await service.readDue(T0);
+    expect(run.outcomes[0].outcome).toBe("error");
+    expect(run.outcomes[0].says).toMatch(/took over this grant's lease/);
+    expect(publish).not.toHaveBeenCalled();
+    expect(cursor.last_internal_date).toBe(before);
+    // Its release finds the token is no longer its own and leaves the new holder's lease alone.
+    expect(cursor.reading_token).toBe("lease-taken");
+  });
+});
+
+describe("Check now says what it did not read", () => {
+  const out = (outcome: string, says: string, mirrored = 0) => ({
+    connectionId: GRANT, restaurantId: HOUSE, outcome, bookAddresses: 1, listed: 0, admitted: 0,
+    discarded: 0, mirrored, cursorAdvancedTo: null, says,
+  });
+  const press = async (outcomes: unknown[]) => {
+    const { db } = house();
+    const { service } = serviceOver(db);
+    jest.spyOn(service as unknown as { readGrants: () => unknown }, "readGrants").mockResolvedValue(outcomes);
+    return service.readNow(HOUSE, T0);
+  };
+
+  it("does not word another mailbox's failed read as nothing new", async () => {
+    const r = await press([out("read", "Read 0 messages."), out("error", "The reading grant's token could not be obtained (revoked).")]);
+    expect(r.says).toMatch(/^Checked\. Nothing new has arrived\./);
+    expect(r.says).toMatch(/But a mailbox could not be read: The reading grant's token could not be obtained/);
+  });
+
+  it("says a busy or revoked mailbox was left unread, beside the letters that were filed", async () => {
+    const r = await press([out("read", "ok", 2), out("busy", "Another read holds this grant right now.")]);
+    expect(r.says).toMatch(/^Checked\. 2 new letters were filed\. But a mailbox could not be read: Another read holds/);
+  });
+
+  it("says a first press on a fresh mailbox starts reading now, and is not a completed check", async () => {
+    const r = await press([out("seeded", "First run for this grant.")]);
+    expect(r.says).toBe("Reading this mailbox starts now. Nothing older than this moment is read, so there is nothing to show yet.");
+    expect(r.says).not.toMatch(/Checked/);
+  });
+});

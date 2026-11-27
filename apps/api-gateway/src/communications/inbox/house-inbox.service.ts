@@ -181,6 +181,16 @@ export const READ_NOW_FLOOR_SECONDS = 60;
  * (250 messages at a few hundred ms each).
  */
 export const READ_LEASE_SECONDS = 270;
+/**
+ * A read that is still going pushes its lease out this often, so no read, however
+ * slow Gmail is, outlives the lease it holds and overlaps the next one.
+ */
+export const READ_LEASE_RENEW_SECONDS = 60;
+/** One Gmail request is given this long; a hung one fails the read rather than holding the lease. */
+export const GMAIL_GET_TIMEOUT_MS = 20_000;
+
+/** The lease was taken over by another read: this one stops and leaves the cursor to the new holder. */
+class LeaseLostError extends Error {}
 
 /**
  * Addresses per `from:(...)` clause. Gmail's `q` travels in the query string;
@@ -389,15 +399,25 @@ export class HouseInboxService {
     const outcomes = await this.readGrants(rows, nowMs, READ_NOW_FLOOR_SECONDS);
     const mirrored = outcomes.reduce((n, o) => n + o.mirrored, 0);
     if (outcomes.some((o) => o.outcome === "read" || o.outcome === "seeded")) {
+      // A grant that was not read is said, never dropped from the sentence: a
+      // failed read must not be worded as "nothing new". A first press on a
+      // fresh grant reads nothing by design and says so.
+      const read = outcomes.some((o) => o.outcome === "read");
+      const notRead = outcomes
+        .filter((o) => !["read", "seeded", "too_soon"].includes(o.outcome))
+        .map((o) => ` But a mailbox could not be read: ${o.says}`)
+        .join("");
+      const head = !read
+        ? "Reading this mailbox starts now. Nothing older than this moment is read, so there is nothing to show yet."
+        : mirrored === 0
+          ? "Checked. Nothing new has arrived."
+          : `Checked. ${mirrored} new ${mirrored === 1 ? "letter was" : "letters were"} filed.`;
       return {
         outcome: "read",
         retryAfterSeconds: 0,
         mirrored,
         outcomes,
-        says:
-          mirrored === 0
-            ? "Checked. Nothing new has arrived."
-            : `Checked. ${mirrored} new ${mirrored === 1 ? "letter was" : "letters were"} filed.`,
+        says: head + notRead,
       };
     }
     const wait = Math.max(0, ...outcomes.map((o) => (o.outcome === "too_soon" ? (o.waitSeconds ?? 0) : 0)));
@@ -513,7 +533,7 @@ export class HouseInboxService {
       });
     }
     try {
-      return await this.readOneGrant(row, nowMs);
+      return await this.readOneGrant(row, nowMs, lease.kind === "held" ? lease.token : undefined);
     } finally {
       if (lease.kind === "held") await this.releaseRead(connectionId, lease.token);
     }
@@ -545,6 +565,18 @@ export class HouseInboxService {
         : { kind: "busy" };
     }
     return { kind: "error", message: "the claim answered in a shape this reader does not know" };
+  }
+
+  /** Pushes the lease out, only if this read still holds it. False means another read has it now. */
+  private async renewRead(connectionId: string, token: string): Promise<boolean> {
+    const { data, error } = await this.db.client
+      .from("house_inbox_cursors")
+      .update({ reading_until: new Date(Date.now() + READ_LEASE_SECONDS * 1000).toISOString() })
+      .eq("connection_id", connectionId)
+      .eq("reading_token", token)
+      .select("connection_id");
+    if (error) throw new Error(`the read lease could not be renewed (${error.message})`);
+    return Array.isArray(data) && data.length > 0;
   }
 
   /** Clears the lease, only if this read still holds it. */
@@ -584,6 +616,7 @@ export class HouseInboxService {
   private async readOneGrant(
     row: Record<string, unknown>,
     nowMs: number,
+    leaseToken?: string,
   ): Promise<GrantReadOutcome> {
     const connectionId = String(row.id);
     const userId = String(row.user_id);
@@ -692,6 +725,17 @@ export class HouseInboxService {
     let mirrored = 0;
     let highWater = cursor;
 
+    // Called before each Gmail fetch and each publish: a read that runs long
+    // keeps its lease, and one that lost it stops before filing anything more.
+    let renewedAt = Date.now();
+    const keepLease = async () => {
+      if (!leaseToken || Date.now() - renewedAt < READ_LEASE_RENEW_SECONDS * 1000) return;
+      if (!(await this.renewRead(connectionId, leaseToken))) {
+        throw new LeaseLostError("another read took over this grant's lease");
+      }
+      renewedAt = Date.now();
+    };
+
     try {
       const ids = wide
         ? await this.listSinceAll(token, cursor)
@@ -717,6 +761,7 @@ export class HouseInboxService {
       }> = [];
 
       for (const listedMessage of ids) {
+        await keepLease();
         const message = await this.getMessage(token, listedMessage.id);
         if (!message) continue;
 
@@ -765,6 +810,7 @@ export class HouseInboxService {
       admissible.sort((a, b) => a.internalDate - b.internalDate);
 
       for (const message of admissible) {
+        await keepLease();
         const { headers, internalDate } = message;
         const from = headerValue(headers, "from");
         const { text, attachmentRefs } = extractEmailContent(message.payload);
@@ -856,6 +902,22 @@ export class HouseInboxService {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof LeaseLostError) {
+        // The new holder owns the cursor; saving ours could move it backwards.
+        this.logger.error(`House inbox read stopped for ${connectionId}: ${message}`);
+        return {
+          connectionId,
+          restaurantId,
+          outcome: "error",
+          bookAddresses: addresses.length,
+          listed,
+          admitted,
+          discarded,
+          mirrored,
+          cursorAdvancedTo: null,
+          says: `The read stopped (${message}), so it filed nothing more and left the cursor to the read that has the grant now. ${mirrored} message${mirrored === 1 ? "" : "s"} reached the book first.`,
+        };
+      }
       // The cursor is saved at the high-water mark actually mirrored, so the
       // messages that DID reach the book are not read again and the ones that
       // did not are.
@@ -1083,6 +1145,7 @@ export class HouseInboxService {
   private async gmailGet<T>(token: string, url: string): Promise<T> {
     const response = await this.fetchImpl(url, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(GMAIL_GET_TIMEOUT_MS),
     });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
