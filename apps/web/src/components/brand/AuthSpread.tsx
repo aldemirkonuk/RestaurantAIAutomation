@@ -11,19 +11,18 @@ export interface AuthSpreadProps {
   title?: ReactNode
   /** One sentence of house voice under the title. */
   voice?: ReactNode
-  /** Small-caps line on the endpaper ("Account access"). */
+  /** Small-caps line on the endpaper. */
   eyebrow: string
   /** The endpaper's own line. Defaults to the sign-in book's. */
   houseLine?: string
   tag?: string
   /** Top-right label on the leaf: a step count belongs here and nowhere else. */
   folio?: string
-  /** Links under the form ("Back to sign in"). */
+  /** Links under the form. */
   footer?: ReactNode
   /**
    * Which leaf is showing. Defaults to the title when it is a string, so a
-   * page whose title changes (the request sent, the link spent) turns its leaf
-   * and one whose title is the same does not.
+   * page whose title changes turns its leaf and one whose title stays does not.
    */
   pageKey?: string
   wide?: boolean
@@ -31,12 +30,10 @@ export interface AuthSpreadProps {
 }
 
 /**
- * The open book for every door that is not sign-in itself: forgot-password,
- * reset-password, verify-email, no-access, the invite landing and get-started.
- * It is `EndpaperShell` (the same endpaper and ruled leaf as /login and
- * /register) with one H1 in Fraunces, a lede, a `<main>` landmark and the
- * 52px hairline fields of `endpaper.css` (`.mdv-spread`), so the person
- * meets one grammar at every door instead of a card, a plate and a third look.
+ * The open book of /get-started, its only user so far; it is written so the
+ * other doors that are not sign-in can take it. `EndpaperShell` (the endpaper
+ * and ruled leaf of /login and /register) with one Fraunces H1, a lede, a
+ * `<main>` landmark and the 52px hairline fields of `.mdv-spread`.
  */
 export function AuthSpread({
   title,
