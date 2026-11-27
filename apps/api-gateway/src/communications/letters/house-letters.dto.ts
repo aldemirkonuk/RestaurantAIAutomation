@@ -119,7 +119,8 @@ export class QueueLetterDto {
   })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(3)
+  // In the house's words, not class-validator's ("fileIds must contain no more than 3 elements").
+  @ArrayMaxSize(3, { message: "A letter can carry 3 files at most. Nothing was queued and nothing was sent." })
   @IsUUID("4", { each: true })
   fileIds?: string[];
 }
@@ -147,8 +148,9 @@ export class LetterFileUploadDto {
 export class UploadLetterFilesDto {
   @ApiProperty({ type: [LetterFileUploadDto] })
   @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(3)
+  // In the house's words (r109 walk: 4 files answered "files must contain no more than 3 elements").
+  @ArrayMinSize(1, { message: "No file was sent. Nothing was uploaded." })
+  @ArrayMaxSize(3, { message: "A letter can carry 3 files at most. Nothing was uploaded." })
   @ValidateNested({ each: true })
   @Type(() => LetterFileUploadDto)
   files: LetterFileUploadDto[];
