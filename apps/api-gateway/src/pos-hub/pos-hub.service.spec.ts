@@ -188,7 +188,7 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.rpc[0].args.p_transaction_type).toBe("return");
   });
 
-  it("reverses a glass void via apply_stock_movement, not record_glass_pour (B19)", async () => {
+  it("returns a glass void's ml through return_glass_pour, never whole bottles (D1)", async () => {
     const { service, calls } = makeService({
       mappings: [
         {
@@ -206,9 +206,11 @@ describe("PosHubService.ingest — stock effects", () => {
     ]);
 
     expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    expect(calls.rpc[0].name).toBe("return_glass_pour");
+    expect(calls.rpc[0].args.p_pours).toBe(2);
+    expect(calls.rpc[0].args.p_pour_ml).toBeGreaterThan(0);
+    expect(calls.rpc[0].args.p_restaurant_id).toBe("r1");
+    expect(String(calls.rpc[0].args.p_idempotency_key)).toMatch(/:void$/);
   });
 
   it("queues an unmapped wine line in pos_unresolved_lines instead of dropping it (B20)", async () => {
@@ -452,8 +454,8 @@ describe("PosHubService.verifyWebhookSignature (B16/B17/B28)", () => {
         restaurantId: "  ",
       }),
     ).toBe(false);
-    expect(
-      service.verifyWebhookSignature(body, good, undefined as any),
-    ).toBe(false);
+    expect(service.verifyWebhookSignature(body, good, undefined as any)).toBe(
+      false,
+    );
   });
 });

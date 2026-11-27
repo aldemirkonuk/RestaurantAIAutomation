@@ -1521,13 +1521,29 @@ export class PosHubService {
           // repair fixed — the error field must be checked explicitly or a
           // failed depletion reports success silently.
           let rpcError: { message?: string } | null = null;
-          if (part === "fraction" && isVoid) {
-            // r57 D1 owns the reverse pour (ml back to the open bottle). Until
-            // it lands, returning a WHOLE bottle for a fraction would be the
-            // B19 over-return, so the fraction stays out and the line says so.
-            rpcError = {
-              message: `a fractional quantity (${frac}) on a voided line cannot be returned to the shelf yet; its ${fractionMl(unitMl, frac)}ml stay depleted`,
-            };
+          if (isVoid && (part === "fraction" || resolved.mode === "volume")) {
+            // r57 D1: a void of a pour gives back the ml that were poured, to
+            // the open bottle, and rolls a whole bottle only when the open ml
+            // reach one. It used to return `qty` WHOLE bottles (B19), so five
+            // voided glasses put five bottles back. A fraction is one pour of
+            // that share of the unit, exactly as the sale drew it. The key is
+            // the sale's key plus ":void", so a replayed void returns nothing
+            // a second time, and the house is named so the database refuses an
+            // item that is not its own (ADR 0141).
+            ({ error: rpcError } = await db.rpc("return_glass_pour", {
+              p_inventory_id: it.inventory_id,
+              p_pours: part === "fraction" ? 1 : units,
+              p_pour_ml:
+                part === "fraction"
+                  ? fractionMl(unitMl, frac)
+                  : Math.round((resolved as { ml: number }).ml),
+              p_restaurant_id: restaurantId,
+              p_location_id: null,
+              p_source: "pos",
+              p_reason: `POS void (${label}): ${it.name}`,
+              p_idempotency_key: `${key}:void`,
+              p_occurred_at: when.at,
+            }));
           } else if (
             part === "fraction" ||
             (resolved.mode === "volume" && !isVoid)
@@ -1553,13 +1569,9 @@ export class PosHubService {
               p_occurred_at: when.at,
             }));
           } else {
-            // Whole-bottle sales, and every void.
-            //
-            // B19 (unchanged, and wrong — see ADR 0011 Consequences): a partial-
-            // volume void returns `qty` WHOLE BOTTLES because record_glass_pour
-            // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
-            // it is because B19 is a recorded decision; superseding it is the
-            // founder's call, not this change's.
+            // Whole-bottle sales and their voids: a unit move is exact both
+            // ways. A void of a pour (volume mode) never comes here (r57 D1,
+            // return_glass_pour above); B19's whole-bottle over-return is gone.
             //
             // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
             //
@@ -1607,9 +1619,7 @@ export class PosHubService {
               rpcError.message,
               check.externalCheckId,
             );
-            // A void still clears the sale's consumption row below: the sale
-            // did not happen whether or not the shelf could take it back.
-            if (!(isVoid && part === "fraction")) return;
+            return;
           } else {
             affected.add(it.inventory_id as string);
           }
