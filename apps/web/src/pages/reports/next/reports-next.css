@@ -253,6 +253,15 @@
    card grows the chart, and the axis labels end up outside the cutting.
    Absolute-inside-relative breaks that loop and pins the plot to the box the
    reader sized. */
+/* The head's date line never wraps: the warm start's "Read at 14:02, reading
+   again" (r108 g8) is said on it and goes when the read lands, and a line that
+   wrapped and unwrapped would move the page under it. */
+.rp-dateline {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .rp-plot {
   position: relative;
   flex: 1 1 auto;

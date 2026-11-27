@@ -52,6 +52,7 @@ vi.mock('./useReportExports', () => ({ useReportExports: () => ({}) }));
 
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import type { AnalysisId } from './rp-sheet';
+import { flushWarm, forgetWarm, warmRead, warmWrite } from './rp-warm';
 
 const SEATS = '/analytics/table-performance/r1?sinceDays=90';
 const SERVICE = '/analytics/waiters/r1?sinceDays=90';
@@ -328,5 +329,69 @@ describe('useReportsNextData — whose sheet this is', () => {
     const { result } = mount();
     expect(result.current.sheetKnown).toBe(false);
     expect(result.current.sheetUnread).toMatch(/signed in/);
+  });
+});
+
+describe('useReportsNextData — warm start (r108 g8)', () => {
+  const SEATS_KEY = JSON.stringify(['seats', null, null]);
+  const MANAGER = { userId: 'u1', restaurantId: 'r1', role: 'manager' };
+  let seats: (path: string) => Promise<unknown>;
+
+  beforeEach(() => {
+    forgetWarm();
+    sessionStorage.clear();
+    auth.rid = 'r1';
+    auth.role = 'manager';
+    prefs.isPlaceholderData = false;
+    prefs.error = null;
+    prefs.userId = 'u1';
+    seats = async () => ({ data: { tables: [] } });
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === SEATS) return seats(path);
+      if (path === SERVICE) return { data: { waiters: [] } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  it('[REVERT-FAILS] a whole read is kept for this person, house and role', async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.registers.seats?.data).toBeDefined());
+    flushWarm();
+    expect(warmRead(MANAGER, SEATS_KEY)?.data).toEqual(result.current.registers.seats!.data);
+  });
+
+  it('[REVERT-FAILS] a failed read is never kept', async () => {
+    seats = async () => {
+      throw Object.assign(new Error('boom'), { response: { status: 500 } });
+    };
+    const { result } = mount();
+    await waitFor(() => expect(result.current.registers.seats?.failure).toBeTruthy(), { timeout: 4000 });
+    flushWarm();
+    expect(warmRead(MANAGER, SEATS_KEY)).toBeUndefined();
+  });
+
+  it('[REVERT-FAILS] a kept read paints while the register reads again, and says when it was read', async () => {
+    const at = Date.now() - 60_000;
+    warmWrite(MANAGER, SEATS_KEY, { kept: true }, at);
+    let answer: (v: unknown) => void = () => {};
+    seats = () => new Promise((r) => (answer = r));
+    const { result } = mount();
+    expect(result.current.registers.seats?.data).toEqual({ kept: true });
+    expect(result.current.warmAt).toBe(at);
+    // The read still goes out: kept money is never taken as this load's.
+    await waitFor(() => expect(paths()).toContain(SEATS));
+    await act(async () => answer({ data: { tables: [] } }));
+    await waitFor(() => expect(result.current.warmAt).toBeNull());
+    expect(result.current.registers.seats?.data).not.toEqual({ kept: true });
+  });
+
+  it('[REVERT-FAILS] another role in the same house gets no kept read', async () => {
+    warmWrite({ ...MANAGER, role: 'owner' }, SEATS_KEY, { kept: true }, Date.now());
+    seats = () => new Promise(() => {});
+    const { result } = mount();
+    expect(result.current.registers.seats?.data).toBeUndefined();
+    expect(result.current.warmAt).toBeNull();
   });
 });
