@@ -25,7 +25,7 @@ describe('the register nav holds its two-row room from first paint', () => {
 
   it('the two rule notes sit in a block that holds their settled room at a phone, with no motion', () => {
     expect(tsx).toMatch(/<div className="cl-notes-hold">/);
-    expect(css).toMatch(/\.cl-notes-hold \{ min-height: 79px; \}/);
+    expect(css).toMatch(/\.cl-notes-hold \{ margin-top: 10px; min-height: 79px; \}/);
     expect(css).toMatch(/@media \(max-width: 481px\) \{ \.cl-notes-hold \{ min-height: 114px; \} \}/);
     expect(css).toMatch(/@media \(min-width: 641px\) and \(max-width: 1000px\) \{ \.cl-notes-hold \{ min-height: 114px; \} \}/);
     expect(css).toMatch(/@media \(max-width: 481px\) \{ \.cl-standing-hold \{ min-height: 50px; \} \}/);

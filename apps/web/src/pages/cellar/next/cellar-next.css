@@ -1182,7 +1182,8 @@ textarea.cl-field {
    narrows the column; measured at 768): 114, at 1001 px and up: 79. A house whose text wraps
    longer than that grows by the difference, one shorter leaves a gap, never a shift. No
    transition, and none under reduced motion (ADR 0112). */
-.cl-notes-hold { min-height: 79px; }
+/* margin-top 10px = the first note's own, so the two collapse and the hold's top does not move when the notes arrive. */
+.cl-notes-hold { margin-top: 10px; min-height: 79px; }
 /* The standing line under the headline reads one line while the registers read is in flight and
    two lines at a phone once it settles (25px -> 50px, measured 375-481 px; the 641-1000 band
    settles at 25px). Its settled room is held at a phone. No motion (ADR 0112). */
