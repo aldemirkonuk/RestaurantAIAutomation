@@ -159,6 +159,8 @@ const PAGE: Record<ExportableCutting, PageRead> = {
 describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () => {
   it("covers every exportable cutting, with the path the page's catalogue actually requests", () => {
     expect(Object.keys(PAGE).sort()).toEqual([...EXPORTABLE_CUTTINGS].sort());
+    // Whitespace is folded so a template the page wraps onto its next line
+    // (the till's, since the compare read of days=2N) still matches one line.
     const web = ["trade", "house", "bench", "goals"]
       .map((f) =>
         readFileSync(
@@ -180,6 +182,15 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const named = [...block.matchAll(/(\w+): \(rid\) => (`[^`]*`)/g)].map((m) => [m[1], m[2]]);
       expect([id, Object.fromEntries(named)]).toEqual([id, p.sources]);
     }
+  });
+
+  it("the till's export reads days=N and never the compare window: an export is the register, compare is a view", async () => {
+    const { reader } = build();
+    const out = (await reader.read(RID, "till", 7)) as { args: unknown[] };
+    expect(out.args).toEqual([RID, 7]);
+    // The page doubles the window only while compare is on; the export has no
+    // compare to carry, so it must not be handed the doubled read.
+    expect(readFileSync(join(__dirname, "report-cutting-reader.service.ts"), "utf8")).not.toMatch(/compare/i);
   });
 
   it("bench: a source that throws is null in the export, as on the page, and the others still answer", async () => {
