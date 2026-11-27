@@ -272,7 +272,7 @@ export const documentsApi = {
    */
   async heldCosts(id: string): Promise<{
     taxBasisKnown: boolean
-    held: Array<{ deliveryId: string; inventoryId: string; why: string }>
+    held: Array<{ inventoryId: string; deliveryIds: string[]; why: string; cause: 'tax_basis' | 'other' }>
   }> {
     try {
       const { data } = await apiClient.get(`/procurement/documents/${id}/held-costs`)

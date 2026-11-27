@@ -173,15 +173,36 @@ function HeldCostNote({ docId }: { docId: string }) {
         Whether this paper&rsquo;s cost is held could not be read.
       </p>
     );
-  if (!q.data || q.data.held.length === 0 || q.data.taxBasisKnown) return null;
+  if (!q.data || q.data.held.length === 0) return null;
+  // The tax sentence is for the holds the tax answer would release, and only
+  // those. Every other hold says its own reason, never the tax basis's.
+  const taxHeld = q.data.taxBasisKnown ? [] : q.data.held.filter((h) => h.cause === 'tax_basis');
+  const otherHeld = q.data.held.filter((h) => !taxHeld.includes(h));
+  const style = { fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' } as const;
   return (
-    <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-      Tax basis unknown &mdash;{' '}
-      {q.data.held.length === 1
-        ? 'one item on this paper keeps a provisional cost'
-        : `${q.data.held.length} items on this paper keep a provisional cost`}{' '}
-      until the house says how it treats the tax it pays.
-    </p>
+    <>
+      {taxHeld.length > 0 && (
+        <p role="status" style={style}>
+          Tax basis unknown &mdash;{' '}
+          {taxHeld.length === 1
+            ? 'one item on this paper keeps a provisional cost'
+            : `${taxHeld.length} items on this paper keep a provisional cost`}{' '}
+          until the house says how it treats the tax it pays.
+        </p>
+      )}
+      {otherHeld.length > 0 && (
+        <div role="status" data-testid="held-cost-other" style={style}>
+          {otherHeld.length === 1
+            ? 'One item on this paper keeps a provisional cost:'
+            : `${otherHeld.length} items on this paper keep a provisional cost:`}
+          <ul style={{ margin: '2px 0 0', paddingLeft: 16 }}>
+            {otherHeld.map((h) => (
+              <li key={h.inventoryId}>{h.why.replace(/ The lot stays provisional.*$/, '')}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }
 
