@@ -259,4 +259,38 @@ describe("the cursor", () => {
     expect(r.marks).toHaveLength(0);
     expect(r.cursor).toEqual([AT]);
   });
+
+  // A wide grant with more letters since the cursor than one tick files: the
+  // listing keeps the OLDEST 250, so a notice newer than the 250th must not lift
+  // the cursor past the letters that were never listed (they would be lost, and
+  // nothing would say so). The notice is read again next tick, deduped by replacesMark.
+  it("a notice newer than the tick's last filed letter does not skip the unlisted letters", async () => {
+    const letters = Array.from({ length: 260 }, (_, i) => ({
+      id: `l${i}`,
+      threadId: `t${i}`,
+      internalDate: String(CURSOR + 1000 * (i + 1)),
+      payload: { mimeType: "text/plain", headers: [{ name: "From", value: `g${i}@guest.example` }, { name: "Subject", value: `s${i}` }, { name: "Message-ID", value: `<g${i}@guest.example>` }], body: { data: b64("hi") } },
+    }));
+    const NOTICE_AT = CURSOR + 1000 * 258; // newer than the 250th oldest letter
+    const n = notice({ at: NOTICE_AT });
+    const t = build({ ...rows([LETTER]), integration_oauth_connections: [{ ...rows([]).integration_oauth_connections[0], integration_id: "gmail_read_all" }] } as never);
+    const publish = jest.fn().mockResolvedValue(undefined);
+    const oauth = { getAccessToken: jest.fn().mockResolvedValue("ya29.token") } as unknown as IntegrationsOauthService;
+    const letterSvc = new HouseLettersService(t.db, new HouseSenderService(t.db, { get: () => undefined } as never), oauth);
+    const service = new HouseInboxService(t.db, { publishEvent: publish } as unknown as OrchestratorService, oauth, letterSvc);
+    service.fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("/messages?")) {
+        const q = new URL(url).searchParams.get("q") ?? "";
+        const list = q.startsWith("from:(mailer-daemon") ? [n] : [...letters].reverse(); // Gmail: newest first
+        return { ok: true, status: 200, json: async () => ({ messages: list.map((m) => ({ id: m.id })) }) };
+      }
+      const id = /\/messages\/([^?/]+)/.exec(url)?.[1] ?? "";
+      return { ok: true, status: 200, json: async () => [...letters, n].find((m) => m.id === id) ?? null };
+    }) as unknown as typeof fetch;
+    const out = await service.readDue(CURSOR + 300_000);
+    const cursor = t.updates.filter((u) => u.table === "house_inbox_cursors").map((u) => u.body.last_internal_date);
+    expect(publish.mock.calls.length).toBe(250);
+    expect(cursor).toEqual([CURSOR + 250_000]);
+  });
 });

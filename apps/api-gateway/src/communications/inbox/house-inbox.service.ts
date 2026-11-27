@@ -643,7 +643,13 @@ export class HouseInboxService {
 
       // Every letter listed reached the book, so the cursor may pass the
       // notices read too; a notice is read again only while this run fails.
-      if (notices.highest > highWater) highWater = notices.highest;
+      // NOT when the letter listing was cut at the tick cap: the letters past
+      // the cut are unread, and a notice newer than them would carry the cursor
+      // over them with nothing to report the gap. The notice is read again next
+      // tick, and replacesMark keeps that from marking twice.
+      if (ids.length < MAX_MESSAGES_PER_TICK && notices.highest > highWater) {
+        highWater = notices.highest;
+      }
       await this.saveCursor(connectionId, restaurantId, highWater, nowMs, {
         listed,
         admitted,
