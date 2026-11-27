@@ -231,14 +231,13 @@
 .rp-standin > * {
   transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.rp-standin[data-stale] > :not([role='status']) {
+.rp-standin[data-stale] > * {
   opacity: 0.55;
 }
 
 /* On the sheet a note under a chart ends in an ellipsis at three lines, not mid-word
    at the card's edge; whole in its title and in full screen. */
-.rp-cut__body > p.rp-cap,
-.rp-cut__body > .rp-standin > p.rp-cap {
+.rp-cut__body > p.rp-cap {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
