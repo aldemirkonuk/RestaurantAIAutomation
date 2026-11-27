@@ -222,7 +222,7 @@ describe('HouseContents: the vendor address and the invoice', () => {
     expect(screen.getByText('Next · for your costs')).toBeInTheDocument()
     expect(screen.getByText(/Costs come from the invoices you check\./)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
-    const row = screen.getByText('Next · for your costs').closest('p')!
+    const row = screen.getByText('Next · for your costs').closest('div')!
     expect(row.textContent).not.toMatch(/not required/)
   })
 })
