@@ -207,6 +207,71 @@ function HeldCostNote({ docId }: { docId: string }) {
 }
 
 /**
+ * The verified book as one CSV, in the header row beside Older papers (r108,
+ * DD-r107-37 / DD-r108-22). Shown only on the gateway's own money-role answer
+ * (`holdsHouseMoney`, through `export/verified.csv/allowed`): the web keeps no
+ * role list of its own, staff get no link, and an unanswered or failed check
+ * shows none. A refusal or a failed export says so in words, on its own line
+ * under the row. The visible label is short so the row stays one 44px line at
+ * 375px; the accessible name says the whole act. No animation.
+ */
+function VerifiedCsvLink() {
+  // Keyed on the house: a person can own one house and work staff at another.
+  const rid = useActiveRestaurantId();
+  const allowedQ = useQuery<boolean>({
+    queryKey: ['receipts-next', 'verified-csv-allowed', rid],
+    queryFn: () => documentsApi.verifiedCsvAllowed(),
+    enabled: rid !== null,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (allowedQ.data !== true) return null;
+  const download = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const body = await documentsApi.verifiedCsv();
+      const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'verified-papers.csv';
+      // WebKit cancels a blob download whose anchor is detached or whose URL is
+      // revoked in the same task: attach, click, remove, revoke on a timer.
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(serverMessage(e, 'The file could not be made, so nothing was downloaded.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => void download()}
+        disabled={busy}
+        aria-label="Export verified papers (CSV)"
+        data-testid="verified-csv"
+        className="rc-ink"
+        style={{ minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 600, border: 'none', background: 'transparent', color: 'var(--seal-deep, #14515C)', textDecoration: 'underline', cursor: 'pointer' }}
+      >
+        {busy ? 'Making the file' : 'Export CSV'}
+      </button>
+      {error && (
+        <span role="alert" data-testid="verified-csv-error" style={{ flexBasis: '100%', fontSize: 11.5, color: 'var(--ink-1, #211C16)' }}>
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
  * RULE 3 — what money this invoice is in, and the house's deliberate change.
  *
  * Founder, 2026-09-06 (batch 63): *"take the houses own currency, but AI needs
@@ -2340,6 +2405,7 @@ export default function ReceiptsNext() {
                 >
                   Verified · {data.verifiedCapped ? GE : ''}{data.verified.length} {showVerified ? '▾' : '▸'}
                 </button>
+                <VerifiedCsvLink />
                 {showVerified && data.verifiedHasOlder && (
                   <button
                     type="button"

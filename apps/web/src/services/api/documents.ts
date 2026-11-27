@@ -247,6 +247,48 @@ export const documentsApi = {
   },
 
   /**
+   * Every verified paper of this house as one CSV (r108). Fetched through the
+   * client because the route needs the bearer token a plain link would not
+   * carry. A refusal (403) or an unreadable book arrives in the gateway's own
+   * words, never as an empty file.
+   */
+  async verifiedCsv(): Promise<string> {
+    try {
+      const { data } = await apiClient.get<string>('/procurement/documents/export/verified.csv', {
+        responseType: 'text',
+        transformResponse: [(raw: unknown) => raw],
+      })
+      if (typeof data !== 'string') throw new Error('the gateway answered without the file')
+      return data
+    } catch (error) {
+      // The body was asked for as text, so a refusal's JSON arrives as a
+      // string; read it back so the gateway's own sentence reaches the page
+      // instead of "refused and gave no reason".
+      const res = (error as { response?: { data?: unknown } } | null)?.response
+      if (res && typeof res.data === 'string') {
+        try {
+          res.data = JSON.parse(res.data)
+        } catch {
+          /* not JSON: leave the body as it came */
+        }
+      }
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Whether this session may take the verified CSV, in the gateway's own
+   * money-role answer (r108). Anything but a plain yes reads as no, so a
+   * failed or older gateway shows no link rather than one that refuses.
+   */
+  async verifiedCsvAllowed(): Promise<boolean> {
+    const { data } = await apiClient.get<{ allowed?: unknown }>(
+      '/procurement/documents/export/verified.csv/allowed',
+    )
+    return data?.allowed === true
+  },
+
+  /**
    * Mint the one-time seal a VERIFICATION has to carry back — at the moment the
    * confirm gesture BEGINS.
    *
