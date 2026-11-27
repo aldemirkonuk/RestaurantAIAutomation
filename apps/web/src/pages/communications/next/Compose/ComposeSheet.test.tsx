@@ -664,6 +664,24 @@ describe('a reply opened from Mail (r28 gap 3)', () => {
     );
   });
 
+  it("a new letter from the vendor's person page is addressed to the vendor's own book address and answers nothing", async () => {
+    mockData.current = {
+      ...base,
+      sender: HOUSE_MAILBOX,
+      book: [{ ...BOOK[0], email: 'rep@fikritarim.com', contactName: 'Rep', source: 'contact' as const }, ...BOOK],
+    };
+    sealThenQueue();
+    render(<ComposeSheet open onClose={() => {}} prefill={{ providerId: 'p1', writeToVendor: true }} />);
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Prices for March' } });
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Could you send the March list?' } });
+    await waitFor(() => expect(screen.getByTestId('letter-send')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+    const sent = mockPost.mock.calls[1][1];
+    expect(sent).toEqual(expect.objectContaining({ providerId: 'p1', to: 'fikri@fikritarim.com' }));
+    expect(sent.answers).toBeUndefined();
+  });
+
   it('a guest reply is fixed to the address that wrote, has no book, and sends no vendor (ADR 0396)', async () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
     sealThenQueue();
