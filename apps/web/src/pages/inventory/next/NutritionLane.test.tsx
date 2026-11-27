@@ -44,11 +44,11 @@ const draft: NutritionLookup = {
 };
 const httpError = (status: number) => Object.assign(new Error(`status ${status}`), { response: { status, data: {} } });
 
-function mount(canManage = true, onClose = vi.fn()) {
+function mount(canManage = true, onClose = vi.fn(), goods: Array<{ id: string; name: string; kind?: string | null }> = GOODS) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <NutritionLane goods={GOODS} restaurantId="r1" canManage={canManage} onClose={onClose} />
+      <NutritionLane goods={goods} restaurantId="r1" canManage={canManage} onClose={onClose} />
     </QueryClientProvider>,
   );
 }
@@ -88,6 +88,23 @@ describe('the nutrition fill lane', () => {
     expect(body.figures).toMatchObject({ source: 'open_food_facts', energyKcal: 38, saltG: null });
     await waitFor(() => expect(screen.getByTestId('ivn-lane-count').textContent).toBe('1 of 3 filled'));
     expect(await screen.findByText('Tulum cheese')).toBeTruthy();
+  });
+
+  it('never walks a supply, so its name is never sent to the lookup sources', async () => {
+    mount(true, vi.fn(), [
+      { id: 's1', name: 'Napkins', kind: 'supply' },
+      { id: 'i1', name: 'Ayran', kind: 'drink' },
+    ]);
+    expect(screen.getByText(/One good to go through/)).toBeTruthy();
+    start();
+    await waitFor(() => expect(api.lookup).toHaveBeenCalledTimes(1));
+    expect(api.lookup.mock.calls[0][0]).toBe('i1');
+    expect(api.lookup.mock.calls.some((c) => c[0] === 's1')).toBe(false);
+  });
+
+  it('shows nothing when every good is a supply', () => {
+    mount(true, vi.fn(), [{ id: 's1', name: 'Napkins', kind: 'supply' }]);
+    expect(screen.queryByTestId('ivn-lane-start')).toBeNull();
   });
 
   it('Skip saves nothing; J and K move, and going back does not send the name again', async () => {

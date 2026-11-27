@@ -17,7 +17,7 @@ import type { Basis } from "./nutrition-figures";
 type Reply = { ok: boolean; status: number; json: () => Promise<unknown> };
 const reply = (status: number, body: unknown): Reply => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 
-function setup(opts: { basis?: Basis | null; routes?: Array<[RegExp, Reply | Error]>; readFails?: Error }) {
+function setup(opts: { kind?: string; basis?: Basis | null; routes?: Array<[RegExp, Reply | Error]>; readFails?: Error }) {
   const calls: Array<{ url: string; headers: Record<string, string> }> = [];
   const fetchImpl = async (url: string, init?: { headers?: Record<string, string> }) => {
     calls.push({ url, headers: init?.headers ?? {} });
@@ -31,7 +31,7 @@ function setup(opts: { basis?: Basis | null; routes?: Array<[RegExp, Reply | Err
     read: async (rid: string, id: string) => {
       reads.push([rid, id]);
       if (opts.readFails) throw opts.readFails;
-      return { suggestedBasis: opts.basis === undefined ? "100g" : opts.basis };
+      return { suggestedBasis: opts.basis === undefined ? "100g" : opts.basis, item: { kind: opts.kind ?? "food" } };
     },
   } as unknown as ItemNutritionService;
   return { svc: new NutritionLookupService(nutrition, fetchImpl), calls, reads };
@@ -49,6 +49,15 @@ afterEach(() => {
 });
 beforeEach(() => {
   delete process.env[FDC_KEY_ENV];
+});
+
+describe("a supply", () => {
+  it("is refused with a 400 and nothing goes outbound", async () => {
+    const { svc, calls } = setup({ kind: "supply", routes: [] });
+    await expect(svc.lookup("r1", "napkins", { name: "Napkins" })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc.lookup("r1", "napkins", { barcode: "5449000000996" })).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("lookup by barcode (Open Food Facts)", () => {

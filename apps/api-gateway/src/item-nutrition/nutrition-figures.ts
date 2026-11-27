@@ -32,6 +32,9 @@ export type Allergen = (typeof ALLERGENS)[number];
 export const ALLERGEN_STATUSES = ["contains", "may_contain", "free"] as const;
 export type AllergenStatus = (typeof ALLERGEN_STATUSES)[number];
 
+/** A supply (napkins, foil, bleach) is not eaten or drunk: it has no nutrition or allergens to state. Mirrors the web's holdsContents. */
+export const holdsContents = (kind: string | null | undefined): boolean => kind !== "supply";
+
 export const BASES = ["100g", "100ml"] as const;
 export type Basis = (typeof BASES)[number];
 

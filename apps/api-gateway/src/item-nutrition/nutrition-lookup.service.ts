@@ -13,6 +13,7 @@ import {
   type LookupChoice,
   type NutritionDraft,
 } from "./nutrition-lookup";
+import { holdsContents } from "./nutrition-figures";
 
 /** Injected in tests so no spec ever goes outbound. */
 export const NUTRITION_FETCH = "NUTRITION_FETCH";
@@ -98,7 +99,11 @@ export class NutritionLookupService {
       throw new BadRequestException("Look up by one thing: a barcode, a name, or a FoodData Central entry.");
     }
     // The item must be this house's; its unit says per 100 g or 100 ml.
-    const { suggestedBasis } = await this.nutrition.read(restaurantId, itemId);
+    const { suggestedBasis, item } = await this.nutrition.read(restaurantId, itemId);
+    // A supply has nothing to look up; nothing goes outbound for it.
+    if (!holdsContents(item.kind)) {
+      throw new BadRequestException("A supply is not eaten or drunk, so there is no nutrition to look up for it.");
+    }
 
     if (req.barcode) {
       const code = req.barcode.trim();

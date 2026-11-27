@@ -26,12 +26,15 @@ import {
   type NutritionLookup,
 } from '../../../services/api/inventory';
 import NutritionForm from './NutritionForm';
+import { holdsContents } from './useInventoryNextData';
 import { failureReason } from './iv-failure';
 import './nutrition-card.css';
 
 export interface LaneGood {
   id: string;
   name: string;
+  /** The good's kind; a supply holds nothing to state and is never looked up. */
+  kind?: string | null;
 }
 
 export interface NutritionLaneProps {
@@ -61,9 +64,11 @@ function laneKey(e: KeyboardEvent): 'next' | 'prev' | null {
 }
 
 export default function NutritionLane(props: NutritionLaneProps) {
-  // Staff never see the lane, whoever mounts it.
-  if (!props.canManage || props.goods.length === 0) return null;
-  return <Lane {...props} />;
+  // Staff never see the lane, whoever mounts it. A supply is never in it: its
+  // name would be sent to Open Food Facts and USDA for a thing nobody eats.
+  const goods = props.goods.filter((g) => holdsContents(g.kind));
+  if (!props.canManage || goods.length === 0) return null;
+  return <Lane {...props} goods={goods} />;
 }
 
 function Lane({ goods, restaurantId, onClose }: NutritionLaneProps) {
