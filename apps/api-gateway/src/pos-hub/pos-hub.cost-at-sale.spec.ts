@@ -18,16 +18,36 @@ type Row = Record<string, any>;
 
 function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boolean; logReadError?: boolean }) {
   const consumption = new Map<string, Row>();
-  const state = { lots: opts.lots ?? [] };
+  const state = { lots: opts.lots ?? [], lotLimits: [] as number[] };
   const client: any = {
     from(table: string) {
       const filters: Row = {};
+      const lotRules: Array<(l: Row) => boolean> = [];
+      let lotLimit: number | null = null;
       let patch: Row | null = null;
       let like: string | null = null;
       const q: any = {
         select: () => q,
         eq: (k: string, v: any) => {
           filters[k] = v;
+          return q;
+        },
+        // inventory_lots reads honour the filters, order and limit like PostgREST
+        gt: (k: string, v: number) => {
+          lotRules.push((l) => l[k] > v);
+          return q;
+        },
+        not: (k: string, op: string, v: any) => {
+          if (op === "is") lotRules.push((l) => (l[k] ?? null) !== v);
+          return q;
+        },
+        neq: (k: string, v: any) => {
+          lotRules.push((l) => l[k] !== v);
+          return q;
+        },
+        order: () => q,
+        limit: (n: number) => {
+          lotLimit = n;
           return q;
         },
         like: (_k: string, v: string) => {
@@ -62,12 +82,21 @@ function makeDb(opts: { lots?: Row[]; lastPrice?: number | null; lotsError?: boo
             );
             return Promise.resolve({ data, error: null }).then(res, rej);
           }
-          if (table === "inventory_lots")
+          if (table === "inventory_lots") {
+            // PostgREST returns at most 1000 rows whatever the read asked for
+            state.lotLimits.push(lotLimit ?? -1);
+            const rows = state.lots
+              .filter((l) => filters.inventory_id === undefined || l.inventory_id === filters.inventory_id)
+              .filter((l) => filters.stock_state === undefined || l.stock_state === filters.stock_state)
+              .filter((l) => lotRules.every((r) => r(l)))
+              .sort((a, b) => String(a.received_at).localeCompare(String(b.received_at)))
+              .slice(0, Math.min(lotLimit ?? 1000, 1000));
             return Promise.resolve(
               opts.lotsError
                 ? { data: null, error: { message: "lots down" } }
-                : { data: state.lots, error: null },
+                : { data: rows, error: null },
             ).then(res, rej);
+          }
           return Promise.resolve({ error: null }).then(res, rej);
         },
       };
@@ -128,6 +157,34 @@ describe("cost at sale (C1-C5)", () => {
       cost_source_order_id: "ord-1",
     });
     expect(JSON.stringify(out)).toContain('"costNotKept":0');
+  });
+
+  it("C1 depleted lots past the row cap do not hide the live shelf", async () => {
+    // 1100 spent lots, older than the 3 live ones: an unfiltered read returns
+    // the first 1000 (all spent) and the sale is costed over no shelf at all.
+    const spent = Array.from({ length: 1100 }, (_, i) =>
+      lot({ id: `s${i}`, qty: 0, source_order_id: `old-${i}`, received_at: `2026-01-01T00:${String(i).padStart(4, "0")}` }),
+    );
+    const live = [1, 2, 3].map((n) => lot({ id: `live-${n}`, qty: 2, source_order_id: `ord-${n}`, received_at: `2026-08-0${n}` }));
+    const { db, consumption } = makeDb({ lots: [...spent, ...live] });
+    await new PosHubService(db).ingest("r1", "generic_webhook", [check()]);
+    const row = consumption.get(KEY)!;
+    expect(row.cost_source_lot_id).toBe("live-1");
+    expect(row.cost_parts_capped).toBe(false);
+    expect((row.cost_parts as Row[]).map((p) => p.lot_id)).toEqual(["live-1", "live-2", "live-3"]);
+  });
+
+  it("C1 more live lots than the parts cap reads as capped, not as a short shelf", async () => {
+    const live = Array.from({ length: 30 }, (_, i) =>
+      lot({ id: `l${i}`, qty: 1, source_order_id: `o${i}`, received_at: `2026-08-${String(i + 1).padStart(2, "0")}` }),
+    );
+    const { db, consumption, state } = makeDb({ lots: live });
+    await new PosHubService(db).ingest("r1", "generic_webhook", [check()]);
+    const row = consumption.get(KEY)!;
+    // one past the cap is all the read needs to say "capped"
+    expect(state.lotLimits).toEqual([21]);
+    expect(row.cost_parts_capped).toBe(true);
+    expect(row.cost_parts ?? null).toBeNull();
   });
 
   it("C2 a re-priced lot moves neither the row nor the check's margin", async () => {

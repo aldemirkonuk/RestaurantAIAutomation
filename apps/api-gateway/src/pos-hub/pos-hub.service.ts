@@ -17,6 +17,7 @@ import { CanonicalCheck, CheckChannel } from "./pos-types";
 import { ADAPTERS } from "./pos-adapters";
 import { saleLineKeys, splitQty, fractionMl } from "./sale-line";
 import {
+  COST_PARTS_CAP,
   CostSnapshot,
   SaleCostSource,
   checkMarginFromRows,
@@ -2009,14 +2010,33 @@ export class PosHubService {
           .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", inventoryIds),
-        db
-          .from("inventory_lots")
-          .select(
-            "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, delivery_id, received_at, stock_state",
-          )
-          .eq("restaurant_id", restaurantId)
-          // pickSaleCostSource keeps live lots only
-          .in("inventory_id", inventoryIds),
+        // The same live, on-hand, priced, non-sample lots pickSaleCostSource
+        // keeps, filtered at the source and read per item, oldest first. An
+        // unfiltered read keeps depleted lots at qty 0 and passes PostgREST's
+        // 1000-row cap, so the parts would miss live lots and the sale would
+        // be restated over a shelf the rollup never read. One past the cap is
+        // enough to say "capped".
+        Promise.all(
+          inventoryIds.map((id) =>
+            db
+              .from("inventory_lots")
+              .select(
+                "id, inventory_id, qty, unit_cost, cost_provenance, source_order_id, delivery_id, received_at, stock_state",
+              )
+              .eq("restaurant_id", restaurantId)
+              .eq("inventory_id", id)
+              .eq("stock_state", "live")
+              .gt("qty", 0)
+              .not("unit_cost", "is", null)
+              .neq("cost_provenance", "sample")
+              .order("received_at", { ascending: true })
+              .order("id", { ascending: true })
+              .limit(COST_PARTS_CAP + 1),
+          ),
+        ).then((reads) => ({
+          data: reads.flatMap((r: any) => r.data ?? []),
+          error: reads.find((r: any) => r.error)?.error ?? null,
+        })),
       ]);
       const failed = inv.error || rollup.error || lots.error;
       if (failed) {

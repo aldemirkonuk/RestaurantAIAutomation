@@ -27,6 +27,12 @@ function makeDb(insertResult: (row: Row) => { error: any }) {
         select: () => q,
         eq: () => q,
         in: () => q,
+        // the sale-cost lots read is filtered, ordered and limited at the source
+        gt: () => q,
+        not: () => q,
+        neq: () => q,
+        order: () => q,
+        limit: () => q,
         upsert: async (row: Row) => {
           if (table === "wine_consumption_log") upserts.push(row);
           return { error: null };

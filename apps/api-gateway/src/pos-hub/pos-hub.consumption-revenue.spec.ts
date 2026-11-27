@@ -35,6 +35,12 @@ function makeDb(opts: { bottleMl?: number; pourMl?: number; menu?: number }) {
           return q;
         },
         in: () => q,
+        // the sale-cost lots read is filtered, ordered and limited at the source
+        gt: () => q,
+        not: () => q,
+        neq: () => q,
+        order: () => q,
+        limit: () => q,
         upsert: async () => ({ error: null }),
         update: (p: Row) => {
           patch = p;
