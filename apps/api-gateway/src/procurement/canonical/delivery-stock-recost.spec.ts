@@ -177,6 +177,7 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
 
     it("correcting line 2 posts line 2's item only", async () => {
       two();
+      db.answers.document_corrections = { data: [fix(2, "lines[1].netPrice", 44), fix(3, "lines[1].netAmount", 440)], error: null };
       await recost("lines[1].netAmount");
       expect(posted().map((c) => c.args.p_inventory_id)).toEqual([ITEM_B]);
     });
@@ -195,6 +196,54 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
       };
       await recost("lines[0].netAmount");
       expect(posted().length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("freight is shared by value, so correcting line 1 re-posts line 2's item too (r100)", async () => {
+      // A 10 x 10 (100), B 10 x 40 (400), freight 50: verify posted A at 11, B at 44.
+      // Line 1 becomes 550: the corrected paper gives A 57.895 and B 42.105.
+      two();
+      db.answers.procurement_documents = { data: [{ id: DOC, doc_number: "A-1", freight: 50 }], error: null };
+      db.answers.procurement_document_lines = {
+        data: [line({ unit_price: 10, line_total: 100 }), line({ line_no: 2, inventory_id: ITEM_B, unit_price: 40, line_total: 400 })],
+        error: null,
+      };
+      await recost("lines[0].netAmount");
+      const cost = Object.fromEntries(posted().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost]));
+      expect(cost[ITEM]).toBe(57.895);
+      expect(cost[ITEM_B]).toBe(42.105);
+      expect(restated().map((c) => c.args.p_inventory_id).sort()).toEqual([ITEM, ITEM_B].sort());
+    });
+
+    it("a line that names no item posts the EXACT set of items the delivery prices: one from a second invoice, one from line 2 (r100)", async () => {
+      // DOC line 1 names no item; DOC line 2 prices B; a second invoice prices A.
+      // Narrowing to "the last named line's item" would post B alone.
+      two();
+      db.answers.document_deliveries = {
+        data: [
+          { document_id: DOC, delivery_id: DEL, role: "invoice" },
+          { document_id: "inv-2", delivery_id: DEL, role: "invoice" },
+        ],
+        error: null,
+      };
+      db.answers.procurement_documents = {
+        data: [
+          { id: DOC, doc_number: "A-1" },
+          { id: "inv-2", doc_number: "A-2" },
+        ],
+        error: null,
+      };
+      db.answers.procurement_document_lines = {
+        data: [
+          line({ inventory_id: null }),
+          line({ line_no: 2, inventory_id: ITEM_B, unit_price: 40, line_total: 400 }),
+          line({ document_id: "inv-2", line_no: 1, inventory_id: ITEM, unit_price: 12, line_total: 120 }),
+        ],
+        error: null,
+      };
+      db.answers.document_corrections = { data: [fix(2, "lines[0].netPrice", 55), fix(3, "lines[0].netAmount", 550)], error: null };
+      await recost("lines[0].netAmount");
+      expect(posted().map((c) => c.args.p_inventory_id).sort()).toEqual([ITEM, ITEM_B].sort());
+      expect(Object.fromEntries(posted().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost]))).toEqual({ [ITEM]: 12, [ITEM_B]: 40 });
     });
 
     it("a failed read of the paper's lines revalues nothing (ADR 0020)", async () => {
