@@ -14,6 +14,7 @@ import { glassCostFrom } from "../pricing/margin-to-target";
 export type SaleCostBasis =
   | "invoice_lot_wac"
   | "invoice_lot_wac_partial"
+  | "agreed_lot_wac"
   | "last_purchase_price";
 
 /** The unit (one bottle) cost a sale was costed at, and where it came from. */
