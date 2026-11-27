@@ -1990,6 +1990,15 @@ export class HouseLettersService {
         if (!identity.sendable) throw new Error(identity.words || "the house's mailbox cannot send");
         if (!identity.grant) throw new Error("the house's mailbox holds no grant to send with");
         if (!to) throw new Error("the queued letter has no recipient recorded");
+        // g6b step 2 (DD-r107-11): the files are re-read and re-hashed here,
+        // after the claim and before the token; any difference refuses the
+        // whole letter (the catch below records it as failed, in words).
+        // Unwired (unit wiring only; CommunicationsModule always provides it),
+        // a letter that sealed files is refused rather than sent without them.
+        if (!this.files && headers.files !== undefined) {
+          throw new Error("its files could not be checked (not wired into the dispatcher), so nothing of it was sent");
+        }
+        const attachments = this.files ? await this.files.releaseFiles(restaurantId, id, headers.files) : [];
         const token = await this.oauth.getAccessToken(
           identity.grant.personUserId,
           restaurantId,
@@ -2008,6 +2017,7 @@ export class HouseLettersService {
           ...(typeof headers.references === "string" && headers.references
             ? { references: headers.references }
             : {}),
+          ...(attachments.length ? { attachments } : {}),
         });
         leftTheHouse = true;
         const { error: sentWriteError } = await this.db.client

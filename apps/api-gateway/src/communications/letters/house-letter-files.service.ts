@@ -40,7 +40,9 @@ import {
   OUTBOUND_ATTACHMENT_MAX_BYTES,
   OUTBOUND_ATTACHMENT_MAX_FILES,
   assertMayAttach,
+  assertWithinLimits,
   safeFilename,
+  type OutboundAttachment,
 } from "../mime-attachments";
 
 export const LETTER_FILES_BUCKET = "letter-files";
@@ -209,6 +211,54 @@ export class HouseLetterFilesService {
     if (error || (data ?? []).length !== files.length) {
       throw new Error(error?.message ?? `${(data ?? []).length} of ${files.length} files were tied`);
     }
+  }
+
+  /**
+   * RELEASE (g6b step 2): the files a queued letter may carry, re-read from the
+   * bucket and compared to what its seal held (`email_headers.files`). Rows are
+   * read by letter_id AND restaurant_id. THROWS, with the sentence the
+   * dispatcher records, if the rows are not exactly the sealed files, a path is
+   * outside the house, a row or its bytes differ in sha-256 or size, an object
+   * is missing, or the set is over the caps: the WHOLE letter is refused and
+   * nothing of it leaves. A letter that sealed no files and has none tied
+   * returns [] after one read.
+   */
+  async releaseFiles(restaurantId: string, letterId: string, sealed: unknown): Promise<OutboundAttachment[]> {
+    const refuse = (why: string): never => {
+      throw new Error(`Its files did not match what was approved (${why}), so the whole letter was held back and nothing of it was sent.`);
+    };
+    const list = sealed === undefined || sealed === null ? [] : sealed;
+    if (!Array.isArray(list) || list.length > OUTBOUND_ATTACHMENT_MAX_FILES) refuse("the sealed list is not readable");
+    const want = (list as unknown[]).map((f) => {
+      const x = (f ?? {}) as Record<string, unknown>;
+      if (typeof x.id !== "string" || typeof x.sha256 !== "string" || typeof x.size !== "number") refuse("the sealed list is not readable");
+      return { id: x.id as string, sha256: x.sha256 as string, size: x.size as number };
+    });
+    const { data, error } = await this.db.supabase
+      .from("house_letter_files")
+      .select("id, restaurant_id, path, name, content_type, size, sha256")
+      .eq("letter_id", letterId)
+      .eq("restaurant_id", restaurantId);
+    if (error) throw new Error(`Its files could not be read (${error.message}), so the whole letter was held back and nothing of it was sent.`);
+    const rows = new Map((data ?? []).map((r: any) => [String(r.id), r]));
+    if (rows.size !== want.length || want.some((w) => !rows.has(w.id))) refuse("a file it carries is missing, or one it does not carry is tied to it");
+    const out: OutboundAttachment[] = [];
+    for (const w of want) {
+      const r = rows.get(w.id);
+      if (r.restaurant_id !== restaurantId || !String(r.path ?? "").startsWith(`${restaurantId}/`)) refuse("a file is not in this house");
+      if (r.sha256 !== w.sha256 || Number(r.size) !== w.size) refuse("a file's record changed after the seal");
+      const { data: blob, error: readError } = await this.db.supabase.storage.from(LETTER_FILES_BUCKET).download(r.path);
+      if (readError || !blob) refuse(`the file ${safeFilename(r.name)} could not be read: ${readError?.message ?? "no bytes"}`);
+      const bytes = Buffer.from(await (blob as Blob).arrayBuffer());
+      if (bytes.length !== w.size || sha256(bytes) !== w.sha256) refuse(`the file ${safeFilename(r.name)} was replaced after the seal`);
+      out.push({ filename: String(r.name), contentType: String(r.content_type), content: bytes });
+    }
+    try {
+      assertWithinLimits(out);
+    } catch (err) {
+      refuse(err instanceof Error ? err.message : String(err));
+    }
+    return out;
   }
 
   private async forget(paths: string[]): Promise<void> {
