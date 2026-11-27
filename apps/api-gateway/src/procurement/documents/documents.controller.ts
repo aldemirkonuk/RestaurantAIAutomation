@@ -1278,29 +1278,52 @@ export class DocumentsController {
     if (!ids.length) return out;
 
     // Paged, because PostgREST caps a response at its max-rows setting and a
-    // capped page is indistinguishable from "these are all the lines".
+    // capped page is indistinguishable from "these are all the lines". The ids
+    // are cut into slices that are read together (at most SLICE_WORKERS at once),
+    // each slice paged on its own, so a long list no longer waits on one page
+    // after another. A document sits in exactly one slice and each slice is
+    // ordered by (document_id, line_no), so every paper's lines arrive complete
+    // and in order, as the serial read gave them.
     const PAGE = 1000;
-    const lineRows: Record<string, unknown>[] = [];
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await this.db
-        .getClient()
-        .from("procurement_document_lines")
-        .select(
-          "document_id, line_no, vendor_sku, description, vintage, format_ml, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, deposit, price_base_qty, price_base_uom",
-        )
-        .in("document_id", ids)
-        .order("document_id", { ascending: true })
-        .order("line_no", { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) {
-        this.logger.warn(
-          `list: the lines could not be read (${error.message}), so every row keeps its stored tie-out verdict`,
-        );
-        return out;
+    const SLICE_IDS = 25;
+    const SLICE_WORKERS = 4;
+    const slices: string[][] = [];
+    for (let i = 0; i < ids.length; i += SLICE_IDS) slices.push(ids.slice(i, i + SLICE_IDS));
+    const sliceLines: Record<string, unknown>[][] = slices.map(() => []);
+    let failed: string | null = null;
+    let next = 0;
+    const worker = async () => {
+      while (failed === null) {
+        const at = next++;
+        if (at >= slices.length) return;
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await this.db
+            .getClient()
+            .from("procurement_document_lines")
+            .select(
+              "document_id, line_no, vendor_sku, description, vintage, format_ml, qty, uom, pack_size, qty_bottles, free_goods_qty, unit_price, line_total, allowance, deposit, price_base_qty, price_base_uom",
+            )
+            .in("document_id", slices[at])
+            .order("document_id", { ascending: true })
+            .order("line_no", { ascending: true })
+            .range(from, from + PAGE - 1);
+          if (error) {
+            failed = error.message;
+            return;
+          }
+          sliceLines[at].push(...((data ?? []) as Record<string, unknown>[]));
+          if (!data || data.length < PAGE) break;
+        }
       }
-      lineRows.push(...((data ?? []) as Record<string, unknown>[]));
-      if (!data || data.length < PAGE) break;
+    };
+    await Promise.all(Array.from({ length: Math.min(SLICE_WORKERS, slices.length) }, worker));
+    if (failed !== null) {
+      this.logger.warn(
+        `list: the lines could not be read (${failed}), so every row keeps its stored tie-out verdict`,
+      );
+      return out;
     }
+    const lineRows = sliceLines.flat();
 
     const byDoc = new Map<string, Record<string, unknown>[]>();
     for (const l of lineRows) {
