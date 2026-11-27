@@ -162,7 +162,12 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
     return () => window.clearTimeout(t);
   }, [evidence]);
   useEffect(() => {
-    if (!wantTaste || evidence === null) return;
+    // Closed before the open finished: the ask dies with the card, so the next card is not scrolled to the taste.
+    if (evidence === null) {
+      setWantTaste(false);
+      return;
+    }
+    if (!wantTaste) return;
     const t = window.setTimeout(() => {
       tasteRef.current?.scrollIntoView?.({ block: 'nearest', behavior: openMs() === 0 ? 'auto' : 'smooth' });
       setWantTaste(false);
