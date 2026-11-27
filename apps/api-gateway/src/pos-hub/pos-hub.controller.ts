@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   HttpException,
@@ -14,6 +15,8 @@ import {
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Public } from "../auth/decorators/public.decorator";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { CatalogMatcherService } from "./catalog-matcher.service";
@@ -401,7 +404,17 @@ export class PosHubController {
   async checkMargin(
     @Param("restaurantId") restaurantId: string,
     @Param("checkId") checkId: string,
+    @CurrentUser() user: { role?: string | null },
   ) {
+    // A check's cost and margin is the house's money: the same gate as the
+    // vendor-prices and sealed-changes reads. Refused before any read, so a
+    // staff call costs no database call. The house itself is JwtAuthGuard's
+    // assertTenantMatch (path :restaurantId against the token).
+    if (!holdsHouseMoney(user?.role ?? null)) {
+      throw new ForbiddenException(
+        "A check's cost and margin is the house's money, so an owner or a manager reads it.",
+      );
+    }
     try {
       return await this.posHub.getCheckMargin(restaurantId, checkId);
     } catch (error) {
