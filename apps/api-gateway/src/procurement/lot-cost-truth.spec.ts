@@ -409,6 +409,34 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     expect(restates[1].args).toEqual(restates[0].args);
   });
 
+  it("the second sweep is not run for a paper in another currency than its order (r102 F3)", async () => {
+    // A USD order checked against an EUR paper: the paper's unit cost is a
+    // different money from the estimate the sales carry. The second sweep must
+    // refuse it as the first pass does, so it asks for fewer restatements than
+    // a paper in the order's own money.
+    const same = makeDb({ currency: "USD" });
+    await service(same.db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+    const foreign = makeDb({ currency: "USD" });
+    await service(foreign.db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    } as any);
+
+    const count = (c: { rpc: { name: string }[] }) =>
+      c.rpc.filter((x) => x.name === "restate_sale_cost").length;
+    expect(count(same.calls)).toBe(2);
+    expect(count(foreign.calls)).toBeLessThan(count(same.calls));
+  });
+
   it("an equal-quantity price correction still reaches the lot", async () => {
     // ledgerDelta is 0 here (accepted == already stocked). Pre-fix this was the
     // silent case: no movement, so the corrected price landed nowhere at all.

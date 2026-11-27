@@ -6877,11 +6877,28 @@ export class ProcurementService {
     // window to the few calls between here and the first pass; it does not
     // close it (that needs the sale insert to read a verified order's cost).
     // Best effort: the receipt is already verified, so a failure is logged and
-    // never undoes it.
+    // never undoes it. A paper in another money is not swept either (r102 F3,
+    // #2531): its unit cost is a different money from the estimate the sales
+    // carry, so the sweep must refuse it exactly as the first pass does. Both
+    // currencies must be stated and differ; an order that states none cannot
+    // tell, and keeps today's behaviour.
+    const sweepInvoiceMoney =
+      (body.invoiceCurrency as string | null | undefined)
+        ?.trim()
+        .toUpperCase() || null;
+    const sweepOrderMoney =
+      ((orderRow as any).currency as string | null | undefined)
+        ?.trim()
+        .toUpperCase() || null;
+    const sweepInForeignMoney =
+      !!sweepInvoiceMoney &&
+      !!sweepOrderMoney &&
+      sweepInvoiceMoney !== sweepOrderMoney;
     if (
       match &&
       match.effectiveUnitCost != null &&
-      (orderRow as any).inventory_id
+      (orderRow as any).inventory_id &&
+      !sweepInForeignMoney
     ) {
       const { error: sweepError } = await this.databaseService.supabase.rpc(
         "restate_sale_cost",
