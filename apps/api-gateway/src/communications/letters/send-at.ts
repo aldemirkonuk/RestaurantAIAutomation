@@ -1,15 +1,8 @@
 /**
- * Send at a house-clock time (r110 mail-gap g1).
- *
- * The writer picks a CHOICE ("in an hour", "tomorrow 08:00", "Monday 08:00"),
- * never an instant: the client's clock and zone are not the house's. The
- * server reads the choice as a wall time in the house's own zone first and
- * only then turns it into UTC, so "08:00" is 08:00 in the house on both sides
- * of a DST change. A wall time that does not exist (inside a spring-forward
- * gap) goes to the next minute that does.
- *
- * Pure: no database, no clock. `queue` reads the zone and the time and passes
- * them in.
+ * Send at a house-clock time (r110 mail-gap g1). A CHOICE, never a client
+ * instant: read as a wall time in the house's zone first, then turned into
+ * UTC, so 08:00 is 08:00 on both sides of DST; a wall time inside a
+ * spring-forward gap goes to the next minute that exists. Pure.
  */
 import { zonedWallClockToUtc } from "../../calendar/zoned-time";
 

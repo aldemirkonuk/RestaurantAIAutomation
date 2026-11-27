@@ -128,7 +128,7 @@ export class QueueLetterDto {
   @ApiPropertyOptional({
     enum: SEND_AT_CHOICES,
     description:
-      "Send at a house-clock time (r110 g1): a choice key, never a client clock. The server reads it in the house's own zone (restaurants.timezone, else its country's only zone) and refuses it in words when the house has no zone. Owners and managers only; a request or a released request carrying it is refused (400). Not part of the seal: the seal is over the letter's words.",
+      "A choice on the house's clock (r110 g1), never a client clock. Owners and managers only; not part of the seal.",
   })
   @IsOptional()
   @IsIn(SEND_AT_CHOICES)

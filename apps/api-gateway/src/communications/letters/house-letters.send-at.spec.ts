@@ -1,14 +1,7 @@
 /**
- * Send at a house-clock time (r110 mail-gap g1).
- *
- * The writer picks a choice, the server reads it on the house's clock: local
- * wall time first, then UTC, so 08:00 stays 08:00 across a DST change, and a
- * minute that does not exist goes to the next one that does. Owners and
- * managers only; a house with no zone is refused in words. A letter set for
- * later re-reads its writer's standing when it is due.
- *
- * Queue: the by-table stub of a-reply-from-mail-answers-its-letter.spec.ts.
- * Dispatch: the filtering fake database of queued-letter-keeps-its-mailbox.spec.ts.
+ * Send at a house-clock time (r110 mail-gap g1). Queue uses the by-table stub
+ * of a-reply-from-mail-answers-its-letter.spec.ts; dispatch the filtering fake
+ * database of queued-letter-keeps-its-mailbox.spec.ts.
  */
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { HouseLettersService, LETTER_STATUS } from "./house-letters.service";
