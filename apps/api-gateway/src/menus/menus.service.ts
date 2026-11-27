@@ -27,7 +27,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
-import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
+import { flagReasonOf, isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import { kindNoun, matchHouseGoods } from "./house-good-match";
 import {
   setHouseMenuPrice,
@@ -1582,6 +1582,76 @@ export class MenusService {
   }
 
   /**
+   * Brings a discarded line back (r107 menu-4, DD-r106-18). The undo of
+   * `discardMenuItem`: the row was kept. A discard writes only the status and
+   * leaves `review_notes`, so a line that was flagged (a manager's correction,
+   * a line added by hand, one past the free plan's limit) goes back to
+   * `flagged` and keeps saying why; any other line goes back to `approved`.
+   * ONLY the line's status is written: restoring never
+   * touches the house's inventory or its sale state; a drink a manager took off
+   * sale stays off sale.
+   *   - another house's line, or none: 404 (the house is the caller's own);
+   *   - a line that is not discarded: 409, nothing changed;
+   *   - a line whose menu is no longer the house's current one: 409 (it was
+   *     superseded; the line stays on that kept menu, which is not the live one).
+   */
+  async restoreMenuItem(
+    restaurantId: string,
+    menuItemId: string,
+  ): Promise<{ menuItemId: string; status: "approved" | "flagged" }> {
+    const { data: row, error: readErr } = await this.dbService.supabase
+      .from("menu_items")
+      .select("id, restaurant_id, status, menu_id, review_notes")
+      .eq("id", menuItemId)
+      .maybeSingle();
+    if (readErr) {
+      throw new InternalServerErrorException(
+        `The menu line could not be looked up just now, so it was not put back. Nothing was changed. Try again (${readErr.message}).`,
+      );
+    }
+    if (!row || row.restaurant_id !== restaurantId) {
+      throw new NotFoundException("No menu item of this restaurant");
+    }
+    if (row.status !== "discarded") {
+      throw new ConflictException("This line is not taken off the list, so there is nothing to put back. Nothing was changed.");
+    }
+    const { data: menu, error: menuErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status")
+      .eq("id", row.menu_id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (menuErr) {
+      throw new InternalServerErrorException(
+        `The menu this line was on could not be looked up just now, so it was not put back. Nothing was changed. Try again (${menuErr.message}).`,
+      );
+    }
+    if (!menu || menu.status !== "active") {
+      throw new ConflictException(
+        "The menu this line was on is no longer the current one, so it cannot be put back on the menu. Nothing was changed.",
+      );
+    }
+    const why = flagReasonOf("flagged", row.review_notes);
+    const status: "approved" | "flagged" = why && why.reason !== "unknown" ? "flagged" : "approved";
+    const { data: written, error: writeErr } = await this.dbService.supabase
+      .from("menu_items")
+      .update({ status })
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "discarded")
+      .select("id");
+    if (writeErr) {
+      throw new InternalServerErrorException(
+        `The menu line could not be put back just now. It is still off the list and nothing was changed. Try again (${writeErr.message}).`,
+      );
+    }
+    if (!written || written.length === 0) {
+      throw new ConflictException("This line changed while it was being put back, so nothing was changed. Read the menu again.");
+    }
+    return { menuItemId, status };
+  }
+
+  /**
    * Applies a manager's inline correction to one menu_items field.
    *
    * The edit takes effect immediately for this restaurant's own inventory
@@ -2626,6 +2696,33 @@ export class MenusService {
       throw new ConflictException("This read is no longer a failed draft, so it was not taken off the list. Nothing was changed.");
     }
     return { menuId, removed: true };
+  }
+
+  /**
+   * Brings a failed read taken off the list back (r107 menu-4, DD-r106-16). The
+   * undo of `removeFailedRead`: only a read that was taken off (archived, a failed
+   * read, never current) returns, as the failed draft it was; who retired it and
+   * when are cleared. Anything else is a 409 and nothing is changed; another
+   * house's menu is a 404.
+   */
+  async restoreFailedRead(restaurantId: string, menuId: string): Promise<{ menuId: string; restored: true }> {
+    const row = await this.readVersionRow(restaurantId, menuId);
+    if (!isRemovedFailedRead(row)) {
+      throw new ConflictException("This read is not one that was taken off the list, so there is nothing to put back. Nothing was changed.");
+    }
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .update({ status: "draft", retired_at: null, retired_by: null })
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .eq("read_state", "failed")
+      .eq("status", "archived")
+      .select("id");
+    if (error) throw new InternalServerErrorException(`The read was not put back on the list: ${error.message}. Nothing was changed.`);
+    if (!data || data.length === 0) {
+      throw new ConflictException("This read is no longer off the list, so nothing was put back. Nothing was changed.");
+    }
+    return { menuId, restored: true };
   }
 
   /** Runs a read of a menu's row; if only `read_warnings` is missing, reads again without it. */

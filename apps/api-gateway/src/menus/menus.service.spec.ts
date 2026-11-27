@@ -3410,3 +3410,89 @@ describe("a failed read is taken off the kept list, retired and never deleted (r
     await expect(service.removeFailedRead("rest-1", "m-failed", "user-1")).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe("a discarded line, and a failed read taken off the list, can be put back (r107 menu-4, DD-r106-18, DD-r106-16)", () => {
+  const house = (): Record<string, Row[]> => ({
+    restaurant_menus: [
+      { id: "m-cur", restaurant_id: "rest-1", status: "active", read_state: "done", made_current_at: "2026-09-21T12:00:00Z" },
+      { id: "m-old", restaurant_id: "rest-1", status: "archived", read_state: "done", made_current_at: "2026-08-01T12:00:00Z" },
+      { id: "m-gone", restaurant_id: "rest-1", status: "archived", read_state: "failed", retired_at: "2026-09-22T12:00:00Z", retired_by: "user-1", source_path: "rest-1/x.pdf" },
+      { id: "m-failed", restaurant_id: "rest-1", status: "draft", read_state: "failed" },
+      { id: "m-done", restaurant_id: "rest-1", status: "archived", read_state: "done", made_current_at: "2026-08-02T12:00:00Z", retired_at: "2026-08-03T12:00:00Z" },
+      { id: "m-other", restaurant_id: "rest-2", status: "archived", read_state: "failed", retired_at: "2026-09-22T12:00:00Z" },
+    ],
+    restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", master_wine_id: "mw-1", wine_name: "Barolo", menu_price_current: 60, is_active: false }],
+    users: [{ user_id: "user-1", name: "Aylin" }],
+    restaurants: [{ id: "rest-1", timezone: "UTC" }],
+    menu_items: [
+      { id: "l-off", menu_id: "m-cur", restaurant_id: "rest-1", name: "Barolo", status: "discarded", inventory_item_id: "inv-1" },
+      { id: "l-on", menu_id: "m-cur", restaurant_id: "rest-1", name: "Chianti", status: "approved" },
+      { id: "l-old", menu_id: "m-old", restaurant_id: "rest-1", name: "Soave", status: "discarded" },
+      { id: "l-other", menu_id: "m-cur", restaurant_id: "rest-2", name: "Rioja", status: "discarded" },
+      { id: "l-fix", menu_id: "m-cur", restaurant_id: "rest-1", name: "Nebbiolo", status: "discarded", review_notes: "Manager corrected bottle_price" },
+      { id: "l-hand", menu_id: "m-cur", restaurant_id: "rest-1", name: "Gavi", status: "discarded", review_notes: "Manually added during review" },
+      { id: "l-free", menu_id: "m-cur", restaurant_id: "rest-1", name: "Orvieto", status: "discarded", review_notes: "Free tier: past the limit" },
+      { id: "l-odd", menu_id: "m-cur", restaurant_id: "rest-1", name: "Verdicchio", status: "discarded", review_notes: "something unrecognised" },
+    ],
+  });
+
+  it("puts a discarded line of the current menu back, writing only its status: the house's sale state is untouched", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    await expect(service.restoreMenuItem("rest-1", "l-off")).resolves.toEqual({ menuItemId: "l-off", status: "approved" });
+    expect(tables.menu_items.find((l) => l.id === "l-off")!.status).toBe("approved");
+    expect(tables.restaurant_inventory[0]).toMatchObject({ is_active: false, menu_price_current: 60 });
+    expect((await service.getMenu("rest-1")).items.map((l: { id: string }) => l.id).sort()).toEqual(["l-off", "l-on"]);
+  });
+
+  it("a discarded line that was flagged comes back flagged with its reason, not laundered into 'as read' (r107 menu-4 follow-up)", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    for (const [id, status] of [["l-fix", "flagged"], ["l-hand", "flagged"], ["l-free", "flagged"], ["l-odd", "approved"]] as const) {
+      await expect(service.restoreMenuItem("rest-1", id)).resolves.toEqual({ menuItemId: id, status });
+      expect(tables.menu_items.find((l) => l.id === id)!.status).toBe(status);
+    }
+    const items = (await service.getMenu("rest-1")).items as Array<Record<string, unknown>>;
+    expect(items.find((l) => l.id === "l-fix")).toMatchObject({ status: "flagged", flag_reason: "corrected", flag_field: "bottle_price" });
+    expect(items.find((l) => l.id === "l-free")).toMatchObject({ status: "flagged", flag_reason: "past_free_limit" });
+    expect(items.find((l) => l.id === "l-hand")).toMatchObject({ status: "flagged", flag_reason: "added_by_hand" });
+  });
+
+  it("another house's line is a 404; a line that is not discarded is a 409; both stay as they were", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    await expect(service.restoreMenuItem("rest-1", "l-other")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.restoreMenuItem("rest-1", "missing")).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.restoreMenuItem("rest-1", "l-on")).rejects.toBeInstanceOf(ConflictException);
+    expect(tables.menu_items.find((l) => l.id === "l-other")!.status).toBe("discarded");
+  });
+
+  it("a line on a menu that is no longer current is a 409 in words (superseded), and stays discarded", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    const err: any = await service.restoreMenuItem("rest-1", "l-old").catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toMatch(/no longer the current one/);
+    expect(err.message).toMatch(/Nothing was changed/);
+    expect(tables.menu_items.find((l) => l.id === "l-old")!.status).toBe("discarded");
+  });
+
+  it("a failed read taken off the list returns as the failed draft it was, with who and when cleared", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    expect((await service.listVersions("rest-1")).versions.map((v) => v.menuId)).not.toContain("m-gone");
+    await expect(service.restoreFailedRead("rest-1", "m-gone")).resolves.toEqual({ menuId: "m-gone", restored: true });
+    expect(tables.restaurant_menus.find((m) => m.id === "m-gone")).toMatchObject({ status: "draft", retired_at: null, retired_by: null, read_state: "failed", source_path: "rest-1/x.pdf" });
+    expect((await service.listVersions("rest-1")).versions.map((v) => v.menuId)).toContain("m-gone");
+  });
+
+  it("only a read that was taken off comes back: a menu that was never removed, or one once current, is a 409; another house's is a 404", async () => {
+    const tables = house();
+    const service = makeService(tables);
+    for (const id of ["m-cur", "m-failed", "m-done"]) {
+      await expect(service.restoreFailedRead("rest-1", id)).rejects.toBeInstanceOf(ConflictException);
+    }
+    await expect(service.restoreFailedRead("rest-1", "m-other")).rejects.toBeInstanceOf(NotFoundException);
+    expect(tables.restaurant_menus.find((m) => m.id === "m-done")!.status).toBe("archived");
+  });
+});
