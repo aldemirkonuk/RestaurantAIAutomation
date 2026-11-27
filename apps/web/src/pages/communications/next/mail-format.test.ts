@@ -875,3 +875,16 @@ describe('lettersLast30 (r104 mail-gap g5)', () => {
     expect(lettersLast30({ inLast30: 0, inToday: 0 })).toBe(0);
   });
 });
+
+import { threadTitle } from './mail-format';
+
+describe('threadTitle (r110 mail-r110-7)', () => {
+  it('keeps a real subject, as written', () => {
+    expect(threadTitle('Order 118', 'Aegean Foods')).toBe('Order 118');
+  });
+  it('names whose letter it is when the subject is null or blank', () => {
+    expect(threadTitle(null, 'Aegean Foods')).toBe('A letter from Aegean Foods, with no subject line');
+    expect(threadTitle('   ', 'Aegean Foods')).toBe('A letter from Aegean Foods, with no subject line');
+    expect(threadTitle('', null)).toBe('A letter with no subject line');
+  });
+});

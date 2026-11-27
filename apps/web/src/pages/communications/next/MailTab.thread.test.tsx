@@ -286,6 +286,14 @@ describe('a thread', () => {
     expect(screen.queryByTestId('write-thread-reply')).toBeNull();
   });
 
+  it('a vendor thread with a blank subject is titled by whose letter it is, never "No subject" (r110 mail-r110-7)', async () => {
+    routes['/mail/thread'] = () => ({ ...THREAD, subject: '  ' });
+    mount('/communications?thread=gm%3Aabc');
+    const h = await screen.findByRole('heading', { level: 2 });
+    expect(h).toHaveTextContent('A letter from Bodega Álvaro, with no subject line');
+    expect(screen.queryByText('No subject')).toBeNull();
+  });
+
   it('a thread that is not this house\'s says so', async () => {
     routes['/mail/thread'] = () => ({ key: 'gm:zzz', subject: null, person: null, order: null, messages: [], before: null });
     mount('/communications?thread=gm%3Azzz');

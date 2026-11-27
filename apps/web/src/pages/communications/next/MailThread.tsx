@@ -50,6 +50,7 @@ import {
   type MailAnswer,
   type MailMessage,
   type MailThreadsPage,
+  threadTitle,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
 import { FadeAway, MailMotionStyles, prefersReducedMotion, useArriveFocus, useEnteringKeys } from './mail-motion';
@@ -481,7 +482,7 @@ export function MailThread({
                 overflowWrap: 'anywhere',
               }}
             >
-              {head.subject ?? 'No subject'}
+              {threadTitle(head.subject, head.person?.name)}
             </h2>
             <p className="flex flex-wrap items-baseline gap-2" style={{ margin: 0, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
               {head.person ? (
