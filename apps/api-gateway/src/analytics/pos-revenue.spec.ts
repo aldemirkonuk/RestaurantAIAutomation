@@ -448,6 +448,55 @@ describe("GoalsService.getPosRevenueWindow", () => {
     expect(result.prior!.dailySeries).toEqual([{ date: "2026-07-20", revenue: 100 }]);
   });
 
+  describe("compare=prior when the till began inside the prior window", () => {
+    const day = `${LA_TODAY}T19:00:00Z`;
+    const priorRows = [
+      { total: 70, opened_at: "2026-07-20T19:00:00Z", closed_at: "2026-07-20T19:00:00Z", items: [] },
+      { total: 30, opened_at: "2026-07-20T19:30:00Z", closed_at: "2026-07-20T19:30:00Z", items: [] },
+    ];
+    const till = (firstOpened: string, prior: any[]) =>
+      makeGoals({
+        pos_checks: (call) =>
+          call === 0
+            ? [{ id: "c1", opened_at: firstOpened, closed_at: firstOpened }]
+            : call === 1
+              ? [{ total: 200, opened_at: day, closed_at: day, items: [] }]
+              : prior,
+      });
+
+    it("withholds the prior sum and says when the till began, when the first check is 11 days into the prior", async () => {
+      // Prior is 2026-07-04 .. 2026-08-02; the first check is on 2026-07-14.
+      const { service, client } = till("2026-07-14T19:00:00Z", priorRows);
+      const { prior } = await service.getPosRevenueWindow("r1", 30, "prior");
+      expect(prior!.from).toBe("2026-07-04");
+      expect(prior!.revenue).toBeNull();
+      expect(prior!.checkCount).toBeNull();
+      expect(prior!.since).toBe("2026-07-14");
+      // The days that were rung are still there, sparse.
+      expect(prior!.dailySeries).toEqual([{ date: "2026-07-20", revenue: 100 }]);
+      // The first check is the earliest by opened_at, unwindowed.
+      const probe = client.calls.filter((c: any) => c.table === "pos_checks" && c.method === "order")[0];
+      expect(probe.args[0]).toBe("opened_at");
+      expect(probe.args[1]).toEqual({ ascending: true });
+    });
+
+    it("says nothing was rung (null, not 0) when the till began after the prior window ended", async () => {
+      const { service } = till("2026-08-10T19:00:00Z", []);
+      const { prior } = await service.getPosRevenueWindow("r1", 30, "prior");
+      expect(prior!.revenue).toBeNull();
+      expect(prior!.checkCount).toBeNull();
+      expect(prior!.since).toBe("2026-08-10");
+      expect(prior!.dailySeries).toEqual([]);
+    });
+
+    it("sums the prior as before, with no `since`, when the till began before it", async () => {
+      const { service } = till("2026-06-01T19:00:00Z", priorRows);
+      const { prior } = await service.getPosRevenueWindow("r1", 30, "prior");
+      expect(prior!.revenue).toBeCloseTo(100);
+      expect(prior!.since).toBeUndefined();
+    });
+  });
+
   it("without compare=prior, or with no POS or no zone, the payload carries no prior", async () => {
     const { service } = makeGoals({ pos_checks: [] });
     expect((await service.getPosRevenueWindow("r1", 30)).prior).toBeUndefined();
