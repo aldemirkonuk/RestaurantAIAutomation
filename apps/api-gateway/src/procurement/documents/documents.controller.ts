@@ -67,6 +67,8 @@ import {
   documentVerifySealArgs,
 } from "./document-seal";
 import { CORRECTABLE_PATHS, splitPath } from "../canonical/correctable-paths";
+import { tieOutStatement, TieOutPaper } from "./statement-tieout";
+import type { ParsedStatementEntry } from "./parsed-document";
 import {
   assertHoldsHouseMoney,
   doorEchoOf,
@@ -1740,6 +1742,78 @@ export class DocumentsController {
               : null,
         };
       }),
+    };
+  }
+
+  @Get(":id/statement-tieout")
+  @ApiOperation({
+    summary: "A vendor's statement against this house's papers",
+    description:
+      "Owner and manager only. Each invoice or credit row the statement lists is matched to this house's paper from the same vendor by document number, never by amount alone, and compared in cents in one money: checked_same, on_file_not_checked, amount_differs (differsBy), never_received, or not_compared (with a reason). notOnStatement lists the vendor's papers dated inside the statement's span that it does not list. Payments are ignored and nothing is marked paid (r109 g5).",
+  })
+  async statementTieout(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        `A vendor's statement is tied out for the owner and managers of the house. You are signed in as ${user.role ?? "no role"}.`,
+        HttpStatus.FORBIDDEN,
+      );
+    const client = this.db.getClient();
+    const { data: paper, error: paperErr } = await client
+      .from("procurement_documents")
+      .select("id, doc_type, currency, provider_id, extracted")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (paperErr)
+      throw new HttpException(
+        `The statement could not be read, so nothing was tied out: ${paperErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!paper)
+      throw new HttpException(
+        "This paper is not one of this house's, so nothing was tied out.",
+        HttpStatus.NOT_FOUND,
+      );
+    const p = paper as { doc_type?: string | null; currency?: string | null; provider_id?: string | null; extracted?: unknown };
+    if (p.doc_type !== "statement")
+      throw new HttpException(
+        `This paper was read as ${p.doc_type ?? "no kind"}, not a vendor's statement, so there is nothing to tie out.`,
+        HttpStatus.CONFLICT,
+      );
+    const raw = (p.extracted as { statementEntries?: unknown } | null)?.statementEntries;
+    const entries = (Array.isArray(raw) ? raw : []).filter(
+      (e): e is ParsedStatementEntry =>
+        !!e && typeof e === "object" && ["invoice", "credit", "payment"].includes((e as { kind?: string }).kind ?? ""),
+    );
+    const providerId = p.provider_id ?? null;
+    const papers: TieOutPaper[] = [];
+    if (providerId && entries.length) {
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await client
+          .from("procurement_documents")
+          .select("id, doc_type, doc_number, doc_date, total, currency, status")
+          .eq("restaurant_id", user.restaurantId)
+          .eq("provider_id", providerId)
+          .in("doc_type", ["invoice", "credit_memo"])
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error)
+          throw new HttpException(
+            `The vendor's papers could not be read, so nothing was tied out: ${error.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        papers.push(...((data ?? []) as TieOutPaper[]));
+        if (!data || data.length < PAGE) break;
+      }
+    }
+    const out = tieOutStatement(entries, papers, { vendorNamed: !!providerId, currency: p.currency ?? null });
+    return {
+      currency: (p.currency ?? "").trim().toUpperCase() || null,
+      providerId,
+      notCompared: providerId ? null : ("vendor_unknown" as const),
+      entriesRead: entries.length,
+      ...out,
     };
   }
 

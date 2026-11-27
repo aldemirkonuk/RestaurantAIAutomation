@@ -725,3 +725,36 @@ describe("the contract carries what the paper prints (findings 3, 4, 6, 7)", () 
     expect(doc.tiesOut).toBe(true);
   });
 });
+
+describe("DocumentExtractorService — a statement's rows (r109 g5)", () => {
+  it("keeps invoice, credit and payment rows with the number as printed, unsigned, ISO day only", () => {
+    const d = svc.normalize(
+      json({
+        docType: "statement",
+        lines: [],
+        statementEntries: [
+          { docNumber: "INV-00123", docDate: "2026-11-02", amount: 312.4, kind: "invoice" },
+          { docNumber: "CR-7", docDate: "2026-11-05T00:00:00Z", amount: -40, kind: "credit" },
+          { docNumber: null, docDate: "Nov 9", amount: 500, kind: "payment" },
+          { docNumber: "X", amount: 9, kind: "balance" },
+          { docNumber: null, amount: null, kind: "invoice" },
+        ],
+      }),
+      "test",
+    );
+    expect(d.statementEntries).toEqual([
+      { docNumber: "INV-00123", docDate: "2026-11-02", amount: 312.4, kind: "invoice" },
+      { docNumber: "CR-7", docDate: "2026-11-05", amount: 40, kind: "credit" },
+      { docNumber: null, docDate: null, amount: 500, kind: "payment" },
+    ]);
+    expect(d.warnings.join(" ")).toMatch(/Dropped 2 statement row/);
+  });
+
+  it("carries no statement rows on an invoice, whatever the model returned", () => {
+    const d = svc.normalize(
+      json({ docType: "invoice", lines: [], statementEntries: [{ docNumber: "1", amount: 1, kind: "invoice" }] }),
+      "test",
+    );
+    expect(d.statementEntries).toBeUndefined();
+  });
+});

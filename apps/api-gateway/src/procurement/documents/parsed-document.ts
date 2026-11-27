@@ -132,6 +132,15 @@ export interface ParsedLine {
   poNumber?: string | null;
 }
 
+/** One row of a vendor statement: the paper it names and the amount it says. */
+export interface ParsedStatementEntry {
+  docNumber: string | null;
+  docDate: string | null;
+  /** As printed, unsigned; `kind` says which way it runs. */
+  amount: number | null;
+  kind: "invoice" | "credit" | "payment";
+}
+
 export interface ParsedDocument {
   docType: DocType;
   /** Vendor's own number — what their AR desk quotes on the phone. */
@@ -280,6 +289,13 @@ export interface ParsedDocument {
    * and the mapper does not fabricate a row that would reproduce the total.
    */
   taxBreakdown?: ParsedTaxBreakdownRow[];
+
+  /**
+   * r109 g5: a vendor STATEMENT's rows, as printed, for docType "statement"
+   * only (absent on every other paper). Tied out against the house's own
+   * papers by `statement-tieout.ts`; nothing here marks anything paid.
+   */
+  statementEntries?: ParsedStatementEntry[];
 
   lines: ParsedLine[];
 
