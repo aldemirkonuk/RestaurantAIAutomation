@@ -18,9 +18,7 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import { draftKey, dropDraft } from './drafts';
 import { recipesApi, type PreviewCostBody, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
-import { settingsApi } from '../../../../services/api/settings';
 import { managesHouse } from '../../../communications/next/cm-format';
-import { fmtMoney } from '../../../receipts/next/rc2-format';
 
 export const recipeKey = (rid: string | null | undefined, cocktailId: string) =>
   ['recipes', rid ?? null, cocktailId] as const;
@@ -152,25 +150,9 @@ export function useCanEditRecipe(): boolean {
 }
 
 /**
- * The house's money, said the way /receipts says it (`fmtMoney`: ₺ for lira,
- * the code where a sign is shared). The cellar's own `money()`
- * (`cellar-format.ts`, the `money` function) prints a bare `$` for every
- * house, which is wrong for a house in lira, so the sheet does not use it.
+ * The house's money: the cellar's one hook (`../useHouseMoney`), re-exported
+ * so the sheet and the cocktail list keep importing it from here. It lived
+ * here until the whole cellar moved onto it (r9, 2026-11-12); one copy, so
+ * the sheet and the cellar can never say one figure two ways.
  */
-export function useHouseMoney() {
-  const { activeRestaurantId } = useAuth();
-  const q = useQuery({
-    queryKey: ['settings', 'currency', activeRestaurantId ?? null],
-    enabled: Boolean(activeRestaurantId),
-    queryFn: () => settingsApi.houseCurrency(),
-    staleTime: 5 * 60_000,
-  });
-  const unread = q.isError || (q.data !== undefined && q.data.readable === false);
-  const code = q.data?.readable ? q.data.code : null;
-  return (n: number | null | undefined): string => {
-    if (n == null || !Number.isFinite(n)) return '—';
-    if (q.isLoading) return '…';
-    if (unread) return `${n.toFixed(2)} (the house's money could not be read)`;
-    return fmtMoney(n, code);
-  };
-}
+export { useHouseMoney } from '../useHouseMoney';
