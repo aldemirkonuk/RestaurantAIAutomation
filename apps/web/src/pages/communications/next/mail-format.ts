@@ -114,6 +114,22 @@ export const READ_SCOPE_HOLD = {
   two: 'min-h-[127px] md:min-h-[46px]',
 } as const;
 export const VENDOR_ONLY_LINE = 'This tab shows vendor mail only.';
+/**
+ * What the tab says it reads (r105 mail-7). The consent decides what Mudavym
+ * reads; the rows decide what is listed. Letters already kept from team and
+ * guests (a reply the house sent them, kept when the wider reading was
+ * stopped) are listed without the wider reading, so the line must not claim
+ * "vendor mail only" above them. It never widens the reader: it says the
+ * reading is vendors' and names what else is listed.
+ */
+export function readScopeLine(reads: boolean, storedKinds: readonly string[] | null): string {
+  if (reads) return READS_ALL_LINE;
+  const team = storedKinds?.includes('team') ?? false;
+  const guest = storedKinds?.includes('guest') ?? false;
+  if (!team && !guest) return VENDOR_ONLY_LINE;
+  const who = team && guest ? 'your team and guests' : team ? 'your team' : 'guests';
+  return `Mudavym reads only vendors\u2019 mail. Letters already kept with ${who} are listed here too.`;
+}
 export const READS_ALL_LINE = 'This tab shows the letters that arrived in the mailbox: vendors, team and guests.';
 /**
  * Agreeing to the wide reading does not switch the house's own inbox on: the
