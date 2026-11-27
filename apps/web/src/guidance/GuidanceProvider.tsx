@@ -157,7 +157,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const location = useLocation()
   const queryClient = useQueryClient()
   const userId = useAuthStore((s) => s.user?.userId) ?? null
-  const { preferences, updatePreferences } = useUserPreferences()
+  const { preferences, updatePreferences, isPlaceholderData } = useUserPreferences()
   const state = useMemo(
     () => mergeGuidance(preferences.guidance),
     [preferences.guidance],
@@ -262,6 +262,14 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     const pageId = resolveGuidancePageId(location.pathname, location.search)
     if (!pageId) return null
 
+    // Until the account has answered, `state` is the `{}` placeholder, so every
+    // page reads 'unseen' and a tip that was already dismissed draws its strip
+    // for a second and then takes it away (a layout shift). Offer nothing yet,
+    // unless this browser's own record says the page is unseen.
+    if (isPlaceholderData && readLocalGuidance()?.pages?.[pageId]?.tip !== 'unseen') {
+      return null
+    }
+
     const page = state.pages[pageId] ?? defaultPageState()
     if (page.tip !== 'unseen') return null
     if (page.snooze_until && new Date(page.snooze_until).getTime() > Date.now()) {
@@ -271,7 +279,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     return pageId
     // sessionTick forces recompute after skip/offer mutations
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, tourRunning, location.pathname, location.search, sessionTick])
+  }, [state, tourRunning, location.pathname, location.search, sessionTick, isPlaceholderData])
 
   useEffect(() => {
     if (!tipVisibleFor) return
