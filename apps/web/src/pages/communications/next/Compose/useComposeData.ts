@@ -40,6 +40,13 @@ export interface SenderIdentity {
   subdomain: { provisioned: boolean; tier: 'paid'; words: string };
   categories: string[];
   /**
+   * Where the house's conversation lives (HouseSenderService.conversation).
+   * `answerReachesMail` (r36 mail audit, gap 1) is false when a vendor's
+   * answer to a letter written here goes to a mailbox nothing reads; absent
+   * on a gateway that predates it, and null when not known.
+   */
+  conversation?: { where: string; words: string; answerReachesMail?: boolean | null };
+  /**
    * Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21): an owner, a
    * manager or a grantee. Absent on a gateway that predates it — the sheet
    * then treats the standing as unknown and does not offer the send.
