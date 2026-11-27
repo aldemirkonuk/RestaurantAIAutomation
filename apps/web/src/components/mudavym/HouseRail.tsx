@@ -10,6 +10,7 @@
 
 import { Link, useLocation } from 'react-router-dom';
 import { openAskAi } from '../askai/events';
+import { SIDEBAR_WAITING_ON, useMailWaiting } from '../../pages/communications/next/useMailWaiting';
 import {
   isCurrentRoom,
   visibleFoot,
@@ -27,6 +28,10 @@ export interface RoomsListProps {
 /** The rooms as a list — the rail's body and the phone sheet's. */
 export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
   const { pathname } = useLocation();
+  // The Communications room carries how many people wait on the house (r107 g5). The
+  // shell gate is live, so this list, not the legacy Sidebar, is what a person sees;
+  // the phone's Rooms sheet shares it. Hidden at 0 and while unread, like the Sidebar's.
+  const mailWaiting = useMailWaiting();
   const groups = visibleGroups(role, flags);
   const foot = visibleFoot(role, flags);
   return (
@@ -43,9 +48,19 @@ export function RoomsList({ role, flags, onNavigate }: RoomsListProps) {
                     to={r.path}
                     className="mdv-rail__room"
                     aria-current={here ? 'page' : undefined}
+                    aria-label={
+                      r.path === '/communications' && mailWaiting > 0
+                        ? `${r.name}, ${mailWaiting} waiting on ${SIDEBAR_WAITING_ON}`
+                        : undefined
+                    }
                     onClick={onNavigate}
                   >
                     {r.name}
+                    {r.path === '/communications' && mailWaiting > 0 ? (
+                      <span className="mdv-rail__count" aria-hidden="true">
+                        {mailWaiting}
+                      </span>
+                    ) : null}
                   </Link>
                 </li>
               );
