@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { SealedChangesPart } from './ReceiptsSealedChanges';
 import { readLaneRows, writeLaneRows } from './laneMemory';
 import {
   RECEIPTS_SERVER_WINDOWS,
@@ -1371,6 +1372,13 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
         <PriceMovesNote docId={doc.id} />
       </CardPart>
+
+      {/* r108 g17: what the seal did to the books, from the receipts it wrote */}
+      {doc.status === 'verified' && (
+        <CardPart label="What sealing changed">
+          <SealedChangesPart docId={doc.id} />
+        </CardPart>
+      )}
 
       {/*
         The paper is no longer beside these lines: the sheet above brings it on

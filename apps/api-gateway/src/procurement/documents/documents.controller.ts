@@ -48,6 +48,7 @@ import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
+import { readEveryPage, summariseChanges, type RestatementRow, type RevaluationRow } from "./sealed-changes";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1504,6 +1505,87 @@ export class DocumentsController {
         failure: null,
       },
     };
+  }
+
+  @Get(":id/changes")
+  @ApiOperation({
+    summary: "What sealing this paper changed: stock value and the till's cost of sales (r108 g17)",
+    description:
+      "Read from the revaluation and restatement receipts of the order(s) the paper is linked to, every page, summed in integer micro-units. A prior cost that was not known is counted and left out of the figure. Owners and managers only.",
+  })
+  async sealedChanges(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    if (!holdsHouseMoney(user?.role ?? null)) {
+      const role = user?.role ? String(user.role).trim() : "";
+      throw new HttpException(
+        `What sealing a paper changed is the house's money, so an owner or a manager reads it. ` +
+          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was read.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const client = this.db.getClient();
+    const rid = user.restaurantId;
+    const fail = (what: string, e: { message: string }) =>
+      new HttpException(`${what} could not be read, so no change is shown: ${e.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    const { data: paper, error: paperErr } = await client
+      .from("procurement_documents")
+      .select("id, status")
+      .eq("id", id)
+      .eq("restaurant_id", rid)
+      .maybeSingle();
+    if (paperErr) throw fail("The paper", paperErr);
+    if (!paper)
+      throw new HttpException("This paper is not one of this house's, so no change is shown.", HttpStatus.NOT_FOUND);
+    // Lot and sale costs are the house's money; the figures are spoken in it.
+    const { data: house } = await client.from("restaurants").select("currency").eq("id", rid).maybeSingle();
+    const currency = ((house as { currency?: string | null } | null)?.currency ?? "").trim().toUpperCase() || null;
+    const { data: links, error: linkErr } = await client
+      .from("procurement_document_links")
+      .select("order_id")
+      .eq("document_id", id)
+      .eq("restaurant_id", rid);
+    if (linkErr) throw fail("The paper's orders", linkErr);
+    const orders = [...new Set(((links ?? []) as { order_id: string | null }[]).map((l) => l.order_id).filter((x): x is string => !!x))];
+    const empty = summariseChanges([], []);
+    if (!orders.length) return { status: (paper as { status: string }).status, currency, orders, otherPapers: 0, ...empty };
+    // The receipts carry an order, not a paper: an order another paper also
+    // priced shows the order's figures, and says how many papers share them.
+    const { data: shared, error: sharedErr } = await client
+      .from("procurement_document_links")
+      .select("document_id")
+      .eq("restaurant_id", rid)
+      .in("order_id", orders)
+      .neq("document_id", id);
+    if (sharedErr) throw fail("The order's other papers", sharedErr);
+    const otherPapers = new Set(((shared ?? []) as { document_id: string }[]).map((l) => l.document_id)).size;
+    let revaluations: RevaluationRow[];
+    let restatements: RestatementRow[];
+    try {
+      [revaluations, restatements] = await Promise.all([
+        readEveryPage<RevaluationRow>((from, to) =>
+          client
+            .from("inventory_lot_revaluations")
+            .select("id, qty_at_revaluation, prior_unit_cost, new_unit_cost, created_at")
+            .eq("restaurant_id", rid)
+            .in("source_order_id", orders)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+        readEveryPage<RestatementRow>((from, to) =>
+          client
+            .from("wine_consumption_cost_restatements")
+            .select("id, consumption_id, prior_cost_at_sale, new_cost_at_sale, created_at")
+            .eq("restaurant_id", rid)
+            .in("source_order_id", orders)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ]);
+    } catch (e) {
+      throw fail("The cost receipts", e as Error);
+    }
+    return { status: (paper as { status: string }).status, currency, orders, otherPapers, ...summariseChanges(revaluations, restatements) };
   }
 
   @Get(":id/price-moves")
