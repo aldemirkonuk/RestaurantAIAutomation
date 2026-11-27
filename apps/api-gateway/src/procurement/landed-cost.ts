@@ -580,6 +580,21 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
       }
     | { line: LandedCostLineInput; kind: "not_stocked"; basis: string }
     | { line: LandedCostLineInput; kind: "unresolved"; sentence: string };
+  // r103 (DD-r102-17): a paper that SHOWS tax whose price basis nothing proves
+  // is held, in words, not booked as printed. Rate 0 shows none for that line.
+  // Only for a house that has answered (ADR 0359 C3): an unset house is still
+  // costed as printed and says why, since it has no treatment to get wrong.
+  const paperShowsTax =
+    (isNum(header.tax) && header.tax > 0) ||
+    ((charges > 0 || D > 0) &&
+      header.charges_vat_rate_percent != null &&
+      header.charges_vat_rate_percent > 0) ||
+    lines.some(
+      (l) =>
+        l.stocked !== false &&
+        l.vat_rate_percent != null &&
+        l.vat_rate_percent > 0,
+    );
   const steps: Step[] = lines.map((line) => {
     if (line.stocked === false) {
       return {
@@ -605,6 +620,36 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
         line,
         kind: "unresolved",
         sentence: `Line ${line.line_no} ${why}.`,
+      };
+    }
+    if (
+      reclaim.reclaims != null &&
+      paperShowsTax &&
+      line.price_tax_basis == null &&
+      line.vat_rate_percent !== 0
+    ) {
+      return {
+        line,
+        kind: "unresolved",
+        sentence: `Line ${line.line_no}: tax basis unknown. The paper shows tax but does not say whether its prices include it, so its cost stays open until someone reads the paper.`,
+      };
+    }
+    // r103 (same rule, next case): the basis is proven but the rate is not.
+    // Taking tax out of a price that holds it, or adding it to one that does
+    // not, needs the line's rate; costing as printed would drop the tax a
+    // keeping house paid, or keep the tax a reclaiming house gets back. A
+    // reclaiming house on a before-tax paper, or a keeping house on a
+    // tax-inside paper, needs no rate: printed is already the right figure.
+    if (
+      paperShowsTax &&
+      line.vat_rate_percent == null &&
+      ((reclaim.reclaims === true && line.price_tax_basis === "includes_tax") ||
+        (reclaim.reclaims === false && line.price_tax_basis === "excludes_tax"))
+    ) {
+      return {
+        line,
+        kind: "unresolved",
+        sentence: `Line ${line.line_no}: tax rate unknown. The paper shows tax but does not say which rate this line carries, so its cost stays open until someone reads the paper.`,
       };
     }
     const t = treatTax(

@@ -368,20 +368,42 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     );
   });
 
-  it("a reclaiming house's line with no rate, or no basis, is costed as printed and not stamped net", () => {
+  it("a reclaiming house's line with no rate is costed as printed and not stamped net; one that shows a rate but no basis is held (r103)", () => {
     const noRate = costed(
       cost({}, [{ ...inside(), vat_rate_percent: null }], RECLAIMS).lines[0],
     );
     expect(noRate.cost_value).toBeCloseTo(118, 6);
     expect(noRate.cost_tax_basis).toBeNull();
     expect(noRate.basis).toContain("the paper prints no tax rate for it");
-    const noBasis = costed(
+    // The paper shows 18 % and cannot say whether the price holds it: held in
+    // words, never booked as printed (DD-r102-17).
+    const noBasis = open(
       cost({}, [{ ...inside(), price_tax_basis: null }], RECLAIMS).lines[0],
     );
-    expect(noBasis.cost_tax_basis).toBeNull();
-    expect(noBasis.basis).toContain(
-      "the paper does not say whether its price includes tax",
+    expect(noBasis.unresolved).toContain("tax basis unknown");
+  });
+
+  it("a line printed at rate 0 is not held beside a line whose basis is unknown (r103)", () => {
+    const r = cost(
+      {},
+      [
+        { ...inside(), line_no: 1, vat_rate_percent: 0, price_tax_basis: null },
+        { ...inside(), line_no: 2, price_tax_basis: null },
+      ],
+      RECLAIMS,
     );
+    expect(costed(r.lines[0]).cost_value).toBeCloseTo(118, 6);
+    expect(open(r.lines[1]).unresolved).toContain("tax basis unknown");
+  });
+
+  it("a paper that prints tax but no rate and no basis is held for an answered house, and costed as printed for an unset one (r103)", () => {
+    const l = [{ ...inside(), vat_rate_percent: null, price_tax_basis: null }];
+    for (const house of [RECLAIMS, DOES_NOT_RECLAIM]) {
+      const r = cost({ tax: 18 }, l, house);
+      expect(open(r.lines[0]).unresolved).toContain("tax basis unknown");
+    }
+    const unset = cost({ tax: 18 }, l, UNSET);
+    expect(costed(unset.lines[0]).cost_tax_basis).toBeNull();
   });
 
   it("a header tax that the lines' rates do not reach leaves every line unresolved", () => {
@@ -559,10 +581,13 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
   });
 
   it("an item whose lines do not agree on what their cost holds is stamped null", () => {
+    // r103: line 1 is rate 0, so the paper shows no tax and line 2 (rate
+    // unknown, before tax, a house that keeps its tax) is still costed as
+    // printed. Were the paper to show tax, line 2 would be held instead.
     const r = cost(
       {},
       [
-        { ...outside(), item_key: "wine-a" },
+        { ...outside(), item_key: "wine-a", vat_rate_percent: 0 },
         {
           ...outside(),
           line_no: 2,
@@ -576,6 +601,19 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     expect(costed(r.lines[1]).cost_tax_basis).toBeNull();
     const item = r.items[0];
     expect(item.status === "costed" && item.cost_tax_basis).toBeNull();
+  });
+
+  it("a paper that shows tax, a keeping house, before-tax prices and no rate for the line is held (r103)", () => {
+    const r = cost(
+      {},
+      [
+        { ...outside(), item_key: "wine-a" },
+        { ...outside(), line_no: 2, item_key: "wine-b", vat_rate_percent: null },
+      ],
+      DOES_NOT_RECLAIM,
+    );
+    expect(open(r.lines[1]).unresolved).toContain("tax rate unknown");
+    expect(costed(r.lines[0]).cost_tax_basis).toBe("gross_cost");
   });
 
   it("a tax rate that is not a rate is unresolved", () => {

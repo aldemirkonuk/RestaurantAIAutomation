@@ -36,6 +36,7 @@ import {
   CostedLine,
   CostTaxBasis,
   HouseTax,
+  HouseTaxBasis,
   LandedCostHeader,
   LandedCostLineInput,
   LandedCostResult,
@@ -43,20 +44,42 @@ import {
   landedCost,
 } from "../landed-cost";
 import { snapshotLineKinds } from "./from-document-rows";
+import { paperTaxFacts, snapshotLineRates } from "./paper-tax-facts";
 import { LotUnitCost } from "./lot-unit-cost";
 
+/** The two `restaurants` columns a lot cost reads (ADR 0359 C2). */
+export interface HouseTaxRow {
+  tax_basis?: string | null;
+  reclaims_input_tax?: boolean | null;
+}
+
+const HOUSE_TAX_BASES: readonly HouseTaxBasis[] = [
+  "unset",
+  "prices_include_tax",
+  "prices_exclude_tax",
+  "not_vat_charging",
+];
+
 /**
- * The house's tax answers for a lot cost, until they exist.
+ * The house's tax answers for a lot cost (ADR 0359 C2, lane 3.5a).
  *
- * ADR 0359 C2 (Proposed in #784) adds `restaurants.tax_basis` and
- * `restaurants.reclaims_input_tax`; cost-math proposal lane 3.5a builds them.
- * No migration on `main` has either column, and no invoice line carries its
- * price's tax basis or rate. So the house is `unset` and every lot is costed as
- * printed, stamped null, and says so. This is the ONE place to change when
- * lane 3.5a lands: read the two columns here.
+ * Read from `restaurants.tax_basis` and `restaurants.reclaims_input_tax`
+ * (migration 20271022140500). A house that has not answered, or a row this
+ * gateway cannot read as one of the four answers, is `unset`: every lot is
+ * then costed as printed, stamped null, and says so, exactly as before the
+ * columns existed. A reclaim answer is never read without a basis beside it
+ * (`houseReclaims`), and never `true` for a house that charges no VAT.
+ * A read that FAILED is not `unset`: the caller refuses on it (500).
  */
-export function houseTaxForLotCost(): HouseTax {
-  return { tax_basis: "unset", reclaims_input_tax: null };
+export function houseTaxForLotCost(row?: HouseTaxRow | null): HouseTax {
+  const basis = HOUSE_TAX_BASES.find((b) => b === row?.tax_basis) ?? "unset";
+  if (basis === "unset") return { tax_basis: "unset", reclaims_input_tax: null };
+  const reclaims =
+    typeof row?.reclaims_input_tax === "boolean" ? row.reclaims_input_tax : null;
+  return {
+    tax_basis: basis,
+    reclaims_input_tax: basis === "not_vat_charging" ? false : reclaims,
+  };
 }
 
 /** One `procurement_documents` row: its money columns and its line kinds. */
@@ -72,9 +95,15 @@ export interface PaperHeaderRow {
   other_charges?: number | string | null;
   deposit_total?: number | string | null;
   tax?: number | string | null;
+  /** `procurement_documents.total`: what the paper says it comes to. */
+  total?: number | string | null;
+  /** `extracted->taxBreakdown`: the rates the paper prints (paper-tax-facts). */
+  tax_breakdown?: unknown;
+  /** `extracted->einvoice`: set when the paper was read from its e-invoice file. */
+  einvoice?: unknown;
   /** `procurement_documents.currency`: the vendor's money, as the paper says. */
   currency?: string | null;
-  /** `extracted->lines`: the intake snapshot, read only for each line's kind. */
+  /** `extracted->lines`: the intake snapshot, read for each line's kind and printed tax rate. */
   extracted_lines?: unknown;
 }
 
@@ -212,7 +241,7 @@ function header(row: PaperHeaderRow): LandedCostHeader {
     other_charges: num(row.other_charges),
     deposit_total: num(row.deposit_total),
     tax: num(row.tax),
-    // No column says either yet (ADR 0359 C3, lane 3.5a).
+    // Filled per paper from what it proves (paper-tax-facts.ts).
     charges_tax_basis: null,
     charges_vat_rate_percent: null,
   };
@@ -479,8 +508,10 @@ export function landDelivery(input: {
   booked: Map<string, number>;
   /** `restaurants.currency`; null when the house has not named it. */
   houseCurrency?: string | null;
+  /** `restaurants.tax_basis` / `reclaims_input_tax`; absent = unset. */
+  houseTax?: HouseTax;
 }): DeliveryLandedCost {
-  const house = houseTaxForLotCost();
+  const house = input.houseTax ?? houseTaxForLotCost();
   const foreign = new Set<string>();
   const moneyOf = new Map<string, Set<string>>();
   const byItem = new Map<string, LandedPrice>();
@@ -501,6 +532,12 @@ export function landDelivery(input: {
   );
   const kindOf = (r: PaperLineRow) =>
     kindsOf.get(r.document_id)?.get(Number(r.line_no ?? 0)) ?? null;
+  // r35: the tax rate the reader saw printed beside each line, by paper.
+  const ratesOf = new Map(
+    input.papers.map((p) => [p.id, snapshotLineRates({ lines: p.extracted_lines })]),
+  );
+  const printedRateOf = (r: PaperLineRow) =>
+    ratesOf.get(r.document_id)?.get(Number(r.line_no ?? 0)) ?? null;
 
   // #838's pairing, kept: ONE booked item, no line naming it, and ONE stock
   // line naming nothing → that line is the item's. Any other shape is not.
@@ -614,11 +651,28 @@ export function landDelivery(input: {
     for (const f of mine)
       if (f.key && money)
         moneyOf.set(f.key, (moneyOf.get(f.key) ?? new Set<string>()).add(money));
+    // ADR 0359 C3: what this paper proves about its own tax, for every line.
+    const facts = paperTaxFacts(
+      row,
+      mine.map((f) => ({
+        kind: f.kind,
+        printedTotal: num(f.row.line_total),
+        input: f.input,
+        printedRatePercent: printedRateOf(f.row),
+      })),
+    );
     const result = landedCost({
-      header: header(row),
+      header: {
+        ...header(row),
+        charges_tax_basis: facts.basis,
+        charges_vat_rate_percent: facts.ratePercent,
+      },
       house,
-      lines: mine.map((f) => ({
+      lines: mine.map((f, i) => ({
         ...f.input,
+        price_tax_basis: facts.basis,
+        // r35: each line's own printed rate, when the paper proves them.
+        vat_rate_percent: facts.lineRates ? facts.lineRates[i] : facts.ratePercent,
         // The item's unit, so a free weighed line is said in it too.
         ...(f.key && perOf.has(f.key) ? { unit: perOf.get(f.key) } : {}),
         accepted_bottles: accepted.get(f) ?? 0,
@@ -638,7 +692,7 @@ export function landDelivery(input: {
       leftOut: own.length
         ? `${result.left_out} Also not cost: ${own.join("; ")}.`
         : result.left_out,
-      taxSaid: result.tax_said,
+      taxSaid: [facts.said, result.tax_said].filter(Boolean).join(" "),
     });
     result.lines.forEach((l) => {
       const key = l.item_key;
