@@ -23,9 +23,13 @@ export function readMake(text: string): number | null {
   return n >= MAKE_MIN && n <= MAKE_MAX ? n : null;
 }
 
-/** One line's amount for N serves, in its own unit: "600 ml". */
-export function scaledAmount(qty: number, n: number, unit: string | null | undefined): string {
-  return amountWithUnit(qty * n, unit as never);
+/**
+ * One line's amount for N serves, in its own unit: "600 ml". The stored lines
+ * are for the WHOLE recipe, which makes `yieldServes` serves, so N serves is
+ * the line times N / yieldServes (r107f: a 4-serve recipe at Make 2 is half the lines).
+ */
+export function scaledAmount(qty: number, n: number, unit: string | null | undefined, yieldServes = 1): string {
+  return amountWithUnit((qty * n) / (yieldServes > 0 ? yieldServes : 1), unit as never);
 }
 
 /** N serves at a serve's exact cost, to the cent once. */
