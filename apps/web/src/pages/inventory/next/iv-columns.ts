@@ -12,7 +12,7 @@
  */
 import type { InvRow } from './useInventoryNextData';
 
-export type EmptyColumn = 'Type' | 'Zone' | 'Vel/day' | 'Runway' | 'Your price' | 'Value';
+export type EmptyColumn = 'Type' | 'Zone' | 'Vel/day' | 'Runway' | 'Your price' | 'Value' | 'Used in';
 
 export interface EmptyColumnsInput {
   rows: InvRow[];
@@ -31,5 +31,7 @@ export function emptyColumns({ rows, canManage, libraryUnread, locationsUnavaila
   if (!canManage && rows.every((r) => r.bottle === null && r.glass === null)) out.add('Your price');
   // An unread cost is not an empty column: the cell says it could not be read (ADR 0020).
   if (rows.every((r) => r.value === null && r.rollupReadable !== false)) out.add('Value');
+  // Still reading, or every good read as 0 recipes: nothing to say. An unread count (null) keeps the column, to say so.
+  if (rows.every((r) => r.usedIn === undefined || r.usedIn === 0)) out.add('Used in');
   return out;
 }

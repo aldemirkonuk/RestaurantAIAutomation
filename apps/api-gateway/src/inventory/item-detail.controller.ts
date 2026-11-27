@@ -13,12 +13,13 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { ItemUsedInService } from "./item-used-in.service";
+import { ItemUseCountsService } from "./item-use-counts.service";
 import { ItemFiguresService, MoneyView } from "./item-figures.service";
 import { HouseItemService } from "./house-item.service";
 import { CreateHouseItemDto } from "./dto/house-item.dto";
 
 /** Registered by InventoryModule beside this controller. */
-export const ITEM_DETAIL_PROVIDERS = [ItemUsedInService, ItemFiguresService, HouseItemService];
+export const ITEM_DETAIL_PROVIDERS = [ItemUsedInService, ItemUseCountsService, ItemFiguresService, HouseItemService];
 
 /**
  * The /inventory item drawer's reads (proposal §3 I4/I10/I11) and "carry
@@ -34,6 +35,7 @@ export class ItemDetailController {
     private readonly figuresService: ItemFiguresService,
     private readonly houseItems: HouseItemService,
     private readonly organizations: OrganizationsService,
+    private readonly useCounts: ItemUseCountsService,
   ) {}
 
   /** Money is owner/manager only; a role that cannot be read shows none. */
@@ -45,6 +47,12 @@ export class ItemDetailController {
     } catch {
       return "unread";
     }
+  }
+
+  @Get(":restaurantId/use-counts")
+  @ApiOperation({ summary: "How many current recipes (drinks and dishes) use each good, for the list's Used in column" })
+  async useCountsOf(@Param("restaurantId") restaurantId: string) {
+    return this.useCounts.counts(restaurantId);
   }
 
   @Get(":restaurantId/item/:itemId/used-in")

@@ -100,6 +100,8 @@ export interface ItemDrawerProps {
   TasteCard?: ComponentType<NutritionCardProps>;
   /** A sheet to open with the drawer: the staff "Count" bar opens it on the count. */
   startWith?: SheetId;
+  /** The list's "Used in" count opened this: scroll to where the good is used once it is open. */
+  scrollToUsed?: boolean;
 }
 
 /** How long the evidence takes to open: its 200 ms tween, or none when the person asked for reduced motion. */
@@ -137,6 +139,15 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     }, openMs());
     return () => window.clearTimeout(t);
   }, [wantTaste, evidence]);
+  const scrollToUsed = props.scrollToUsed === true;
+  useEffect(() => {
+    if (!scrollToUsed) return;
+    const t = window.setTimeout(
+      () => document.getElementById('ivd-used')?.scrollIntoView?.({ block: 'start', behavior: openMs() === 0 ? 'auto' : 'smooth' }),
+      openMs(),
+    );
+    return () => window.clearTimeout(t);
+  }, [scrollToUsed]);
   const id = row?.id ?? '';
   // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
   // allergens to state, so the drawer neither reads nor offers them.
