@@ -221,10 +221,22 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
 
   const onMove = useCallback(
-    (slots: Partial<Record<AnalysisId, Slot>>) =>
-      edit((d) => ({
-        cuttings: d.cuttings.map((c) => (slots[c.id] ? { ...c, slot: slots[c.id] as Slot } : c)),
-      })),
+    (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[]) =>
+      edit((d) => {
+        const moved = d.cuttings.map((c) =>
+          slots[c.id] ? { ...c, slot: slots[c.id] as Slot } : c,
+        );
+        if (!order) return { cuttings: moved };
+        // A narrow ruling draws row-mates in list order, so a drag there that
+        // changes who comes first is a change of list order (`liftCuttings`).
+        const rank = new Map(order.map((id, i) => [id, i]));
+        const last = order.length;
+        return {
+          cuttings: [...moved].sort(
+            (a, b) => (rank.get(a.id) ?? last) - (rank.get(b.id) ?? last),
+          ),
+        };
+      }),
     [edit],
   );
 
