@@ -87,7 +87,7 @@ to those would put a moving cutting somewhere the announcement says it is not.
 - **Cuttings do not stagger in.** A report is a reference you return to, not an
   arrival — and eight blocks cascading would fight the ruling's stillness.
 - **A stretch is marked, not drawn in.** "Read a stretch" (r108 g3) lays the
-  seal tint behind the days under the pointer and says them in the reserved
+  seal tint behind the days under the pointer (or Shift and the arrow keys) and says them in the reserved
   20 px line below the drawing. The band follows the pointer 1:1 and has no
   transition in or out, and the readout swaps its words outright: a band that
   eased after the finger would mark days the reader has already left, and a

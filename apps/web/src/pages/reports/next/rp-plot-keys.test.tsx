@@ -19,6 +19,7 @@ vi.mock('recharts', async () => {
 
 import { CatPlot, ComboPlot, PointPlot, tipSentence } from './rp-plot';
 import type { CatSeries, PointSeries } from './rp-view';
+import { daysBetween, till as tillRegister, type TillWindow } from './rp-registers-trade';
 
 afterEach(cleanup);
 
@@ -137,5 +138,84 @@ describe('the spoken line and the visible tip are one function', () => {
     expect(tipSentence({ head: 'Day 2', lines: [{ name: 'Line', value: null, tail: '' }] })).toBe(
       'Day 2. Line: not stated',
     );
+  });
+});
+
+/* ───────────── Read a stretch from the keyboard (DD-r108-41, r109 reports-r109-6) ───── */
+
+const WEEK = daysBetween('2026-11-04', '2026-11-09');
+const tillView = (withheld = false) =>
+  tillRegister.view(
+    tillRegister.select({
+      posConnected: true,
+      revenue: 3620,
+      checkCount: 182,
+      from: WEEK[0],
+      to: WEEK[5],
+      days: 6,
+      timezone: 'Europe/Istanbul',
+      ...(withheld ? { salesWithheld: true } : {}),
+      // Nov 5 came with no figure: the till could not state it.
+      dailySeries: [100, null, 400, 1200, 1000, 520].map((revenue, i) => ({
+        date: WEEK[i],
+        revenue,
+        checks: revenue == null ? null : [10, 0, 20, 40, 50, 62][i],
+      })),
+    }) as TillWindow,
+    { days: 6, currency: 'USD' },
+  );
+const shiftArrow = (el: Element, key: 'ArrowRight' | 'ArrowLeft') => fireEvent.keyDown(el, { key, shiftKey: true });
+const readout = (c: HTMLElement) => c.querySelector('.rp-stretch') as HTMLElement;
+
+describe('Shift and the arrow keys read a stretch', () => {
+  it.each(['bars', 'line', 'area'] as const)(
+    '[REVERT-FAILS] %s: Shift+Right twice from the first day reads three days, a day with no figure never as 0',
+    (kind) => {
+      const series = tillView().cats!;
+      const { container } = render(<CatPlot series={series} kind={kind} />);
+      fireEvent.focus(surface(container));
+      shiftArrow(surface(container), 'ArrowRight');
+      shiftArrow(surface(container), 'ArrowRight');
+      expect(readout(container)).toHaveAttribute('data-state', 'read');
+      // The same words the pointer path says for days 1-3 (one function, rp-stretch.ts).
+      expect(readout(container).textContent).toBe(series.stretch!(0, 2));
+      // Known days only: 100 + 400, over 2 of 3 days; no average while a day is unknown.
+      expect(readout(container).textContent).toContain('Taken $500 over 2 of 3 days; 1 day the till could not state');
+      expect(readout(container).textContent).not.toMatch(/average/);
+      // The tip still walks with the keys.
+      expect(live().textContent).toBe('Nov 6. $400 taken');
+    },
+  );
+
+  it('[REVERT-FAILS] the anchor holds: Shift+Left walks the last day back, a plain arrow keeps the stretch, Escape clears it', () => {
+    const series = tillView().cats!;
+    const { container } = render(<CatPlot series={series} kind="bars" />);
+    fireEvent.focus(surface(container));
+    arrow(surface(container), 'ArrowRight');
+    arrow(surface(container), 'ArrowRight');
+    arrow(surface(container), 'ArrowRight');
+    shiftArrow(surface(container), 'ArrowRight');
+    expect(readout(container).textContent).toBe(series.stretch!(3, 4));
+    shiftArrow(surface(container), 'ArrowLeft');
+    shiftArrow(surface(container), 'ArrowLeft');
+    // Anchored on day 4 (index 3), the last day walked back to day 3: low to high.
+    expect(readout(container).textContent).toBe(series.stretch!(2, 3));
+    // Sum over sum: 400 + 1200 over 20 + 40 checks.
+    expect(readout(container).textContent).toContain('Taken $1,600 · 60 checks · average $26.67');
+    arrow(surface(container), 'ArrowRight');
+    expect(readout(container).textContent).toBe(series.stretch!(2, 3));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(readout(container)).toHaveAttribute('data-state', 'hint');
+  });
+
+  it('[REVERT-FAILS] a read kept from this role offers no stretch, from the keyboard either', () => {
+    const view = tillView(true);
+    // A withheld till draws nothing to stretch over; if it draws at all, it carries no stretch.
+    if (view.cats) {
+      const { container } = render(<CatPlot series={view.cats} kind="bars" />);
+      fireEvent.focus(surface(container));
+      shiftArrow(surface(container), 'ArrowRight');
+      expect(container.querySelector('.rp-stretch')).toBeNull();
+    } else expect(view.cats).toBeUndefined();
   });
 });

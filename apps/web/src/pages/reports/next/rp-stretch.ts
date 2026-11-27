@@ -58,12 +58,26 @@ export type StretchEvent =
   | { type: 'down'; at: number }
   | { type: 'move'; at: number }
   | { type: 'up'; at?: number }
+  /** Shift+Left or Shift+Right (DD-r108-41): the keyboard was on `from` and moved to `to`. */
+  | { type: 'key'; from: number; to: number }
   | { type: 'clear' };
 
 export function stretchStep(s: StretchState, e: StretchEvent): StretchState {
   switch (e.type) {
     case 'clear':
       return NO_STRETCH;
+    case 'key':
+      // The first Shift+Arrow anchors on the day the keyboard was on; each one
+      // after moves the last day. A day already marked (a tap, or a stretch)
+      // stays the anchor. It reads at once: a key has no press to release.
+      return {
+        anchor: s.anchor ?? e.from,
+        end: e.to,
+        down: false,
+        moved: false,
+        second: false,
+        settled: true,
+      };
     case 'down':
       // A press on a half-made stretch picks its last day; any other press starts over.
       if (s.anchor != null && !s.settled && !s.down)
