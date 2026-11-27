@@ -7,13 +7,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import HouseMenu from '../HouseMenu'
+import { AuthContext } from '../../contexts/AuthContext'
 import { FIRST_PROOF_KEY } from '../../lib/firstProof'
 import { getOnboardingProgress } from '../../services/api/menus'
 
 let role: string | null = 'owner'
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRole: role, user: { role } }),
-}))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => null }))
 vi.mock('../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../services/api/menus')>('../../services/api/menus')
@@ -27,6 +25,16 @@ const item = {
   matched: true, needsReview: false,
 }
 
+// The real context, with no provider mocked: HouseMenu reads the role without
+// requiring one, so a page that mounts it outside an AuthProvider still renders.
+function Signed({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthContext.Provider value={{ activeRole: role, user: { role } } as never}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
 function open(invited: boolean | null) {
   progress.mockReset()
   progress.mockResolvedValue(invited === null ? null : ({ team_member_invited: invited } as never))
@@ -34,7 +42,7 @@ function open(invited: boolean | null) {
     FIRST_PROOF_KEY,
     JSON.stringify({ menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [item] }),
   )
-  return render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+  return render(<Signed><MemoryRouter><HouseMenu /></MemoryRouter></Signed>)
 }
 
 beforeEach(() => {
@@ -80,9 +88,19 @@ describe('the first proof offers the way on to a team', () => {
     progress.mockRejectedValue(new Error('down'))
     cleanup()
     sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [item] }))
-    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    render(<Signed><MemoryRouter><HouseMenu /></MemoryRouter></Signed>)
     await waitFor(() => expect(progress).toHaveBeenCalled())
     await Promise.resolve()
+    expect(screen.queryByRole('link', { name: 'Invite your people' })).toBeNull()
+  })
+
+  it('renders outside an AuthProvider and offers nothing (the role is read, not required)', async () => {
+    progress.mockReset()
+    progress.mockResolvedValue({ team_member_invited: false } as never)
+    sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [item] }))
+    expect(() => render(<MemoryRouter><HouseMenu /></MemoryRouter>)).not.toThrow()
+    await Promise.resolve()
+    expect(progress).not.toHaveBeenCalled()
     expect(screen.queryByRole('link', { name: 'Invite your people' })).toBeNull()
   })
 })
