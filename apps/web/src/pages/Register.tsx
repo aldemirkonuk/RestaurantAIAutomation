@@ -333,7 +333,7 @@ export function Register() {
           {/* Status icon */}
           {validating && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
-              <Pending size="md" className={on ? 'text-inkm-3' : 'text-gray-400'} />
+              <Pending decorative size="md" className={on ? 'text-inkm-3' : 'text-gray-400'} />
             </div>
           )}
           {!validating && invitePreview?.valid === true && (
@@ -347,6 +347,10 @@ export function Register() {
             </div>
           )}
         </div>
+        {/* The ring in the box is decorative; under reduced motion these words are the whole signal. */}
+        {validating && (
+          <Pending className={on ? 'mt-2 text-xs text-inkm-3' : 'mt-2 text-xs text-gray-500'} label="Checking the code…" />
+        )}
       </div>
 
       {/* r103: the card that arrives after the preview read pushed Continue from
@@ -534,7 +538,7 @@ export function Register() {
             {/* Status icon */}
             {joinEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Pending className={on ? 'text-inkm-3' : 'text-gray-400'} />
+                <Pending decorative className={on ? 'text-inkm-3' : 'text-gray-400'} />
               </div>
             )}
             {!joinEmailCheck.checking && joinEmailCheck.available === true && (
@@ -717,7 +721,7 @@ export function Register() {
             {/* Status icon */}
             {createEmailCheck.checking && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Pending className={on ? 'text-inkm-3' : 'text-gray-400'} />
+                <Pending decorative className={on ? 'text-inkm-3' : 'text-gray-400'} />
               </div>
             )}
             {!createEmailCheck.checking && createEmailCheck.available === true && (

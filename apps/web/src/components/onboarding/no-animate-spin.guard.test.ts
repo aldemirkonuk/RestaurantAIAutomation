@@ -23,3 +23,12 @@ describe('no raw animate-spin in onboarding', () => {
     expect(readFileSync(f, 'utf8')).not.toContain('animate-spin')
   })
 })
+
+describe('a wait with no words is marked decorative', () => {
+  it.each(files.map((f) => [path.relative(src, f), f]))('%s', (_n, f) => {
+    const calls = readFileSync(f, 'utf8').match(/<Pending\b[\s\S]*?\/>/g) ?? []
+    for (const call of calls) {
+      expect(/\blabel=/.test(call) || /\bdecorative\b/.test(call), call).toBe(true)
+    }
+  })
+})
