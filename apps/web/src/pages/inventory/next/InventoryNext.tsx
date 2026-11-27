@@ -290,7 +290,18 @@ export default function InventoryNext() {
     staleTime: 60_000,
     retry: false,
   });
-  const recorded = useMemo(() => (nutCov.data ? new Set(nutCov.data.recordedItemIds) : null), [nutCov.data]);
+  // A failed re-read holds the chip even when an earlier answer is still cached:
+  // the count would otherwise stand as if it had just been read.
+  const recorded = useMemo(() => (nutCov.data && !nutCov.isError ? new Set(nutCov.data.recordedItemIds) : null), [nutCov.data, nutCov.isError]);
+  // A food or supply is a house item with its own kind (house-items, #862);
+  // every other row is a drink. The kind chips show once the house carries one.
+  const goodOf = useMemo(() => {
+    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
+    return (r: InvRow): GoodKind => {
+      const own = k.get(r.id) ?? r.kind;
+      return own === 'food' || own === 'supply' ? own : 'drink';
+    };
+  }, [data.rawItems]);
   const activeChip: ChipId =
     (chip === 'dead' && data.paceUnread) || (chip === 'price' && priceRead !== 'ready') || (chip === 'nutrition' && recorded === null)
       ? 'all'
@@ -298,9 +309,9 @@ export default function InventoryNext() {
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
-    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, recorded)).length);
+    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, recorded, goodOf(r))).length);
     return m;
-  }, [rows, recorded]);
+  }, [rows, recorded, goodOf]);
   const chipCount = (id: ChipId) => {
     const k = chipCounts.get(id);
     return k === undefined ? EM : fmtCount(k);
@@ -332,15 +343,6 @@ export default function InventoryNext() {
     return opts;
   }, [rows, data.libraryAnswered]);
 
-  // A food or supply is a house item with its own kind (house-items, #862);
-  // every other row is a drink. The kind chips show once the house carries one.
-  const goodOf = useMemo(() => {
-    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
-    return (r: InvRow): GoodKind => {
-      const own = k.get(r.id) ?? r.kind;
-      return own === 'food' || own === 'supply' ? own : 'drink';
-    };
-  }, [data.rawItems]);
   const words = useMemo(() => houseWordsFor((rows ?? []).map(goodOf)), [rows, goodOf]);
   // The exported files head the name column the way the page does.
   const nameHead = words.one === 'good' ? 'Good' : 'Title';
@@ -352,7 +354,7 @@ export default function InventoryNext() {
     return sortRows(
       rows.filter(
         (r) =>
-          chipMatch(r, activeChip, now, recorded) &&
+          chipMatch(r, activeChip, now, recorded, goodOf(r)) &&
           (kind === '' || goodOf(r) === kind) &&
           inZone(r, zone) &&
           ofType(r, type) &&

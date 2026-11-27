@@ -134,6 +134,8 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
     onSuccess: (fresh) => {
       qc.setQueryData(inventoryItemKeys.nutrition(restaurantId ?? '', itemId), fresh);
       onSaved?.(fresh);
+      // The list's "Nutrition not recorded" chip reads this; a save here must move it.
+      void qc.invalidateQueries({ queryKey: inventoryItemKeys.nutritionCoverage(restaurantId ?? '') });
       onDone();
     },
     onError: (e) =>
