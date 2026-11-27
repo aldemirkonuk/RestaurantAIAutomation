@@ -83,6 +83,7 @@ import {
   threadingHeader,
   unstructuredHeader,
 } from "../mime-headers";
+import { plainLetterWithFiles, type CheckedAttachments } from "../mime-attachments";
 import type {
   InsertedInsightDto,
   QueueLetterDto,
@@ -2145,6 +2146,8 @@ export async function sendThroughGrant(params: {
   threadId?: string;
   inReplyTo?: string;
   references?: string;
+  /** g6a: files that passed `assertMayAttach` (role, at most 3, 5 MB together). */
+  attachments?: CheckedAttachments;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
   // `From` is emitted only when we actually know the address. The `gmail_send`
@@ -2164,6 +2167,9 @@ export async function sendThroughGrant(params: {
   const to = Array.isArray(params.to) ? params.to : [params.to];
   const inReplyTo = threadingHeader("In-Reply-To", params.inReplyTo);
   const references = threadingHeader("References", params.references);
+  const letter = params.attachments?.length
+    ? plainLetterWithFiles(params.text, params.attachments)
+    : null;
   const mime = [
     ...(from ? [addressListHeader("From", [from])] : []),
     addressListHeader("To", to),
@@ -2176,10 +2182,14 @@ export async function sendThroughGrant(params: {
     ...(inReplyTo ? [inReplyTo] : []),
     ...(references ? [references] : []),
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
-    "",
-    base64Body(params.text),
+    ...(letter
+      ? [letter.contentTypeHeader, "", letter.body]
+      : [
+          'Content-Type: text/plain; charset="UTF-8"',
+          "Content-Transfer-Encoding: base64",
+          "",
+          base64Body(params.text),
+        ]),
   ].join("\r\n");
 
   const doFetch = params.fetchImpl ?? fetch;
