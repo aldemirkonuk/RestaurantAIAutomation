@@ -24,6 +24,12 @@ interface LearnPanelProps {
   anchorRef: RefObject<HTMLButtonElement | null>
   onClose: () => void
   onDismissChecklist?: () => void
+  /**
+   * Learn & Help only: show the steps to the house's costs while one is not
+   * done. The Sidebar passes it for an owner or a manager, never for staff
+   * (they cannot check invoices or connect the house's mail).
+   */
+  showNextSteps?: boolean
 }
 
 export function LearnPanel({
@@ -32,6 +38,7 @@ export function LearnPanel({
   anchorRef,
   onClose,
   onDismissChecklist,
+  showNextSteps = false,
 }: LearnPanelProps) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -170,6 +177,14 @@ export function LearnPanel({
         },
       ]
     : []
+  // After setup (r32): once the menu, a vendor and an invite are in, or the
+  // checklist is put away, the panel is Learn & Help, and the steps to the
+  // costs used to go with the checklist. An owner or a manager keeps them
+  // there until each is done.
+  const nextStepsShown =
+    mode === 'get-started'
+      ? nextSteps.length > 0
+      : showNextSteps && nextSteps.some((step) => !step.done)
   const rect = anchorRef.current?.getBoundingClientRect()
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
   const top = rect ? Math.min(rect.top, window.innerHeight - 420) : 80
@@ -250,10 +265,10 @@ export function LearnPanel({
           </div>
         )}
 
-        {mode === 'get-started' && nextSteps.length > 0 && (
+        {nextStepsShown && (
           <div className="space-y-1" data-testid="setup-next-steps">
             <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-              Then, to see your costs
+              {mode === 'get-started' ? 'Then, to see your costs' : 'To see your costs'}
             </p>
             {nextSteps.map((step) => (
               <div
@@ -328,7 +343,9 @@ export function LearnPanel({
           <button
             type="button"
             onClick={() => {
-              navigate('/get-started?tab=use')
+              // /get-started is the owner's first-house form, not a guide:
+              // the guides are on /help ("How this works").
+              navigate('/help')
               onClose()
             }}
             className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-left text-sm text-gray-700"

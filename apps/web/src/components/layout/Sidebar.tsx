@@ -770,6 +770,7 @@ export function Sidebar() {
                 <LearnPanel
                   progress={progress}
                   mode="learn"
+                  showNextSteps={runsSetup}
                   anchorRef={checklistButtonRef}
                   onClose={() => setShowChecklist(false)}
                 />
