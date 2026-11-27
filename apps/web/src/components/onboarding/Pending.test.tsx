@@ -71,15 +71,15 @@ describe('the four menu waits under reduced motion', () => {
   it('MenuScanUpload', async () => {
     const { container } = render(<MenuScanUpload onSuccess={vi.fn()} />)
     fireEvent.click(screen.getByText('send photo'))
-    await screen.findByText('Reading the menu…')
+    await screen.findByText('Reading your menu…')
     noSpin(container)
   })
 
   it('MenuManualEntry', async () => {
     const { container } = render(<MenuManualEntry onSuccess={vi.fn()} />)
-    fireEvent.change(screen.getByPlaceholderText('e.g. Château Margaux 2018'), { target: { value: 'Barolo' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. Château Margaux 2018 or Negroni'), { target: { value: 'Barolo' } })
     fireEvent.click(screen.getByRole('button', { name: /^Import/ }))
-    await screen.findByText('Importing...')
+    await screen.findByText('Importing…')
     noSpin(container)
   })
 

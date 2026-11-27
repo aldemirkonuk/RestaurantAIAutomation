@@ -1,5 +1,5 @@
 /** r107 onboarding g5: the /get-started fields carry autofill, keyboard and typing hints. */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,7 +11,7 @@ vi.mock('react-router-dom', async () => {
 })
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { name: 'Selin Kaya', restaurantId: '', role: null, emailVerified: true },
+    user: { name: '', restaurantId: '', role: null, emailVerified: true },
     loading: false,
     createFirstHouse: vi.fn(),
     signInWithSession: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('../../services/api/client', async (importOriginal) => ({
 vi.mock('../../services/api/menus', () => ({ importMenu: vi.fn() }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => false }))
-vi.mock('../../components/ui/PlacesAutocomplete', () => ({ PlacesAutocomplete: () => null }))
+vi.mock('../../components/ui/PlacesAutocomplete', () => ({ warmPlaces: vi.fn(), PlacesAutocomplete: () => null }))
 vi.mock('../../components/ui/CountryCombobox', () => ({ CountryCombobox: () => null }))
 vi.mock('../../components/onboarding/MenuCsvUpload', () => ({ MenuCsvUpload: () => null }))
 vi.mock('../../components/onboarding/MenuScanUpload', () => ({ MenuScanUpload: () => null }))
@@ -40,17 +40,15 @@ beforeEach(() => {
 })
 
 describe('GetStarted autofill', () => {
-  it('names the person and the mobile', async () => {
+  it('names the person', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    expect(field('Your name')).toHaveAttribute('autocomplete', 'name')
-    expect(field('Mobile')).toHaveAttribute('autocomplete', 'tel')
-    expect(field('Mobile')).toHaveAttribute('inputmode', 'tel')
-    expect(field('Mobile')).toHaveAttribute('enterkeyhint', 'done')
+    const name = await screen.findByLabelText('Your name')
+    expect(name).toHaveAttribute('autocomplete', 'name')
+    expect(name).toHaveAttribute('enterkeyhint', 'next')
   })
 
   it('names the house fields', async () => {
     render(<MemoryRouter><GetStarted /></MemoryRouter>)
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByLabelText('Restaurant name')
     expect(field('Restaurant name')).toHaveAttribute('autocomplete', 'organization')
     expect(field('Address')).toHaveAttribute('autocomplete', 'address-line1')
