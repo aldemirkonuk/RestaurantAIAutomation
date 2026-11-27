@@ -151,9 +151,8 @@ export default function CommunicationsNext() {
   // r107 mail-gap g6: the book and the drafts are Letters' own reads. Mail's list needs
   // neither, so a cold ?tab=mail asks for neither; a thread (its facts and its drafted
   // reply), a person, a draft or a reply asks for them, once.
-  const data = useCommsNextData({
-    enabled: tab === 'letters' || params.has('thread') || params.has('with') || params.has('draft') || params.has('reply'),
-  });
+  const lettersRead = tab === 'letters' || params.has('thread') || params.has('with') || params.has('draft') || params.has('reply');
+  const data = useCommsNextData({ enabled: lettersRead });
   // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
   const letterStanding = useLetterSenderStanding();
   const [compose, setCompose] = useState(false);
@@ -164,7 +163,7 @@ export default function CommunicationsNext() {
   const [draftOpen, setDraftOpen] = useState<string | null>(null);
   // Drafts Mudavym wrote (ADR 0230). `?draft=<id>` is the credit claim's link
   // to its letter; it opens that draft once the drafts list has answered.
-  const houseDrafts = useHouseDrafts();
+  const houseDrafts = useHouseDrafts(lettersRead);
   const [draft, setDraft] = useState<HouseDraft | null>(null);
   // COMMS-W34: words a person left a sheet with stay on a stub where it was
   // opened — "new" for Write a letter, a drafted letter by its id, "t" for the
@@ -271,7 +270,7 @@ export default function CommunicationsNext() {
      2026-11-12: named "To send", not "Waiting on you". Mail says "waiting on
      you" for vendors owed a reply, and a staff member's own request waits on
      a manager, not on them; the same words never mean two things here. */
-  const letterQ = useLetterRequests(letterStanding.restaurantId);
+  const letterQ = useLetterRequests(letterStanding.restaurantId, lettersRead);
   const waitingParts = [
     letterStanding.restaurantId ? letterQ.data?.requests.length ?? null : 0,
     data.draftsKnown ? data.drafts.length : null,

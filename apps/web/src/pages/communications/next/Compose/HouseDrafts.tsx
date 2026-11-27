@@ -36,7 +36,7 @@ export function houseDraftsKey(restaurantId: string) {
   return ['house-letter-drafts', restaurantId] as const;
 }
 
-export function useHouseDrafts() {
+export function useHouseDrafts(enabled = true) {
   const { user, activeRestaurantId, activeRole } = useAuth();
   const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
   const qc = useQueryClient();
@@ -53,7 +53,7 @@ export function useHouseDrafts() {
       const { data } = await apiClient.get<{ drafts: HouseDraft[] }>('/communications/letters/drafts');
       return data.drafts ?? [];
     },
-    enabled: !!restaurantId && manages,
+    enabled: !!restaurantId && manages && enabled,
     staleTime: 15_000,
   });
   const refused = (q.error as { response?: { status?: number } } | null)?.response?.status === 403;
