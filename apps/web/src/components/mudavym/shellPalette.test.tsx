@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../services/api/client', () => ({
   apiClient: { get: vi.fn(() => Promise.reject(new Error('not in this test'))) },
@@ -159,12 +160,16 @@ describe('roomPaletteRows — the one rooms table', () => {
 
 function mountPalette(value: ShellPaletteValue | null) {
   const onClose = vi.fn();
+  // The palette reads the inventory list for its goods (usePaletteGoods), so it needs a query client.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <MemoryRouter initialEntries={['/orders']}>
-      <ShellPaletteContext.Provider value={value}>
-        <CommandPalette open onClose={onClose} />
-      </ShellPaletteContext.Provider>
-    </MemoryRouter>,
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/orders']}>
+        <ShellPaletteContext.Provider value={value}>
+          <CommandPalette open onClose={onClose} />
+        </ShellPaletteContext.Provider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   return { onClose };
 }

@@ -20,6 +20,21 @@ import { useCallback } from 'react'
 // Query: Inventory list
 // ---------------------------------------------------------------------------
 
+/**
+ * The house's goods list: the one key and fetcher /inventory reads, so any
+ * other reader (the Cmd-K palette's Goods, r108 g13) shares its cache. The key
+ * carries the restaurant id, so one house's list is never read as another's.
+ */
+export function inventoryListQuery(restaurantId: string) {
+  return {
+    queryKey: queryKeys.inventory.list(restaurantId),
+    queryFn: async (): Promise<InventoryItem[]> => {
+      const items = await inventoryApi.getInventory(restaurantId)
+      return items.map(normalizeInventoryItem)
+    },
+  }
+}
+
 export function useInventory() {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
@@ -60,11 +75,7 @@ export function useInventory() {
   )
 
   return useQuery({
-    queryKey: queryKeys.inventory.list(activeRestaurantId ?? ''),
-    queryFn: async () => {
-      const items = await inventoryApi.getInventory(activeRestaurantId!)
-      return items.map(normalizeInventoryItem)
-    },
+    ...inventoryListQuery(activeRestaurantId ?? ''),
     enabled: !!activeRestaurantId && isAuthenticated,
     staleTime: 30_000,
     refetchInterval: 60_000,
