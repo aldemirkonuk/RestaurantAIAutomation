@@ -125,6 +125,17 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
   // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
   const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
   const detailRef = useRef<HTMLElement | null>(null);
+  const clipRef = useRef<HTMLDivElement | null>(null);
+  const [switched, setSwitched] = useState(false);
+  // The held height is let go one frame after the swap was drawn.
+  useEffect(() => {
+    const clip = clipRef.current;
+    if (!clip || clip.style.minHeight === '') return;
+    const f = window.requestAnimationFrame(() => {
+      clip.style.minHeight = '';
+    });
+    return () => window.cancelAnimationFrame(f);
+  }, [evidence]);
   const tasteRef = useRef<HTMLDivElement | null>(null);
   // The first-screen taste line opens the evidence and brings the taste card into view.
   const [wantTaste, setWantTaste] = useState(false);
@@ -247,7 +258,14 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
   const counted = row.lastCountedAt ? `counted ${fmtWhen(row.lastCountedAt)}` : 'never counted';
   const head = [kindWords(row, house), bottleWords(row, house), where, counted].filter(Boolean).join(' · ');
 
-  const toggle = (next: CardId | 'all') => setEvidence((cur) => (cur === next ? null : next));
+  // Pressing a second card swaps the detail card's content in one frame. Its clip holds the height it had for
+  // that one frame, so the block under it (Used in) is not dropped under the reader, then lets go (r108 g15).
+  const toggle = (next: CardId | 'all') => {
+    const switching = evidence !== null && evidence !== next;
+    setSwitched(switching);
+    if (switching && clipRef.current) clipRef.current.style.minHeight = `${clipRef.current.offsetHeight}px`;
+    setEvidence((cur) => (cur === next ? null : next));
+  };
 
   return (
     <>
@@ -329,15 +347,17 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
         </button>
       </p>
       <div className="ivd-evwrap" data-open={evidence !== null} data-testid="ivd-evwrap">
-        <div className="ivd-evclip">
+        <div ref={clipRef} className="ivd-evclip">
       {evidence !== null ? (
         <section
+          key={evidence}
           ref={detailRef}
           id="ivd-evidence"
           className="ivd-evidence"
           aria-label={`${name}: detail card`}
           data-testid="ivd-evidence"
           data-card={evidence}
+          data-switched={switched ? 'true' : undefined}
         >
           <h3 className="iv-sec">{evidence === 'all' ? 'All the evidence' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
           {CARD_EVIDENCE[evidence].length > 0 ? (

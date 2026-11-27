@@ -21,6 +21,10 @@ describe('the detail card opens by rows, closes at once', () => {
     expect(rule('.ivd-evwrap')).not.toContain('margin');
     expect(rule(".ivd-evwrap[data-open='true'] .ivd-evidence")).toContain('160ms ease-out 40ms');
   });
+  it('a switch to another card replays the fade at once (no 40 ms wait) and tweens no height (r108 g15)', () => {
+    expect(rule(".ivd-evwrap[data-open='true'] .ivd-evidence[data-switched='true']")).toContain('animation-delay: 0ms');
+    expect(rule(".ivd-evwrap[data-open='true'] .ivd-evidence[data-switched='true']")).not.toContain('height');
+  });
   it('the closed state has no transition, so closing is instant (ADR 0112: no overlay exit animation)', () => {
     const closed = rule('.ivd-evwrap');
     expect(closed).toContain('grid-template-rows: 0fr');
