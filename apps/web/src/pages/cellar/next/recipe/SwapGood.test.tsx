@@ -251,3 +251,29 @@ describe('swap a good in every drink (r108 drinks-g10)', () => {
     expect(['each', 'case', null].map(familyOf)).toEqual(['each_milli', 'each_milli', 'each_milli']);
   });
 });
+
+// r110 drinks-4: the hold's first window (the save itself in flight) and the room the held button keeps.
+describe('Confirm holds while a swap is saving, and keeps its words (r110 drinks-4)', () => {
+  it('Confirm is off from the first click until the save answers, before any read is asked for', async () => {
+    await choose('Better gin');
+    const confirm = () => screen.getByTestId('swap-confirm') as HTMLButtonElement;
+    const words = confirm().textContent;
+    let release: (v: unknown) => void = () => {};
+    const held = new Promise((r) => (release = r));
+    h.put.mockReset().mockImplementation(async () => {
+      await held;
+      return { data: { versionId: 'new', version: 2, lines: [] } };
+    });
+    const gets = h.get.mock.calls.length;
+    await act(async () => fireEvent.click(confirm()));
+    await waitFor(() => expect(h.put).toHaveBeenCalled());
+    expect(h.get.mock.calls.length).toBe(gets);
+    expect(confirm()).toBeDisabled();
+    expect(confirm().textContent).toBe(words);
+    const puts = h.put.mock.calls.length;
+    fireEvent.click(confirm());
+    expect(h.put.mock.calls.length).toBe(puts);
+    await act(async () => release(null));
+    await waitFor(() => expect(confirm()).not.toBeDisabled());
+  });
+});
