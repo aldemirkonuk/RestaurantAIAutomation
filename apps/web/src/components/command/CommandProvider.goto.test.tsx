@@ -67,3 +67,18 @@ describe('the palette names the new letter', () => {
     expect(GOTO_MAP.p.href).toBe('/vendors')
   })
 })
+
+describe('g m reaches Mail (r108 mail g10)', () => {
+  it('g m goes to Communications, and the map opens its Mail tab', () => {
+    key('g')
+    key('m')
+    expect(screen.getByTestId('where').textContent).toBe('/communications')
+    expect(GOTO_MAP.m).toEqual({ href: '/communications?tab=mail', label: 'Mail' })
+  })
+
+  it('the Communications command names g m and the words people look for it by', () => {
+    const nav = staticCommands().find((c) => c.id === 'nav-comms')
+    expect(nav?.shortcut).toBe('g m')
+    expect(nav?.keywords).toContain('mail inbox letters')
+  })
+})
