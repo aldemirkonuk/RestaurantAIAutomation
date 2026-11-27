@@ -296,9 +296,26 @@ def main() -> None:
     bad.extend(check_features_section_anchor())
     for key, read_by in entries:
         # "path:line" or "path:line1,line2,..."
+        # r108: a file that other branches keep editing is anchored by the gate's own
+        # text instead of its line: "path#needle" holds while some line of the file
+        # contains the needle AND is a recognisable gate. It cannot drift when a line
+        # is added above it (house-inbox.service.ts moved :399 to :431 in one merge).
+        sym = re.match(r"^([^#:]+)#(.+)$", read_by)
+        if sym:
+            srel, needle = sym.group(1), sym.group(2)
+            starget = ROOT / ("apps/api-gateway/src/" + srel if not srel.startswith("apps/") else srel)
+            if not starget.is_file():
+                fail_cannot_check(f"{key}: anchor file {starget} not found")
+            spattern = next((p for f, p in GATE_PATTERNS if f.search(str(starget))), None)
+            if spattern is None:
+                fail_cannot_check(f"{key}: no gate pattern registered for {starget.name} — add one to GATE_PATTERNS")
+            hit = [ln for ln in starget.read_text(encoding="utf-8").splitlines() if needle in ln and spattern.search(ln)]
+            if not hit:
+                bad.append(f"{key}: {srel}#{needle} matches no line that is also a gate")
+            continue
         m = re.match(r"^(.*):(\d+(?:,\d+)*)$", read_by)
         if not m:
-            bad.append(f"{key}: readBy '{read_by}' is not path:line")
+            bad.append(f"{key}: readBy '{read_by}' is not path:line or path#text")
             continue
         rel, lines = m.group(1), [int(n) for n in m.group(2).split(",")]
         target = ROOT / ("apps/api-gateway/src/" + rel if not rel.startswith("apps/") else rel)
