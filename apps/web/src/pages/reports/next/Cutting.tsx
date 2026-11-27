@@ -59,6 +59,7 @@ import {
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { DrawKey } from './rp-draw';
 import { readsRegister } from './rp-spec';
+import { compareOffered } from './rp-registers-trade';
 import { cannotDraw } from './rp-strip';
 import { naturalPx } from './rp-fit';
 import { Grip, PlacingBar } from './Placing';
@@ -151,7 +152,12 @@ export function TillWindowPicker({
         </button>
       ))}
     </div>
-    {onCompare && (
+    {onCompare && !compareOffered(days) && (
+      <span className="rp-note rp-no-drag" role="note">
+        A year has no year before it to read against, so no compare is offered at {days} days.
+      </span>
+    )}
+    {onCompare && compareOffered(days) && (
       <button
         type="button"
         className="rp-mini rp-ink rp-focus rp-no-drag"
@@ -350,9 +356,9 @@ export default function Cutting({
 
   /* While a newly picked till window is read, the last drawing stays, dimmed and
      labelled with its own days (ADR 0020); never for a first read or another house. */
-  const lastRead = useRef<{ data: unknown; days: number } | null>(null);
+  const lastRead = useRef<{ data: unknown; days: number; compare?: boolean } | null>(null);
   if (spec.takesWindow && register && !register.loading && !register.failure && register.data !== undefined)
-    lastRead.current = { data: register.data, days: ctx.days };
+    lastRead.current = { data: register.data, days: ctx.days, compare: ctx.compare };
   const standIn =
     spec.takesWindow &&
     register?.loading &&
@@ -361,7 +367,8 @@ export default function Cutting({
     lastRead.current.days !== ctx.days
       ? lastRead.current
       : null;
-  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days } : ctx;
+  /* The stand-in keeps the compare it was read with: a 2N read shown as N days would double the money. */
+  const viewCtx: ViewCtx = standIn ? { ...ctx, days: standIn.days, compare: standIn.compare } : ctx;
   const windowLine = spec.window(viewCtx);
 
   // A drawing the answer cannot carry (bars and a line without per-day checks) is not offered.

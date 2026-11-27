@@ -121,7 +121,7 @@ export interface TillWindow {
    * and then the till offers no bars and a line.
    */
   dailySeries: Array<{ date: string; revenue: number | null; checks: number | null }>;
-  /** Only when asked for (`compare=prior`): the same-length window just before. Null when not sent. */
+  /** Only when comparing: the same-length window just before, cut from the same read (see `splitTill`). Null otherwise. */
   prior: {
     from: string;
     to: string;
@@ -198,17 +198,55 @@ export function daysBetween(from: string, to: string): string[] {
   return out;
 }
 
-function priorOf(raw: unknown): TillWindow['prior'] {
-  if (raw == null || typeof raw !== 'object') return null;
-  const p = obj(raw);
-  const from = str(p.from);
-  const to = str(p.to);
-  if (!from || !to) return null;
+/** The longest window the gateway answers (`days` 1-365): the compare reads twice the window, so it fits only up to this. */
+const READ_MAX_DAYS = 365;
+
+/** True when a window of `days` can be laid beside the same-length one before it in one read (2N within the gateway's cap). */
+export function compareOffered(days: number): boolean {
+  return days > 0 && days * 2 <= READ_MAX_DAYS;
+}
+
+const sumKnown = (rows: Array<number | null>): number | null => {
+  if (rows.length === 0) return 0;
+  const known = rows.filter((v): v is number => v != null);
+  return known.length === 0 ? null : known.reduce((a, v) => a + v, 0);
+};
+
+/**
+ * One read of 2N house days, split at the house-clock day boundary into the
+ * window (the last N days) and the prior (the N before it). The split is by the
+ * dates the gateway filed (ADR 0296), never by timestamps. Totals are summed
+ * from the days kept, so a day the server could not state stays out of the
+ * sum and out of the line (a gap, never 0); a withheld read (revenue null, no
+ * series) gives no prior and no figure. Web only: the gateway's `?compare`
+ * parameter is not used (DD-r104-22).
+ */
+export function splitTill(w: TillWindow, days: number): TillWindow {
+  const span = daysBetween(w.from, w.to);
+  if (!compareOffered(days) || span.length < days || w.revenue == null)
+    return { ...w, prior: null };
+  const mine = new Set(span.slice(-days));
+  const before = span.slice(0, span.length - days).slice(-days);
+  const theirs = new Set(before);
+  const win = w.dailySeries.filter((d) => mine.has(d.date));
+  const was = w.dailySeries.filter((d) => theirs.has(d.date));
+  const from = span[span.length - days];
   return {
+    ...w,
     from,
-    to,
-    revenue: num(p.revenue),
-    dailySeries: arr(p.dailySeries).map((r) => ({ date: str(r.date), revenue: num(r.revenue) })),
+    days,
+    dailySeries: win,
+    revenue: sumKnown(win.map((d) => d.revenue)),
+    checkCount: win.length > 0 && win.every((d) => d.checks != null) ? win.reduce((a, d) => a + (d.checks ?? 0), 0) : win.length === 0 ? 0 : null,
+    prior:
+      before.length === days
+        ? {
+            from: before[0],
+            to: before[before.length - 1],
+            revenue: sumKnown(was.map((d) => d.revenue)),
+            dailySeries: was.map((d) => ({ date: d.date, revenue: d.revenue })),
+          }
+        : null,
   };
 }
 
@@ -231,8 +269,10 @@ const till = analysis<TillWindow>({
   register: 'till register',
   answers: 'What guests actually paid, day by day',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
+  // Comparing asks for twice the window and splits it here (DD-r104-22): no
+  // gateway parameter, and a window that cannot be doubled offers no compare.
   path: (rid, ctx) =>
-    `/analytics/pos-revenue/${rid}?days=${ctx.days}${ctx.compare ? '&compare=prior' : ''}`,
+    `/analytics/pos-revenue/${rid}?days=${ctx.compare && compareOffered(ctx.days) ? ctx.days * 2 : ctx.days}`,
   graphs: ['area', 'line', 'bars', 'combo', 'heatmap', 'table', 'figure'],
   graphNote:
     'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
@@ -254,10 +294,11 @@ const till = analysis<TillWindow>({
         revenue: num(r.revenue),
         checks: num(r.checks),
       })),
-      prior: priorOf(d.prior),
+      prior: null,
     };
   },
-  view: (w, ctx) => {
+  view: (read, ctx) => {
+    const w = ctx.compare ? splitTill(read, ctx.days) : read;
     const money = moneyIn(ctx.currency);
     if (!w.posConnected)
       return {

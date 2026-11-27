@@ -55,6 +55,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
+import { compareOffered } from './rp-registers-trade';
 import Cutting, { COMPARE_PARAM, COMPARE_PRIOR, DAYS_PARAM, DEFAULT_TILL_DAYS, tillDaysOf } from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
@@ -151,7 +152,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
   // Laying the till beside the window just before it lives in the link too
   // (`?compare=prior`), for the same reasons the window does.
-  const tillCompare = params.get(COMPARE_PARAM) === COMPARE_PRIOR;
+  const tillCompare = params.get(COMPARE_PARAM) === COMPARE_PRIOR && compareOffered(tillDays);
   const setTillCompare = useCallback(
     (on: boolean) =>
       setParams(
