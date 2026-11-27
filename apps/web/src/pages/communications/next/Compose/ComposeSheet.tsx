@@ -34,7 +34,7 @@
  * had accepted, and it may not offer to undo something that already happened.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Info, Undo2 } from 'lucide-react';
 import { HoldToApprove, Sheet } from '@/components/mudavym';
@@ -57,6 +57,7 @@ import {
   type InsightSentence,
   type LetterTemplate,
 } from './useComposeData';
+import type { AnsweredLetter } from '../mail-format';
 import { RecipientField, type Recipient } from './RecipientField';
 import { InsightPicker } from './InsightPicker';
 import { SenderLine } from './SenderLine';
@@ -93,6 +94,8 @@ export interface HeldLetter {
   answers?: string;
   /** Set on a reply to a team member or a guest, so a held letter comes back to the same fixed address. */
   person?: { address: string; name: string | null };
+  /** The letter being answered, so a held reply comes back still showing it. */
+  answerContext?: AnsweredLetter;
 }
 
 export interface ComposeSheetProps {
@@ -143,12 +146,22 @@ export interface ComposeSheetProps {
      * one address that wrote, fixed. There is no vendor and no book to choose from.
      */
     person?: { address: string; name: string | null };
+    /**
+     * The letter `answers` names, taken from the thread page Mail already read (r109 mail-gap g3):
+     * who wrote it, when, and its words. Nothing is fetched for it.
+     */
+    answerContext?: AnsweredLetter;
   } | null;
   /** Called once a draft was discarded, so the page can drop it. */
   onDiscarded?: () => void;
+  /**
+   * `compress` lays the sheet beside the page instead of over it, on a desktop. Only Mail passes it
+   * (r109 mail-gap g3); the primitive gives the page's width back on a phone.
+   */
+  layout?: 'overlay' | 'compress';
 }
 
-export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDiscarded }: ComposeSheetProps) {
+export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDiscarded, layout = 'overlay' }: ComposeSheetProps) {
   const data = useComposeData(open);
   const person = prefill?.person ?? null;
   const [to, setTo] = useState<Recipient | null>(
@@ -189,6 +202,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   const [send, setSend] = useState<SendState>({ kind: 'idle' });
   const [tick, setTick] = useState(0);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const toRef = useRef<HTMLInputElement | null>(null);
 
   // The undo window is a real clock over a real row: the countdown re-reads the
   // server's `dispatchAt`, so a stalled tab shows 0 rather than a comforting
@@ -264,7 +278,16 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
       body.trim() !== base.body.trim();
   const dirty = !gone && changed;
   const leave = () => {
-    if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId, answers, ...(person ? { person } : {}) });
+    if (dirty) onHold?.({
+        to,
+        subject,
+        body,
+        insights: chosen,
+        templateId,
+        answers,
+        ...(person ? { person } : {}),
+        ...(answers && prefill?.answerContext ? { answerContext: prefill.answerContext } : {}),
+      });
     onClose();
   };
 
@@ -429,17 +452,26 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     [templates],
   );
 
+  // A reply says whom it answers and which letter (r109 mail-gap g3).
+  const isReply = !!answers && !draftId;
+  const answered = prefill?.answerContext ?? null;
+  const replyName = (answered?.name ?? person?.name ?? '').trim();
+  const replyTitle = replyName ? `Reply to ${replyName}` : 'A reply';
+  const replyLabel = replyName ? `Write a reply to ${replyName} from the house` : 'Write a reply from the house';
+  const replyEyebrow = answered?.at ? `Answers the letter of ${fmtDay(answered.at)}` : 'Answers a letter of theirs';
+
   return (
     <Sheet
       open={open}
       onClose={leave}
       dirty={dirty}
       wide
-      // A reply knows its vendor and subject: the cursor goes where the person writes, not on the sheet's own buttons.
-      initialFocusRef={answers ? bodyRef : undefined}
-      label={draftId ? 'A drafted letter from the house, not sent' : 'Write a letter from the house'}
-      eyebrow={draftId ? 'Drafted · not sent' : 'The house writes'}
-      title={draftId ? 'A drafted letter' : 'A letter from the house'}
+      layout={layout}
+      // A reply opens with the cursor in the letter, a new letter in To (r109 mail-gap g3).
+      initialFocusRef={isReply ? bodyRef : toRef}
+      label={draftId ? 'A drafted letter from the house, not sent' : isReply ? replyLabel : 'Write a letter from the house'}
+      eyebrow={draftId ? 'Drafted · not sent' : isReply ? replyEyebrow : 'The house writes'}
+      title={draftId ? 'A drafted letter' : isReply ? replyTitle : 'A letter from the house'}
     >
       <style>{`
         .cmp-pick { transition: background ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing} }
@@ -450,7 +482,10 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
       <div className="grid gap-4" style={{ fontFamily: SANS }}>
         <SenderLine sender={sender} failed={data.senderFailed} error={data.senderError} />
 
+        {isReply && answered && <AnsweredLetterRow letter={answered} />}
+
         <RecipientField
+          inputRef={toRef}
           book={data.book}
           failed={data.bookFailed}
           error={data.bookError}
@@ -828,6 +863,70 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
         </div>
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * The letter a reply answers, one tap away (r109 mail-gap g3; Gmail keeps the quote a tap away,
+ * Superhuman keeps the thread above the reply). A 44 px row that opens to the letter's words as
+ * the thread page already read them. Nothing animates: the words are there or they are not.
+ */
+function AnsweredLetterRow({ letter }: { letter: AnsweredLetter }) {
+  const [shown, setShown] = useState(false);
+  const panel = useId();
+  return (
+    <div data-testid="answered-letter">
+      <button
+        type="button"
+        aria-expanded={shown}
+        aria-controls={panel}
+        onClick={() => setShown((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+        style={{
+          minHeight: 44,
+          padding: '0 12px',
+          borderRadius: 8,
+          border: '1px solid var(--paper-2, #EAE4D8)',
+          background: 'var(--paper-1, #F3EFE6)',
+          color: 'var(--ink-2, #4F473C)',
+          fontSize: 12.5,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        <span>The letter you are answering</span>
+        <span aria-hidden style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+          {shown ? 'Hide' : 'Show'}
+        </span>
+      </button>
+      {shown && (
+        <div
+          id={panel}
+          data-testid="answered-letter-text"
+          tabIndex={0}
+          style={{
+            marginTop: 6,
+            maxHeight: 220,
+            overflowY: 'auto',
+            padding: '10px 12px',
+            borderRadius: 8,
+            border: '1px solid var(--paper-2, #EAE4D8)',
+            background: 'var(--paper-0, #FAF7F1)',
+            color: 'var(--ink-1, #211C16)',
+            fontSize: 12.5,
+            lineHeight: 1.5,
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {letter.text.trim() !== '' ? (
+            letter.text
+          ) : (
+            <span style={{ color: 'var(--ink-4, #665D50)' }}>The words of this letter are no longer kept.</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

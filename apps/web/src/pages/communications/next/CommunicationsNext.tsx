@@ -56,7 +56,7 @@ import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDra
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 import { MailTab } from './MailTab';
 import { CodeHold, loaders, whoHoldPx } from './mail-code';
-import { mailTabLabel, type MailAnswer } from './mail-format';
+import { composerLayout, type MailAnswer, mailTabLabel } from './mail-format';
 import { tabMove } from './mail-keys';
 import { useMailSummary } from './useMailData';
 
@@ -928,6 +928,8 @@ export default function CommunicationsNext() {
         onQueued={() => {
           if (replyOn) replies.clear(replyOn.threadKey);
         }}
+        // Beside the thread, on a desktop, from Mail only: a reply is written with the letter in view.
+        layout={composerLayout(tab, composeFrom, answerFrom)}
         prefill={
           composeFrom
             ? {
@@ -939,6 +941,7 @@ export default function CommunicationsNext() {
                 templateId: composeFrom.templateId,
                 answers: composeFrom.answers,
                 person: composeFrom.person,
+                answerContext: composeFrom.answerContext,
               }
             : answerFrom
               ? {
@@ -946,6 +949,7 @@ export default function CommunicationsNext() {
                   subject: answerFrom.subject,
                   answers: answerFrom.answers,
                   person: answerFrom.person,
+                  answerContext: answerFrom.context,
                 }
               : writeTo
                 ? { providerId: writeTo.providerId, writeToVendor: true }

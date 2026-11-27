@@ -63,6 +63,14 @@ import { mailKeys, useHouse, useMailThread, useMarkThreadSeen, useNoReplyMark } 
 import { hasModifier, inOverlay, isTypingTarget, nextWaiting, threadKey as threadKeyOf } from './mail-keys';
 import { RetryRead, useReadAgain } from './MailRetry';
 
+/**
+ * A reply is written beside the thread, not over it (r109 mail-gap g3). The sheet tells the page its
+ * width through --sheet-width (0px on a phone, where it rests on the bottom edge); the thread gives
+ * that width up at once. No transition: the page does not slide, and nothing moves under reduced motion.
+ */
+export const MAIL_THREAD_PAGE_CSS =
+  '.mudavym[data-sheet-open=compress] .mail-thread { padding-right: var(--sheet-width) }';
+
 const QUIET = { fontSize: 12, color: 'var(--ink-4, #665D50)' } as const;
 
 /**
@@ -478,7 +486,8 @@ export function MailThread({
   }, [markId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <section aria-label="Thread" className="grid gap-3" style={{ fontFamily: SANS }}>
+    <section aria-label="Thread" className="mail-thread grid gap-3" style={{ fontFamily: SANS }}>
+      <style>{MAIL_THREAD_PAGE_CSS}</style>
       <MailMotionStyles />
       <button
         type="button"

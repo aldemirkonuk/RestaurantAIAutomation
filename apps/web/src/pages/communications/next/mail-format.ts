@@ -1297,11 +1297,43 @@ export function setupFailWords(err: unknown, act: SetupAct): string {
  * or a queued letter has nothing to answer), and the subject the reply opens
  * with. Null when the thread has no such letter or no vendor.
  */
+/**
+ * How the composer sits (r109 mail-gap g3): beside the thread when a reply is written from Mail, over
+ * the page in every other case, including a held reply resumed from Letters. On a phone the sheet
+ * rests on the bottom edge whatever this says.
+ */
+export function composerLayout(
+  tab: 'mail' | 'letters',
+  held: { answers?: string } | null,
+  answer: MailAnswer | null,
+): 'compress' | 'overlay' {
+  const reply = held ? !!held.answers : answer !== null;
+  return tab === 'mail' && reply ? 'compress' : 'overlay';
+}
+
+/** What the composer shows of the letter a reply answers. */
+export interface AnsweredLetter {
+  /** Who wrote it, as the thread names them; null when the thread names no one. */
+  name: string | null;
+  /** When it arrived or left (ISO). */
+  at: string;
+  /** Its words, clipped. Empty when the letter's words are no longer kept. */
+  text: string;
+}
+
+/** The longest stretch of the answered letter the composer carries. */
+export const ANSWERED_LETTER_CLIP = 2000;
+
 export interface MailAnswer {
   /** The vendor; null on a reply to a team member or a guest (then `person` is set). */
   providerId: string | null;
   answers: string;
   subject: string;
+  /**
+   * The letter being answered, taken from the thread page already read (r109 mail-gap g3), so the
+   * composer can show it with no new request. The words are clipped at ANSWERED_LETTER_CLIP.
+   */
+  context?: AnsweredLetter;
   /**
    * A team or guest person who wrote to the house: the reply goes to this exact
    * address, on that thread, and nowhere else (r104 mail-gap g1, ADR 0396).
@@ -1342,6 +1374,11 @@ export function answerFor(
     providerId,
     answers: last.id,
     subject: subject === '' ? '' : /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`,
+    context: {
+      name: head?.person?.name ?? null,
+      at: letterAt(last),
+      text: last.rawDeletedAt ? '' : (last.text ?? '').slice(0, ANSWERED_LETTER_CLIP),
+    },
     ...(!providerId && kind !== 'vendor'
       ? { person: { kind, address, name: head?.person?.name ?? null } }
       : {}),
