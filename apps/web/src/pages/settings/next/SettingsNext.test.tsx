@@ -45,6 +45,16 @@ vi.mock('./useSettingsNextData', async () => {
 
 // The staff gate now reads role from AuthContext BEFORE the data hook mounts
 // (PR #419). Mirror `mock.current.role` so existing fixtures keep driving it.
+// Measurement's house pour reads the pricing register (recipes walk G13).
+vi.mock('@/services/api/pricing', () => ({
+  getTargetMargin: () =>
+    Promise.resolve({
+      restaurantId: 'r', bottlePct: null, glassPct: null, bandPct: null,
+      pour: { confirmed: false, ml: null, confirmedAt: null, confirmedBy: null },
+      readable: true, reason: null, statedAt: null, statedBy: null,
+    }),
+  confirmPourSize: vi.fn(),
+}));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     user: { userId: 'u1', role: (mock.current.role as string | null | undefined) ?? 'owner' },
@@ -700,9 +710,8 @@ describe('SettingsNext — features', () => {
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/i);
     expect(alert).toHaveTextContent(/this is not an empty register/i);
-    // Scoped: Measurement's "Enable recipes" toggle is a real browser-only
-    // switch that renders regardless of this fixture, since every register is
-    // on the page together now.
+    // Scoped: every register is on the page together, so a switch elsewhere
+    // must not count here.
     expect(within(screen.getByTestId('st-section-features')).queryByRole('switch')).not.toBeInTheDocument();
   });
 

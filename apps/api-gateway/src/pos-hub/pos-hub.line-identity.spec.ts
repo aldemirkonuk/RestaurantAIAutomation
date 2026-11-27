@@ -228,10 +228,9 @@ describe("a voided fraction (L4, r57 D1)", () => {
     const back = rpcs.filter((r) => r.fn === "return_glass_pour");
     expect(back).toHaveLength(1);
     expect(back[0].args.p_pours).toBe(1);
-    expect(back[0].args.p_pour_ml).toBe(375); // half of a 750 ml bottle
-    expect(String(back[0].args.p_idempotency_key)).toMatch(
-      /:frac:void$|:void$/,
-    );
+    // The database gives back the 375 ml the fraction booked under its key
+    // (sale-keyed return_glass_pour, r109); the void names that key.
+    expect(back[0].args.p_idempotency_key).toBe(`${back[0].args.p_sale_key}:void`);
     expect(res.stock.failed).toBe(0);
   });
 
@@ -250,8 +249,12 @@ describe("a voided fraction (L4, r57 D1)", () => {
       .filter((r) => r.fn === "return_glass_pour")
       .map((r) => r.args.p_idempotency_key);
     expect(new Set(keys).size).toBe(keys.length);
-    expect(keys.length).toBe(1);
-    expect(rpcs.filter((r) => r.fn === "apply_stock_movement")).toHaveLength(1);
+    // r109: the whole bottle and the half are each voided by the sale key
+    // they were booked under, so each gives back what it booked.
+    expect(keys.length).toBe(2);
+    const sales = rpcs.filter((r) => r.fn === "return_glass_pour").map((r) => r.args.p_sale_key);
+    expect(sales[1]).toBe(`${sales[0]}:frac`);
+    expect(rpcs.filter((r) => r.fn === "apply_stock_movement")).toHaveLength(0);
   });
 
   it("says so when the shelf could not take the fraction back", async () => {

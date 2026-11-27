@@ -167,7 +167,7 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.rpc[0].args.p_pours).toBe(2);
   });
 
-  it("reverses a bottle void with a positive return delta (B19)", async () => {
+  it("voids a bottle-mapped line by its booked sale, not a blind +qty (QA 8c)", async () => {
     const { service, calls } = makeService({
       mappings: [
         {
@@ -184,11 +184,11 @@ describe("PosHubService.ingest — stock effects", () => {
       closedCheckPayload({ voided: true }),
     ]);
 
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    expect(calls.rpc[0].name).toBe("return_glass_pour");
+    expect(calls.rpc[0].args.p_pours).toBe(2);
   });
 
-  it("returns a glass void's ml through return_glass_pour, never whole bottles (D1)", async () => {
+  it("reverses a glass void via return_glass_pour, not a bottle per glass (G11)", async () => {
     const { service, calls } = makeService({
       mappings: [
         {
@@ -208,7 +208,7 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.rpc).toHaveLength(1);
     expect(calls.rpc[0].name).toBe("return_glass_pour");
     expect(calls.rpc[0].args.p_pours).toBe(2);
-    expect(calls.rpc[0].args.p_pour_ml).toBeGreaterThan(0);
+    expect(String(calls.rpc[0].args.p_sale_key)).not.toMatch(/:void$/);
     expect(calls.rpc[0].args.p_restaurant_id).toBe("r1");
     expect(String(calls.rpc[0].args.p_idempotency_key)).toMatch(/:void$/);
   });

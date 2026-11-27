@@ -1,0 +1,22 @@
+-- a_pour_keeps_its_own_cost_basis_word (r105, DD-r104-10, approved).
+--
+-- WHY. A whole-bottle line's cost_at_sale now reads its ledger row (the lots the
+-- sale really drew). A glass pour has no such row: record_glass_pour writes no
+-- draws, so a pour stays on the recorded weighted cost. The two must not share
+-- a word, or a reader cannot tell a measured figure from a recorded one.
+--
+-- WHAT. wine_consumption_log.cost_basis may also say pour_lot_wac and
+-- pour_lot_wac_partial. Nothing else changes: restate_sale_cost still moves only
+-- last_purchase_price rows, and a pour costed at the last price paid keeps that
+-- word so a verified invoice can still restate it.
+
+ALTER TABLE public.wine_consumption_log
+  DROP CONSTRAINT IF EXISTS wine_consumption_log_cost_basis_check;
+ALTER TABLE public.wine_consumption_log
+  ADD CONSTRAINT wine_consumption_log_cost_basis_check
+  CHECK (cost_basis IS NULL OR cost_basis IN
+    ('invoice_lot_wac', 'invoice_lot_wac_partial', 'last_purchase_price',
+     'invoice_restated', 'pour_lot_wac', 'pour_lot_wac_partial'));
+
+COMMENT ON COLUMN public.wine_consumption_log.cost_basis IS
+  'What the cost was read from at sale: invoice_lot_wac, invoice_lot_wac_partial, last_purchase_price, pour_lot_wac or pour_lot_wac_partial (a pour has no ledger row, r105); invoice_restated once a verified invoice moved it.';

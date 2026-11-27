@@ -22,6 +22,7 @@ import {
   checkMarginFromRows,
   pickSaleCostSource,
   snapshotLineCost,
+  type SaleLedgerRow,
 } from "./sale-cost";
 import {
   PROVIDER_BY_KEY,
@@ -1521,33 +1522,35 @@ export class PosHubService {
           // repair fixed — the error field must be checked explicitly or a
           // failed depletion reports success silently.
           let rpcError: { message?: string } | null = null;
-          if (isVoid && (part === "fraction" || resolved.mode === "volume")) {
-            // r57 D1: a void of a pour gives back the ml that were poured, to
-            // the open bottle, and rolls a whole bottle only when the open ml
-            // reach one. It used to return `qty` WHOLE bottles (B19), so five
-            // voided glasses put five bottles back. A fraction is one pour of
-            // that share of the unit, exactly as the sale drew it. The key is
-            // the sale's key plus ":void", so a replayed void returns nothing
-            // a second time, and the house is named so the database refuses an
-            // item that is not its own (ADR 0141).
-            ({ error: rpcError } = await db.rpc("return_glass_pour", {
-              p_inventory_id: it.inventory_id,
-              p_pours: part === "fraction" ? 1 : units,
-              p_pour_ml:
-                part === "fraction"
-                  ? fractionMl(unitMl, frac)
-                  : Math.round((resolved as { ml: number }).ml),
+          if (isVoid) {
+            // A void gives back what its sale BOOKED under `key`, in the unit
+            // it was booked in -- ml of a glass or of a fraction, bottles of a
+            // bottle sale -- not by today's mapping, and at most once across
+            // every void of that sale. No booked sale is an error, never a
+            // quiet 0 (QA 8c; ADR 0011). r57's split: the whole units and the
+            // fraction were booked under their own keys, so each part is
+            // voided under its own (r109, DD-r108-21; the ml-based 10-argument
+            // overload is dropped by migration 20271230100000).
+            //
+            // ADR 0093 D5 -- THE VOID'S KEY IS NOT THE SALE'S KEY. Reusing it
+            // hit the sale's idempotent early return and moved nothing.
+            // `${key}:void` is derived from it, so a replayed void stays a
+            // no-op (pos-hub.void-idempotency.spec.ts).
+            const { data: back, error } = await db.rpc("return_glass_pour", {
               p_restaurant_id: restaurantId,
-              p_location_id: null,
-              p_source: "pos",
-              p_reason: `POS void (${label}): ${it.name}`,
+              p_inventory_id: it.inventory_id,
+              p_sale_key: key,
+              p_pours: part === "fraction" ? 1 : units,
               p_idempotency_key: `${key}:void`,
               p_occurred_at: when.at,
-            }));
-          } else if (
-            part === "fraction" ||
-            (resolved.mode === "volume" && !isVoid)
-          ) {
+            });
+            rpcError = error;
+            if (!error && Number((back as any)?.overflow_ml) > 0) {
+              this.logger.warn(
+                `Void of ${it.name}: ${(back as any).overflow_ml} ml not added back (${(back as any).reason})`,
+              );
+            }
+          } else if (part === "fraction" || resolved.mode === "volume") {
             // record_glass_pour has taken an arbitrary p_pour_ml since the
             // baseline (baseline_from_production.sql:1132); the app layer was
             // the only binary part. It is passed explicitly rather than as null
@@ -1569,41 +1572,24 @@ export class PosHubService {
               p_occurred_at: when.at,
             }));
           } else {
-            // Whole-bottle sales and their voids: a unit move is exact both
-            // ways. A void of a pour (volume mode) never comes here (r57 D1,
-            // return_glass_pour above); B19's whole-bottle over-return is gone.
-            //
-            // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
-            //
-            // `apply_stock_movement` (production definition, read 2026-09-02)
-            // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
-            // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
-            // already wrote — therefore returned the sale's transaction id and
-            // MOVED NOTHING: a voided check stayed depleted forever, and the
-            // caller could not tell, because an idempotent hit and a real
-            // movement are the same `{ error: null }`.
-            //
-            // `${idem}:void` is derived from the sale's key rather than random,
-            // so a REPLAYED void is still idempotent — the property the sale
-            // already had, extended to the reversal.
-            //
-            // pos-hub.void-idempotency.spec.ts pins this against a mock that
-            // actually implements the early return; the older B19 tests could
-            // not see it because their mock ignores the key.
+            // Whole-bottle sales. Their voids go through return_glass_pour
+            // above, which reads what the sale booked.
             ({ error: rpcError } = await db.rpc("apply_stock_movement", {
               p_inventory_id: it.inventory_id,
               p_stock_state: "live",
-              p_delta: isVoid ? units : -units,
-              p_transaction_type: isVoid ? "return" : "sale",
+              p_delta: -units,
+              p_transaction_type: "sale",
               p_source: "pos",
-              p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-              p_idempotency_key: isVoid ? `${key}:void` : key,
+              p_reason: `POS sale (${label}): ${it.name}`,
+              p_idempotency_key: key,
               // ADR 0141 — the house this check belongs to. `it.inventory_id`
               // comes from a `pos_item_mappings` row read for this restaurant;
               // the row belonging here does not make the item it names belong
               // here, and a mis-seeded mapping used to move another house's
               // shelf on every sale.
               p_restaurant_id: restaurantId,
+              // ADR 0281: a sale and its void are both dated by the closed_at
+              // their check carries.
               p_occurred_at: when.at,
             }));
           }
@@ -1919,12 +1905,34 @@ export class PosHubService {
       // logged and nothing else noticed. The honest shape is a plain INSERT
       // with the partial unique index as the backstop: a replay raises 23505,
       // which is the idempotent no-op the upsert was meant to be.
+      // r105: a whole-bottle line reads the row apply_stock_movement just
+      // wrote under this key, so the line costs what the lots it drew cost.
+      // A pour has no such row (record_glass_pour writes no draws) and stays
+      // on the recorded WAC. A failed read says so and falls back to the WAC
+      // the line was costed at before; it is never silently a different cost.
+      let ledgerRow: SaleLedgerRow | null = null;
+      if (resolved.mode === "whole_bottle" && costSource) {
+        const { data, error: ledgerError } = await db
+          .from("inventory_transactions")
+          .select("quantity_change, unit_cost, cost_total, unpriced_qty")
+          .eq("restaurant_id", restaurantId)
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
+        if (ledgerError) {
+          this.logger.warn(
+            `Sale ledger row unreadable for ${item.name} (key=${idempotencyKey}): ${ledgerError.message}; the line is costed at the recorded cost instead.`,
+          );
+        } else {
+          ledgerRow = (data as SaleLedgerRow | null) ?? null;
+        }
+      }
       const snapshot: CostSnapshot = snapshotLineCost(
         costSource,
         resolved.mode,
         volumeMl,
         inv?.bottleMl ?? null,
         qty,
+        ledgerRow,
       );
       const { error } = await db.from("wine_consumption_log").insert({
         restaurant_id: restaurantId,

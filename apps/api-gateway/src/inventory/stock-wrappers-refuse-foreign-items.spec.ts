@@ -68,7 +68,7 @@ describe("a stock wrapper refuses an item that belongs to another house", () => 
     {
       name: "InventoryService.recordPour (record_glass_pour)",
       make: inventoryService,
-      call: (svc) => svc.recordPour(HOUSE, ITEM, { pours: 1 }),
+      call: (svc) => svc.recordPour(HOUSE, ITEM, { pours: 1, idempotencyKey: "k-1" }),
     },
     {
       name: "InventoryService.transferStock (transfer_stock)",

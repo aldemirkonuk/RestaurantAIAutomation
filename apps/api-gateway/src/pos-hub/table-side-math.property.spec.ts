@@ -350,7 +350,7 @@ describe("cost at sale (P9, D4)", () => {
     );
     const k = snapshotLineCost(src(30), "volume", 150, 750, 1);
     expect(k).toMatchObject({
-      cost_basis: "invoice_lot_wac",
+      cost_basis: "pour_lot_wac",
       cost_source_lot_id: "lot-1",
       cost_source_order_id: "ord-1",
     });
@@ -544,18 +544,25 @@ describe("a void gives the poured ml back (P10, D1)", () => {
       rpcs,
     };
   }
-  const ml = (rpcs: Rpc[], sign: 1 | -1) =>
-    rpcs.reduce((sum, r) => {
-      if (r.fn === "record_glass_pour" && sign === -1)
-        return sum + r.args.p_pours * r.args.p_pour_ml;
-      if (r.fn === "return_glass_pour" && sign === 1)
-        return sum + r.args.p_pours * r.args.p_pour_ml;
-      if (r.fn === "apply_stock_movement")
-        return (
-          sum + (r.args.p_delta * sign < 0 ? 0 : Math.abs(r.args.p_delta) * 750)
-        );
-      return sum;
-    }, 0);
+  // r109 (DD-r108-21): a void names the sale part it gives back and the
+  // database returns what that part BOOKED (return_glass_pour, sale-keyed;
+  // ml for a pour, bottles for a bottle sale, at most once across voids:
+  // supabase/tests/20271230100000_one_void_of_a_pour_test.sql). So the
+  // property here is on keys and counts: every part the sale wrote is voided
+  // once, under its own key, for the same count.
+  const parts = (rpcs: Rpc[]) =>
+    rpcs
+      .filter((r) => r.fn === "record_glass_pour" || r.fn === "apply_stock_movement")
+      .map((r) => [String(r.args.p_idempotency_key), r.fn === "apply_stock_movement" ? -r.args.p_delta : r.args.p_pours])
+      .sort();
+  const voided = (rpcs: Rpc[]) =>
+    rpcs
+      .filter((r) => r.fn === "return_glass_pour")
+      .map((r) => {
+        expect(r.args.p_idempotency_key).toBe(`${r.args.p_sale_key}:void`);
+        return [String(r.args.p_sale_key), r.args.p_pours];
+      })
+      .sort();
   const QTYS = [1, 2, 3, 5, 0.25, 0.5, 1.5, 2.75];
   const check = (qty: number, voided: boolean) => ({
     externalCheckId: "chk",
@@ -565,7 +572,7 @@ describe("a void gives the poured ml back (P10, D1)", () => {
     items: [{ name: "House Red", externalItemId: "w", qty, price: 40 }],
   });
 
-  it("ml returned equal ml drawn, for any quantity and either sale size", async () => {
+  it("a void gives back every part its sale booked, once, under that part's key, for any quantity and either sale size", async () => {
     const r = rng(77);
     for (let i = 0; i < 60; i++) {
       const unit = r() < 0.5 ? "glass" : "bottle";
@@ -578,16 +585,9 @@ describe("a void gives the poured ml back (P10, D1)", () => {
       const svc = new PosHubService(back.db);
       await svc.ingest("r1", "generic_webhook", [check(qty, true)]);
       await svc.ingest("r1", "generic_webhook", [check(qty, true)]);
-      const drawn = ml(sale.rpcs, -1);
-      const returned = ml(back.rpcs, 1);
-      expect({ unit, qty, returned }).toEqual({ unit, qty, returned: drawn });
-      // A void of a pour never puts whole bottles back through the unit move
-      // unless the sale drew whole bottles the same way.
-      if (unit === "glass") {
-        expect(
-          back.rpcs.filter((x) => x.fn === "apply_stock_movement"),
-        ).toHaveLength(0);
-      }
+      expect({ unit, qty, voided: voided(back.rpcs) }).toEqual({ unit, qty, voided: parts(sale.rpcs) });
+      // A void never moves stock by a unit count of its own.
+      expect(back.rpcs.filter((x) => x.fn === "apply_stock_movement")).toHaveLength(0);
     }
   });
 });

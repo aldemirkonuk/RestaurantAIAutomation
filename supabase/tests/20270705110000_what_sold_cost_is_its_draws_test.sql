@@ -181,10 +181,10 @@ begin
     format('C7 FAIL: rows_unstamped %s, was %s', pg_temp.cogs() ->> 'rows_unstamped', before_);
 end $$;
 
--- C8: a glass pour that opens a bottle writes a till sale row; until the pour
--- stamps its draws (#809), that bottle's cost is unknown, not 0. Pinned to
--- today's exact state (batch review 2026-11-11, NIT): flip to cost 40 and
--- uncosted_out 0 in the commit that lands #809.
+-- C8: a glass pour that opens a bottle writes a till sale row, and since
+-- a_glass_pour_carries_its_cost it stamps that bottle's draw: the bottle's
+-- cost is its lot's 40, and nothing is unknown (flipped as the batch review
+-- of 2026-11-11 asked, in the commit that lands the stamp).
 do $$
 declare e jsonb;
 begin
@@ -193,7 +193,7 @@ begin
     p_source => 'pos', p_idempotency_key => 'cogs-8-1');
   e := pg_temp.item('8');
   assert (e ->> 'bottles_out')::int = 1
-     and (e ->> 'uncosted_out')::int = 1 and (e ->> 'cost')::numeric = 0,
+     and (e ->> 'uncosted_out')::int = 0 and (e ->> 'cost')::numeric = 40,
     format('C8 FAIL: %s', e);
 end $$;
 
