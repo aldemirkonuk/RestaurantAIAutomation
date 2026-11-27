@@ -465,6 +465,9 @@ describe('full screen steps through the sheet (r108 g1)', () => {
     expect(within(dialog).queryByRole('group', { name: 'Move through the sheet' })).toBeNull();
     fireEvent.keyDown(document.body, { key: 'ArrowRight' });
     expect(where()).toBe('/reports?flat=till');
+  });
+});
+
 describe('Fill the screen (r109 g1)', () => {
   const proto = HTMLElement.prototype as unknown as { requestFullscreen?: unknown };
   let fsEl: Element | null = null;
