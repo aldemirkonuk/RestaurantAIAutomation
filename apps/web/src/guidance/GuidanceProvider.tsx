@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -30,6 +29,8 @@ import { TIP_REGISTRY } from './tours/registry'
 interface GuidanceContextValue {
   state: GuidanceState
   tipVisibleFor: PageTourId | null
+  /** The tip strip says its tip is on screen (counted and announced once a session). */
+  offerTip: (pageId: PageTourId) => void
   isTourRunning: boolean
   startTour: (pageId: PageTourId) => void
   snoozeTip: (pageId: PageTourId) => void
@@ -273,21 +274,23 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, tourRunning, location.pathname, location.search, sessionTick])
 
-  useEffect(() => {
-    if (!tipVisibleFor) return
+  // A tip counts as offered (analytics, the live-region announcement, the
+  // session's offered list) only when its strip is actually on screen: the
+  // strip calls this. It used to fire whenever a tip was due, so a tip held
+  // back behind the setup nudge was announced to a screen reader unseen.
+  const offerTip = useCallback((pageId: PageTourId) => {
     const s = readSession()
-    if (!s.offeredPageIds.includes(tipVisibleFor)) {
-      s.offeredPageIds = [...s.offeredPageIds, tipVisibleFor]
-      writeSession(s)
-      sessionRef.current = s
-      trackGuidance('tip_shown', { pageId: tipVisibleFor })
-      const tip = TIP_REGISTRY[tipVisibleFor]
-      if (tip) {
-        announceGuidance(`Page tip: ${tip.title}. ${tip.body}`)
-      }
-      setSessionTick((n) => n + 1)
+    if (s.offeredPageIds.includes(pageId)) return
+    s.offeredPageIds = [...s.offeredPageIds, pageId]
+    writeSession(s)
+    sessionRef.current = s
+    trackGuidance('tip_shown', { pageId })
+    const tip = TIP_REGISTRY[pageId]
+    if (tip) {
+      announceGuidance(`Page tip: ${tip.title}. ${tip.body}`)
     }
-  }, [tipVisibleFor])
+    setSessionTick((n) => n + 1)
+  }, [])
 
   const snoozeTip = useCallback(
     (pageId: PageTourId) => {
@@ -413,6 +416,7 @@ export function GuidanceProvider({ children }: { children: ReactNode }) {
   const value: GuidanceContextValue = {
     state,
     tipVisibleFor,
+    offerTip,
     isTourRunning: tourRunning,
     startTour,
     snoozeTip,
