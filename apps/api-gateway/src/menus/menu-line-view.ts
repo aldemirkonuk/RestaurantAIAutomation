@@ -76,6 +76,8 @@ export const MEMBER_LINE_KEYS = [
   // r108 menu-g10: what the menu prints beside the line (not its raw text).
   "description",
   "printed_marks",
+  // r109 menu-g3: every size the line prints (label, ml, price), as printed.
+  "printed_sizes",
 ] as const;
 
 /**

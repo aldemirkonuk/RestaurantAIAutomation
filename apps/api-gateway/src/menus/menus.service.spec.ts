@@ -328,7 +328,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   const MEMBER_KEYS = [
     "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
     "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
-    "price_flag", "price_flag_note", "created_at", "description", "printed_marks",
+    "price_flag", "price_flag_note", "created_at", "description", "printed_marks", "printed_sizes",
   ];
   const ROOT_KEYS = ["menuId", "name", "status", "items"];
 
@@ -357,6 +357,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       created_at: "2026-10-07T10:00:00Z",
       description: null,
       printed_marks: null,
+      printed_sizes: null,
       ...over,
     });
     return {
@@ -849,6 +850,41 @@ describe("MenusService -- a line keeps what the menu prints (r108 menu-g10)", ()
     expect(by("Mercimek")).toMatchObject({ description: "Red lentil, lemon", printed_marks: ["V"] });
     expect(by("Garden salad").printed_marks).toBeNull();
     expect(by("Köfte").printed_marks).toBeNull();
+  });
+
+  it("r109 g3: a 20/35/70 cl rakı keeps its three printed sizes beside its bottle price; a size not on the line is dropped", async () => {
+    const t = tables();
+    const raw = "Yeni Rakı 20 cl 450 / 35 cl 700 / 70 cl 1250";
+    const reply = await makeService(t, { wineSubmissions }).importParsedItems(
+      [
+        {
+          name: "Yeni Rakı",
+          category: "spirit",
+          bottle_price: 1250,
+          raw_text: raw,
+          sizes: [
+            { label: "20 cl", ml: 200, price: 450 },
+            { label: "35 cl", ml: 350, price: "700" },
+            { label: "70 cl", ml: 700, price: 1250 },
+            { label: "100 cl", ml: 1000, price: 1700 },
+          ],
+        },
+        { name: "Efes", category: "beer", by_glass_price: 90, sizes: [{ label: "33 cl", price: 90 }] },
+      ] as any,
+      "rest-1",
+      "user-1",
+      "scan",
+    );
+    const raki = t.menu_items.find((l) => l.name === "Yeni Rakı")!;
+    expect(raki.printed_sizes).toEqual([
+      { label: "20 cl", ml: 200, price: 450 },
+      { label: "35 cl", ml: 350, price: 700 },
+      { label: "70 cl", ml: 700, price: 1250 },
+    ]);
+    expect(raki).toMatchObject({ bottle_price: 1250, by_glass_price: null });
+    // One size is not "sizes": the line's one price is its glass price, as before.
+    expect(t.menu_items.find((l) => l.name === "Efes")!.printed_sizes).toBeNull();
+    expect((reply as any).items.find((i: any) => i.name === "Yeni Rakı").printedSizes).toHaveLength(3);
   });
 
   it("a CSV's Description and Notes columns are read, the notes as the row prints them", async () => {
@@ -1364,6 +1400,24 @@ describe("MenusService — every menu read is kept as its own version", () => {
       });
       expect(r.madeCurrentAt).toBe("2026-09-21T12:00:00Z");
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
+    });
+
+    it("r109 g3: a line with printed sizes carries its bottle and glass price only; no size moves a house price", async () => {
+      const sizes = [
+        { label: "20 cl", ml: 200, price: 450 },
+        { label: "35 cl", ml: 350, price: 700 },
+      ];
+      const withSizes = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15, raw_text: "Opus One 20 cl 450 35 cl 700", sizes }]);
+      const without = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15, raw_text: "Opus One 20 cl 450 35 cl 700" }]);
+      expect(withSizes.tables.menu_items[0].printed_sizes).toEqual(sizes);
+      const planOf = async (x: typeof withSizes) =>
+        (await x.service.planFor("rest-1", x.read.menuId)).lines.map(({ menuItemId: _id, ...l }: any) => l);
+      expect(await planOf(withSizes)).toEqual(await planOf(without));
+      await choose(withSizes.service, withSizes.read.menuId);
+      const price = withSizes.calls.filter(([fn]) => fn === "set_house_menu_price");
+      expect(price).toHaveLength(1);
+      expect(price[0][1]).toMatchObject({ p_bottle_price: 64, p_glass_price: 15 });
+      for (const size of sizes) expect(JSON.stringify(price[0][1])).not.toContain(String(size.price));
     });
 
     it("a kitchen line stays on the menu and is carried nowhere: not in the plan's prices, no house row, no price", async () => {
