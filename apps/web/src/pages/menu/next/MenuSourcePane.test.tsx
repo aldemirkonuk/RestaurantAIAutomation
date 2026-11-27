@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MenuSourcePane, SOURCE_PANE_HEIGHT } from './MenuSourcePane';
@@ -43,10 +43,68 @@ describe('MenuSourcePane -- the kept menu beside the lines (r107 menu-8)', () =>
     mount('application/pdf');
     fireEvent.click(screen.getByRole('button', { name: 'Show the kept menu with the lines' }));
     const region = screen.getByRole('region', { name: 'The kept menu' });
-    expect(region.style.minHeight).toBe(`${SOURCE_PANE_HEIGHT}px`);
+    expect(region.style.height).toBe(`${SOURCE_PANE_HEIGHT}px`);
     expect(region).toHaveTextContent('Getting the kept menu…');
     resolve({ url: 'https://files.example/m-1.pdf', expiresInSeconds: 60, mime: 'application/pdf' });
     expect(await screen.findByTitle('The kept menu, as it was read')).toHaveAttribute('src', 'https://files.example/m-1.pdf');
+  });
+
+  it('keeps the region at one fixed height for a photo too, so the lines below never move when it decodes', async () => {
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.jpg', expiresInSeconds: 300, mime: 'image/jpeg' });
+    mount('image/jpeg');
+    fireEvent.click(screen.getByRole('button', { name: 'Show the kept menu with the lines' }));
+    const region = screen.getByRole('region', { name: 'The kept menu' });
+    expect(region.style.height).toBe(`${SOURCE_PANE_HEIGHT}px`);
+    const img = await screen.findByAltText('The kept menu, as it was read');
+    expect(region.style.height).toBe(`${SOURCE_PANE_HEIGHT}px`);
+    expect(region.style.minHeight).toBe('');
+    expect(img.style.height).toBe('100%');
+    expect(img.style.objectFit).toBe('contain');
+    expect(screen.getByRole('link', { name: 'Open full size' })).toHaveAttribute('href', 'https://files.example/m-1.jpg');
+  });
+
+  it('does not ask for a new link when the window is focused again: the page being read does not reload', async () => {
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.pdf', expiresInSeconds: 300, mime: 'application/pdf' });
+    mount('application/pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'Show the kept menu with the lines' }));
+    await screen.findByTitle('The kept menu, as it was read');
+    const now = Date.now();
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(now + 10 * 60_000);
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await new Promise((r) => setTimeout(r, 20));
+    spy.mockRestore();
+    expect(mockUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again when it is opened again after the link has expired, and not before', async () => {
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.pdf', expiresInSeconds: 300, mime: 'application/pdf' });
+    mount('application/pdf');
+    const toggle = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+    toggle('Show the kept menu with the lines');
+    await screen.findByTitle('The kept menu, as it was read');
+    toggle('Hide the kept menu');
+    toggle('Show the kept menu with the lines');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockUrl).toHaveBeenCalledTimes(1);
+    toggle('Hide the kept menu');
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 301_000);
+    toggle('Show the kept menu with the lines');
+    await new Promise((r) => setTimeout(r, 50));
+    spy.mockRestore();
+    expect(mockUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks again once when the photo itself fails to load, not in a loop', async () => {
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.jpg', expiresInSeconds: 300, mime: 'image/jpeg' });
+    mount('image/jpeg');
+    fireEvent.click(screen.getByRole('button', { name: 'Show the kept menu with the lines' }));
+    const img = await screen.findByAltText('The kept menu, as it was read');
+    fireEvent.error(img);
+    await waitFor(() => expect(mockUrl).toHaveBeenCalledTimes(2));
+    fireEvent.error(await screen.findByAltText('The kept menu, as it was read'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockUrl).toHaveBeenCalledTimes(2);
   });
 
   it('says a sheet cannot be shown, in words, instead of an empty frame', async () => {
