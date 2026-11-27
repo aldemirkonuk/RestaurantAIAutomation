@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { CsvParserService } from "./csv-parser.service";
 
 const parser = () => new CsvParserService();
+const parse = (csv: string) => parser().parse(csv);
 
 describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
   it("reads an Excel-TR semicolon file with Turkish headers and decimal-comma prices", () => {
@@ -183,5 +184,107 @@ describe("CsvParserService.parseExcel", () => {
         raw_text: "Emir,Kocabağ,1.250,90",
       },
     ]);
+  });
+});
+
+describe("CsvParserService: a quote that never closes loses one line, not the rest of the file", () => {
+  it("keeps every line after a lone opening quote", () => {
+    const items = parse(
+      'Name,Bottle\nRioja,120\n"Dom Perignon,900\nSancerre,40\nBarolo,85\nChablis,60\n',
+    );
+    expect(items.map((i) => i.name)).toEqual([
+      "Rioja",
+      "Dom Perignon,900",
+      "Sancerre",
+      "Barolo",
+      "Chablis",
+    ]);
+    expect(items.slice(2).map((i) => i.bottle_price)).toEqual([40, 85, 60]);
+  });
+
+  it("still joins a quoted cell that does close across lines", () => {
+    const items = parse('Name,Bottle\n"Two\nLines",50\nBarolo,85\n');
+    expect(items.map((i) => i.name)).toEqual(["Two\nLines", "Barolo"]);
+  });
+});
+
+describe("CsvParserService.read: a row wider than the header", () => {
+  it("leaves both prices blank and says so when an unquoted decimal comma adds a cell", () => {
+    const { items, issues } = parser().read("Name,Glass,Bottle\nKalecik,12,50,60\n");
+    expect(items).toEqual([{ name: "Kalecik", raw_text: "Kalecik,12,50,60" }]);
+    expect(issues).toEqual([
+      { row: 2, reason: "more_cells_than_header", raw: "Kalecik,12,50,60" },
+    ]);
+  });
+
+  it("does not read 62 as the bottle price from 62,50 under a Bottle header", () => {
+    const { items, issues } = parser().read("Name,Bottle\nKalecik,62,50");
+    expect(items[0].bottle_price).toBeUndefined();
+    expect(issues.map((i) => i.reason)).toEqual(["more_cells_than_header"]);
+  });
+
+  it("still reads a row that fits, and a trailing empty cell is not a wider row", () => {
+    const { items, issues } = parser().read("Name,Bottle\nA,50,\nB,\"62,50\"\n");
+    expect(items.map((i) => i.bottle_price)).toEqual([50, 62.5]);
+    expect(issues).toEqual([]);
+  });
+});
+
+describe("CsvParserService.read: price headers with a size or a bracket", () => {
+  it("reads Bottle 75cl and Glass 125ml as the bottle and glass prices", () => {
+    const { items, issues } = parser().read(
+      "Name;Bottle 75cl;Glass 125ml\nRioja;120;18\n",
+    );
+    expect(items[0]).toMatchObject({ bottle_price: 120, by_glass_price: 18 });
+    expect(issues).toEqual([]);
+  });
+
+  it("takes the kind from a bracket on a bare Fiyat header", () => {
+    const { items, issues } = parser().read(
+      "Ad;Fiyat (\u015ei\u015fe);Fiyat (Kadeh)\nNarince;450;90\n",
+    );
+    expect(items[0]).toMatchObject({ bottle_price: 450, by_glass_price: 90 });
+    expect(issues).toEqual([]);
+  });
+
+  it("says a price header it cannot place was not read", () => {
+    const { items, issues } = parser().read("Name,Bottle Size,Glass Type\nRioja,75,red\n");
+    expect(items[0].bottle_price).toBeUndefined();
+    expect(issues).toEqual([
+      { row: 1, reason: "price_column_not_read", raw: "Bottle Size" },
+      { row: 1, reason: "price_column_not_read", raw: "Glass Type" },
+    ]);
+  });
+});
+
+describe("CsvParserService.read: negative prices and unclosed quotes are said", () => {
+  it("notes a negative price in text, and never reads its absolute value", () => {
+    const { items, issues } = parser().read("Name,Bottle\nA,-45\n");
+    expect(items[0].bottle_price).toBeUndefined();
+    expect(issues).toEqual([
+      { row: 2, reason: "negative", field: "bottle_price", raw: "-45" },
+    ]);
+  });
+
+  it("notes a stored negative number in a workbook instead of dropping it", async () => {
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Menu");
+    ws.addRow(["Name", "Bottle"]);
+    ws.addRow(["A", -45]);
+    const b64 = Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+    const { items, issues } = await parser().readExcel(b64);
+    expect(items[0].bottle_price).toBeUndefined();
+    expect(issues).toEqual([
+      { row: 2, reason: "negative", field: "bottle_price", raw: "-45" },
+    ]);
+  });
+
+  it("keeps five lines and notes the row where a quote never closed", () => {
+    const { items, issues } = parser().read(
+      'Name,Bottle\nRioja,120\n"Dom Perignon,900\nSancerre,40\nBarolo,85\nChablis,60\n',
+    );
+    expect(items).toHaveLength(5);
+    expect(issues).toEqual([{ row: 3, reason: "unclosed_quote" }]);
   });
 });

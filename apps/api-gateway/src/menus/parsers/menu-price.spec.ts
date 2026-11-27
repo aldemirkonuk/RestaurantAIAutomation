@@ -55,3 +55,24 @@ describe("readMenuPrice: an amount only when the string has one reading (ADR 002
     });
   });
 });
+
+describe("readMenuPrice: a minus against the number is negative, never its absolute value", () => {
+  it.each(["-45", "\u221245", "\u201345", "-1.250,00", "-\u20ba45", "\u20ba-45", "(-45)"])(
+    "%s has no amount and says negative",
+    (raw) => {
+      expect(readMenuPrice(raw)).toEqual({
+        amount: null,
+        raw,
+        reason: "negative",
+      });
+    },
+  );
+
+  it.each([
+    ["45,-", 45],
+    ["Glass \u2013 12", 12],
+    ["12 -", 12],
+  ])("%s still reads %s", (raw, amount) => {
+    expect(readMenuPrice(raw)).toEqual({ amount, raw, reason: null });
+  });
+});
