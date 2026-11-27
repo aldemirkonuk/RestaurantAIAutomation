@@ -231,4 +231,29 @@ describe("changeUnverifiedEmail", () => {
     expect(users[0].email).toBe("selin@typo.test");
     expect(sent).toHaveLength(0);
   });
+
+  it("a link row for the old address that lands after the move (a resend racing it) verifies nothing", async () => {
+    const { service, users, verifs } = setup();
+    await service.changeUnverifiedEmail("u1", "selin@house.test");
+    verifs.push({
+      id: "v-race",
+      user_id: "u1",
+      email: "selin@typo.test",
+      token: "race-token",
+      verified_at: null,
+      expires_at: "2999-01-01T00:00:00Z",
+    });
+    await expect(service.verifyEmail("race-token", "u1")).rejects.toMatchObject({
+      response: { code: "LINK_FOR_OLD_ADDRESS" },
+    });
+    expect(users[0].email_verified).toBe(false);
+  });
+
+  it("a link for the address the account has now still verifies it", async () => {
+    const { service, users, verifs } = setup();
+    await service.changeUnverifiedEmail("u1", "selin@house.test");
+    verifs.find((v) => v.token === "new-token")!.expires_at = "2999-01-01T00:00:00Z";
+    await service.verifyEmail("new-token", "u1");
+    expect(users[0].email_verified).toBe(true);
+  });
 });
