@@ -838,6 +838,19 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
         expect(r.error).toMatch(/Nothing was changed/);
       }
     });
+    it("refuses a space inside a price with a sentence that says so, never as 'two readings'", async () => {
+      for (const raw of ["₺ 1 250", "1 250", "1 250,50", "12 450"]) {
+        const r = await typeIt(raw);
+        expect(r.value).toBeNull();
+        expect(r.error).toContain("a space inside a price is not read; write 1250 or 1,250.00");
+        expect(r.error).not.toMatch(/two ways/);
+        expect(r.error).toMatch(/Nothing was changed/);
+      }
+      // a space beside the currency mark is still fine; '1.250' stays refused, '62,50' reads 62.5
+      expect((await typeIt("45 TL")).value).toBe(45);
+      expect((await typeIt("62,50")).value).toBe(62.5);
+      expect((await typeIt("1.250")).error).toMatch(/could be 1250 or 1\.25/);
+    });
     it("names both readings of a three-digit tail, and never guesses one", async () => {
       expect((await typeIt("1,250")).error).toMatch(/reads two ways: it could be 1250 or 1\.25/);
       expect((await typeIt("1.250")).error).toMatch(/could be 1250 or 1\.25/);

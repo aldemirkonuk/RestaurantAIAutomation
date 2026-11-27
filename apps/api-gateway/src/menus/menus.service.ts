@@ -569,6 +569,9 @@ function typedMenuPrice(raw: string): { value: number } | { refused: string } {
   const not = (why: string) => ({ refused: `"${typed}" is not a price: ${why}. Nothing was changed.` });
   if (s === "") return not("there is no number in it");
   if (!/^\d[\d.,\s]*$/.test(s)) return not("a price is written in digits, with no minus, no letters and at most one decimal mark");
+  // A space inside a price is not read (the r21 reader took "1 250" as 1250; the one reader names two readings,
+  // which is not what a space is). Refuse with what is true, never guess.
+  if (/\d\s+\d/.test(s)) return { refused: `"${typed}" is not read: a space inside a price is not read; write 1250 or 1,250.00. Nothing was changed.` };
   const read = readMenuPrice(s);
   // Money has at most two decimals: "1.250,505" is not a price, whatever the file reader would make of it.
   if (read.amount !== null) return /\.\d{3,}/.test(String(read.amount)) ? not("a price has at most two decimals") : { value: read.amount };
