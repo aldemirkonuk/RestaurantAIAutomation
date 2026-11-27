@@ -59,38 +59,59 @@ created = {}  # (name, sig) -> migration that last created it
 revoked = {}  # (name, sig) -> migration
 granted = {}
 problems = []
-renamed = {}
 for f in files:
     v = os.path.basename(f)[:14]
     t = strip(open(f).read())
+    # Events run in the order they stand in the file. Postgres runs a migration
+    # top to bottom, and `DROP FUNCTION x; CREATE FUNCTION x` is the pattern that
+    # resets the function's ACL to the default (EXECUTE for PUBLIC and for
+    # Supabase's anon and authenticated roles): the REVOKE and GRANT an EARLIER
+    # migration made died with the old function. Walking one statement kind at a
+    # time (all CREATEs, then all DROPs) popped a function that the same file
+    # re-created, and let the new one go unchecked.
+    events = []
     for m in re.finditer(r"CREATE(?:\s+OR\s+REPLACE)?\s+FUNCTION\s+public\.(\w*mail\w*)\s*\((.*?)\)\s*RETURNS\s+(\w+)", t, re.S | re.I):
-        if m.group(3).lower() == "trigger":
-            continue  # a trigger function is not callable as a query; it needs no grant
-        if "SECURITY DEFINER" in t[m.end(): m.end() + 1500].split("$$")[0].upper():
-            problems.append(f"{v}: {m.group(1)} is SECURITY DEFINER")
-        created[(m.group(1).lower(), types(m.group(2)) if m.group(2).strip() else ())] = v
+        events.append((m.start(), "create", m))
     for m in re.finditer(r"DROP\s+FUNCTION(?:\s+IF\s+EXISTS)?\s+public\.(\w+)\s*\(([^)]*)\)", t, re.I):
-        created.pop((m.group(1).lower(), types(m.group(2)) if m.group(2).strip() else ()), None)
+        events.append((m.start(), "drop", m))
     for m in re.finditer(r"ALTER\s+FUNCTION\s+public\.(\w+)\s*\(([^)]*)\)\s*RENAME\s+TO\s+(\w+)", t, re.I):
-        key = (m.group(1).lower(), types(m.group(2)) if m.group(2).strip() else ())
-        if key in created:
-            # a rename keeps the grants it had; it is the same function under a new name
-            created[(m.group(3).lower(), key[1])] = created.pop(key)
-            for d in (revoked, granted):
-                if key in d:
-                    d[(m.group(3).lower(), key[1])] = d.pop(key)
+        events.append((m.start(), "rename", m))
     for m in re.finditer(r"REVOKE\s+ALL\s+ON\s+FUNCTION\s+(.*?)\s+FROM\s+([^;]*);", t, re.S | re.I):
-        who = m.group(2).lower()
-        if all(w in who for w in ("public", "anon", "authenticated")):
-            for k in sig_list(m.group(1)):
-                revoked[k] = v
+        events.append((m.start(), "revoke", m))
     for m in re.finditer(r"GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+(.*?)\s+TO\s+([^;]*);", t, re.S | re.I):
-        who = m.group(2).lower()
-        if re.search(r"\b(anon|authenticated|public)\b", who):
-            problems.append(f"{v}: EXECUTE granted to {who.strip()}")
-        elif "service_role" in who:
-            for k in sig_list(m.group(1)):
-                granted[k] = v
+        events.append((m.start(), "grant", m))
+    for _, kind, m in sorted(events, key=lambda e: e[0]):
+        if kind == "create":
+            if m.group(3).lower() == "trigger":
+                continue  # a trigger function is not callable as a query; it needs no grant
+            if "SECURITY DEFINER" in t[m.end(): m.end() + 1500].split("$$")[0].upper():
+                problems.append(f"{v}: {m.group(1)} is SECURITY DEFINER")
+            created[(m.group(1).lower(), types(m.group(2)) if m.group(2).strip() else ())] = v
+        elif kind == "drop":
+            key = (m.group(1).lower(), types(m.group(2)) if m.group(2).strip() else ())
+            # the function and the ACL it carried are gone; a re-CREATE starts from the default
+            for d in (created, revoked, granted):
+                d.pop(key, None)
+        elif kind == "rename":
+            key = (m.group(1).lower(), types(m.group(2)) if m.group(2).strip() else ())
+            if key in created:
+                # a rename keeps the grants it had; it is the same function under a new name
+                created[(m.group(3).lower(), key[1])] = created.pop(key)
+                for d in (revoked, granted):
+                    if key in d:
+                        d[(m.group(3).lower(), key[1])] = d.pop(key)
+        elif kind == "revoke":
+            who = m.group(2).lower()
+            if all(w in who for w in ("public", "anon", "authenticated")):
+                for k in sig_list(m.group(1)):
+                    revoked[k] = v
+        else:
+            who = m.group(2).lower()
+            if re.search(r"\b(anon|authenticated|public)\b", who):
+                problems.append(f"{v}: EXECUTE granted to {who.strip()}")
+            elif "service_role" in who:
+                for k in sig_list(m.group(1)):
+                    granted[k] = v
 
 for k, v in sorted(created.items()):
     if k not in revoked:
