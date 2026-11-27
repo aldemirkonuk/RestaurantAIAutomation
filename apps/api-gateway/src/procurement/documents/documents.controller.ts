@@ -1532,6 +1532,23 @@ export class DocumentsController {
     const term = (q ?? "").replace(/[^\p{L}\p{N} .\-#/]/gu, "").trim().slice(0, 60);
 
     let documentIds: string[] | null = null;
+    // The order read needs only orderId, so it starts WITH the links read
+    // (p6 s6): three round trips for the answer, not four. Both reads are
+    // awaited below, so a failed one is named exactly as before.
+    // A query builder only fires when awaited, so it is wrapped in a promise
+    // to start now.
+    const orderRead = orderId
+      ? Promise.resolve(
+          this.db
+            .getClient()
+            .from("procurement_orders")
+            .select("order_number, currency, currency_source")
+            .eq("id", orderId)
+            .eq("restaurant_id", user.restaurantId)
+            .maybeSingle(),
+        )
+      : null;
+    orderRead?.catch(() => undefined); // read below; no unhandled rejection if the links read throws first
     if (orderId) {
       const { data: links, error: linkErr } = await this.db
         .getClient()
@@ -1653,13 +1670,7 @@ export class DocumentsController {
 
     if (!orderId) return { items, hasMore, nextBefore, nextBeforeId };
 
-    const { data: order, error: orderError } = await this.db
-      .getClient()
-      .from("procurement_orders")
-      .select("order_number, currency, currency_source")
-      .eq("id", orderId)
-      .eq("restaurant_id", user.restaurantId)
-      .maybeSingle();
+    const { data: order, error: orderError } = await orderRead!;
     // A FAILED READ IS NOT AN ORDER WITHOUT A CURRENCY (ADR 0067). The screen
     // must not print "the order names no currency" because the read broke, so
     // the failure is named and the comparison says it could not be made.
