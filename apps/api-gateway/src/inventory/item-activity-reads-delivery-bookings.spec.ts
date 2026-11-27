@@ -120,3 +120,74 @@ describe("item activity reads what the delivery door booked", () => {
     expect(activity.totalIn28d).toBe(0);
   });
 });
+
+/**
+ * A POUR-HEAVY GOOD PAST THE OLD 2000-ROW CAP (perf p4 s3). The read used to be
+ * `select("*")` ascending with `limit(2000)`, so a good with 2500 movements in
+ * 28 days lost its NEWEST 500 from the 14-day chart. This fake pages like
+ * PostgREST: it honours order and range over a ledger of 2500 rows.
+ */
+describe("item activity reads past 2000 movements", () => {
+  const DAY = 24 * 3600 * 1000;
+  function pagedClient(ledger: Record<string, unknown>[]) {
+    const calls: { select?: string; ranges: [number, number][] } = {
+      ranges: [],
+    };
+    const from = () => {
+      let asc = true;
+      const chain: any = {
+        select: (cols: string) => {
+          calls.select = cols;
+          return chain;
+        },
+        eq: () => chain,
+        gte: () => chain,
+        order: (_c: string, o: { ascending: boolean }) => {
+          asc = o.ascending;
+          return chain;
+        },
+        limit: () => chain,
+        range: (a: number, b: number) => {
+          calls.ranges.push([a, b]);
+          const sorted = [...ledger].sort((x, y) =>
+            asc
+              ? String(x.created_at).localeCompare(String(y.created_at))
+              : String(y.created_at).localeCompare(String(x.created_at)),
+          );
+          return Promise.resolve({ data: sorted.slice(a, b + 1), error: null });
+        },
+      };
+      return chain;
+    };
+    return { calls, db: { getClient: () => ({ from }) } };
+  }
+
+  it("keeps the newest 14 days when the ledger holds 2500 rows, and selects only the columns it sums", async () => {
+    const now = Date.now();
+    // 2000 old pours (20 days ago) and 500 pours in the last 3 days.
+    const ledger: Record<string, unknown>[] = [];
+    for (let i = 0; i < 2000; i++)
+      ledger.push({
+        quantity_change: -1,
+        transaction_type: "pour",
+        created_at: new Date(now - 20 * DAY + i * 1000).toISOString(),
+      });
+    for (let i = 0; i < 500; i++)
+      ledger.push({
+        quantity_change: -1,
+        transaction_type: "pour",
+        created_at: new Date(now - 1 * DAY + i * 1000).toISOString(),
+      });
+    const { calls, db } = pagedClient(ledger);
+    const svc = new InventoryService(db as unknown as DatabaseService);
+
+    const activity = await svc.getItemActivity(REST, ITEM);
+
+    expect(activity.totalOut28d).toBe(2500);
+    const last14 = activity.daily.reduce((n, d) => n + d.out, 0);
+    expect(last14).toBe(500);
+    expect(calls.select).toBe("quantity_change, transaction_type, created_at");
+    expect(calls.ranges.length).toBe(3);
+    expect(activity.truncated).toBe(false);
+  });
+});

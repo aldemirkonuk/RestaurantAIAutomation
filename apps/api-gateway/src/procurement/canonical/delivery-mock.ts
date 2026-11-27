@@ -97,6 +97,7 @@ export function makeMockDb(): MockDb {
       "lte",
       "order",
       "limit",
+      "range",
       "single",
       "maybeSingle",
       "insert",
