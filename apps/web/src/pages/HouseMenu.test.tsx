@@ -9,6 +9,8 @@ import HouseMenu, { proofPrice } from './HouseMenu'
 import { formatMoney } from '../lib/currency'
 import { settingsApi } from '../services/api/settings'
 
+// The page mounts InviteYourPeople (r107 onb-g3), which reads the signed-in role; with no role it shows nothing.
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ activeRole: null, user: null }) }))
 vi.mock('../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn() } }))
 const houseCurrency = vi.mocked(settingsApi.houseCurrency)
 const lira = { restaurantId: 'r1', code: 'TRY', country: 'TR', readable: true, reason: null, statedAt: null }
