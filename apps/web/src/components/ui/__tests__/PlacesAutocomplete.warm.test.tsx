@@ -64,3 +64,14 @@ describe('GetStarted wiring', () => {
     expect(src).toMatch(/import \{ PlacesAutocomplete, warmPlaces,/)
   })
 })
+
+describe('the website rides on the contact call (DD-r108-55)', () => {
+  it('asks websiteURI only with withContact, and carries it as websiteUri', () => {
+    const src = readFileSync(resolve(__dirname, '../PlacesAutocomplete.tsx'), 'utf8')
+    const contact = src.match(/withContact\s*\?\s*\[([^\]]*)\]\s*:\s*\[([^\]]*)\]/)
+    expect(contact?.[1]).toContain("'websiteURI'")
+    expect(contact?.[1]).toContain("'internationalPhoneNumber'") // same Enterprise tier: no new SKU
+    expect(contact?.[2]).not.toContain('websiteURI')
+    expect(src).toMatch(/result\.websiteUri = place\.websiteURI \?\? null/)
+  })
+})
