@@ -69,6 +69,10 @@ export interface Register<T> {
 /** Exported so a write elsewhere (`useGoalsDesk`) can invalidate this read. */
 export const ROOT = 'reports-next';
 
+/** How long the client must hold no read before the idle warm-up starts a window. */
+const WARM_QUIET_MS = 1000;
+const WARM_RECHECK_MS = 500;
+
 /** The till windows the chips offer; the idle warm-up reads each of them. */
 export const TILL_WINDOWS = [7, 30, 90] as const;
 
@@ -337,19 +341,31 @@ export function useReportsNextData(
       return () => clearTimeout(h);
     };
     let cancel = () => {};
+    // The warm-up yields to the page's own reads (every hook on the page shares
+    // this client): it waits a beat, and again while any read is in flight.
+    const quiet = (fn: () => void, wait: number): (() => void) => {
+      let off = () => {};
+      const h = setTimeout(() => {
+        off = qc.isFetching() === 0 ? idle(fn) : quiet(fn, WARM_RECHECK_MS);
+      }, wait);
+      return () => {
+        clearTimeout(h);
+        off();
+      };
+    };
     const rest = TILL_WINDOWS.filter((d) => d !== tillDays);
     const next = (i: number) => {
       if (cancelled || i >= rest.length) return;
-      cancel = idle(() => {
+      cancel = quiet(() => {
         void warmWindow(rest[i]).then(() => next(i + 1));
-      });
+      }, WARM_QUIET_MS);
     };
     next(0);
     return () => {
       cancelled = true;
       cancel();
     };
-  }, [rid, settled, tillDays, warmWindow]);
+  }, [rid, settled, tillDays, warmWindow, qc]);
 
   const kept = useRef<
     Partial<Record<AnalysisId, { reg: Register<unknown>; data: unknown; loading: boolean; error: unknown }>>
