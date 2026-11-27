@@ -314,7 +314,7 @@ export default function InventoryTable(props: InventoryTableProps) {
  ) : null}
 {!hidden.has('Value') ? (
                   <td data-label="Value at cost" className="iv-r iv-num">
-                    {cellMoney(row.value, currency)}
+                    {row.rollupReadable ? cellMoney(row.value, currency) : 'could not be read'}
                   </td>
  ) : null}
                   <td data-label="Status" className="iv-status" data-standing={row.standing}>

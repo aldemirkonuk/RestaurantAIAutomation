@@ -45,6 +45,7 @@ function fakePostgrest(
           return q;
         },
         eq: () => q,
+        is: () => q,
         order(c: string) {
           state.orders.push(c);
           return q;

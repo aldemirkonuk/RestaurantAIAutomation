@@ -29,6 +29,7 @@ export function emptyColumns({ rows, canManage, libraryUnread, locationsUnavaila
   if (rows.every((r) => r.velocity === null)) out.add('Vel/day');
   if (rows.every((r) => r.runway === null)) out.add('Runway');
   if (!canManage && rows.every((r) => r.bottle === null && r.glass === null)) out.add('Your price');
-  if (rows.every((r) => r.value === null)) out.add('Value');
+  // An unread cost is not an empty column: the cell says it could not be read (ADR 0020).
+  if (rows.every((r) => r.value === null && r.rollupReadable !== false)) out.add('Value');
   return out;
 }
