@@ -728,7 +728,7 @@ const week = analysis<WeekRegister>({
   view: (w) => {
     const basis = [
       w.basis?.weekday ??
-        'Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than drawn at zero.',
+        'Mean units per weekday over the last 90 days, from the house’s record of bottles poured and sold; a weekday with no observation is left blank rather than drawn at zero.',
       w.basis?.extremes,
     ];
     if (w.zoneUnset)

@@ -93,7 +93,7 @@ describe('read a stretch: the sums', () => {
     expect(r.checks).toBeNull();
     expect(r.average).toBeNull();
     const words = stretchWords(r, usd);
-    expect(words).toContain('checks a day are not read');
+    expect(words).toContain('the till’s checks are not read for a stretch');
     expect(words).not.toContain('average');
     // The days outside the missing one still have their count.
     expect(readStretch(w, WEEK, 0, 2)!.checks).toBe(60);

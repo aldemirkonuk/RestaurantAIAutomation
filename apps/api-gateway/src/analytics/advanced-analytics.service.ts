@@ -709,7 +709,7 @@ export class AdvancedAnalyticsService {
        */
       uncountedOnly: recordedDays.size === 0 && unitsCoverage.uncountedLines > 0,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} complete house days in ${zone} of wine_consumption_log; a weekday with no counted consumption line on any of its days is absent from weekdayProfile rather than reported as 0, and inside a weekday that has one a day with no line counts as 0${leftOutWords(measured.leftOut)}`,
+        weekday: `mean bottles per weekday over the last ${sinceDays} complete house days in ${zone}, from the house's record of bottles poured and sold; a weekday with no counted line on any of its days is left out of the week rather than shown as 0, and inside a weekday that has one a day with no line counts as 0${leftOutWords(measured.leftOut)}`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         extremes:
           weekday.profiles.length < 2
@@ -815,7 +815,7 @@ export class AdvancedAnalyticsService {
       zoneUnset: false,
       timezone: zone,
       basis: {
-        outflow: `delivered procurement_orders, filed on the house's day in ${zone} each was delivered (revenue inflow needs POS feed); the projection runs on ${weekly.length} complete weeks ending yesterday`,
+        outflow: `orders the suppliers delivered, each filed on the house's day in ${zone} it was delivered (money coming in needs the till connected); the projection runs on ${weekly.length} complete weeks ending yesterday`,
         uncosted: uncostedNote,
       },
       spendLast30d: last30,

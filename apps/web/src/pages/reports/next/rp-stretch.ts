@@ -204,7 +204,7 @@ export function stretchWords(r: StretchReading, money: Money): string {
       `Taken ${money(r.taken)} over ${n - r.unknownDays} of ${countOf(n, 'day', 'days')}; ${countOf(r.unknownDays, 'day', 'days')} the till could not state`,
     );
   else parts.push(`Taken ${money(r.taken)}`);
-  parts.push(r.checks == null ? 'checks a day are not read' : countOf(r.checks, 'check', 'checks'));
+  parts.push(r.checks == null ? 'the till’s checks are not read for a stretch' : countOf(r.checks, 'check', 'checks'));
   if (r.average != null) parts.push(`average ${money(r.average, 'table')}`);
   if (r.prior != null && r.taken != null && r.unknownDays === 0) {
     const change = r.prior > 0 ? ((r.taken - r.prior) / r.prior) * 100 : null;

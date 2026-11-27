@@ -152,6 +152,21 @@ describe("cashflow files spend on the house's day (audit G7, G8)", () => {
     expect(out.projectedNext4Weeks).toHaveLength(4);
   });
 
+  // r110 reports-r110-4: "Show the working" on Spend pacing prints this
+  // sentence. It says the house's words, never a table name, and keeps what
+  // it states: delivered orders, the house's day, the complete weeks.
+  it("[REVERT-FAILS] the outflow working names no table and keeps its rule", async () => {
+    const out: any = await svcOver(
+      pagingClient({
+        procurement_orders: Array.from({ length: 30 }, (_, i) => delivered(i, day(i * 5 + 1))),
+        restaurants: UTC_HOUSE,
+      }),
+    ).getCashflow(RID);
+    expect(out.basis.outflow).not.toMatch(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/);
+    expect(out.basis.outflow).toMatch(/^orders the suppliers delivered, each filed on the house's day in /);
+    expect(out.basis.outflow).toContain("complete weeks ending yesterday");
+  });
+
   it("a house with no zone states no spend, and still states what is committed", async () => {
     const open = { ...delivered(9, day(1), 300), delivered_at: null, status: ProcurementOrderStatus.IN_TRANSIT };
     const out: any = await svcOver(
