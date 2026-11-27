@@ -28,8 +28,9 @@ import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
  * WHY IT IS NOT `GET /analytics/pos-revenue`
  * ------------------------------------------
  * That endpoint answers a WINDOW — one revenue figure and a sparse
- * `dailySeries` of revenue only (analytics/goals.service.ts `getPosRevenueWindow`,
- * exposed at analytics.controller.ts:738). The calendar needs covers per day,
+ * `dailySeries` of revenue with each day's check count and how many of those
+ * carry a total (analytics/goals.service.ts `getPosRevenueWindow`, exposed at
+ * analytics.controller.ts:738). The calendar needs covers per day,
  * which no endpoint in the gateway returns, and it needs the days a house was
  * SHUT distinguished from the days nothing landed.
  *
