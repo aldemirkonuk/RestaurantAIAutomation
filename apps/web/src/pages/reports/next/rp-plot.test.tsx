@@ -7,7 +7,19 @@ import { cloneElement, type ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { CatPlot, HeatGrid } from './rp-plot';
-import { ahead, daysBetween, heldWords, till, type AheadRegister, type TillWindow } from './rp-registers-trade';
+import { MemoryRouter } from 'react-router-dom';
+import {
+  ahead,
+  daysBetween,
+  heldWords,
+  pacing,
+  till,
+  week,
+  type AheadRegister,
+  type PacingRegister,
+  type TillWindow,
+  type WeekRegister,
+} from './rp-registers-trade';
 import { fitWords } from './rp-registers-house';
 import type { CatSeries, MatrixSeries } from './rp-view';
 
@@ -172,5 +184,40 @@ describe('model quality is said in words (ADR 0104)', () => {
     const words = view.figures.map((f) => `${f.label} ${f.value}`).join(' | ');
     expect(words).not.toMatch(/MAPE|holt|Model/);
     expect(words).toContain('How it has held Held close in past weeks');
+  });
+});
+
+describe('a house with no time zone says so on spend and the week (ADR 0296)', () => {
+  const sayOf = (node: unknown) =>
+    render(<MemoryRouter>{node as never}</MemoryRouter>).container.textContent ?? '';
+
+  it('pacing withholds spend and the pace, and still states what is committed', () => {
+    const c = pacing.select({
+      zoneUnset: true,
+      spendLast30d: null,
+      spendPrev30d: null,
+      paceDeltaPct: null,
+      projectedNext4Weeks: null,
+      committedOpenOrders: 300,
+      openOrderCount: 1,
+    }) as PacingRegister;
+    const view = pacing.view(c, { days: 30, currency: 'USD' });
+    expect(view.cats).toBeUndefined();
+    expect(sayOf(view.say)).toMatch(/time zone isn’t set/);
+    expect(view.figures.map((f) => f.label)).toEqual(['Committed, not yet delivered', 'Open orders']);
+    expect(view.figures[0].value).toBe('$300');
+  });
+
+  it('a quiet stretch is said plainly, never called ambiguous', () => {
+    const c = pacing.select({ spendLast30d: 0, spendPrev30d: 0, committedOpenOrders: 0, openOrderCount: 0 }) as PacingRegister;
+    const view = pacing.view(c, { days: 30 });
+    expect(String(view.say)).toMatch(/No delivered purchase order/);
+  });
+
+  it('the week names no weekday and says why', () => {
+    const w = week.select({ zoneUnset: true, weekdayProfile: [], bestDay: null, worstDay: null }) as WeekRegister;
+    const view = week.view(w, { days: 30 });
+    expect(sayOf(view.say)).toMatch(/time zone isn’t set/);
+    expect(view.figures).toEqual([]);
   });
 });

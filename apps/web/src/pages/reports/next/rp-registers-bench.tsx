@@ -68,6 +68,8 @@ export interface BenchRegister {
   /** True when the whole cashflow lens failed inside the parallel call. */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
+  /** The house has no time zone, so spend and weekdays are withheld (ADR 0296). */
+  zoneUnset: boolean;
   basis: Array<string | null | undefined>;
 }
 
@@ -115,6 +117,7 @@ export const bench = analysis<BenchRegister>({
       // happen — never "this house bought nothing".
       cashflowMissing: d.cashflow == null,
       seasonalityMissing: d.seasonality == null,
+      zoneUnset: cf.zoneUnset === true || se.zoneUnset === true,
       basis: [cfBasis.outflow, seBasis.weekday, seBasis.extremes] as Array<
         string | null | undefined
       >,
@@ -234,17 +237,13 @@ export const bench = analysis<BenchRegister>({
       figures,
       notes: [
         noPeers,
-        // Measured on the running gateway, 2026-09-03: this tenant returns
-        // spendLast30d = spendPrev30d = 0. `getCashflow` sums a loader that
-        // degrades a FAILED query to `[]` (`advanced-analytics.service.ts:125-146`,
-        // logged but not signalled in the payload), so a pair of zeros is "no
-        // delivered order came back", which is either no buying or a read that
-        // did not answer. That is the same shape `financial.cogs` was fixed for
-        // (§9.2); it is NOT fixed in cashflow yet, so the cutting says so rather
-        // than presenting $0 against $0 as a measured standstill. This is a
-        // statement about the register, not a verdict dressed as the server's.
+        // The cashflow lens reads its orders whole now (ADR 0292): a failed
+        // read refuses the lens, so a pair of zeros is a quiet stretch.
         b.spendLast30d === 0 && b.spendPrev30d === 0
-          ? 'Both buying windows came back at zero, so no bars are drawn — two bars at zero would say the same thing less clearly. And the zeros are ambiguous: the cashflow lens sums a loader that returns an empty list for a failed query as well as for a quiet month, so a pair of zeros means "no delivered order was returned", not necessarily "nothing was bought".'
+          ? 'No delivered purchase order falls in either 30-day window, so no bars are drawn — two bars at zero would say the same thing less clearly.'
+          : null,
+        b.zoneUnset
+          ? 'This house’s time zone isn’t set, so spend and weekdays cannot be filed on the house’s day; those figures are em dashes until it is set in Settings, under Time zone.'
           : null,
         b.cashflowMissing
           ? 'The buying lens did not answer inside the overview call, so its four figures are em dashes rather than zeros.'
