@@ -1097,7 +1097,6 @@ function VendorPricesNote({ docId }: { docId: string }) {
     queryFn: () => documentsApi.vendorPrices(docId),
     staleTime: 60_000,
     retry: false,
-    enabled: allowed,
   });
   if (!allowed) return null;
   const cheaper = (q.data?.lines ?? []).flatMap((l) => (l.compared && l.cheaper && l.sentence ? [l] : []));
