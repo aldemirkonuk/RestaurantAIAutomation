@@ -26,7 +26,7 @@
  * `?senders=open` opens that register, which is where those notices link.
  */
 
-import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -62,6 +62,7 @@ import {
   houseMailboxStatus,
   MAIL_SEARCH_MAX,
   MAIL_HEADER_RESERVE,
+  MAIL_HEADLINE_HOLD,
   READ_SCOPE_HOLD,
   mailSearchTerm,
   mailStatusLine,
@@ -232,6 +233,36 @@ export function rememberListHeight(house: string, px: number): void {
     window.sessionStorage.setItem(listHeightKey(house), String(Math.round(px)));
   } catch {
     /* storage blocked: the bars hold their own height instead */
+  }
+}
+
+/**
+ * The header block's own settled height, kept per house and width class as the
+ * list's is (r108 mail-r108-6): a repeat load starts at the height the block
+ * settled at, so a headline or status line that wraps differently from the
+ * class reserve moves nothing.
+ */
+function headerHeightKey(house: string): string {
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 768;
+  return `mail-header-height:${house}:${narrow ? 'narrow' : 'wide'}`;
+}
+
+export function readLastHeaderHeight(house: string): number | null {
+  try {
+    const raw = house ? window.sessionStorage.getItem(headerHeightKey(house)) : null;
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberHeaderHeight(house: string, px: number): void {
+  if (!house || !Number.isFinite(px) || px < 1) return;
+  try {
+    window.sessionStorage.setItem(headerHeightKey(house), String(Math.ceil(px)));
+  } catch {
+    /* storage blocked: the next load holds the class reserve */
   }
 }
 
@@ -849,6 +880,21 @@ export function MailTab({
       : { state: 'checking' };
   const status = mailStatusLine(reader, summary, { readerFailed, summaryFailed: summaryQ.isError, now, test });
   const mailboxDoor = houseMailboxStatus(reader, { readFailed: readerFailed, now });
+  // The block's content height once every read that words it has answered; the
+  // class reserve is the floor on a first visit, this is the floor after it.
+  const headerRef = useRef<HTMLElement>(null);
+  const headerSettled =
+    (summaryQ.isSuccess || summaryQ.isError) &&
+    (senderQ.isSuccess || senderQ.isError) &&
+    (Boolean(setupQ.data) || setupQ.isError);
+  const headerHouse = useHouse();
+  const headerHeld = useMemo(() => readLastHeaderHeight(headerHouse), [headerHouse]);
+  useEffect(() => {
+    const el = headerRef.current;
+    const last = el?.lastElementChild;
+    if (!headerSettled || !el || !last) return;
+    rememberHeaderHeight(headerHouse, last.getBoundingClientRect().bottom - el.getBoundingClientRect().top);
+  }, [headerSettled, headerHouse, status.words, status.state]);
   const withKey = params.get('with');
   const threadKey = params.get('thread');
   const setup = params.get('setup') === '1';
@@ -907,8 +953,13 @@ export function MailTab({
   return (
     <div ref={place.root} className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
       <MailMotionStyles />
-      <header className={`grid gap-1 content-start ${MAIL_HEADER_RESERVE}`} data-testid="mail-header-block">
-        <p data-testid="mail-header" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+      <header
+        ref={headerRef}
+        className={`grid gap-1 content-start ${MAIL_HEADER_RESERVE}`}
+        style={headerHeld ? { minHeight: headerHeld } : undefined}
+        data-testid="mail-header-block"
+      >
+        <p data-testid="mail-header" className={MAIL_HEADLINE_HOLD} style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
           {headerSentence(summary, {
             failed: summaryQ.isError,
             reason: summaryQ.isError ? failedReadWords(summaryQ.error) : undefined,
