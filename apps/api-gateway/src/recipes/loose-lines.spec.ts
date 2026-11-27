@@ -22,19 +22,20 @@ type Row = Record<string, any>;
 type Tables = Record<string, Row[]>;
 
 function fakeDb(tables: Tables) {
-  const reads: string[] = [];
+  const reads: Array<{ table: string; house: unknown }> = [];
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = [];
+    let house: unknown = undefined;
     let range: [number, number] = [0, 999];
     const q: any = {
       select: () => q,
-      eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
+      eq: (c: string, v: unknown) => (c === "restaurant_id" && (house = v), filters.push((r) => r[c] === v), q),
       is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), q),
       in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
       order: () => q,
       range: (a: number, b: number) => ((range = [a, b]), q),
       then: (ok: (v: unknown) => unknown) => {
-        reads.push(table);
+        reads.push({ table, house });
         const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
         // PostgREST answers at most 1,000 rows, whatever range was asked.
         const page = rows.slice(range[0], Math.min(range[1] + 1, range[0] + 1000));
@@ -141,6 +142,13 @@ describe("loose lines: grouping", () => {
     const verm = out.groups.find((g) => g.key === "sweet vermouth");
     expect(verm?.proposed).toBeNull();
     expect(verm?.sameName).toBe(0);
+    // Every read of every table names the house, even where a later read would also drop the row.
+    const { db, reads } = fakeDb(house());
+    await new LooseLinesService(db, new DishesService(db, null as any)).looseLines(A);
+    expect(new Set(reads.map((r) => r.table))).toEqual(
+      new Set(["recipe_lines", "recipe_current", "cocktails", "recipe_versions", "restaurant_inventory"]),
+    );
+    expect(reads.filter((r) => r.house !== A)).toEqual([]);
     const theirs = await svc(house()).looseLines(B);
     expect(theirs.drinks.map((d) => d.cocktailId)).toEqual(["c-b"]);
     expect(theirs.groups.map((g) => g.proposed)).toEqual([null]);
