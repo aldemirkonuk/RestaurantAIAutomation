@@ -114,7 +114,7 @@ export default function PhoneRows(props: PhoneRowsProps) {
   useEffect(() => {
     if (openAt < 0 || (openAt >= winStart && openAt < winEnd)) return;
     jumpTo(openAt);
-    const t = window.requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`)?.scrollIntoView?.({ block: 'center' }));
+    const t = window.requestAnimationFrame(() => document.querySelector(`[data-row-id="${CSS.escape(openId as string)}"]`)?.scrollIntoView?.({ block: 'center', behavior: 'instant' }));
     return () => window.cancelAnimationFrame(t);
     // Only a change of the opened card moves the window.
     // eslint-disable-next-line react-hooks/exhaustive-deps
