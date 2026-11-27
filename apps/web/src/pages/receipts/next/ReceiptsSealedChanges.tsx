@@ -58,8 +58,9 @@ export function SealedChangesPart({ docId }: { docId: string }) {
 }
 
 function Figures({ d }: { d: SealedChanges }) {
-  if (!d.orders.length)
-    return <p style={P}>This paper is linked to no order, so sealing moved no cost.</p>;
+  // Said only when there is no delivery either: a door delivery with no order still books lots.
+  if (!d.orders.length && !d.deliveries)
+    return <p style={P}>This paper is linked to no order and no delivery, so verifying it moved no cost.</p>;
   return (
     <>
       <p style={P}>{changeSentence(d, d.currency)}</p>

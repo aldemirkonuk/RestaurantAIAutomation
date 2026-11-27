@@ -28,6 +28,8 @@ export interface SealedChanges {
   status: string
   currency: string | null
   orders: string[]
+  /** How many deliveries the paper is linked to: a door delivery has lots but no order. */
+  deliveries: number
   otherPapers: number
 }
 

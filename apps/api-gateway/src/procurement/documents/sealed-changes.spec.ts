@@ -92,7 +92,10 @@ describe("GET /procurement/documents/:id/changes — what sealing changed (r108 
     );
     const out = await c.sealedChanges("d1", owner);
     expect(out).toMatchObject({ orders: ["o1"], stockValueDelta: "4.00", salesCostDelta: "1.00" });
-    for (const r of c.reads.filter((x) => x.table !== "restaurants")) expect(r.f).toContainEqual(["eq", "restaurant_id", R]);
+    // document_deliveries has no house column: it is read by the id of a paper already proved to be this house's.
+    for (const r of c.reads.filter((x) => x.table !== "restaurants" && x.table !== "document_deliveries"))
+      expect(r.f).toContainEqual(["eq", "restaurant_id", R]);
+    expect(c.reads.find((x) => x.table === "document_deliveries")?.f).toContainEqual(["eq", "document_id", "d1"]);
   });
 
   it("one verify of three goods is one total, however many stamps its items carry (no 'seal' and 'corrections')", async () => {
@@ -113,6 +116,59 @@ describe("GET /procurement/documents/:id/changes — what sealing changed (r108 
     const out = await c.sealedChanges("d1", owner);
     expect(out).toMatchObject({ stockValueDelta: "24.00", bottles: 30, salesCostDelta: "1.50", sales: 2 });
     expect(out).not.toHaveProperty("events");
+  });
+
+  describe("a door delivery with no order (the canonical path)", () => {
+    const door = (over: Record<string, Row[]> = {}) =>
+      base({
+        procurement_document_links: [],
+        document_deliveries: [{ document_id: "d1", delivery_id: "del1" }],
+        inventory_lots: [
+          { id: "L1", restaurant_id: R, delivery_id: "del1" },
+          { id: "L2", restaurant_id: R, delivery_id: "del1" },
+          { id: "LX", restaurant_id: "other-house", delivery_id: "del1" },
+        ],
+        ...over,
+      });
+    const lotReval = (lot: string, qty: number, prior: string | null, next: string, over: Row = {}) =>
+      ({ id: `rv-${lot}-${next}`, restaurant_id: R, lot_id: lot, source_order_id: null, qty_at_revaluation: qty, prior_unit_cost: prior, new_unit_cost: next, created_at: SEAL, ...over });
+    const settle = (i: number, prior: string | null, difference: string, over: Row = {}) =>
+      ({ id: `st${i}`, restaurant_id: R, lot_id: "L1", txn_id: `t${i}`, prior_total: prior, difference, ...over });
+
+    it("reads the lots' revaluations and the settlements of the sales made from them, not 'no order, no change'", async () => {
+      const c = controllerWith(
+        door({
+          inventory_lot_revaluations: [
+            lotReval("L1", 12, "10", "10.50"),
+            lotReval("L2", 6, "20", "21", { created_at: "2026-11-20T10:00:01+00:00" }),
+            lotReval("LX", 99, "1", "9"), // another house's lot: never read
+          ],
+          inventory_lot_draw_settlements: [settle(1, "10.00", "1.50"), settle(2, "20.00", "-0.50"), settle(3, "5.00", "9", { restaurant_id: "other-house" })],
+        }),
+      );
+      const out = await c.sealedChanges("d1", owner);
+      expect(out).toMatchObject({ orders: [], deliveries: 1, stockValueDelta: "12.00", bottles: 18, salesCostDelta: "1.00", sales: 2, notKnown: 0 });
+    });
+
+    it("counts a settlement with no prior as not known, never as a change of its whole cost", async () => {
+      const c = controllerWith(door({ inventory_lot_draw_settlements: [settle(1, null, "40.00"), settle(2, "10.00", "2.00")] }));
+      const out = await c.sealedChanges("d1", owner);
+      expect(out).toMatchObject({ salesCostDelta: "2.00", sales: 1, notKnown: 1 });
+    });
+
+    it("counts a revaluation reached by both its order and its lot once", async () => {
+      const both = { ...lotReval("L1", 4, "10", "11"), source_order_id: "o1" };
+      const c = controllerWith(
+        door({ procurement_document_links: [{ document_id: "d1", order_id: "o1", restaurant_id: R }], inventory_lot_revaluations: [both] }),
+      );
+      expect(await c.sealedChanges("d1", owner)).toMatchObject({ stockValueDelta: "4.00", bottles: 4 });
+    });
+
+    it("reads nothing off lots when the paper has neither order nor delivery", async () => {
+      const c = controllerWith(base({ procurement_document_links: [] }));
+      expect(await c.sealedChanges("d1", owner)).toMatchObject({ orders: [], deliveries: 0, bottles: 0, sales: 0 });
+      expect(c.reads.map((r) => r.table)).not.toContain("inventory_lots");
+    });
   });
 
   it("says how many other papers share the order's figures", async () => {

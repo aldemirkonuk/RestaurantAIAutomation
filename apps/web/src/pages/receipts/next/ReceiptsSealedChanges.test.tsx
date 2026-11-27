@@ -16,6 +16,7 @@ const data = (over: Partial<SealedChanges> = {}): SealedChanges => ({
   status: 'verified',
   currency: 'USD',
   orders: ['o1'],
+  deliveries: 0,
   otherPapers: 0,
   ...ev,
   ...over,
@@ -61,10 +62,17 @@ describe('SealedChangesPart', () => {
     expect(screen.getByText(/1 other paper also priced it\./)).toBeTruthy();
   });
 
-  it('a paper linked to no order says sealing moved no cost', async () => {
+  it('a paper linked to no order and no delivery says verifying it moved no cost', async () => {
     api.changes.mockResolvedValueOnce(data({ orders: [] }));
     show();
-    expect(await screen.findByText('This paper is linked to no order, so sealing moved no cost.')).toBeTruthy();
+    expect(await screen.findByText('This paper is linked to no order and no delivery, so verifying it moved no cost.')).toBeTruthy();
+  });
+
+  it('a delivery with no order is not "no order": its figures are spoken', async () => {
+    api.changes.mockResolvedValueOnce(data({ orders: [], deliveries: 1 }));
+    show();
+    expect(await screen.findByText(/^Stock value \+\$412\.30 across 24 bottles/)).toBeTruthy();
+    expect(screen.queryByText(/linked to no order/)).toBeNull();
   });
 
   it("says the server's refusal in its words", async () => {
