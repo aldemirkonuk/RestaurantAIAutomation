@@ -51,6 +51,7 @@ describe('menuReadChecks', () => {
     expect(f[0].kind).toBe('duplicate');
     expect(f[0].lineId).toBe('b');
     expect(menuReadChecks([L('a', 'Rakı', 90, null, 'spirit'), L('b', 'Raki', 95, null, 'wine')], 'TRY')).toEqual([]);
+    expect(menuReadChecks([L('a', 'Rakı', 90, null, 'spirit'), L('b', 'Raki', 95, null, 'spirit')], 'TRY')).toHaveLength(1);
     expect(normaliseName('İstanbul  ')).toBe(normaliseName('istanbul'));
   });
 
@@ -58,6 +59,7 @@ describe('menuReadChecks', () => {
     const f = menuReadChecks([L('a', 'Barolo', 90, 120)], 'USD');
     expect(f.map((x) => x.kind)).toEqual(['glass_not_under_bottle']);
     expect(menuReadChecks([L('a', 'Barolo', 120, 90)], 'USD')).toEqual([]);
+    expect(menuReadChecks([L('a', 'Barolo', 90, 90)], 'USD')).toHaveLength(1);
   });
 
   it('never flags a missing price', () => {
