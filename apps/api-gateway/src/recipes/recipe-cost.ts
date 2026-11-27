@@ -72,8 +72,12 @@ export interface CostLineInput {
    * For a made line (ADR 0397): the component it draws and what one base unit
    * of it costs, or null when that is not known. Absent on a made line is the
    * same as null: a line that cannot say what it draws is not priced.
+   * `baseUnit` is the kind of unit the component's yield is in (ml10, mg,
+   * each_milli): a line in another kind is not priced, because its amount is
+   * not the same thing as the thing `perBase` is a rate of. A made line whose
+   * component says no `baseUnit` (a caller that has not read it) is not checked.
    */
-  made?: { name: string; perBase: number | null } | null;
+  made?: { name: string; perBase: number | null; baseUnit?: BaseUnit | null } | null;
 }
 
 export interface LineCost {
@@ -261,6 +265,10 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
         ...(name ? { throughComponent: name } : {}),
       };
       if (perBase == null || !Number.isFinite(perBase)) return unknown;
+      // A rate per millilitre is not a rate per milligram: when the component's
+      // yield changed kind after this line was saved (an old version), the line
+      // is not priced, never read at the wrong unit.
+      if (line.made?.baseUnit !== undefined && line.made.baseUnit !== line.baseUnit) return unknown;
       const cost = (Number(line.qtyBase) * perBase) / serves;
       if (!Number.isFinite(cost)) return unknown;
       exact[exact.length - 1] = cost;

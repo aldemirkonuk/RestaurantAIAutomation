@@ -24,6 +24,9 @@ export const NOT_THIS_VERSION = "That version is not one of this drink's.";
 export const DISH_NOT_THIS_HOUSE = "This dish is not on this house's list.";
 export const NOT_THIS_DISH_VERSION = "That version is not one of this dish's.";
 
+/** A house-made component as a line that draws it reads it: its name, its cost per base unit, the kind of unit it is made in. */
+type MadeRate = { name: string; perBase: number | null; baseUnit: BaseUnit | null };
+
 /** What a recipe belongs to (ADR 0366): a drink (`cocktails`) or a plate (`dishes`). */
 export type OwnerKind = "cocktail" | "dish";
 export interface RecipeOwner {
@@ -347,14 +350,14 @@ export class RecipesService {
     componentIds: string[],
     money: boolean,
     depth: number,
-  ): Promise<Map<string, { name: string; perBase: number | null }>> {
-    const out = new Map<string, { name: string; perBase: number | null }>();
+  ): Promise<Map<string, MadeRate>> {
+    const out = new Map<string, MadeRate>();
     if (!componentIds.length) return out;
     const client = this.db.getClient();
     const [dishes, pointers] = await Promise.all([
       client
         .from("dishes")
-        .select("id, name, yield_qty_base, deleted_at")
+        .select("id, name, yield_qty_base, yield_base_unit, deleted_at")
         .eq("restaurant_id", restaurantId)
         .in("id", componentIds),
       client
@@ -381,7 +384,7 @@ export class RecipesService {
     const [{ items, lots }, inner] = await Promise.all([
       this.readPricing(restaurantId, [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[], money),
       depth >= 3
-        ? Promise.resolve(new Map<string, { name: string; perBase: number | null }>())
+        ? Promise.resolve(new Map<string, MadeRate>())
         : this.componentRates(restaurantId, [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[], money, depth + 1),
     ]);
     for (const d of (dishes.data ?? []) as any[]) {
@@ -399,7 +402,11 @@ export class RecipesService {
         })),
         1,
       );
-      out.set(d.id, { name: d.name, perBase: d.deleted_at || !lines.length ? null : componentPerBase(batch, d.yield_qty_base) });
+      out.set(d.id, {
+        name: d.name,
+        perBase: d.deleted_at || !lines.length ? null : componentPerBase(batch, d.yield_qty_base),
+        baseUnit: (d.yield_base_unit as BaseUnit | null) ?? null,
+      });
     }
     return out;
   }
