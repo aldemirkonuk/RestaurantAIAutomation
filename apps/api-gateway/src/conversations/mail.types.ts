@@ -196,6 +196,24 @@ export interface MailFiledFromHeld {
   senderCheck: "passed" | "failed" | null;
   /** The domain that signed it, when DKIM passed and named one. */
   signedBy: string | null;
+  /**
+   * r109 mail-gap g1: what a checked delivery notice said of a letter the
+   * house sent. `did_not_arrive` for a failure (5.x.x), `delayed` while the
+   * receiving side is still trying (4.x.x). Null on every other letter.
+   */
+  delivery: MailDelivery | null;
+}
+
+export interface MailDelivery {
+  state: "did_not_arrive" | "delayed";
+  /** When the notice arrived. */
+  at: string;
+  /** The address the notice named. */
+  recipient: string;
+  /** The RFC 3463 status, e.g. 5.1.1. */
+  status: string;
+  /** The receiving server's own words, at most 300 characters. */
+  said: string | null;
 }
 
 /** One file a letter carried. Opened through GET /mail/attachments/:id/link. */

@@ -16,6 +16,7 @@ import type {
   MailAttachment,
   MailAttachmentLink,
   MailFiledFromHeld,
+  MailDelivery,
   MailMessage,
   MailNoReplyAnswer,
   MailOrderRef,
@@ -116,6 +117,26 @@ const CONNECTED_MAILBOX = "a connected mailbox";
  * bridge from the receiving server's Authentication-Results; a letter stored
  * before then has none and is null, never "failed".
  */
+/**
+ * What a checked delivery notice wrote on a letter the house sent (r109
+ * mail-gap g1, house-inbox.dsn.ts). Only an outbound letter carries one, and
+ * only a mark of the written shape is passed on: anything else is none.
+ */
+export function deliveryOf(m: { direction?: string | null }, raw: unknown): MailDelivery | null {
+  if (direction(m.direction) !== "outbound" || !raw || typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
+  if (d.state !== "did_not_arrive" && d.state !== "delayed") return null;
+  if (typeof d.at !== "string" || typeof d.recipient !== "string" || typeof d.status !== "string") return null;
+  if (!/^[245]\.\d{1,3}\.\d{1,3}$/.test(d.status)) return null;
+  return {
+    state: d.state,
+    at: d.at,
+    recipient: d.recipient,
+    status: d.status,
+    said: typeof d.said === "string" ? d.said.slice(0, 300) : null,
+  };
+}
+
 export function letterDetailsOf(
   m: { direction?: string | null; channel?: string | null; mirrored_by_grant_id?: string | null },
   who: { grant: string | null; auth: unknown; from?: string | null } | undefined,
@@ -775,6 +796,7 @@ export class MailService {
             attachments: files?.get(m.id) ?? [],
             filedFromHeld: vouched?.get(m.id) ?? null,
             ...letterDetailsOf(m, who.get(m.id), mailboxes),
+            delivery: deliveryOf(m, who.get(m.id)?.delivery),
           }),
         ),
       before:
@@ -798,13 +820,14 @@ export class MailService {
         to: string[];
         grant: string | null;
         auth: unknown;
+        delivery: unknown;
       }
     >();
     if (!letterIds.length) return out;
     const { data, error } = await this.db
       .from("procurement_conversations")
       .select(
-        "id, kind, from_address, to_addresses, mirrored_by_grant_id, auth:email_headers->auth",
+        "id, kind, from_address, to_addresses, mirrored_by_grant_id, auth:email_headers->auth, delivery:email_headers->delivery",
       )
       .eq("restaurant_id", houseId)
       .in("id", letterIds);
@@ -819,6 +842,7 @@ export class MailService {
             ? r.mirrored_by_grant_id
             : null,
         auth: r.auth ?? null,
+        delivery: r.delivery ?? null,
       });
     }
     return out;
