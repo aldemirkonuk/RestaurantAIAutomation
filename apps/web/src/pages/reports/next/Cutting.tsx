@@ -240,6 +240,8 @@ function Body({
   // figures would repeat what the rows already say, so they are left off.
   const figures =
     graph === 'table' && view.node ? [] : graph === 'figure' ? view.figures.slice(1) : view.figures;
+  // A table with its own layout already is the list (r103): holding the rows too would draw it twice.
+  const rows = flat || (graph === 'table' && view.node) ? figures : view.figures;
   // The reason the drawing is absent was just said in its place; say it once.
   const notes =
     view.undrawn != null && cannotDraw(view, graph)
@@ -256,9 +258,9 @@ function Body({
       )}
       {/* On a phone the list keeps its slot across Draw as (r103): a row the drawing does not show is drawn
           hidden, so Table and One figure do not take the list out of the card and Area put it back. */}
-      {(flat ? figures.length > 0 : view.figures.length > 0) && (
+      {rows.some((r) => figures.includes(r)) && (
         <dl className="rp-dl">
-          {(flat ? figures : view.figures).map((f) => (
+          {rows.map((f) => (
             <FigureRow key={f.label} label={f.label} value={f.value} note={f.note} held={!figures.includes(f)} />
           ))}
         </dl>
