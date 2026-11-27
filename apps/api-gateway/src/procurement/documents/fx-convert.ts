@@ -19,7 +19,21 @@ export function rateProblem(rate: unknown): string | null {
   if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0)
     return "The exchange rate has to be a number above zero.";
   if (rate > 1_000_000) return "That exchange rate is too large to be a rate.";
+  // The audit column keeps 8 places and must stay above 0: a rate that would
+  // round to 0 there is refused in words rather than failing the insert.
+  if (rate < MIN_RATE) return "That exchange rate is too small to be kept (the smallest is 0.00000001).";
   return null;
+}
+
+/** The audit row keeps a rate to 8 places (NUMERIC(18,8)). */
+const MIN_RATE = 1e-8;
+
+/**
+ * The rate as it is kept AND as it is applied, so the audit row can reproduce
+ * the figures: rounded to the 8 places the column holds.
+ */
+export function roundRate(rate: number): number {
+  return Math.round(rate * 1e8) / 1e8;
 }
 
 /** Six places, for a unit price. */
@@ -139,5 +153,12 @@ export function filedAtSentence(
 ): string {
   const d = new Date(`${rateDate}T00:00:00Z`);
   const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-  return `filed at 1 ${from} = ${rate.toFixed(4)} ${to} on ${day}`;
+  return `filed at 1 ${from} = ${rateWords(rate)} ${to} on ${day}`;
+}
+
+/** Four places for an ordinary rate; six significant figures for a small one (1 VND = 0.0000436 USD, not 0.0000). */
+function rateWords(rate: number): string {
+  if (rate >= 0.01) return rate.toFixed(4);
+  const places = Math.min(12, 5 - Math.floor(Math.log10(rate)));
+  return rate.toFixed(places).replace(/0+$/, "");
 }
