@@ -107,6 +107,11 @@ export interface SheetCutting {
    * (the till's compare answer). 0 keeps the card's settle ready; undefined opts the card out.
    */
   holdPx?: number;
+  /**
+   * Twelve-column sheet only, while it is read: rows the card holds beyond its slot for the same answer (the phone
+   * holds px, the grid holds whole rows). Arranging draws and stores the slot alone.
+   */
+  holdRows?: number;
   /** The whole cutting, already rendered — the sheet only lays paper out. */
   body: ReactNode;
 }
@@ -141,8 +146,10 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
     () =>
       arranging
         ? cuttings.map((c) => (c.extraRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.extraRows } } : c))
-        : cuttings,
-    [cuttings, arranging],
+        : stacked
+          ? cuttings
+          : cuttings.map((c) => (c.holdRows ? { ...c, slot: { ...c.slot, h: c.slot.h + c.holdRows } } : c)),
+    [cuttings, arranging, stacked],
   );
   const layouts = useMemo(
     (): ResponsiveLayouts => sheetLayouts(shown, arranging),

@@ -19,13 +19,17 @@ vi.mock('recharts', async () => {
       cloneElement(children, { width: 640, height: 320 } as never),
   };
 });
+const grid = vi.hoisted(() => ({ layouts: null as Record<string, { i: string; h: number }[]> | null }));
 vi.mock('react-grid-layout/legacy', () => ({
-  Responsive: (props: Record<string, unknown>) => <div>{props.children as ReactNode}</div>,
+  Responsive: (props: Record<string, unknown>) => {
+    grid.layouts = props.layouts as typeof grid.layouts;
+    return <div>{props.children as ReactNode}</div>;
+  },
 }));
 
 import Sheet from './Sheet';
 import { CatPlot } from './rp-plot';
-import { COMPARE_ANSWER_PX } from './rp-fit';
+import { COMPARE_ANSWER_PX, COMPARE_GRID_ROWS } from './rp-fit';
 import { slotHeightPx } from './rp-sheet';
 import { daysBetween, tillAnswersCompare, till } from './rp-registers-trade';
 import type { AnalysisId } from './rp-sheet';
@@ -91,6 +95,45 @@ describe('the phone till card holds the compare answer', () => {
     expect(tillAnswersCompare(undefined, ctx)).toBe(false);
     expect(tillAnswersCompare(till.select(raw({ salesWithheld: true, revenue: null, dailySeries: null })), ctx)).toBe(false);
     expect(tillAnswersCompare(till.select(raw({ from: '2026-09-02', dailySeries: series('2026-09-02', '2026-10-01', 130) })), ctx)).toBe(false);
+  });
+});
+
+describe('the 1440 till card holds the compare answer in rows', () => {
+  const wide = () => {
+    Object.defineProperty(window, 'innerWidth', { value: 1440, configurable: true });
+    spy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1100);
+  };
+  const tillRows = (holdRows: number | undefined, arranging = false) => {
+    grid.layouts = null;
+    render(
+      <Sheet
+        arranging={arranging}
+        onMove={() => {}}
+        cuttings={[{ id: 'till' as AnalysisId, slot: SLOT, holdRows, body: <div data-cut="till" /> }] as never}
+      />,
+    );
+    return Object.values(grid.layouts ?? {}).flat().find((l) => l.i === 'till')?.h;
+  };
+
+  it('[REVERT-FAILS] covers the 5 px the card ran over with whole rows, while compare is drawn and the sheet is read', () => {
+    wide();
+    expect(COMPARE_GRID_ROWS).toBe(1);
+    expect(tillRows(COMPARE_GRID_ROWS)).toBe(SLOT.h + COMPARE_GRID_ROWS);
+    expect(tillRows(0)).toBe(SLOT.h);
+    expect(tillRows(undefined)).toBe(SLOT.h);
+  });
+
+  it('[REVERT-FAILS] never draws the held row while arranging (the stored slot is what moves) nor on the phone column', () => {
+    wide();
+    expect(tillRows(COMPARE_GRID_ROWS, true)).toBe(SLOT.h);
+    cleanup();
+    phone();
+    const on = sheet(COMPARE_ANSWER_PX);
+    expect(item(on.container).style.height).toBe(`${slotHeightPx(SLOT.h) + 66}px`);
+  });
+
+  it('adds no transition: the stylesheet has no rule on the grid item that names the hold', () => {
+    expect(css).not.toMatch(/\.rp-grid-item\[data-hold/);
   });
 });
 

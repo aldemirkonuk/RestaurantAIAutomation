@@ -79,7 +79,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
-import { COMPARE_ANSWER_PX, FIT_IDS, controlRows, fittedRows } from './rp-fit';
+import { COMPARE_ANSWER_PX, COMPARE_GRID_ROWS, FIT_IDS, controlRows, fittedRows } from './rp-fit';
 import { isStrip, sparkOf, SPARK_IDS, STRIP_ROWS, type SparkSeries } from './rp-strip';
 import { Spark } from './rp-spark';
 import type { ComboPick } from './rp-combo';
@@ -535,6 +535,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     extraRows: editing ? controlRows(controlPx[c.id]) : undefined,
     // Phone: the till holds the compare answer's row while compare is drawn (r107 g5).
     holdPx: c.id === 'till' ? (!strip && tillAnswersCompare(data.registers.till?.data, ctx) ? COMPARE_ANSWER_PX : 0) : undefined,
+    holdRows: c.id === 'till' ? (!strip && tillAnswersCompare(data.registers.till?.data, ctx) ? COMPARE_GRID_ROWS : 0) : undefined,
     body: (
       <Cutting
         id={c.id}
