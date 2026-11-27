@@ -185,3 +185,24 @@ describe("CsvParserService.parseExcel", () => {
     ]);
   });
 });
+
+describe("CsvParserService: a quote that never closes loses one line, not the rest of the file", () => {
+  it("keeps every line after a lone opening quote", () => {
+    const items = parse(
+      'Name,Bottle\nRioja,120\n"Dom Perignon,900\nSancerre,40\nBarolo,85\nChablis,60\n',
+    );
+    expect(items.map((i) => i.name)).toEqual([
+      "Rioja",
+      "Dom Perignon,900",
+      "Sancerre",
+      "Barolo",
+      "Chablis",
+    ]);
+    expect(items.slice(2).map((i) => i.bottle_price)).toEqual([40, 85, 60]);
+  });
+
+  it("still joins a quoted cell that does close across lines", () => {
+    const items = parse('Name,Bottle\n"Two\nLines",50\nBarolo,85\n');
+    expect(items.map((i) => i.name)).toEqual(["Two\nLines", "Barolo"]);
+  });
+});
