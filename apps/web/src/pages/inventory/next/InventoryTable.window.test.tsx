@@ -130,6 +130,23 @@ describe('the table draws only the rows near the screen', () => {
     expect(document.querySelectorAll('tr.iv-row').length).toBeLessThanOrEqual(80);
   });
 
+  it('a good opened by a link puts the page on its row at once, in the first paint', () => {
+    const calls: Array<{ id: string; opts: ScrollIntoViewOptions | undefined }> = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) {
+      calls.push({ id: this.id, opts: o as ScrollIntoViewOptions });
+    };
+    // No animation frame ever runs: only the paint's own layout work can have scrolled.
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(0);
+    try {
+      draw(many(), { openId: 'i1100' });
+      expect(calls).toEqual([{ id: 'iv-row-i1100', opts: { block: 'center', behavior: 'instant' } }]);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+      raf.mockRestore();
+    }
+  });
+
   it('a good opened from outside the window is brought in', async () => {
     const view = draw(many());
     expect(screen.queryByTestId('inv-row-i900')).toBeNull();
