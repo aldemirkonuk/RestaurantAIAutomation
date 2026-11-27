@@ -341,7 +341,13 @@ export default function CocktailRegister({
     const t = setTimeout(() => setSteady(true), 340);
     return () => clearTimeout(t);
   }, [laid, steady]);
-  const settling = loading || (linked && listed && !steady);
+  // The books below the list (and, by data-settling, the signature) also wait
+  // for the menu-and-till read: it lands after the list, and the ledger grows
+  // from its one-line "Reading..." to the sentence and table, which pushed the
+  // signature down as a shift (CLS 0.235 at 375, perf-p8-4). Unseen they hold
+  // their room, so the growth is out of sight; a failed read is not "loading",
+  // so it still says it failed.
+  const settling = loading || registerLoading || (linked && listed && !steady);
   // The recipe opens below the whole list, so a drink opened by a click (or a
   // link) is brought into view whenever its heading would land off the screen;
   // otherwise a click on a top row of a long list seemed to do nothing
