@@ -715,7 +715,9 @@ export function MailTab({
   // r104 mail-4: "Who is writing" sits under the people. A search that matches
   // nobody collapses a 50-row list and the strip below it jumps up (CLS 0.012-
   // 0.021 at 1440). So while a search is applied the people region keeps the
-  // height it had when no search was; clearing the search lets it go.
+  // height it had when no search was; clearing the search lets it go. Capped at
+  // one viewport: CLS counts only movement inside the viewport, so a held height
+  // above it buys nothing and leaves screens of blank above "Who is writing".
   const peopleRef = useRef<HTMLDivElement>(null);
   const [peopleHeld, setPeopleHeld] = useState(0);
   useLayoutEffect(() => {
@@ -963,7 +965,7 @@ export function MailTab({
           <div
             ref={peopleRef}
             data-testid="people-hold"
-            style={search && peopleHeld > 0 ? { minHeight: peopleHeld } : undefined}
+            style={search && peopleHeld > 0 ? { minHeight: Math.min(peopleHeld, window.innerHeight) } : undefined}
           >
           <People
             on={on}

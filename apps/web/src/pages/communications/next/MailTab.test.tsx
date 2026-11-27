@@ -217,6 +217,21 @@ describe('the list', () => {
     }
   });
 
+  it('holds no more than one viewport of the people list while a search is applied', async () => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 11800 });
+    try {
+      mount();
+      await screen.findAllByTestId('mail-person');
+      routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
+      fireEvent.change(screen.getByTestId('mail-search'), { target: { value: 'zzznomatch' } });
+      await waitFor(() => expect(screen.getByTestId('people-hold').style.minHeight).toBe(`${window.innerHeight}px`));
+    } finally {
+      if (desc) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', desc);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetHeight;
+    }
+  });
+
   it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('no "Who is writing" at ?%s', (q) => {
     mount(`/communications?tab=mail&${q}`);
     expect(screen.queryByTestId('who-is-writing')).toBeNull();
