@@ -1139,10 +1139,16 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     dailyDates: string[];
     rowCount: number;
     /**
-     * `pos_revenue` only: how many checks each day of `dailyDates` holds, in
-     * the same order. The till's daily bars and its average check read it.
+     * `pos_revenue` only: the checks filed on each of `dailyDates` (same
+     * index), counted off the very rows the revenue is summed from.
      */
-    dailyCounts?: number[];
+    dailyChecks?: number[];
+    /**
+     * `pos_revenue` only: of those checks, the ones that carry a total (same
+     * index). `pos_checks.total` is nullable and revenue counts a null as 0, so
+     * a day's takings are only an average over THESE (ADR 0020).
+     */
+    dailyPricedChecks?: number[];
     /** Bottles sold only: the bottle basis of the window (ADR 0297). */
     units?: UnitsLabel;
   }> {
@@ -1251,8 +1257,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     };
 
     const daily = new Map<string, number>();
-    // Checks per house day, filled only by `pos_revenue`.
-    const counts = new Map<string, number>();
+    const dailyChecksByDay = new Map<string, number>();
+    const dailyPricedByDay = new Map<string, number>();
     let rowCount = 0;
     let units: UnitsLabel | undefined;
     const add = (date: string, v: number) => {
@@ -1379,7 +1385,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           // deliberately sums only itemised wine lines and is NOT a substitute.
           for (const { row: c, day } of checks) {
             add(day, Number(c.total) || 0);
-            counts.set(day, (counts.get(day) || 0) + 1);
+            dailyChecksByDay.set(day, (dailyChecksByDay.get(day) || 0) + 1);
+            // A null or blank total is a check nobody priced, not a $0 one.
+            if (c.total != null && c.total !== "" && Number.isFinite(Number(c.total))) {
+              dailyPricedByDay.set(day, (dailyPricedByDay.get(day) || 0) + 1);
+            }
           }
         } else if (metricKey === "checks") {
           for (const { day } of checks) add(day, 1);
@@ -1437,11 +1447,19 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     const dates = Array.from(daily.keys()).sort();
     const dailySeries = dates.map((d) => daily.get(d) || 0);
     const current = dailySeries.reduce((a, b) => a + b, 0);
-    if (metricKey === "pos_revenue") {
-      const dailyCounts = dates.map((d) => counts.get(d) ?? 0);
-      return { current, dailySeries, dailyDates: dates, rowCount, dailyCounts };
-    }
-    return { current, dailySeries, dailyDates: dates, rowCount, units };
+    return {
+      current,
+      dailySeries,
+      dailyDates: dates,
+      rowCount,
+      units,
+      ...(metricKey === "pos_revenue"
+        ? {
+            dailyChecks: dates.map((d) => dailyChecksByDay.get(d) || 0),
+            dailyPricedChecks: dates.map((d) => dailyPricedByDay.get(d) || 0),
+          }
+        : {}),
+    };
   }
 
   // ==========================================================================
@@ -1513,7 +1531,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     if (!connected) return { ...unread, posConnected: false };
     if (!zone || !from || !to) return { ...unread, posConnected: true };
 
-    const { current, dailySeries, dailyDates, rowCount, dailyCounts } =
+    const { current, dailySeries, dailyDates, rowCount, dailyChecks, dailyPricedChecks } =
       await this.computeMetricWithSeries(
         restaurantId,
         "pos_revenue",
@@ -1535,7 +1553,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       dailySeries: dailyDates.map((date, i) => ({
         date,
         revenue: dailySeries[i] ?? 0,
-        checks: dailyCounts?.[i] ?? null,
+        checks: dailyChecks?.[i] ?? 0,
+        pricedChecks: dailyPricedChecks?.[i] ?? 0,
       })),
     };
   }
@@ -1572,9 +1591,12 @@ export interface PosRevenueWindow {
   /** Non-voided checks filed in the window. `null` when `posConnected` is false or `zoneUnset`. */
   checkCount: number | null;
   /**
-   * Sparse — only days that had a check appear. `checks` is how many
-   * non-voided checks that day holds; across the series they add up to
-   * `checkCount`. `null` only if the count could not be kept.
+   * Sparse — only days that actually had a check appear. `checks` is that
+   * house day's count of the non-voided checks `revenue` is summed from, so a
+   * day is never drawn with a revenue and no count (the till's "Bars and a
+   * line" needs both on every day). `pricedChecks` is how many of them carry
+   * a total (never more than `checks`): `pos_checks.total` is nullable and
+   * `revenue` counts a null as 0, so an average check divides by THIS count.
    */
-  dailySeries: Array<{ date: string; revenue: number; checks: number | null }>;
+  dailySeries: Array<{ date: string; revenue: number; checks: number; pricedChecks: number }>;
 }
