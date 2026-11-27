@@ -82,9 +82,12 @@ export class ItemUseCountsService {
           push(byBeverage, g.beverage_id, g.id);
           push(byWine, g.master_wine_id, g.id);
         }
+        // A cocktail with a current version counts only through it; its old rows are superseded
+        // (the recipe sheet hides them once a version exists, ADR 0366).
+        const hasCurrent = new Set(ownerOfVersion.values());
         for (const r of legacy) {
           const owner = `cocktail_id:${r.cocktail_id}`;
-          if (!live.has(owner)) continue;
+          if (!live.has(owner) || hasCurrent.has(owner)) continue;
           for (const id of (r.beverage_id && byBeverage.get(String(r.beverage_id))) || []) add(id, owner);
           for (const id of (r.wine_id && byWine.get(String(r.wine_id))) || []) add(id, owner);
         }
