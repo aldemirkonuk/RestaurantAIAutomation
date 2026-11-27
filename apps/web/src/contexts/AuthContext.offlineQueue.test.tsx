@@ -261,6 +261,20 @@ describe("founder storage ruling 2026-09-29 — sign-out clears the read cache, 
     expect(clear).toHaveBeenCalledTimes(1);
   });
 
+  it("lets go of every half-written Mail reply held in this tab (r109 g2)", async () => {
+    signInAs(U1, H1);
+    vi.spyOn(offlineStorage, "clearEntityCache").mockResolvedValue(undefined);
+    sessionStorage.setItem("mail-reply:u1:h1:gm:t1", "{}");
+    sessionStorage.setItem("mail-people-height:h1:wide", "300");
+    const auth = await mountAs(U1, H1);
+    await act(async () => {
+      await auth().logout();
+    });
+    expect(sessionStorage.getItem("mail-reply:u1:h1:gm:t1")).toBeNull();
+    expect(sessionStorage.getItem("mail-people-height:h1:wide")).toBe("300");
+    sessionStorage.clear();
+  });
+
   it("finishes signing out even when the cache clear never settles", async () => {
     signInAs(U1, H1);
     vi.spyOn(offlineStorage, "clearEntityCache").mockReturnValue(new Promise<void>(() => {}));

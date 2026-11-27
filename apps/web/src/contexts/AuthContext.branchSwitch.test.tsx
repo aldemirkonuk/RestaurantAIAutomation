@@ -128,6 +128,18 @@ describe("AuthContext — setActiveRestaurantId keeps the current branch on fail
     expect(localStorage.getItem("activeRestaurantId")).toBe(BRANCH_A);
   });
 
+  it("a house switch lets go of the last house's held Mail replies (r109 g2)", async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    sessionStorage.setItem(`mail-reply:${USER}:${BRANCH_B}:gm:t1`, "{}");
+    mockApi.post.mockResolvedValueOnce({ data: { accessToken: TOKEN_A, refreshToken: "refresh-a" } });
+    await act(async () => {
+      await result.current.setActiveRestaurantId(BRANCH_A);
+    });
+    expect(result.current.activeRestaurantId).toBe(BRANCH_A);
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("does not let an older switch's late response overwrite a later selection", async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
     await waitFor(() => expect(result.current.loading).toBe(false));
