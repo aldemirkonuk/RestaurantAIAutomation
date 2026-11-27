@@ -22,6 +22,7 @@ import { fitPhotoForReading } from '../lib/fitPhoto'
 import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuStanding'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
+import { DraftKeptNote } from '../components/onboarding/DraftKeptNote'
 import { clearGetStartedDraft, readGetStartedDraft, writeGetStartedDraft } from '../lib/getStartedDraft'
 
 /**
@@ -194,6 +195,8 @@ export default function GetStarted() {
   // restoring replays nothing and moves nothing (r107 g4).
   const [draft] = useState(() => readGetStartedDraft(user?.userId))
   const draftDone = useRef(false)
+  // Said once, only when a draft was actually restored (r108 g16); Start over clears it.
+  const [draftNote, setDraftNote] = useState(draft !== null)
   const [restaurantName, setRestaurantName] = useState(draft?.restaurantName ?? '')
   const [address, setAddress] = useState(draft?.address ?? '')
   const [city, setCity] = useState(draft?.city ?? '')
@@ -224,6 +227,7 @@ export default function GetStarted() {
     setStateProvince(late.stateProvince)
     setPostalCode(late.postalCode)
     setRestaurantPhone(late.restaurantPhone)
+    setDraftNote(true)
   }, [user?.userId])
   const typedKey = JSON.stringify(typed)
   useEffect(() => {
@@ -605,6 +609,26 @@ export default function GetStarted() {
       if (out) navigate('/login', { replace: true })
     })
 
+  const startOver = () => {
+    setRestaurantName('')
+    setAddress('')
+    setCity('')
+    setCountry('')
+    setStateProvince('')
+    setPostalCode('')
+    setRestaurantPhone('')
+    setPlacePoint(null)
+    clearGetStartedDraft()
+    setDraftNote(false)
+    setTimeout(
+      () =>
+        document
+          .querySelector<HTMLInputElement>('input[aria-label="Your name"], #arrival-place, input[aria-label="Restaurant name"]')
+          ?.focus(),
+      0,
+    )
+  }
+
   if (!entered) return <ArrivalShell step={null} />
 
   if (step === 'restaurant') {
@@ -628,6 +652,7 @@ export default function GetStarted() {
           </>
         }
       >
+        {draftNote && <DraftKeptNote onStartOver={startOver} />}
         {(changingName || !name.trim()) && (
           <label className="block">
             <span className="mdv-label">Your name · required</span>
