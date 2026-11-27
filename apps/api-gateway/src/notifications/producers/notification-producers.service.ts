@@ -321,7 +321,7 @@ export class NotificationProducersService {
     const out: Record<string, ProducerTally> = {};
 
     // `posConnected` is asked of the one place that decides it. It THROWS on a
-    // failed probe rather than answering false — `hasPosHistory`, reached
+    // failed probe rather than answering false — `firstPosCheck`, reached
     // through `getPosRevenueWindow`, both in `analytics/goals.service.ts`
     // (grep the names; no line number, that file is under concurrent edit and
     // moved twice during this session) — so a

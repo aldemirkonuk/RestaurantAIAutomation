@@ -113,6 +113,24 @@ describe('till: compare to the previous period', () => {
     expect(view(short, true).cats!.data.every((d) => d.prior === undefined)).toBe(true);
   });
 
+  it('[REVERT-FAILS] a prior that begins before the till rang its first check is not read as quiet days', () => {
+    const wired = daysBetween(P_FROM, P_TO)[10];
+    const base = payload();
+    const young = payload({ firstCheckDay: wired, dailySeries: base.dailySeries.filter((d) => d.date >= wired) });
+    const v = view(young, true);
+    expect(v.figures.some((f) => f.label.startsWith('Prior'))).toBe(false);
+    const against = v.figures.find((f) => f.label === 'Against the prior window')!;
+    expect(against.value).toBe('—');
+    expect(against.note).toMatch(/first check is on/);
+    expect(v.cats!.data.every((d) => d.prior === undefined)).toBe(true);
+    expect(splitTill(till.select(young) as never, 30).prior).toBeNull();
+    // A till that had already rung by the start of the prior keeps its comparison.
+    const old = payload({ firstCheckDay: P_FROM });
+    expect(view(old, true).figures.find((f) => f.label === 'Against the prior window')!.value).toBe('+34.5%');
+    // An older gateway names no first day: nothing changes for it.
+    expect(view(payload(), true).figures.find((f) => f.label === 'Against the prior window')!.value).toBe('+34.5%');
+  });
+
   it('a gateway that sends no per-day checks leaves Checks and Average check unstated when comparing, never the 2N count', () => {
     const bare = payload();
     const noChecks = payload({ dailySeries: bare.dailySeries.map((d) => ({ date: d.date, revenue: d.revenue })) });
