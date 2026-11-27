@@ -62,9 +62,15 @@ export function reasonOf(err: unknown): string {
   const sent = err as { code?: unknown; response?: unknown };
   if (sent?.code === 'ERR_NETWORK' && !sent.response) return 'Mudavym could not be reached just now.';
   if (sent?.code === 'ECONNABORTED' && !sent.response) {
-    return 'Mudavym did not answer in time. The menu may have been kept: look in Menus kept before you send it again.';
+    return 'Mudavym did not answer in time.';
   }
   return e?.message || 'no reason was given';
+}
+
+/** A request that got no answer in time (only the read form says the menu may be kept). */
+function timedOut(err: unknown): boolean {
+  const e = err as { code?: unknown; response?: unknown };
+  return e?.code === 'ECONNABORTED' && !e.response;
 }
 
 /** The warnings a refused read carried in its body, if any. */
@@ -472,6 +478,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
       ) : read.isError ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-error">
           The menu was not read: {reasonOf(read.error).replace(/\.$/, '')}.
+          {timedOut(read.error) ? ' The menu may have been kept: look in Menus kept before you send it again.' : ''}
         </p>
       ) : null}
       {read.isError && !stillReading(read.error) ? <ReadWarnings warnings={warningsOf(read.error)} testId="menu-read-error-warnings" /> : null}

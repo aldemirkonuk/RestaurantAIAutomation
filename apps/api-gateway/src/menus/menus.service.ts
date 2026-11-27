@@ -2293,18 +2293,16 @@ export class MenusService {
   }
 
   /**
-   * The lines a kept menu holds now, for the menus that have had a line
-   * discarded (r104 menu-6, walk F6: a menu whose every line was discarded still
-   * said "1 line"). `lines_extracted` is what the read found and never moves; a
-   * menu with no discarded line keeps it. Only the menus with a discarded line
-   * are counted again, so the usual list costs one extra read. A failed read
-   * fails the list in words, never a stale count (ADR 0020).
+   * The lines a kept menu holds now (r104 menu-6, walk F6: a menu whose every
+   * line was discarded still said "1 line"; r104 fix: a menu with an ADDED line
+   * and no discard said the old count). `lines_extracted` is what the read found
+   * and never moves, so every listed menu that has one is counted again: one
+   * keyset-paged read of the live lines' menu_id per 200 menus, tallied here.
+   * A failed read fails the list in words, never a stale count (ADR 0020).
    */
   private async liveLineCounts(restaurantId: string, rows: Array<Record<string, any>>): Promise<Map<string, number>> {
     const ids = rows.filter((r) => Number(r.lines_extracted) > 0).map((r) => String(r.id));
-    const out = new Map<string, number>();
-    if (ids.length === 0) return out;
-    const touched = new Set<string>();
+    const out = new Map<string, number>(ids.map((id) => [id, 0]));
     for (let i = 0; i < ids.length; i += 200) {
       let after: string | null = null;
       for (;;) {
@@ -2312,36 +2310,16 @@ export class MenusService {
           .from("menu_items")
           .select("id, menu_id")
           .eq("restaurant_id", restaurantId)
-          .eq("status", "discarded")
+          .neq("status", "discarded")
           .in("menu_id", ids.slice(i, i + 200));
         if (after) q = q.gt("id", after);
         const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
         if (error) throw menusUnreadable(error);
         const page = (data ?? []) as Array<Record<string, any>>;
-        for (const l of page) touched.add(String(l.menu_id));
+        for (const l of page) out.set(String(l.menu_id), (out.get(String(l.menu_id)) ?? 0) + 1);
         if (page.length < PAGE_ROWS) break;
         after = String(page[page.length - 1].id);
       }
-    }
-    for (const id of touched) {
-      let n = 0;
-      let after: string | null = null;
-      for (;;) {
-        let q = this.dbService.supabase
-          .from("menu_items")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("menu_id", id)
-          .neq("status", "discarded");
-        if (after) q = q.gt("id", after);
-        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-        if (error) throw menusUnreadable(error);
-        const page = (data ?? []) as Array<Record<string, any>>;
-        n += page.length;
-        if (page.length < PAGE_ROWS) break;
-        after = String(page[page.length - 1].id);
-      }
-      out.set(id, n);
     }
     return out;
   }
