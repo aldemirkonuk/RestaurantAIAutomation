@@ -31,6 +31,23 @@ export interface SealedChanges {
   /** How many deliveries the paper is linked to: a door delivery has lots but no order. */
   deliveries: number
   otherPapers: number
+  /** r109 g3: the sales it re-costed, by table, newest first; latest event per sale, exact text. */
+  salesList?: SettledSale[]
+  /** Sales in the total that cannot be named (a delivery-path settlement carries no check). */
+  salesUnnamed?: number
+}
+
+export interface SettledSale {
+  id: string
+  at: string | null
+  wine: string | null
+  quantity: number
+  unit: string | null
+  volumeMl: number
+  voided: boolean
+  table: string
+  before: string | null
+  after: string
 }
 
 export interface ProcurementDocument {

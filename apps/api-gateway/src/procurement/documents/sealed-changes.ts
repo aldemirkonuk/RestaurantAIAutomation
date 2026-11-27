@@ -32,6 +32,7 @@ export interface RevaluationRow {
 }
 
 export interface RestatementRow {
+  id?: string;
   consumption_id: string;
   prior_cost_at_sale: number | string | null;
   new_cost_at_sale: number | string;
@@ -132,4 +133,104 @@ export function summariseChanges(
     sales: saleIds.size,
     notKnown,
   };
+}
+
+// ---------------------------------------------------------------------------
+// r109 g3: the table sales a sealed paper re-costed, by name.
+// restatement.consumption_id -> wine_consumption_log (notes
+// `pos:<source>:<check>:...`) -> pos_checks -> restaurant_tables.
+// ---------------------------------------------------------------------------
+
+export interface SaleRow {
+  id: string;
+  wine_name: string | null;
+  quantity: number | string | null;
+  volume_ml: number | string | null;
+  consumption_type: string | null;
+  recorded_at: string | null;
+  notes: string | null;
+}
+export interface CheckRow {
+  source: string;
+  external_check_id: string;
+  table_id: string | null;
+  table_ref: string | null;
+}
+export interface TableRow {
+  id: string;
+  label: string | null;
+}
+export interface SettledSale {
+  id: string;
+  at: string | null;
+  wine: string | null;
+  quantity: number;
+  unit: string | null;
+  volumeMl: number;
+  /** The till voided the line after it was restated. */
+  voided: boolean;
+  /** "Table 4", the till's own word, or "no table". */
+  table: string;
+  /** The latest restatement's before and after, exact; before is null when not known. */
+  before: string | null;
+  after: string;
+}
+
+/** `pos:<source>:<check id>:...` to its source and check; null for any other note. */
+export function checkOfNotes(notes: string | null | undefined): { source: string; check: string } | null {
+  const m = /^pos:([^:]+):([^:]+):/.exec(String(notes ?? ""));
+  return m ? { source: m[1], check: m[2] } : null;
+}
+
+/** One event per sale: a sale restated twice shows its latest. */
+export function latestPerSale(rows: RestatementRow[]): RestatementRow[] {
+  const by = new Map<string, RestatementRow>();
+  for (const r of rows) {
+    const had = by.get(r.consumption_id);
+    if (!had || r.created_at > had.created_at || (r.created_at === had.created_at && String(r.id ?? "") > String(had.id ?? "")))
+      by.set(r.consumption_id, r);
+  }
+  return [...by.values()];
+}
+
+const tableWord = (label: string | null | undefined) => {
+  const t = String(label ?? "").trim();
+  return !t ? null : /^\d+$/.test(t) ? `Table ${t}` : t;
+};
+
+/** The sales, newest first. A restatement whose sale is not this house's row is not named. */
+export function settledSales(
+  restatements: RestatementRow[],
+  sales: SaleRow[],
+  checks: CheckRow[],
+  tables: TableRow[],
+): SettledSale[] {
+  const saleBy = new Map(sales.map((s) => [s.id, s]));
+  const checkBy = new Map(checks.map((c) => [`${c.source}\u0000${c.external_check_id}`, c]));
+  const tableBy = new Map(tables.map((t) => [t.id, t]));
+  const out: SettledSale[] = [];
+  for (const r of latestPerSale(restatements)) {
+    const s = saleBy.get(r.consumption_id);
+    if (!s) continue;
+    const k = checkOfNotes(s.notes);
+    const c = k ? checkBy.get(`${k.source}\u0000${k.check}`) : undefined;
+    const table =
+      tableWord(c?.table_id ? tableBy.get(c.table_id)?.label : null) ??
+      (String(c?.table_ref ?? "").trim() ? `Table ${String(c?.table_ref).trim()}` : "no table");
+    const quantity = Number(s.quantity ?? 0) || 0;
+    const volumeMl = Number(s.volume_ml ?? 0) || 0;
+    out.push({
+      id: s.id,
+      at: s.recorded_at,
+      wine: s.wine_name,
+      quantity,
+      unit: s.consumption_type,
+      volumeMl,
+      voided: quantity === 0 && volumeMl === 0,
+      table,
+      before: r.prior_cost_at_sale == null || r.prior_cost_at_sale === "" ? null : microText(toMicro(r.prior_cost_at_sale)),
+      after: microText(toMicro(r.new_cost_at_sale)),
+    });
+  }
+  return out.sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")) || a.id.localeCompare(b.id));
 }

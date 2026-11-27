@@ -48,7 +48,7 @@ import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
-import { readEveryPage, summariseChanges, type RestatementRow, type RevaluationRow, type SettlementRow } from "./sealed-changes";
+import { latestPerSale, readEveryPage, settledSales, summariseChanges, checkOfNotes, type CheckRow, type RestatementRow, type RevaluationRow, type SaleRow, type SettlementRow, type SettledSale, type TableRow } from "./sealed-changes";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -1554,7 +1554,7 @@ export class DocumentsController {
     const empty = summariseChanges([], []);
     // "No order" is only said when there is no delivery either.
     if (!orders.length && !deliveries.length)
-      return { status: (paper as { status: string }).status, currency, orders, deliveries: 0, otherPapers: 0, ...empty };
+      return { status: (paper as { status: string }).status, currency, orders, deliveries: 0, otherPapers: 0, ...empty, salesList: [], salesUnnamed: 0 };
     // The receipts carry an order, not a paper: an order another paper also
     // priced shows the order's figures, and says how many papers share them.
     let otherPapers = 0;
@@ -1645,13 +1645,55 @@ export class DocumentsController {
     } catch (e) {
       throw fail("The cost receipts", e as Error);
     }
+    // r109 g3: the sales it re-costed, by table. Every read is this house's.
+    let salesList: SettledSale[] = [];
+    const ids = latestPerSale(restatements).map((r) => r.consumption_id);
+    try {
+      const sales = (
+        await Promise.all(
+          chunks(ids).map((xs) =>
+            readEveryPage<SaleRow>((from, to) =>
+              client.from("wine_consumption_log").select("id, wine_name, quantity, volume_ml, consumption_type, recorded_at, notes").eq("restaurant_id", rid).in("id", xs).order("id", { ascending: true }).range(from, to),
+            ),
+          ),
+        )
+      ).flat();
+      const checkIds = [...new Set(sales.map((x) => checkOfNotes(x.notes)?.check).filter((x): x is string => !!x))];
+      const checks = (
+        await Promise.all(
+          chunks(checkIds).map((xs) =>
+            readEveryPage<CheckRow>((from, to) =>
+              client.from("pos_checks").select("source, external_check_id, table_id, table_ref").eq("restaurant_id", rid).in("external_check_id", xs).order("id", { ascending: true }).range(from, to),
+            ),
+          ),
+        )
+      ).flat();
+      const tableIds = [...new Set(checks.map((x) => x.table_id).filter((x): x is string => !!x))];
+      const tables = (
+        await Promise.all(
+          chunks(tableIds).map((xs) =>
+            readEveryPage<TableRow>((from, to) =>
+              client.from("restaurant_tables").select("id, label").eq("restaurant_id", rid).in("id", xs).order("id", { ascending: true }).range(from, to),
+            ),
+          ),
+        )
+      ).flat();
+      salesList = settledSales(restatements, sales, checks, tables);
+    } catch (e) {
+      throw fail("The sales it re-costed", e as Error);
+    }
+    const summary = summariseChanges(revaluations, restatements, settlements);
     return {
       status: (paper as { status: string }).status,
       currency,
       orders,
       deliveries: deliveries.length,
       otherPapers,
-      ...summariseChanges(revaluations, restatements, settlements),
+      ...summary,
+      salesList,
+      // Counted in the total, not named: a settlement on the delivery path
+      // carries no check, and a restatement whose sale row is gone.
+      salesUnnamed: new Set(settlements.map((x) => x.txn_id)).size + (ids.length - salesList.length),
     };
   }
 
