@@ -16,10 +16,18 @@ import { AuthService } from "./auth.service";
  */
 type Row = Record<string, any>;
 
-function makeDb(opts: { users: Row[]; verifs: Row[]; failVoid?: boolean; clashOnWrite?: boolean }) {
+function makeDb(opts: {
+  users: Row[];
+  verifs: Row[];
+  resets: Row[];
+  failVoid?: boolean;
+  failResetVoid?: boolean;
+  clashOnWrite?: boolean;
+}) {
   const tables: Record<string, Row[]> = {
     users: opts.users,
     email_verifications: opts.verifs,
+    password_resets: opts.resets,
   };
   const from = (name: string) => {
     const rows = tables[name];
@@ -36,6 +44,9 @@ function makeDb(opts: { users: Row[]; verifs: Row[]; failVoid?: boolean; clashOn
           return { data: null, error: null };
         }
         if (op === "update") {
+          if (opts.failResetVoid && name === "password_resets") {
+            return { data: null, error: { message: "down" } };
+          }
           if (opts.clashOnWrite && name === "users") {
             return { data: null, error: { code: "23505", message: "dup" } };
           }
@@ -65,17 +76,20 @@ function makeDb(opts: { users: Row[]; verifs: Row[]; failVoid?: boolean; clashOn
 
 function setup(over: Partial<Parameters<typeof makeDb>[0]> = {}) {
   const users: Row[] = over.users ?? [
-    { user_id: "u1", email: "selin@typo.test", email_verified: false, restaurant_id: "h1" },
-    { user_id: "u2", email: "taken@house.test", email_verified: true },
+    { user_id: "u1", email: "selin@typo.test", email_verified: false, restaurant_id: "h1", session_version: 0 },
+    { user_id: "u2", email: "taken@house.test", email_verified: true, session_version: 0 },
   ];
   const verifs: Row[] = over.verifs ?? [
     { id: "v-old", user_id: "u1", email: "selin@typo.test", token: "old-token", verified_at: null },
+  ];
+  const resets: Row[] = over.resets ?? [
+    { id: "r-old", user_id: "u1", email: "selin@typo.test", token: "reset-old", expires_at: "2999-01-01T00:00:00Z", used_at: null },
   ];
   const sent: any[] = [];
   const service = new AuthService(
     { sign: jest.fn(), verify: jest.fn(), decode: jest.fn() } as any,
     { get: jest.fn() } as any,
-    makeDb({ users, verifs, failVoid: over.failVoid, clashOnWrite: over.clashOnWrite }),
+    makeDb({ users, verifs, resets, failVoid: over.failVoid, failResetVoid: over.failResetVoid, clashOnWrite: over.clashOnWrite }),
     { blacklistToken: jest.fn() } as any,
     {
       sendEmail: async (m: any) => {
@@ -94,7 +108,7 @@ function setup(over: Partial<Parameters<typeof makeDb>[0]> = {}) {
     verifs.push({ id: "v-new", user_id: id, email, token: "new-token", verified_at: null });
     sent.push({ to: [email] });
   });
-  return { service, users, verifs, sent };
+  return { service, users, verifs, resets, sent };
 }
 
 describe("changeUnverifiedEmail", () => {
@@ -112,7 +126,7 @@ describe("changeUnverifiedEmail", () => {
 
   it("a verified account is refused and nothing is written or mailed", async () => {
     const { service, users, verifs, sent } = setup({
-      users: [{ user_id: "u1", email: "a@house.test", email_verified: true }],
+      users: [{ user_id: "u1", email: "a@house.test", email_verified: true, session_version: 0 }],
     });
     await expect(service.changeUnverifiedEmail("u1", "b@house.test")).rejects.toMatchObject({
       response: { code: "EMAIL_ALREADY_VERIFIED" },
@@ -167,6 +181,54 @@ describe("changeUnverifiedEmail", () => {
     await expect(service.changeUnverifiedEmail("u1", "selin@house.test")).rejects.toMatchObject({
       response: { code: "EMAIL_TAKEN" },
     });
+    expect(sent).toHaveLength(0);
+  });
+
+  it("a reset link mailed to the old address is dead after the change: it no longer sets the password", async () => {
+    const { service, users, resets } = setup();
+    users[0].password_hash = "old-hash";
+    await service.changeUnverifiedEmail("u1", "selin@house.test");
+    expect(resets.find((r) => r.token === "reset-old")?.used_at).toBeTruthy();
+    await expect(service.resetPassword("reset-old", "NewPassw0rd!x")).rejects.toThrow(
+      "already been used",
+    );
+    expect(users[0].password_hash).toBe("old-hash");
+  });
+
+  it("a reset row that slips in for the old address after the move is still refused (the address no longer matches)", async () => {
+    const { service, users, resets } = setup();
+    users[0].password_hash = "old-hash";
+    await service.changeUnverifiedEmail("u1", "selin@house.test");
+    // The race: a reset requested for the typo mailbox lands after the void.
+    resets.push({
+      id: "r-late",
+      user_id: "u1",
+      email: "selin@typo.test",
+      token: "reset-late",
+      expires_at: "2999-01-01T00:00:00Z",
+      used_at: null,
+    });
+    await expect(service.resetPassword("reset-late", "NewPassw0rd!x")).rejects.toThrow(
+      "Invalid or expired reset link",
+    );
+    expect(users[0].password_hash).toBe("old-hash");
+    expect(users[0].session_version).toBe(1);
+  });
+
+  it("the move ends the old sessions: the version goes up and the new pair is minted under it", async () => {
+    const { service, users } = setup();
+    await service.changeUnverifiedEmail("u1", "selin@house.test", "h1");
+    expect(users[0].session_version).toBe(1);
+    const minted = ((service as any).generateTokens as jest.Mock).mock.calls[0][0];
+    expect(minted.session_version).toBe(1);
+  });
+
+  it("if the old reset links cannot be voided, nothing else is written (503)", async () => {
+    const { service, users, sent } = setup({ failResetVoid: true });
+    await expect(service.changeUnverifiedEmail("u1", "selin@house.test")).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(users[0].email).toBe("selin@typo.test");
     expect(sent).toHaveLength(0);
   });
 });

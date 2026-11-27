@@ -257,7 +257,7 @@ describe("AuthService#resetPassword", () => {
     };
     // ADR 0225: the password write reads the users row, then writes the
     // new hash and session_version + 1 in one compare-and-set update.
-    const userRow = { user_id: "u1", session_version: 0 };
+    const userRow = { user_id: "u1", email: "ada@x.com", email_verified: true, session_version: 0 };
     const usersChain: any = {
       select: () => ({
         eq: () => ({
@@ -351,6 +351,7 @@ describe("AuthService#resetPassword", () => {
     const svc = makeResetPasswordService({
       id: "r1",
       user_id: "u1",
+      email: "ada@x.com",
       expires_at: new Date(Date.now() + 60_000).toISOString(),
       used_at: null,
     });
@@ -364,6 +365,7 @@ describe("AuthService#resetPassword", () => {
       {
         id: "r1",
         user_id: "u1",
+        email: "ada@x.com",
         expires_at: new Date(Date.now() + 60_000).toISOString(),
         used_at: null,
       },

@@ -1175,6 +1175,23 @@ export class AuthService {
         );
       }
 
+      // A reset link is for the address it was mailed to. When the account
+      // has moved to another address since (changeUnverifiedEmail), the link
+      // went to a mailbox that is no longer the account's, so it must not
+      // set the password. The check is inside the loop so a retry after a
+      // version race re-reads the address too.
+      if (
+        provedEmail !== undefined &&
+        (typeof current.email !== "string" ||
+          current.email.trim().toLowerCase() !== proved)
+      ) {
+        this.logger.warn(
+          `${caller}: a reset for ${userId} was mailed to an address that is ` +
+            "no longer the account's; refusing it",
+        );
+        throw new BadRequestException("Invalid or expired reset link");
+      }
+
       const from = sessionVersionOf(current);
       // ADR 0229 fork 6 (item 67): a reset link proves the mailbox it was
       // mailed to, as an emailed code does, so when that is still the
@@ -3673,13 +3690,34 @@ export class AuthService {
       );
     }
 
+    // A reset link mailed to the old address must die with it: otherwise
+    // whoever owns that mailbox can still set the password after the move.
+    // Fail closed, like the verification links above.
+    const { error: resetVoidErr } = await this.databaseService.supabase
+      .from("password_resets")
+      .update({ used_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .is("used_at", null);
+    if (resetVoidErr) {
+      this.logger.error(
+        `changeUnverifiedEmail could not void ${userId}'s old reset links: ${resetVoidErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not change the address right now. Please try again.",
+      );
+    }
+
+    // The move also ends every session minted under the old address; the
+    // pair returned below is minted under the new version.
+    const fromVersion = sessionVersionOf(row);
     const { data: written, error: writeErr } =
       await this.databaseService.supabase
         .from("users")
-        .update({ email })
+        .update({ email, session_version: fromVersion + 1 })
         .eq("user_id", userId)
         .eq("email", row.email)
         .eq("email_verified", false)
+        .eq("session_version", fromVersion)
         .select("*")
         .maybeSingle();
     if (writeErr) {
@@ -3703,6 +3741,7 @@ export class AuthService {
       });
     }
 
+    this.websocketGateway?.endStaleSessions(userId, sessionVersionOf(written));
     await this.queueEmailVerification(userId, email);
     const tokens = await this.generateTokens(
       written,
