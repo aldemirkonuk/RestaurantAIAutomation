@@ -100,4 +100,29 @@ describe("PosHistoryImportService", () => {
     expect(upserts.map((u) => u.rows.length)).toEqual([HISTORY_CHUNK, HISTORY_CHUNK, 201]);
     expect(out.salesSaved).toBe(1201);
   });
+
+  it("a day split across a failed chunk is not counted as read, and is named", async () => {
+    const { client, svc } = build();
+    let call = 0;
+    (client.from as jest.Mock).mockImplementation((table: string) => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { timezone: "UTC", currency: "TRY" }, error: null }) }) }),
+      upsert: async () => (++call === 2 ? { error: { message: "boom" } } : { error: null }),
+    }));
+    // 600 items on 2026-11-20 (chunk 1 holds 500, chunk 2 holds 100 and fails) plus one on 2026-11-21.
+    const rows = ["Date,Item,Qty", ...Array.from({ length: 600 }, (_, i) => `2026-11-20,I${i},1`), "2026-11-21,Z,1"];
+    // Chunk 2 = I500..I599 + Z: 101 rows. Chunk 1 = 500 rows of the 20th only.
+    const out = await svc.importHistory("u1", "h1", rows.join("\n"), NOW);
+    expect(out.salesSaved).toBe(500);
+    expect(out.daysRead).toBe(0);
+    expect(out.errors.join(" ")).toContain("2026-11-20");
+    expect(out.errors.join(" ")).toContain("2026-11-21");
+  });
+
+  it("passes the house's currency to the reader and reports money written in another one", async () => {
+    const { svc, upserts } = build({ timezone: "UTC", currency: "EUR" });
+    const out = await svc.importHistory("u1", "h1", "Date,Item,Qty,Net Sales\n2026-11-20,Meze,3,$30.00", NOW);
+    expect(out.netForeignCount).toBe(1);
+    expect(out.netForeign[0]).toContain("$");
+    expect(upserts[0].rows[0]).toMatchObject({ qty: 3, net: null, currency: null });
+  });
 });

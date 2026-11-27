@@ -22,6 +22,9 @@ export interface HistoryImportAnswer {
   refusedCount: number;
   /** Net sales were in the file but the house's money is not set. */
   netDropped: boolean;
+  /** Rows whose net was written in another currency than the house's: the net was left out, the quantity kept. */
+  netForeign: string[];
+  netForeignCount: number;
   /** Always false: history is not a sale the shelf saw (ADR 0281, amended 2026-11-27). */
   stockMoved: false;
   /** A refusal of the whole file, in words, or null. */
@@ -93,6 +96,8 @@ export class PosHistoryImportService {
       refused: [] as string[],
       refusedCount: 0,
       netDropped: false,
+      netForeign: [] as string[],
+      netForeignCount: 0,
       stockMoved: false as const,
       errors: [] as string[],
     };
@@ -101,18 +106,21 @@ export class PosHistoryImportService {
       return { ...base, fileRefused: "The house's clock is not set, so its days cannot be read. Set it in Settings first." };
     }
     const currency = typeof house.currency === "string" && house.currency ? house.currency : null;
-    const reading = readHistoryCsv(csv, { todayDay: today, moneySet: currency !== null });
+    const reading = readHistoryCsv(csv, { todayDay: today, moneySet: currency !== null, currency });
     const answer: HistoryImportAnswer = {
       ...base,
       rowsRead: reading.rowsRead,
       refused: reading.refused,
       refusedCount: reading.refusedCount,
       netDropped: reading.netDropped,
+      netForeign: reading.netForeign,
+      netForeignCount: reading.netForeignCount,
       fileRefused: reading.fileRefused,
     };
     if (reading.fileRefused || reading.sales.length === 0) return answer;
 
     const savedDays = new Set<string>();
+    const failedDays = new Set<string>();
     for (let i = 0; i < reading.sales.length; i += HISTORY_CHUNK) {
       const chunk = reading.sales.slice(i, i + HISTORY_CHUNK);
       const rows = chunk.map((s) => ({
@@ -131,13 +139,21 @@ export class PosHistoryImportService {
         .upsert(rows, { onConflict: "restaurant_id,sale_date,item_key" });
       if (writeError) {
         this.logger.warn(`history import r=${restaurantId}: a chunk of ${rows.length} was refused: ${writeError.message}`);
+        for (const s of chunk) failedDays.add(s.saleDate);
         answer.errors.push(`${rows.length} item-days were not saved just now. Send the file again; saved days are not doubled.`);
         continue;
       }
       answer.salesSaved += rows.length;
       for (const s of chunk) savedDays.add(s.saleDate);
     }
-    answer.daysRead = savedDays.size;
+    // A day with any item in a failed chunk is not whole, so it is not counted as read.
+    answer.daysRead = [...savedDays].filter((d) => !failedDays.has(d)).length;
+    if (failedDays.size > 0) {
+      const days = [...failedDays].sort();
+      answer.errors.push(
+        `Not every item was saved for ${days.length === 1 ? "this day" : "these days"}: ${days.slice(0, 5).join(", ")}${days.length > 5 ? ` and ${days.length - 5} more` : ""}.`,
+      );
+    }
     return answer;
   }
 }
