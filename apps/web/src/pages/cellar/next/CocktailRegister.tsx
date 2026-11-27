@@ -260,11 +260,11 @@ export default function CocktailRegister({
         }).map((c) => c.id)
       : [];
   // A switch narrows the list only while what it narrows by is read: unread, the list stays whole and the switch says so.
-  const figuresRead = Boolean(figures.byId);
-  const costsRead = figuresRead && !figures.costsUnread;
+  const listFiguresRead = Boolean(figures.byId);
+  const costsRead = listFiguresRead && !figures.costsUnread;
   const rows = !seesCost
     ? byAllergen
-    : onlyBare && figuresRead
+    : onlyBare && listFiguresRead
       ? byAllergen.filter((c) => bareIds.includes(c.id))
       : onlyUncosted && !onlyBare && costsRead
         ? byAllergen.filter((c) => uncostedIds.includes(c.id))
@@ -518,7 +518,7 @@ export default function CocktailRegister({
           {data.rows.length > 0 ? (
             <>
               {seesCost ? (
-                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} read={figuresRead} onOnly={(v) => { setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
+                <NoRecipeYet bare={bareIds.length} of={data.rows.length} noun="drinks" only={onlyBare} read={listFiguresRead} onOnly={(v) => { setOnlyBare(v); if (v) setOnlyUncosted(false); }} />
               ) : null}
               {seesCost ? (
                 <NoCostYet unknown={uncostedIds.length} of={data.rows.length} noun="drinks" only={onlyUncosted} read={costsRead} onOnly={(v) => { setOnlyUncosted(v); if (v) setOnlyBare(false); }} />
