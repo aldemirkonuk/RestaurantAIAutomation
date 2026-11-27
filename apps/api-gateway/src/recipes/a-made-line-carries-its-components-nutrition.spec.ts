@@ -17,6 +17,7 @@ const ORGEAT = "d0000000-0000-4000-8000-0000000000c3";
 const V_SYRUP = "e0000000-0000-4000-8000-0000000000c1";
 const V_BATCH = "e0000000-0000-4000-8000-0000000000c2";
 const V_ORGEAT = "e0000000-0000-4000-8000-0000000000c3";
+const THEIRS = "d0000000-0000-4000-8000-0000000000b9";
 
 const states = (item: string, house: string, named: Record<string, string> = {}): Row[] =>
   ALLERGENS.map((a, i) => ({ id: `${item.slice(-4)}-${house.slice(0, 2)}-${String(i).padStart(3, "0")}`, restaurant_id: house, inventory_id: item, allergen: a, status: named[a] ?? "free" }));
@@ -68,6 +69,12 @@ const takes = (rows: Record<string, Row[]>, over: Row) => {
   return rows;
 };
 
+const noMilkSaid = () => {
+  const rows = house();
+  rows.item_allergens = rows.item_allergens.filter((a) => !(a.restaurant_id === HOUSE_A && a.inventory_id === SUGAR && a.allergen === "milk"));
+  return rows;
+};
+
 describe("a made line carries its component's nutrition (r110 inventory g2)", () => {
   it("40 ml of a 700 ml syrup made from 500 g of sugar gives 28.57 g of sugar and 114.29 kcal, through Simple syrup", async () => {
     const w = await sheet(house());
@@ -112,8 +119,18 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
   });
 
   it("another house's allergen rows for the same good never count", async () => {
-    // House B says the sugar contains milk; house A's sugar is free of it.
-    expect((await sheet(house())).allergens.milk).toBe("free");
+    // House B says the sugar contains milk; house A's sugar says nothing of milk.
+    expect((await sheet(noMilkSaid())).allergens.milk).toBe("not_stated");
+  });
+
+  it("a made line drawing another house's component is not counted, not said through, and nothing reads free", async () => {
+    const rows = takes(house(), { component_dish_id: THEIRS, label: "Their syrup" });
+    rows.dishes.push({ id: THEIRS, restaurant_id: HOUSE_B, name: "Their syrup", yield_qty_base: 7000, yield_base_unit: "ml10", deleted_at: null });
+    rows.recipe_current_dish.push({ dish_id: THEIRS, version_id: V_SYRUP, restaurant_id: HOUSE_B });
+    const w = await sheet(rows);
+    expect(w.through).toEqual([]);
+    expect(w.notCounted).toEqual([{ label: "Their syrup", why: "it is made in the house, and what it is made from is not read here" }]);
+    expect(w.allergens.gluten).toBe("not_stated");
   });
 
   it("a loop ends: the line inside it is not counted, and nothing is said free", async () => {
