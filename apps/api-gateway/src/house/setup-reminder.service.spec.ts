@@ -151,6 +151,54 @@ describe("SetupReminderService.runOnce", () => {
 
 // r109 onboarding-r109-5: the claim re-checks what the sweep read, so a write
 // between the two (the menu read, the owner's opt-out) sends nothing.
+describe("SetupReminderService.runOnce, a menu the progress row does not know about (r110)", () => {
+  // markMenuUploaded only warns when its write fails, so a house can hold a menu
+  // while its flag still says none; the letter would then tell it to upload one.
+  it("a house with an active menu gets no letter and its row is not claimed, whatever the flag says", async () => {
+    const { service, gmail, db } = build({
+      ...world(),
+      restaurant_menus: [{ id: "m-1", restaurant_id: "h-1", status: "active" }],
+    });
+    const tally = await service.runOnce(NOW);
+    expect(tally.sent).toBe(0);
+    expect(tally.skipped).toBe(1);
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(db.tables.user_onboarding_progress[0].setup_reminder_sent_at).toBeNull();
+  });
+
+  it("another house's menu, or a menu that is not active, holds nothing back", async () => {
+    const { service, gmail } = build({
+      ...world(),
+      restaurant_menus: [
+        { id: "m-2", restaurant_id: "h-2", status: "active" },
+        { id: "m-3", restaurant_id: "h-1", status: "archived" },
+      ],
+    });
+    expect((await service.runOnce(NOW)).sent).toBe(1);
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("a menu read that fails stops the sweep and says so, rather than sending blind", async () => {
+    const { service, gmail, db } = build(world());
+    const real = db.getClient.bind(db);
+    db.getClient = () => {
+      const client = real();
+      return {
+        from: (t: string) =>
+          t === "restaurant_menus"
+            ? ({
+                select() { return this; },
+                eq() { return this; },
+                in() { return Promise.resolve({ data: null, error: { message: "down" } }); },
+              } as any)
+            : client.from(t),
+      };
+    };
+    await expect(service.runOnce(NOW)).rejects.toThrow(/recipient read failed: down/);
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
 describe("SetupReminderService.runOnce, a write between the read and the claim", () => {
   it.each([
     ["the menu is read", { menu_uploaded: true }],
