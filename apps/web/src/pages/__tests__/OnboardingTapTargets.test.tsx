@@ -15,6 +15,8 @@ const { getOnboardingProgress } = vi.hoisted(() => ({ getOnboardingProgress: vi.
 vi.mock('../../services/api/vendors', () => ({ addCustomProvider: vi.fn(), matchVendorCatalogue: vi.fn() }))
 vi.mock('../../services/api/menus', () => ({ getOnboardingProgress, updateOnboardingProgress: vi.fn() }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
+// HouseContents reads the session's role (the folio-0 skip is for an owner or a manager).
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }))
 
 import HouseContents from '../HouseContents'
 
