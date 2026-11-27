@@ -37,6 +37,12 @@ export interface DataHandlingDisclosure {
    * deletion.
    */
   keptFor?: string
+  /**
+   * The delivery-notice read, in the words the person seals (r110 item 4). A
+   * grant asks Gmail for bounce notices only when its receipt carries this.
+   * Absent on a definition that does not read notices, or an older gateway.
+   */
+  notices?: string
 }
 
 /** One statute, with the URL it was read from and the date it was read. */

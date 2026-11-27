@@ -217,6 +217,15 @@ describe('the Mail reading register', () => {
     expect(saveToneScoring).toHaveBeenCalledWith(true);
   });
 
+  it('says bounce notices are asked for only through a mailbox whose person agreed, and how an old one turns them on (r110 item 4)', () => {
+    mountTone();
+    expect(
+      screen.getByText(/asks for those bounce notices only through a mailbox whose person agreed to it on the Gmail\s+consent page/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/drops any other notice unread/)).toBeInTheDocument();
+    expect(screen.getByText(/its person can turn on bounce notices in Mail setup\./)).toBeInTheDocument();
+  });
+
   it('turns off from on', () => {
     const { saveToneScoring } = mountTone({ houseToneScoring: remote(toneReg({ enabled: true })) });
     fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));

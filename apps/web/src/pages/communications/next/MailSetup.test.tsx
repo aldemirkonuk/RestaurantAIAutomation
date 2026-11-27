@@ -365,3 +365,45 @@ describe('which address letters leave from', () => {
     expect(screen.queryByTestId('setup-senders-none')).toBeNull();
   });
 });
+
+describe('bounce notices for a mailbox connected before they were asked for (r110 item 4)', () => {
+  const old = (mine: boolean, connectionId = mine ? 'r-mine' : 'r-chef') => ({ connectionId, integrationId: 'gmail_read' as const, mine });
+
+  it('my own old grant offers "Turn on bounce notices", which re-asks the consent page', async () => {
+    answer(view({ notices: { failed: null, old: [old(true)] } }));
+    mount();
+    fireEvent.click(await screen.findByTestId('setup-notices-turn-on'));
+    expect(screen.getByTestId('where').textContent).toBe(
+      `/authorize/gmail_read?returnPath=${encodeURIComponent('/communications?tab=mail&setup=1')}`,
+    );
+    expect(screen.getByTestId('setup-notices-old').textContent).toMatch(/before Mudavym asked for delivery notices/);
+  });
+
+  it("someone else's old grant is counted, never named, and offers no button", async () => {
+    answer(view({ notices: { failed: null, old: [old(false), old(false, 'r-x')] } }));
+    mount();
+    expect((await screen.findByTestId('setup-notices-others')).textContent).toMatch(
+      /2 mailboxes connected by someone else in this house were connected before delivery notices were asked for\. Only the person who connected each can turn them on/,
+    );
+    expect(screen.queryByTestId('setup-notices-turn-on')).toBeNull();
+    expect(screen.getByTestId('setup-notices-old').textContent).not.toMatch(/Ayşe|office@house/);
+  });
+
+  it('a failed read says so; no old grant, or an older gateway, shows nothing', async () => {
+    answer(view({ notices: { failed: 'Whether this house\u2019s reading grants ask for delivery notices could not be read.', old: [] } }));
+    const { qc } = mount();
+    expect((await screen.findByTestId('setup-notices-unread')).getAttribute('role')).toBe('alert');
+    qc.clear();
+    document.body.innerHTML = '';
+    answer(view({ notices: { failed: null, old: [] } }));
+    mount();
+    await screen.findByText('me@house.test · connected by you');
+    expect(screen.queryByTestId('setup-notices-old')).toBeNull();
+    document.body.innerHTML = '';
+    answer(view());
+    mount();
+    await screen.findByText('me@house.test · connected by you');
+    expect(screen.queryByTestId('setup-notices-old')).toBeNull();
+    expect(screen.queryByTestId('setup-notices-unread')).toBeNull();
+  });
+});

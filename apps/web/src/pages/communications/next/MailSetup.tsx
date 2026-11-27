@@ -38,7 +38,7 @@ import { useChooseSender, useMailSetup, type MailSenderChoice, type MailSetupVie
 /** Where Google's permission returns to: this page, in the Mail tab. */
 export const MAIL_SETUP_RETURN = '/communications?tab=mail&setup=1';
 
-export function consentPath(id: 'gmail_send' | 'gmail_read'): string {
+export function consentPath(id: 'gmail_send' | 'gmail_read' | 'gmail_read_all'): string {
   return `/authorize/${id}?returnPath=${encodeURIComponent(MAIL_SETUP_RETURN)}`;
 }
 
@@ -352,6 +352,7 @@ export function MailSetup({
               </p>
             </div>
           )}
+          <BounceNotices view={q.data} onConnect={(id) => navigate(consentPath(id))} />
           <Senders
             view={q.data}
             sender={sender}
@@ -363,5 +364,55 @@ export function MailSetup({
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * "Turn on bounce notices" (r110 item 4). A reading grant sealed before the
+ * delivery-notice words never asks Gmail for them, so a letter that did not
+ * arrive is not seen through it. The person whose grant it is turns them on by
+ * reading the consent page again; nobody else can do it for them.
+ */
+function BounceNotices({
+  view,
+  onConnect,
+}: {
+  view: MailSetupView;
+  onConnect: (id: 'gmail_read' | 'gmail_read_all') => void;
+}) {
+  const n = view.notices;
+  if (!n) return null;
+  if (n.failed) {
+    return (
+      <p role="alert" data-testid="setup-notices-unread" style={ALERT}>
+        {n.failed}
+      </p>
+    );
+  }
+  const mine = n.old.filter((g) => g.mine);
+  const others = n.old.length - mine.length;
+  if (!n.old.length) return null;
+  return (
+    <div className="grid gap-1" data-testid="setup-notices-old">
+      {mine.length > 0 && (
+        <>
+          <p style={TEXT}>
+            Your Gmail was connected for reading before Mudavym asked for delivery notices, so when a letter this
+            house sent does not arrive, the bounce is not seen here. Turning them on shows you the words again and
+            asks you to agree; nothing else changes.
+          </p>
+          <button type="button" data-testid="setup-notices-turn-on" style={ACT} onClick={() => onConnect(mine[0].integrationId)}>
+            Turn on bounce notices
+          </button>
+        </>
+      )}
+      {others > 0 && (
+        <p style={QUIET} data-testid="setup-notices-others">
+          {others === 1 ? 'One mailbox' : `${others} mailboxes`} connected by someone else in this house{' '}
+          {others === 1 ? 'was' : 'were'} connected before delivery notices were asked for. Only the person who
+          connected {others === 1 ? 'it' : 'each'} can turn them on, by connecting again.
+        </p>
+      )}
+    </div>
   );
 }

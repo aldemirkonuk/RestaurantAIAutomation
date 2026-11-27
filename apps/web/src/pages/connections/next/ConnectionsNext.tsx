@@ -1306,6 +1306,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       <em>{personName(g.ownerName)}&rsquo;s own account</em>, not
                       into a folder the restaurant owns. If they leave, the
                       files leave with them.
+                      {(() => {
+                        const words = (d.catalog.data ?? []).find((c) => c.id === g.integrationId)?.dataHandling?.notices;
+                        return words ? <span data-testid="cx-grant-notices"> {words}</span> : null;
+                      })()}
                       {g.houseAccess.revoked ? (
                         <>
                           {' '}
