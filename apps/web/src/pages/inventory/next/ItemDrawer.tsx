@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
-import { type HouseFields } from '../../../services/api/inventory';
+import { inventoryItemKeys, inventoryUseCountsKey, linkUsedInLine, type HouseFields } from '../../../services/api/inventory';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
@@ -190,6 +190,23 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
     : nutritionQ.data
       ? { status: 'ready', data: nutritionQ.data }
       : { status: 'reading' };
+  const queryClient = useQueryClient();
+  // Link a same-named menu line to this good (r109 g2): the answer is the fresh
+  // Used in, seeded in place; the list's use counts, this good's dishes and the
+  // menu pages read again. A refusal rejects with the server's words.
+  const linkLine = async (menuItemId: string) => {
+    if (!restaurantId) return;
+    let fresh;
+    try {
+      fresh = await linkUsedInLine(id, menuItemId, restaurantId);
+    } catch (e) {
+      throw new Error(failureReason(e));
+    }
+    queryClient.setQueryData(inventoryItemKeys.usedIn(restaurantId, id), fresh);
+    void queryClient.invalidateQueries({ queryKey: inventoryUseCountsKey(restaurantId) });
+    void queryClient.invalidateQueries({ queryKey: [...inventoryItemKeys.usedIn(restaurantId, id), 'dishes'] });
+    void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  };
   const usedIn: UsedInLoad = usedInQ.isError
     ? { status: 'failed', reason: failureReason(usedInQ.error) }
     : usedInQ.data
@@ -388,6 +405,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow }) {
         onRetry={() => void usedInQ.refetch()}
         onRetryDishes={() => void dishesQ.refetch()}
         onRetryDrinks={() => void drinksQ.refetch()}
+        onLink={canManage && restaurantId ? linkLine : undefined}
       />
     </>
   );
