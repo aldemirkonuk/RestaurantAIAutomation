@@ -6,6 +6,7 @@ import { PlacesAutocomplete, warmPlaces, type PlaceResult } from '../components/
 import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
 import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
+import { MenuFromWebsite } from '../components/onboarding/MenuFromWebsite'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth, type User } from '../contexts/AuthContext'
 import { HouseBusyNotice } from '../components/HouseBusyNotice'
@@ -262,6 +263,8 @@ export default function GetStarted() {
   // follows the country the page shows, never the earlier place's.
   const [placeCountryCode, setPlaceCountryCode] = useState<string | null>(null)
   const [placeOffset, setPlaceOffset] = useState<number | null>(null)
+  // The picked place's own website (DD-r108-55): the menu step offers to read it.
+  const [placeWebsite, setPlaceWebsite] = useState<string | null>(null)
   const [placePoint, setPlacePoint] = useState<{
     latitude: number
     longitude: number
@@ -446,6 +449,7 @@ export default function GetStarted() {
     if (place.phone) setRestaurantPhone(place.phone)
     setPlaceCountryCode(place.countryCode ?? null)
     setPlaceOffset(place.utcOffsetMinutes ?? null)
+    setPlaceWebsite(place.websiteUri ?? null)
     setPickedZone('')
     if (place.latitude != null && place.longitude != null) {
       setPlacePoint({
@@ -854,6 +858,7 @@ export default function GetStarted() {
             , or read another here.
           </p>
         )}
+        <MenuFromWebsite website={placeWebsite} onSuccess={(result) => menuRead(result)} />
         <button
           type="button"
           onClick={() => chooseMethod(menuMethod === 'photo' ? null : 'photo')}
