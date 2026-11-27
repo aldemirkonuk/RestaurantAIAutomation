@@ -11,9 +11,10 @@ import { createContext, type ReactNode } from 'react';
 import type { ProcurementDocument } from '../../../services/api/documents';
 
 const api = vi.hoisted(() => ({ moves: vi.fn() }));
+const ROLE = vi.hoisted(() => ({ current: 'manager' }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: 'manager', user: null }),
+  useAuth: () => ({ activeRestaurantId: 'rest-A', activeRole: ROLE.current, user: null }),
   AuthContext: createContext<{ activeRestaurantId: string | null } | null>(null),
 }));
 vi.mock('../../../services/api/documents', async (importOriginal) => {
@@ -128,6 +129,7 @@ const moved = {
 
 beforeEach(() => {
   api.moves.mockReset();
+  ROLE.current = 'manager';
 });
 
 describe('the check card on a cost that moved', () => {
@@ -174,6 +176,24 @@ describe('the check card on a cost that moved', () => {
     await vi.waitFor(() => expect(api.moves).toHaveBeenCalled());
     expect(screen.queryByText(/against its last paper/)).toBeNull();
     expect(screen.queryByLabelText('Costs that moved')).toBeNull();
+  });
+
+  it('staff never ask and see no price move (r109: the gateway refuses them)', async () => {
+    ROLE.current = 'staff';
+    api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(api.moves).not.toHaveBeenCalled();
+    expect(screen.queryByText(/against its last paper/)).toBeNull();
+    expect(screen.queryByText(/earlier papers could not be read/)).toBeNull();
+  });
+
+  it('an owner asks and reads it', async () => {
+    ROLE.current = 'owner';
+    api.moves.mockResolvedValue({ thresholdPct: 10, lines: [moved] });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/up 18 percent, against its last paper/)).toBeTruthy();
   });
 
   it('says the comparison could not be made when the read fails', async () => {
