@@ -104,6 +104,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     addedTool as any,
     experimentEnded as any,
     mailGrantAbsent as any,
+    (overrides.menuDue ?? stub("menu_due")) as any,
   );
   return {
     service,
@@ -277,14 +278,14 @@ describe("the two cadences", () => {
     // 14:00 UTC = 10:00 New York, the market hour.
     await service.runDailyForTenant(TENANT, new Date("2026-09-03T14:00:00Z"));
     expect(goals.getPosRevenueWindow.calls[0]).toEqual(["rest-1", 1]);
-    expect(sweeps).toEqual(["sale_record", "market_price"]);
+    expect(sweeps).toEqual(["sale_record", "market_price", "menu_due"]);
   });
 
   it("[REVERT-FAILS] the market signal is evaluated once a day, on the tenant's clock", async () => {
     const { service, sweeps } = build();
     // 18:00 UTC = 14:00 New York — not the market hour.
     await service.runDailyForTenant(TENANT, new Date("2026-09-03T18:00:00Z"));
-    expect(sweeps).toEqual(["sale_record"]);
+    expect(sweeps).toEqual(["sale_record", "menu_due"]);
   });
 
   it("an unknown timezone falls back to UTC loudly rather than throwing the tenant away", async () => {
@@ -298,7 +299,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all ten producers, their schedule and their next tick", async () => {
+  it("names all eleven producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -315,6 +316,7 @@ describe("statusFor — what the page is allowed to say", () => {
       "experiment_ended_unnamed",
       "sale_record",
       "market_price",
+      "menu_due",
     ]);
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
@@ -323,16 +325,16 @@ describe("statusFor — what the page is allowed to say", () => {
     expect(status.producers[9].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all ten, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all eleven, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 10 producers/);
-    expect(status.producers).toHaveLength(10);
+    expect(status.armingNote).toMatch(/arms all 11 producers/);
+    expect(status.producers).toHaveLength(11);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 10 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 11 producers at once/s,
       );
     }
   });
