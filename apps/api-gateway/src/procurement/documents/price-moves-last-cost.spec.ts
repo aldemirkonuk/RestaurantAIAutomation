@@ -19,8 +19,10 @@ function controllerWith(opts: { lots: Lot[]; own: string[]; lines: Record<string
         const answer = () => {
           if (table === "procurement_documents") return { data: { id: "d1", currency: "USD" }, error: null };
           if (table === "restaurants") return { data: { currency: "USD" }, error: null };
-          if (table === "document_deliveries") return { data: opts.own.map((delivery_id) => ({ delivery_id })), error: null };
-          if (table === "procurement_document_lines") return { data: opts.lines, error: null };
+          if (table === "document_deliveries")
+            return { data: f.document_id ? opts.own.map((delivery_id) => ({ delivery_id })) : opts.lots.map((l) => ({ document_id: "src", delivery_id: l.delivery_id })), error: null };
+          if (table === "procurement_document_lines")
+            return { data: f.document_id ? opts.lines : ["g1", "g2"].map((g) => ({ document_id: "src", inventory_id: g, uom: "bottle", unit_price: 1 })), error: null };
           // inventory_lots: apply the delivery exclusion the controller asked for.
           lotQueries.push({ good: String(f.inventory_id), or });
           const ex = new Set((/not\.in\.\(([^)]*)\)/.exec(or ?? "")?.[1] ?? "").split(",").filter(Boolean));
