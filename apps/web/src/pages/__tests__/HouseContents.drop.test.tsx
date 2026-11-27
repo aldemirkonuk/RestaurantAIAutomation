@@ -29,7 +29,13 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: h
 import HouseContents from '../HouseContents'
 
 const invoice = () => new File(['INVOICE 42'], 'last-invoice.pdf', { type: 'application/pdf' })
-const page = () => render(<MemoryRouter><HouseContents /></MemoryRouter>)
+// The page holds its rows until the setup read lands (#2354), so a test starts
+// from the settled page: wait for the closing link, which shows with the rows.
+const page = async () => {
+  const view = render(<MemoryRouter><HouseContents /></MemoryRouter>)
+  await screen.findAllByRole('link', { name: 'Go to the desk' })
+  return view
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -42,7 +48,7 @@ beforeEach(() => {
 
 describe('folio 0 on /house', () => {
   it('sends the chosen paper with one upload, for the session house, and reads nothing back', async () => {
-    page()
+    await page()
     fireEvent.change(screen.getByLabelText('Your last invoice'), { target: { files: [invoice()] } })
     expect(await screen.findByText(/Your last invoice is on Receipts\./)).toBeInTheDocument()
     expect(h.upload).toHaveBeenCalledTimes(1)
@@ -65,7 +71,7 @@ describe('folio 0 on /house', () => {
   it('a second drop while the first is on its way sends nothing more', async () => {
     let land: (v: unknown) => void = () => {}
     h.upload.mockReturnValue(new Promise((resolve) => { land = resolve }))
-    page()
+    await page()
     const zone = screen.getByTestId('house-paper-drop')
     // Both land in one frame, before the zone gives way to "Sending…".
     act(() => {
@@ -79,7 +85,7 @@ describe('folio 0 on /house', () => {
   })
 
   it('records the skip on the opening book and sends no paper', async () => {
-    page()
+    await page()
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
     expect(await screen.findByTestId('house-paper-skipped')).toBeInTheDocument()
     expect(h.skipFolio).toHaveBeenCalledTimes(1)
@@ -89,9 +95,9 @@ describe('folio 0 on /house', () => {
     expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
   })
 
-  it.each(['staff', 'waiter'])('a %s session is not offered the skip, which only an owner or a manager can record', (role) => {
+  it.each(['staff', 'waiter'])('a %s session is not offered the skip, which only an owner or a manager can record', async (role) => {
     h.role = role
-    page()
+    await page()
     expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
     // the drop stays: POST /procurement/documents is open to everyone
     expect(screen.getByLabelText('Your last invoice')).toBeInTheDocument()
@@ -100,14 +106,14 @@ describe('folio 0 on /house', () => {
 
   it('says so when the skip could not be noted', async () => {
     h.skipFolio.mockRejectedValue(new Error('down'))
-    page()
+    await page()
     fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('could not note the skip')
   })
 
   it('a refused upload says so and keeps the drop for another try', async () => {
     h.upload.mockRejectedValueOnce(Object.assign(new Error('422'), { response: { status: 422 } }))
-    page()
+    await page()
     fireEvent.change(screen.getByLabelText('Your last invoice'), { target: { files: [invoice()] } })
     expect(await screen.findByRole('alert')).toHaveTextContent('could not send it just now')
     fireEvent.change(screen.getByLabelText('Your last invoice'), { target: { files: [invoice()] } })
@@ -116,7 +122,7 @@ describe('folio 0 on /house', () => {
   })
 
   it('a file over 10 MB is not sent', async () => {
-    page()
+    await page()
     const big = invoice()
     Object.defineProperty(big, 'size', { value: 10 * 1024 * 1024 + 1 })
     fireEvent.change(screen.getByLabelText('Your last invoice'), { target: { files: [big] } })
