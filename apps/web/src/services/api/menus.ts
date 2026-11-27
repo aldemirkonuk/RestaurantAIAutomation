@@ -569,6 +569,22 @@ export interface PlanKind {
    */
   setAfterRead?: boolean
   lock: { lockId: string; lockedPrice: number; lockedBy: PlanPerson; lockedAt: string } | null
+  /**
+   * r109 menu-g4: the margin at the house price now and at this menu's,
+   * against the house's target (gateway plan-margin.ts). Null for anyone but
+   * an owner or a manager; absent from an older gateway.
+   */
+  margin?: PlanKindMargin | null
+}
+
+/** The advice rule's state at one price (gateway margin-to-target.ts AdviceState). */
+export type MarginState = 'no_target' | 'pour_unconfirmed' | 'no_price' | 'no_cost' | 'on_target' | 'raise' | 'lower'
+
+export interface PlanKindMargin {
+  atHouseNow: { marginPct: number | null; state: MarginState }
+  atThisMenu: { marginPct: number | null; state: MarginState }
+  /** The house's target for this kind, in percent; null when none is set. */
+  targetPct: number | null
 }
 
 export interface PlanLine {
@@ -591,6 +607,8 @@ export interface PlanLine {
 export interface MenuPlan {
   menuId: string
   current: boolean
+  /** r109 menu-g4: why an owner's or manager's margins are not shown (costs not readable); null otherwise. */
+  marginReason?: string | null
   /** When this menu was read; null when it is not recorded. Optional only for an older gateway. */
   readAt?: string | null
   /** The house's IANA zone the plan's dates are said in; null = none (the reason says why). */

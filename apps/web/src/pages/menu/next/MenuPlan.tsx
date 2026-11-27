@@ -32,6 +32,7 @@ import {
   type MenuPlan as Plan,
   type PlanKind,
   type PlanLine,
+  type PlanKindMargin,
 } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { countByKind, oneNounFor } from './menu-line-kind';
@@ -126,6 +127,51 @@ export function lineOutcome(line: PlanLine): LineOutcome {
  * lock on one kind of a wine the menu otherwise changes is a single price, and
  * is counted in prices.
  */
+/** A margin percent as the advice says it: whole when whole, else one decimal. */
+function pctWords(n: number): string {
+  const r = Math.round(n * 10) / 10;
+  return `${Number.isInteger(r) ? r.toFixed(0) : r.toFixed(1)}%`;
+}
+
+/** What the margin cell says at one price: the percent, or the state that has none, in words. */
+function marginAtWords(at: PlanKindMargin['atHouseNow']): string {
+  if (at.marginPct !== null && at.state !== 'no_cost' && at.state !== 'no_target') return pctWords(at.marginPct);
+  switch (at.state) {
+    case 'no_target':
+      return 'no target set';
+    case 'no_cost':
+      return 'cost not recorded';
+    case 'pour_unconfirmed':
+      return 'pour not confirmed';
+    case 'no_price':
+      return 'no price';
+    default:
+      return EM;
+  }
+}
+
+/**
+ * r109 menu-g4: "62% / 71%", the margin at the house price now and at this
+ * menu's; a state with no percent is said in words. Null when the reader may
+ * not see margin (staff) or the gateway sent none.
+ */
+export function marginWords(m: PlanKindMargin | null | undefined): string | null {
+  if (!m) return null;
+  const now = marginAtWords(m.atHouseNow);
+  const then = marginAtWords(m.atThisMenu);
+  return now === then && m.atHouseNow.marginPct === null ? now : `${now} / ${then}`;
+}
+
+/** This menu's price would land below the house's target margin ("raise" at this menu's price). */
+export function landsBelowTarget(m: PlanKindMargin | null | undefined): boolean {
+  return !!m && m.atThisMenu.state === 'raise' && m.targetPct !== null;
+}
+
+/** How many of the prices this menu moves land below the house's target margin. */
+export function belowTargetCount(lines: PlanLine[]): number {
+  return lines.flatMap((l) => [l.bottle, l.glass]).filter((k) => k.result === 'change' && landsBelowTarget(k.margin)).length;
+}
+
 export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
@@ -184,6 +230,8 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
       // A kitchen line is never in this list (computePlan keeps drinks only), and a drink is not always a wine.
       `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file and ${gone.length === 1 ? 'keeps its' : 'keep their'} price`,
     );
+  const below = belowTargetCount(plan.lines);
+  if (below > 0) more.push(`${plural(below, 'price lands', 'prices land')} below your target margin`);
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
@@ -428,6 +476,8 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
   const returned = plan.lines.filter((l) => l.returned);
   const mismatched = plan.lines.filter((l) => l.vintageMismatch);
   const move = largestMove(plan);
+  // r109 menu-g4: the margin column only for a reader the gateway sent margins to.
+  const showMargin = replacing.some((r) => r.k.margin);
 
   return (
     <section className="cl-panel" style={{ marginTop: 12 }} aria-labelledby={`plan-h-${menuId}`} data-testid="menu-plan">
@@ -446,6 +496,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
         const clock = plan.timezone === undefined ? null : deviceClockNote(plan.timezone, plan.timezoneReason);
         return clock ? <p className="cl-note" data-testid="menu-plan-clock">{clock}</p> : null;
       })()}
+      {plan.marginReason ? <p className="cl-note" data-testid="menu-plan-margin-reason">{plan.marginReason}</p> : null}
       {!plan.namesReadable ? (
         <p className="cl-note">Some names could not be read ({plan.namesReason}). The prices below are exact.</p>
       ) : null}
@@ -473,6 +524,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                   <th>House now</th>
                   <th>This menu</th>
                   <th>What happens</th>
+                  {showMargin ? <th>Margin now / at this menu</th> : null}
                   <th>Keep</th>
                 </tr>
               </thead>
@@ -492,6 +544,16 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                         ? `Stays ${money(r.k.lock.lockedPrice, currency)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
                         : `Becomes ${money(r.k.menuPrice, currency)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
                     </td>
+                    {showMargin ? (
+                      <td className="cl-dim" data-testid="menu-plan-margin">
+                        {marginWords(r.k.margin) ?? EM}
+                        {r.k.result === 'change' && landsBelowTarget(r.k.margin) ? (
+                          <span style={{ display: 'block', color: 'var(--warn)' }} data-testid="menu-plan-below-target">
+                            below your {pctWords(r.k.margin!.targetPct!)} target
+                          </span>
+                        ) : null}
+                      </td>
+                    ) : null}
                     <td>
                       <KeepSwitch
                         row={r}
