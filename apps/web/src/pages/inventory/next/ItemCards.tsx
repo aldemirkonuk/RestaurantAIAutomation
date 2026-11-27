@@ -414,9 +414,11 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
         id="cost"
         open={open}
         onOpen={onOpen}
-        // A good with no costed lot is answered with the server's sentence (several lines); a costed one with a
-        // sparkline and one trend line, so only the first holds the tall room.
-        tall={canManage && row.wac === null}
+        // The gateway answers every owner's Cost card with the cost-trend sentence (COST_TREND_NOT_KEPT: points
+        // null, several lines, no sparkline), costed good or not, so it holds the tall room for all of them. Staff
+        // get no sentence and no attribute (it would reveal whether a good is costed). If a trend with points is
+        // ever served again, hold only when figures carry fewer than two (r103).
+        tall={canManage}
         figure={cost}
         extra={costExtra}
         source={costSource}
