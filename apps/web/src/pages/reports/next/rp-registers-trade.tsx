@@ -372,8 +372,8 @@ const till = analysis<TillWindow>({
     ];
     const basis = [
       w.timezone
-        ? `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}, each check filed on the house's day in ${w.timezone} by when it closed, else when it opened.`
-        : `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}.`,
+        ? `Takings of checks that were not voided, between ${w.from || EM} and ${w.to || EM}, each check filed on the house's day in ${w.timezone} by when it closed, else when it opened.`
+        : `Takings of checks that were not voided, between ${w.from || EM} and ${w.to || EM}.`,
       'The series is sparse on purpose: a day with no check is absent, not plotted at zero.',
     ];
     if (w.dailySeries.length === 0)

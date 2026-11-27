@@ -21,6 +21,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ahead, projectedBottles, till, type TillWindow } from './rp-registers-trade';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
+import { seats, service } from './rp-registers-house';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
 
@@ -101,16 +102,40 @@ describe('the till — a sale belongs to the house day (ADR 0296)', () => {
   it("names the house's zone in the basis", () => {
     const view = till.view(read({ ...OLD_PAYLOAD, timezone: 'America/Los_Angeles', zoneUnset: false }), ctx);
     expect(view.basis[0]).toBe(
-      "Non-voided pos_checks.total between 2026-08-03 and 2026-09-01, each check filed on the house's day in America/Los_Angeles by when it closed, else when it opened.",
+      "Takings of checks that were not voided, between 2026-08-03 and 2026-09-01, each check filed on the house's day in America/Los_Angeles by when it closed, else when it opened.",
     );
     expect(view.figures.map((f) => f.label)).toEqual(['Taken', 'Checks', 'Average check']);
+  });
+
+  // r109 reports-r109-5: "Show the working" says the till in the house's
+  // words. A raw column name ("pos_checks.total") is the database talking;
+  // the window and the voided rule it states must stay exactly the same.
+  it('says the working in the house\'s words, never a column name, with the same window and voided rule', () => {
+    const withZone = till.view(read({ ...OLD_PAYLOAD, timezone: 'America/Los_Angeles', zoneUnset: false }), ctx);
+    const noZone = till.view(read(OLD_PAYLOAD), ctx);
+    const room = seats.view(
+      seats.select({ sinceDays: 90, checksInWindow: 2, dataStatus: 'live', tables: [{ tableId: 't1', label: 'T1', seats: 4, checks: 2, revenue: 90 }] }) as never,
+      { days: 90 },
+    );
+    const floor = service.view(
+      service.select({ sinceDays: 90, checksInWindow: 2, dataStatus: 'live', waiters: [{ name: 'Ada', checks: 2, revenue: 90, avgCheck: 45 }] }) as never,
+      { days: 90 },
+    );
+    for (const view of [withZone, noZone, room, floor]) {
+      const text = view.basis.filter(Boolean).join(' ');
+      expect(text).not.toMatch(/pos_checks/);
+      expect(text).toMatch(/not voided/);
+    }
+    expect(noZone.basis[0]).toContain('between 2026-08-03 and 2026-09-01');
+    expect(room.basis[0]).toContain('over the last 90 days');
+    expect(floor.basis[0]).toContain('over the last 90 days');
   });
 
   it('reads a payload from before ADR 0296 as it always did', () => {
     const w = read(OLD_PAYLOAD);
     expect(w).toMatchObject({ timezone: null, zoneUnset: false });
     const view = till.view(w, ctx);
-    expect(view.basis[0]).toBe('Non-voided pos_checks.total between 2026-08-03 and 2026-09-01.');
+    expect(view.basis[0]).toBe('Takings of checks that were not voided, between 2026-08-03 and 2026-09-01.');
     expect(view.figures.map((f) => f.label)).toEqual(['Taken', 'Checks', 'Average check']);
     expect(view.table?.rows.map((r) => r.key)).toEqual(['2026-07-01', '2026-08-22']);
   });
