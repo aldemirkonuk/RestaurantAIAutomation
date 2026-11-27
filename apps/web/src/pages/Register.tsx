@@ -215,6 +215,15 @@ export function Register() {
     }, 400)
   }, [checkEmailAvailability])
 
+  // A check still waiting on its 400 ms must not fire after the page is left:
+  // the sign-up press probes at once, then moves on to /verify-email.
+  useEffect(
+    () => () => {
+      if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current)
+    },
+    [],
+  )
+
   // Auto-route from URL params on mount (D-09):
   // ?invite=CODE  → Path A (join) with code pre-filled
   // ?type=join    → Path A (join), no code pre-filled

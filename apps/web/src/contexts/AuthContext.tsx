@@ -207,6 +207,14 @@ export interface HouseOpened {
   detailsLoaded: boolean;
 }
 
+/**
+ * An account that was created. `detailsLoaded` is false when the account and
+ * its tokens are in place but the `/auth/me` read after them failed.
+ */
+export interface AccountCreated {
+  detailsLoaded: boolean;
+}
+
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -225,8 +233,8 @@ export interface AuthContextType {
   setActiveRestaurantId: (restaurantId: string) => Promise<boolean>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  registerAccount: (data: RegisterAccountData) => Promise<void>;
-  registerAccountWithGoogle: (token: string) => Promise<void>;
+  registerAccount: (data: RegisterAccountData) => Promise<AccountCreated>;
+  registerAccountWithGoogle: (token: string) => Promise<AccountCreated>;
   createFirstHouse: (data: CreateFirstHouseData) => Promise<HouseOpened>;
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>;
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
@@ -252,6 +260,13 @@ export interface AuthContextType {
    */
   logout: () => Promise<boolean>;
   refreshToken: () => Promise<void>;
+  /**
+   * Read `/auth/me` again for the session already stored, and set the user.
+   * True when it read; false when there is no stored session or the read
+   * failed again (429, network). For a page that holds a session whose first
+   * read failed, e.g. /verify-email after an account was created.
+   */
+  refreshUser: () => Promise<boolean>;
   refreshBranches: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -862,8 +877,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // on this device left in `activeRestaurantId`.
     storeSession(accessToken, refresh);
     api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-    const userResponse = await api.get("/api/v1/auth/me");
-    setUser(userFrom(userResponse.data.user, accessToken));
+    // The account exists and its tokens are stored once the POST answered, so
+    // a failed session read (429, network) must not read as a failed sign-up:
+    // the page would stay on /register and the next press would meet the new
+    // row as "already registered". /verify-email reads /auth/me again.
+    try {
+      const userResponse = await api.get("/api/v1/auth/me");
+      setUser(userFrom(userResponse.data.user, accessToken));
+      return { detailsLoaded: true };
+    } catch {
+      return { detailsLoaded: false };
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (!localStorage.getItem("accessToken")) return false;
+    try {
+      const userResponse = await api.get("/api/v1/auth/me");
+      setUser(
+        userFrom(userResponse.data.user, localStorage.getItem("accessToken")),
+      );
+      return true;
+    } catch {
+      return false;
+    }
   }, []);
 
   const registerAccount = useCallback(
@@ -871,7 +908,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
-        await establishSession(
+        return await establishSession(
           await api.post("/api/v1/auth/register/account", data),
         );
       } catch (err: any) {
@@ -890,7 +927,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
-        await establishSession(
+        return await establishSession(
           await api.post("/api/v1/auth/register/google", { token }),
         );
       } catch (err: any) {
@@ -1166,6 +1203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearError = useCallback(() => setError(null), []);
 
   const value: AuthContextType = {
+    refreshUser,
     user,
     loading,
     error,
