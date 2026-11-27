@@ -181,6 +181,9 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
       /** What `DocumentIntakeService.planRefileForCurrency` answers. */
       plan?: any;
       planThrows?: Error;
+      /** The latest row of procurement_document_currency_changes, if any. */
+      lastChange?: any;
+      lastChangeError?: any;
     } = {},
   ) {
     const refileCalls: Array<[string, string, string]> = [];
@@ -194,10 +197,15 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
           _table: table,
           select: () => q,
           eq: () => q,
-          maybeSingle: async () => ({
-            data: opts.doc === undefined ? DOC : opts.doc,
-            error: opts.docError ?? null,
-          }),
+          order: () => q,
+          limit: () => q,
+          maybeSingle: async () =>
+            table === "procurement_document_currency_changes"
+              ? { data: opts.lastChange ?? null, error: opts.lastChangeError ?? null }
+              : {
+                  data: opts.doc === undefined ? DOC : opts.doc,
+                  error: opts.docError ?? null,
+                },
           insert: async (row: any) => {
             inserts.push({ table, row });
             return { error: opts.logError ?? null };
@@ -436,6 +444,61 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     const row = inserts.find((i) => i.table === "procurement_document_currency_changes")!.row;
     expect(row.exchange_rate).toBe(0.12345679);
     expect(fxSeen.map((f) => (f.fx as any).rate)).toEqual([0.12345679, 0.12345679]);
+  });
+
+  describe("a converted paper is not changed again from its converted figures (r104 reviewer)", () => {
+    // 120.00 TRY converted at 0.03 reads 3.60 USD. Relabelling that to TRY files
+    // 3.60 as TRY, and converting again gives 0.11.
+    const converted = { paper_currency: "TRY", exchange_rate: 0.03, rate_date: "2026-11-20", new_currency: "USD" };
+    const inUsd = { ...DOC, currency: "USD" };
+
+    it("refuses to relabel it back, and writes nothing", async () => {
+      const { controller, inserts, updates, refileCalls } = harness({ doc: inUsd, lastChange: converted });
+      await expect(controller.restateCurrency("doc-9", { currency: "TRY" }, user)).rejects.toMatchObject({ status: 409 });
+      expect([inserts.length, updates.length, refileCalls.length]).toEqual([0, 0, 0]);
+    });
+
+    it("refuses to convert it a second time", async () => {
+      const { controller, inserts } = harness({ doc: inUsd, lastChange: converted });
+      await expect(
+        controller.restateCurrency("doc-9", { currency: "EUR", fromCurrency: "USD", rate: 0.9, rateDate: "2026-11-21" }, user),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(inserts).toHaveLength(0);
+    });
+
+    it("says what was done, and no longer advises restating first", async () => {
+      const { controller } = harness({ doc: inUsd, lastChange: converted });
+      const e: any = await controller.restateCurrency("doc-9", { currency: "TRY" }, user).catch((x) => x);
+      expect(e.message).toContain("already converted from TRY to USD at 0.03");
+      expect(e.message).not.toMatch(/restate it as/i);
+    });
+
+    it("confirming the currency it carries is still fine", async () => {
+      const { controller, inserts } = harness({ doc: inUsd, lastChange: converted });
+      await controller.restateCurrency("doc-9", { currency: "USD" }, user);
+      expect(inserts.find((i) => i.table === "procurement_document_currency_changes")!.row.change_kind).toBe("confirmed");
+    });
+
+    it("an unreadable history is a failure in words, never 'no earlier conversion'", async () => {
+      const { controller, inserts } = harness({ doc: inUsd, lastChangeError: { message: "db down" } });
+      await expect(controller.restateCurrency("doc-9", { currency: "TRY" }, user)).rejects.toMatchObject({ status: 500 });
+      expect(inserts).toHaveLength(0);
+    });
+
+    it("refuses a conversion whose 'from' is not the currency the paper is filed in", async () => {
+      const { controller, inserts } = harness({ doc: { ...DOC, currency: "TRY" } });
+      const e: any = await controller
+        .restateCurrency("doc-9", { currency: "USD", fromCurrency: "EUR", rate: 1.084, rateDate: "2026-11-20" }, user)
+        .catch((x) => x);
+      expect(e.status).toBe(409);
+      expect(e.message).toContain("filed in TRY");
+      expect(inserts).toHaveLength(0);
+    });
+
+    it("a first conversion of an un-converted paper still goes through", async () => {
+      const { controller } = harness({ doc: { ...DOC, currency: "TRY" } });
+      await controller.restateCurrency("doc-9", { currency: "USD", fromCurrency: "TRY", rate: 0.03, rateDate: "2026-11-20" }, user);
+    });
   });
 
   it("a plain relabel stores no rate", async () => {
