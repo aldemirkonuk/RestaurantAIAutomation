@@ -19,6 +19,7 @@ vi.mock('recharts', async () => {
 
 import { CatPlot, ComboPlot, PointPlot, tipSentence } from './rp-plot';
 import type { CatSeries, PointSeries } from './rp-view';
+import { readStretch, stretchWords } from './rp-stretch';
 import { daysBetween, till as tillRegister, type TillWindow } from './rp-registers-trade';
 
 afterEach(cleanup);
@@ -144,9 +145,8 @@ describe('the spoken line and the visible tip are one function', () => {
 /* ───────────── Read a stretch from the keyboard (DD-r108-41, r109 reports-r109-6) ───── */
 
 const WEEK = daysBetween('2026-11-04', '2026-11-09');
-const tillView = (withheld = false) =>
-  tillRegister.view(
-    tillRegister.select({
+const rawTill = (withheld = false) =>
+    ({
       posConnected: true,
       revenue: 3620,
       checkCount: 182,
@@ -161,9 +161,8 @@ const tillView = (withheld = false) =>
         revenue,
         checks: revenue == null ? null : [10, 0, 20, 40, 50, 62][i],
       })),
-    }) as TillWindow,
-    { days: 6, currency: 'USD' },
-  );
+    }) as TillWindow;
+const tillView = (withheld = false) => tillRegister.view(tillRegister.select(rawTill(withheld)), { days: 6, currency: 'USD' });
 const shiftArrow = (el: Element, key: 'ArrowRight' | 'ArrowLeft') => fireEvent.keyDown(el, { key, shiftKey: true });
 const readout = (c: HTMLElement) => c.querySelector('.rp-stretch') as HTMLElement;
 
@@ -209,13 +208,25 @@ describe('Shift and the arrow keys read a stretch', () => {
   });
 
   it('[REVERT-FAILS] a read kept from this role offers no stretch, from the keyboard either', () => {
-    const view = tillView(true);
-    // A withheld till draws nothing to stretch over; if it draws at all, it carries no stretch.
-    if (view.cats) {
-      const { container } = render(<CatPlot series={view.cats} kind="bars" />);
-      fireEvent.focus(surface(container));
-      shiftArrow(surface(container), 'ArrowRight');
-      expect(container.querySelector('.rp-stretch')).toBeNull();
-    } else expect(view.cats).toBeUndefined();
+    // A withheld till has no cats to draw, so the guard is exercised where it lives: the stretch the register
+    // would hand the plot, built over a withheld window, drawn on a plot that does have days.
+    const withheld = tillRegister.select(rawTill(true)) as TillWindow;
+    expect(withheld.salesWithheld).toBe(true);
+    expect(readStretch(withheld, WEEK, 0, 2)).toBeUndefined();
+    const series: CatSeries = {
+      ...tillView().cats!,
+      stretch: (a, b) => {
+        const r = readStretch(withheld, WEEK, a, b);
+        return r ? stretchWords(r, money) : undefined;
+      },
+    };
+    const { container } = render(<CatPlot series={series} kind="bars" />);
+    fireEvent.focus(surface(container));
+    const hint = readout(container).textContent;
+    shiftArrow(surface(container), 'ArrowRight');
+    shiftArrow(surface(container), 'ArrowRight');
+    // No figure reaches the reader: the readout says what it said before a stretch was marked.
+    expect(readout(container).textContent).toBe(hint);
+    expect(readout(container).textContent).not.toMatch(/Taken|\$/);
   });
 });
