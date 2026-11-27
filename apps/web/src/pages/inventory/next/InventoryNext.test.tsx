@@ -6,6 +6,8 @@
  * real ones. Heavy panels reused from the legacy page are stubbed: they own
  * their own tests, and none of them is under test here.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
@@ -1546,5 +1548,27 @@ describe('a long book draws in slices and redraws only the rows a toggle touches
     } finally {
       Element.prototype.scrollIntoView = orig;
     }
+  });
+});
+
+describe('the table css', () => {
+  it('lets rows off the screen skip layout, on the phone width only', () => {
+    const css = readFileSync(join(__dirname, 'inventory-next.css'), 'utf8');
+    const head = css.indexOf('@media (max-width: 640px) {');
+    expect(head).toBeGreaterThan(-1);
+    // the media block ends where its braces balance
+    let depth = 0;
+    let end = head;
+    for (let i = css.indexOf('{', head); i < css.length; i++) {
+      if (css[i] === '{') depth++;
+      if (css[i] === '}' && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    const phone = css.slice(head, end);
+    expect(phone).toMatch(/\.iv-table tbody tr\s*\{[^}]*content-visibility:\s*auto;[^}]*contain-intrinsic-size:\s*auto 56px/);
+    // and nowhere outside it
+    expect(css.slice(0, head) + css.slice(end)).not.toMatch(/content-visibility/);
   });
 });
