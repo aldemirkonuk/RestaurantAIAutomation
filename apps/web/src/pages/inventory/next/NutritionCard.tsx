@@ -38,7 +38,7 @@ function PackLine({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number
   }
   const p = pack.figures;
   const parts = [
-    `${figureWords(p.energyKcal, 'kcal')}${pack.energyFromAbv && p.energyKcal !== null ? ' (from the alcohol alone, at least)' : ''}`,
+    `${figureWords(p.energyKcal, 'kcal')}${pack.energyFromAbv && p.energyKcal !== null ? ' (from the alcohol alone; the energy in any sugar is not added)' : ''}`,
     `protein ${figureWords(p.proteinG, 'g')}`,
     `fat ${figureWords(p.fatG, 'g')}`,
     `carbohydrate ${figureWords(p.carbohydrateG, 'g')}`,
