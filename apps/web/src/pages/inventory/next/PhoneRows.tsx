@@ -112,6 +112,9 @@ export default function PhoneRows(props: PhoneRowsProps) {
       onPointerOver={props.prefetch?.onPointerOver}
       onPointerOut={props.prefetch?.onPointerOut}
       onPointerDown={props.prefetch?.onPointerDown}
+      onPointerMove={props.prefetch?.onPointerMove}
+      onPointerUp={props.prefetch?.onPointerUp}
+      onPointerCancel={props.prefetch?.onPointerCancel}
       data-testid="inventory-cards"
       role="group"
       aria-label={`The book: every ${thing} on hand`}

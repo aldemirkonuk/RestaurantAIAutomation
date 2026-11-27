@@ -369,6 +369,9 @@ export default function InventoryTable(props: InventoryTableProps) {
       onPointerOver={prefetch.onPointerOver}
       onPointerOut={prefetch.onPointerOut}
       onPointerDown={prefetch.onPointerDown}
+      onPointerMove={prefetch.onPointerMove}
+      onPointerUp={prefetch.onPointerUp}
+      onPointerCancel={prefetch.onPointerCancel}
     >
       {empty.size > 0 ? (
         <div className="iv-colsbar">
