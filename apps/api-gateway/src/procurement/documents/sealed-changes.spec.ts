@@ -95,20 +95,24 @@ describe("GET /procurement/documents/:id/changes — what sealing changed (r108 
     for (const r of c.reads.filter((x) => x.table !== "restaurants")) expect(r.f).toContainEqual(["eq", "restaurant_id", R]);
   });
 
-  it("a correction is its own dated event under the seal", async () => {
-    const LATER = "2026-11-22T09:00:00+00:00";
+  it("one verify of three goods is one total, however many stamps its items carry (no 'seal' and 'corrections')", async () => {
+    // finalise_delivery_cost runs once per item, each in its own transaction: three goods, three stamps.
     const c = controllerWith(
       base({
-        inventory_lot_revaluations: [reval(4, "10", "11"), reval(4, "11", "10.50", { created_at: LATER })],
-        wine_consumption_cost_restatements: [rest(1, "10", "11"), rest(1, "11", "10.50", { created_at: LATER })],
+        inventory_lot_revaluations: [
+          reval(12, "10", "10.50", { created_at: "2026-11-20T10:00:00.100+00:00" }),
+          reval(6, "20", "21", { created_at: "2026-11-20T10:00:00.480+00:00" }),
+          reval(12, "5", "6", { created_at: "2026-11-20T10:00:01.020+00:00" }),
+        ],
+        wine_consumption_cost_restatements: [
+          rest(1, "10", "11", { created_at: "2026-11-20T10:00:00.700+00:00" }),
+          rest(2, "10", "10.50", { created_at: "2026-11-20T10:00:01.300+00:00" }),
+        ],
       }),
     );
     const out = await c.sealedChanges("d1", owner);
-    expect(out.events).toEqual([
-      { at: SEAL, stockValueDelta: "4.00", bottles: 4, salesCostDelta: "1.00", sales: 1, notKnown: 0 },
-      { at: LATER, stockValueDelta: "-2.00", bottles: 4, salesCostDelta: "-0.50", sales: 1, notKnown: 0 },
-    ]);
-    expect(out).toMatchObject({ stockValueDelta: "2.00", salesCostDelta: "0.50", sales: 1 });
+    expect(out).toMatchObject({ stockValueDelta: "24.00", bottles: 30, salesCostDelta: "1.50", sales: 2 });
+    expect(out).not.toHaveProperty("events");
   });
 
   it("says how many other papers share the order's figures", async () => {
@@ -125,7 +129,7 @@ describe("GET /procurement/documents/:id/changes — what sealing changed (r108 
 
   it("a paper linked to no order changed nothing, and reads no receipt", async () => {
     const c = controllerWith(base({ procurement_document_links: [] }));
-    expect(await c.sealedChanges("d1", owner)).toMatchObject({ orders: [], sales: 0, bottles: 0, events: [] });
+    expect(await c.sealedChanges("d1", owner)).toMatchObject({ orders: [], sales: 0, bottles: 0 });
     expect(c.reads.map((r) => r.table)).not.toContain("inventory_lot_revaluations");
   });
 

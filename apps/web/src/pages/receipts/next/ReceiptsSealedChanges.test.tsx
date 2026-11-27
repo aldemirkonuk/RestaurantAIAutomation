@@ -18,7 +18,6 @@ const data = (over: Partial<SealedChanges> = {}): SealedChanges => ({
   orders: ['o1'],
   otherPapers: 0,
   ...ev,
-  events: [{ at: '2026-11-20T10:00:00Z', ...ev }],
   ...over,
 });
 const show = () =>
@@ -47,12 +46,12 @@ describe('SealedChangesPart', () => {
     expect(box.style.transition).toBe('');
   });
 
-  it('lists a correction as a dated row under the seal', async () => {
-    const later = { at: '2026-11-22T09:00:00Z', stockValueDelta: '-2', bottles: 4, salesCostDelta: '-0.5', sales: 1, notKnown: 0 };
-    api.changes.mockResolvedValueOnce(data({ events: [{ at: '2026-11-20T10:00:00Z', ...ev }, later] }));
+  it('says one total, never a seal and corrections, since the receipts carry no act', async () => {
+    api.changes.mockResolvedValueOnce(data());
     show();
-    const list = await screen.findByRole('list', { name: 'Corrections after the seal' });
-    expect(list.textContent).toMatch(/^Corrected .+: Stock value −\$2\.00 across 4 bottles; 1 sale already made now cost \$0\.50 less\.$/);
+    await screen.findByText(/^Stock value /);
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.queryByText(/Corrected/)).toBeNull();
   });
 
   it('says what it left out, and when the figures are the order’s', async () => {
@@ -63,7 +62,7 @@ describe('SealedChangesPart', () => {
   });
 
   it('a paper linked to no order says sealing moved no cost', async () => {
-    api.changes.mockResolvedValueOnce(data({ orders: [], events: [] }));
+    api.changes.mockResolvedValueOnce(data({ orders: [] }));
     show();
     expect(await screen.findByText('This paper is linked to no order, so sealing moved no cost.')).toBeTruthy();
   });

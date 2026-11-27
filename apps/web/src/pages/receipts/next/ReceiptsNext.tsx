@@ -1376,7 +1376,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
 
       {/* r108 g17: what the seal did to the books, from the receipts it wrote */}
       {doc.status === 'verified' && canSeeCreditLedger(activeRole, user?.role) && (
-        <CardPart label="What sealing changed">
+        <CardPart label="What verifying its delivery changed">
           <SealedChangesPart docId={doc.id} />
         </CardPart>
       )}

@@ -19,20 +19,16 @@ import { apiClient } from './client'
  */
 import { sealed, rethrowSpoken } from './seal'
 
-export interface SealedChangeEvent {
-  at: string
+export interface SealedChanges {
   stockValueDelta: string
   bottles: number
   salesCostDelta: string
   sales: number
   notKnown: number
-}
-export interface SealedChanges extends Omit<SealedChangeEvent, 'at'> {
   status: string
   currency: string | null
   orders: string[]
   otherPapers: number
-  events: SealedChangeEvent[]
 }
 
 export interface ProcurementDocument {
