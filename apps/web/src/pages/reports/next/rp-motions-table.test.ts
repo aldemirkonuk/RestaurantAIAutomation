@@ -66,6 +66,63 @@ function lastClass(selector: string): string {
   return parts[parts.length - 1];
 }
 
+/** A selector list split at its top-level commas (`:is(a, b)` stays whole). */
+function parts(selector: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of selector) {
+    if (ch === '(' || ch === '[') depth++;
+    if (ch === ')' || ch === ']') depth--;
+    if (ch === ',' && depth === 0) {
+      out.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out.map(compound).filter(Boolean);
+}
+
+/**
+ * One selector as the thing it names: attribute states (`[data-draw='drawn']`)
+ * are dropped, because a reduced rule guards the element in any state, but the
+ * pseudo-element (`::before`) and the combinators (`>`) stay: `.a::before` is
+ * not `.a`, and `.a > *` is not `.a`.
+ */
+function compound(part: string): string {
+  return part
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/\s*([>+~])\s*/g, ' $1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Every moving rule part, with the kind of motion it runs, that no reduced rule of the SAME selector sets to none. */
+function unguardedBy(moves: Rule[], reduced: Rule[]): string[] {
+  const out: string[] = [];
+  for (const r of moves) {
+    for (const d of decls(r.body)) {
+      for (const p of parts(r.selector)) {
+        const off = reduced.some(
+          (g) =>
+            parts(g.selector).includes(p) &&
+            decls(g.body, { live: false }).some((x) => x.kind === d.kind && /^\s*none\b/.test(x.value)),
+        );
+        if (!off) out.push(`${p} ${d.kind}`);
+      }
+    }
+  }
+  return out;
+}
+
+const guards = (text: string) => {
+  const all = parse(text, false);
+  return unguardedBy(
+    all.filter((r) => !r.reduced && /(^|[;\s])(animation|transition)\s*:/.test(r.body)),
+    all.filter((r) => r.reduced),
+  );
+};
+
 /** Durations and delays a declaration names, in ms (`1.9s` reads as 1900). */
 function times(value: string): number[] {
   return [...value.matchAll(/(?<![\w.-])(\d+(?:\.\d+)?)(ms|s)\b/g)].map((m) =>
@@ -99,19 +156,22 @@ describe('MOTIONS.md covers every motion the stylesheet runs', () => {
   });
 
   it('switches every one off under prefers-reduced-motion, opacity fades included', () => {
-    const unguarded: string[] = [];
-    for (const r of moving) {
-      for (const d of decls(r.body)) {
-        const key = lastClass(r.selector);
-        const off = reducedRules.some(
-          (g) =>
-            new RegExp(`\\.${key}(?![\\w-])`).test(g.selector) &&
-            decls(g.body, { live: false }).some((x) => x.kind === d.kind && /^\s*none\b/.test(x.value)),
-        );
-        if (!off) unguarded.push(`${r.selector} ${d.kind}`);
-      }
-    }
-    expect(unguarded).toEqual([]);
+    expect(unguardedBy(moving, reducedRules)).toEqual([]);
+  });
+
+  it('[REVERT-FAILS] a reduced rule naming only the element does not guard its pseudo-element, a combinator, or the other half of a list', () => {
+    expect(guards(css)).toEqual([]);
+    const reducedAt = css.indexOf('prefers-reduced-motion');
+    const mutate = (from: string, to: string) => {
+      const at = css.indexOf(from, reducedAt);
+      expect(at).toBeGreaterThan(-1);
+      return css.slice(0, at) + to + css.slice(at + from.length);
+    };
+    expect(guards(mutate('.rp-sheet::before,', '.rp-sheet,'))).toContain('.rp-sheet::before transition');
+    expect(guards(mutate('.rp-standin > *', '.rp-standin'))).toContain('.rp-standin > * transition');
+    // In `.a, .b` the first part is checked too, not only the last.
+    const list = '.a, .b { transition: opacity 1s; } @media (prefers-reduced-motion: reduce) { .b { transition: none; } }';
+    expect(guards(list)).toEqual(['.a transition']);
   });
 
   it('never lets a reduced-motion rule keep a motion running', () => {
