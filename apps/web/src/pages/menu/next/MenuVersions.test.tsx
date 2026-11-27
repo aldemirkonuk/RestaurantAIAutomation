@@ -356,7 +356,7 @@ describe('MenuVersions', () => {
     fireEvent.click(await screen.findByRole('button', { name: /^Finish carrying 2 prices of / }));
     expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
     expect(mockMake).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Carry its prices again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Finish carrying 2 prices' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m2', 'fp-m2'));
     expect(await screen.findByText(/That menu was already the current one\. 2 lines had not reached the house's prices and were carried now\. 1 line kept its price/)).toBeInTheDocument();
     expect(screen.getByText(/1 could not be priced: Barolo \(timeout\)\./)).toBeInTheDocument();
