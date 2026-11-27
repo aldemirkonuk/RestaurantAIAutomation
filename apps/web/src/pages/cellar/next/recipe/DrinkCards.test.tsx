@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
-import DrinkCards, { POUR_COST_BASIS, pourCostShare, type DraftCost } from './DrinkCards';
+import DrinkCards, { POUR_COST_BASIS, ROUNDING_NOTE, pourCostShare, type DraftCost } from './DrinkCards';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
 const say = (n: number) => `$${n.toFixed(2)}`;
@@ -70,7 +70,7 @@ const readable = (alcohol: ReturnType<typeof fig> | undefined): WhatIsIn => ({
 describe('DrinkCards', () => {
   it('reads the House G&T as the walk measured it: 2.47 a serve, 12 on the list, 178.5 kcal, 20 ml of alcohol', () => {
     render(<DrinkCards data={gAndT({}, readable(fig(20, ['Angostura'], true)))} sayMoney={say} unsaved={false} />);
-    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$2.47At today's prices, all 2 ingredients priced.");
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$2.47At today's prices, all 2 ingredients priced. 1 line is not counted.");
     expect(screen.getByTestId('drink-card-price').textContent).toBe('Price$12.00A serve, as your list has it.');
     expect(screen.getByTestId('drink-card-ingredients').textContent).toBe('Ingredients32 from your shelf, 1 not counted.');
     expect(screen.getByTestId('drink-card-energy').textContent).toBe('Energy a serveat least 178.5 kcalUnknown for Angostura.');
@@ -165,7 +165,7 @@ describe('DrinkCards: the cost of unsaved lines', () => {
 
   it('keeps the saved cost and the old note while the draft is not priced (absent draftCost)', () => {
     render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={null} />);
-    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$2.47At today's prices, all 2 ingredients priced.");
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$2.47At today's prices, all 2 ingredients priced. 1 line is not counted.");
     expect(screen.getByTestId('drink-cards').textContent).toContain('These are the saved recipe\u2019s figures. Save to count your changes.');
   });
 
@@ -280,5 +280,38 @@ describe('DrinkCards on a dish (ADR 0366)', () => {
     const card = screen.getByTestId('drink-card-pour-cost');
     expect(card).toHaveAttribute('data-known', 'false');
     expect(card.textContent).not.toMatch(/%/);
+  });
+});
+
+describe('the cost card says what its figure leaves out, and the share is in the house form', () => {
+  it('says how many lines are not counted beside the figure, and nothing when none are', () => {
+    const d = gAndT();
+    render(<DrinkCards data={{ ...d, cost: { ...d.cost!, of: 3, priced: 3 } }} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).not.toMatch(/not counted/);
+  });
+
+  it('says it on the figure that is not known too, when a line is not counted and another has no price', () => {
+    const d = gAndT();
+    render(<DrinkCards data={{ ...d, cost: { perServe: null, perServeExact: null, priced: 1, of: 2, complete: false, partial: 0 } }} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toMatch(/1 of 2 ingredients priced.*1 line is not counted\.$/);
+  });
+
+  it('says it when the lines, each to the cent, do not add to the total', () => {
+    const d = gAndT();
+    const withLines = (costs: number[]): CocktailRecipe => ({
+      ...d,
+      current: { ...d.current!, lines: costs.map((c, i) => line({ label: `L${i}`, itemName: `Item ${i}`, costPerServe: c })) },
+      cost: { perServe: 1.05, perServeExact: 1.05, priced: 3, of: 3, complete: true, partial: 0 },
+    });
+    const { unmount } = render(<DrinkCards data={withLines([0.35, 0.35, 0.34])} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toContain(ROUNDING_NOTE);
+    unmount();
+    render(<DrinkCards data={withLines([0.35, 0.35, 0.35])} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).not.toContain(ROUNDING_NOTE);
+  });
+
+  it('writes the pour-cost share through the house form it is given', () => {
+    render(<DrinkCards data={gAndT()} sayMoney={say} unsaved={false} sayPct={(p) => `%${String(p).replace('.', ',')}`} />);
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toContain('%20,6');
   });
 });

@@ -12,8 +12,8 @@
  * at today's prices (F7), said once, on the drink's cost card (DrinkCards.tsx):
  * a figure only when every counted line is priced, otherwise how many are,
  * never a partial total dressed as the cost.
- * There is no pour-cost percentage yet: it waits for the house's tax basis
- * (F8), and a percentage of a price that includes KDV would mislead.
+ * The pour-cost card says the share of the price as the list has it, in the
+ * house's form, and that whether that price includes tax is not recorded.
  *
  * Typed lines are never replaced behind the editor's back. The app refetches
  * on focus and on mount (App.tsx: staleTime 5s, refetchOnWindowFocus), so a
@@ -83,6 +83,7 @@ import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft,
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
+import { useHousePercent } from './useHousePercent';
 import WhatIsInAServe from './WhatIsInAServe';
 import RecipeTaste, { RecipeTasteLine } from './RecipeTaste';
 import { UNREACHABLE_WORDS } from '../../../../lib/unreachable';
@@ -444,6 +445,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   const recipe = useRecipe(owner);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
+  const sayPct = useHousePercent();
   const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
   const storeKey = draftKey(user?.userId, activeRestaurantId, dId);
@@ -716,7 +718,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
       <RecipeTasteLine kind={owner.kind} subjectId={cocktailId} restaurantId={activeRestaurantId ?? null} hasRecipe={(data.current?.lines.length ?? 0) > 0} />
-      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} />
+      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} sayPct={sayPct} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
       <RecipeTaste
         kind={owner.kind}

@@ -19,6 +19,8 @@
  */
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
+import type { SayPercent } from './useHousePercent';
+import { formatHousePercent } from '../../../../lib/house-number';
 
 interface Card {
   id: string;
@@ -43,23 +45,35 @@ export interface DraftCost {
   labels: string[];
 }
 
-function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean, dish = false): Card | null {
+/** Said when the lines, each to the cent, do not add to the total (which is rounded once, from the exact figures). */
+export const ROUNDING_NOTE = 'Each line is rounded to the cent; the total is not.';
+
+const linesDoNotAdd = (total: number | null, lineCosts: Array<number | null>): boolean =>
+  total != null && lineCosts.length > 0 && Math.round(lineCosts.reduce<number>((a, c) => a + (c ?? 0), 0) * 100) !== Math.round(total * 100);
+
+function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean, dish = false, lineCount = cost?.of ?? 0, lineCosts: Array<number | null> = []): Card | null {
   if (!cost) return null;
   const base = { id: 'cost', label: 'Cost a serve' };
+  // A line switched to "not counted" leaves the figure lower without a word; say how many are left out, beside the figure.
+  const left = Math.max(0, lineCount - cost.of);
+  const leftOut = left > 0 ? ` ${capital(count(left, 'line is', 'lines are'))} not counted.` : '';
   if (cost.complete && cost.perServe != null) {
     const exact = cost.perServeExact ?? null;
     const figure = cost.perServe === 0 && exact != null && exact > 0 ? `Under ${sayMoney(0.01)}` : sayMoney(cost.perServe);
     const part = cost.partial ?? 0;
     const lead = draft ? "Your unsaved lines, at today's prices" : "At today's prices";
     const priced = draft ? '' : cost.of === 1 ? ', its one ingredient priced' : `, all ${cost.of} ingredients priced`;
+    const rounding = linesDoNotAdd(cost.perServe, lineCosts) ? ` ${ROUNDING_NOTE}` : '';
     return {
       ...base,
       figure,
       known: true,
       said:
-        part > 0
+        (part > 0
           ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the ${dish ? 'goods' : 'bottles'} with an invoice only.`
-          : `${lead}${priced}.`,
+          : `${lead}${priced}.`) +
+        leftOut +
+        rounding,
     };
   }
   if (cost.of === 0) {
@@ -70,7 +84,7 @@ function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number
     figure: 'Not known',
     known: false,
     warn: true,
-    said: `${cost.priced} of ${count(cost.of, 'ingredient', 'ingredients')} priced${missing ? `; no price yet for ${missing}` : ''}.`,
+    said: `${cost.priced} of ${count(cost.of, 'ingredient', 'ingredients')} priced${missing ? `; no price yet for ${missing}` : ''}.${leftOut}`,
   };
 }
 
@@ -100,11 +114,11 @@ export function pourCostShare(cost: RecipeCost | null, price: number | null): { 
   return { pct: Math.round((exact / price) * 1000) / 10 };
 }
 
-function pourCostCard(cost: RecipeCost | null, price: number | null): Card {
+function pourCostCard(cost: RecipeCost | null, price: number | null, sayPct: SayPercent): Card {
   const share = pourCostShare(cost, price);
   const base = { id: 'pour-cost', label: 'Pour cost' };
   return 'pct' in share
-    ? { ...base, figure: `${share.pct.toFixed(1)}%`, known: true, said: POUR_COST_BASIS }
+    ? { ...base, figure: sayPct(share.pct), known: true, said: POUR_COST_BASIS }
     : { ...base, figure: 'Not known', known: false, said: `${capital(share.missing.join(' and '))}.` };
 }
 
@@ -180,6 +194,7 @@ export default function DrinkCards({
   sayMoney,
   unsaved,
   draftCost,
+  sayPct = (points) => formatHousePercent(points, null),
 }: {
   data: CocktailRecipe;
   /** Null for a role that does not see money: then no cost or price card. */
@@ -191,6 +206,8 @@ export default function DrinkCards({
    * enough to price: then the cost card keeps the saved recipe's figure.
    */
   draftCost?: DraftCost | null;
+  /** The house's form for a share ("%13,1" in a lira house); the reader's own until the house is read. */
+  sayPct?: SayPercent;
 }) {
   const isDish = data.kind === 'dish';
   const draft = unsaved && draftCost ? draftCost : null;
@@ -208,14 +225,16 @@ export default function DrinkCards({
           sayMoney,
           true,
           isDish,
+          draft.cost.lines.length,
+          draft.cost.lines.map((l) => l.costPerServe),
         )
       : data.current
-        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, isDish)
+        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false, isDish, data.current.lines.length, data.current.lines.map((l) => l.costPerServe))
         : null;
   const cards = [
     cost,
     sayMoney ? priceCard(data, sayMoney) : null,
-    sayMoney ? pourCostCard(shownCost, data.cocktail.price) : null,
+    sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct) : null,
     ingredientsCard(data),
     ...nutritionCards(data),
   ]

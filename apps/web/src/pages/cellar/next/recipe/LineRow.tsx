@@ -4,10 +4,12 @@
  *
  * A counted line points at a thing on the house's shelf (F2). A line that is
  * not counted (garnish, ice, water, a top of soda) keeps its words and never
- * takes stock or costs anything, so choosing "Not counted" drops the link.
+ * takes stock or costs anything. Choosing "Not counted" keeps the link in the draft,
+ * dimmed, so one tap back (or the Undo) restores it; the save and the cost
+ * preview send no item for an uncounted line (the table forbids one).
  * The amount and unit rules live in `units.ts`.
  */
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Link2, Trash2 } from 'lucide-react';
 import type { RecipeLineRole, RecipeLineStatus, ShelfItem } from '../../../../services/api/recipes';
 import { RECIPE_UNITS, amountWithUnit, qtyText, readQty, unitWord, type RecipeUnit } from './units';
@@ -187,6 +189,15 @@ export default function LineRow({
 }) {
   const id = useId();
   const [picking, setPicking] = useState(false);
+  // What the line cost a serve just before it was switched off, for 3 s, so the one tap can be undone.
+  const [undo, setUndo] = useState<{ cost: number | null; saved: DraftRow['saved'] } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 3000);
+    return () => clearTimeout(t);
+  }, [undo]);
+  // The kept `saved` figure is for the amount the line had when it was switched off: once the amount, unit or link changes it is stale, and Undo would put back a cost for a different line.
+  useEffect(() => setUndo(null), [row.qtyText, row.unit, row.inventoryId]);
   const stocked = row.role === 'stocked';
   const qty = rowQty(row);
 
@@ -239,6 +250,11 @@ export default function LineRow({
                 onChange={(e) => onChange({ label: e.target.value })}
                 style={{ width: '100%' }}
               />
+              {row.inventoryId ? (
+                <span className="cl-dim cl-rcp-kept" data-testid="kept-link">
+                  Linked to {row.itemName ?? 'a shelf item'} until you save; saving a line that is not counted drops its link.
+                </span>
+              ) : null}
             </>
           )}
         </div>
@@ -274,13 +290,15 @@ export default function LineRow({
           aria-checked={stocked}
           className="cl-btn cl-focus cl-rcp-switch"
           data-on={stocked}
-          onClick={() =>
-            onChange(
-              stocked
-                ? { role: 'untracked', inventoryId: null, itemName: null, itemKind: null, itemUom: null, itemGone: null, saved: null }
-                : { role: 'stocked', saved: null },
-            )
-          }
+          onClick={() => {
+            if (stocked) {
+              setUndo({ cost: row.saved?.costPerServe ?? null, saved: row.saved });
+              onChange({ role: 'untracked', saved: null });
+            } else {
+              setUndo(null);
+              onChange({ role: 'stocked', saved: null });
+            }
+          }}
         >
           {stocked ? 'Counted from the shelf' : 'Not counted'}
         </button>
@@ -298,6 +316,23 @@ export default function LineRow({
         <ShelfPicker initial={row.inventoryId ? '' : row.label} onPick={pick} onClose={() => setPicking(false)} />
       ) : null}
       <Note note={rowNote(row, say, dish)} />
+      {undo && !stocked ? (
+        <p className="cl-rcp-undo" role="status" data-testid="not-counted-undo">
+          {say && undo.cost != null
+            ? `Not counted now: the cost drops by ${say(undo.cost)} a ${dish ? 'plate' : 'serve'}.`
+            : 'Not counted now: the cost no longer includes this line.'}{' '}
+          <button
+            type="button"
+            className="cl-rcp-undo-btn cl-focus"
+            onClick={() => {
+              onChange({ role: 'stocked', saved: undo.saved });
+              setUndo(null);
+            }}
+          >
+            Undo
+          </button>
+        </p>
+      ) : null}
     </li>
   );
 }
