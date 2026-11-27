@@ -16,6 +16,7 @@ import { settingsApi } from '../services/api/settings'
 import { documentsApi } from '../services/api/documents'
 import { skipFolio } from '../services/api/arrival'
 import { useAuth } from '../contexts/AuthContext'
+import { readHoursUnsaved } from '../lib/houseHoursNote'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
 const PAPER_MAX_BYTES = 10 * 1024 * 1024
@@ -80,6 +81,8 @@ export default function HouseContents() {
   // a staff skip would be refused for good, and said as a passing failure.
   const { user } = useAuth()
   const canSkip = user?.role === 'owner' || user?.role === 'manager'
+  // r109 g1: the hours taken from the Places pick did not save on opening.
+  const [hoursUnsaved] = useState(() => readHoursUnsaved(user?.restaurantId))
   const proof = readProof()
   const standing = proof ? proofStanding(proof.items) : null
   const [supplier, setSupplier] = useState('')
@@ -542,6 +545,15 @@ export default function HouseContents() {
               </span>
             )}
           </div>
+
+          {hoursUnsaved && (
+            <p className="py-6 font-serif text-2xl" role="status" data-testid="house-hours-unsaved">
+              Your opening hours from Google were not saved.{' '}
+              <Link to="/settings?tab=hours" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                Set them in Settings
+              </Link>
+            </p>
+          )}
 
           <KeepOnPhone />
 
