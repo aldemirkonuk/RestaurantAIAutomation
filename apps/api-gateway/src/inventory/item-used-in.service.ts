@@ -38,7 +38,16 @@ export interface CocktailLine {
   name: string;
   quantity: number | null;
   unit: string | null;
+  /** The drink's current recipe names this good on a stocked line that is not linked to it. */
+  namedNotLinked?: true;
 }
+
+/**
+ * `withoutCurrentRecipe` is said only when the current-recipe read succeeded:
+ * then a line without `namedNotLinked` is from a drink that has no current
+ * recipe, so the old box is its only recipe. Absent means "could not tell".
+ */
+export type CocktailGroup = Group<CocktailLine> & { withoutCurrentRecipe?: true };
 
 export interface DrinkRecipeLine {
   cocktailId: string;
@@ -133,13 +142,74 @@ export class ItemUsedInService {
       this.inDrinkRecipes(client, restaurantId, item),
     ]);
 
+    // A cocktail that has a versioned recipe is shown only from that recipe
+    // (the real source for cost and taste), whether or not the recipe still
+    // uses this good: its old lines are history, and listing them would say the
+    // drink uses a good its current recipe dropped. A cocktail with no versioned
+    // recipe keeps its old lines; so does one whose current recipe names this
+    // good on an unlinked line. If a read failed we cannot tell, so keep both.
+    const legacy = await this.dropVersioned(client, restaurantId, inCocktails, item);
+
     return {
       item: { id: item.id, kind: item.kind, displayName: item.displayName },
       soldAs: menu.soldAs,
-      inCocktails,
+      inCocktails: legacy,
       inDrinkRecipes,
       namedNotLinked: menu.namedNotLinked,
     };
+  }
+
+  /**
+   * The old-recipe group without the cocktails that now have a current versioned
+   * recipe. A cocktail whose current recipe still NAMES this good on a stocked
+   * line with no link keeps its old line, marked `namedNotLinked`: the "Use these
+   * lines" conversion links only on an exact name match, so dropping it would say
+   * the drink does not use a good its recipe names. Any read that fails here
+   * leaves the group as it came, unflagged, since we cannot tell.
+   */
+  private async dropVersioned(
+    client: SupabaseClient,
+    restaurantId: string,
+    group: Group<CocktailLine>,
+    item: HouseItem,
+  ): Promise<CocktailGroup> {
+    if (!group.readable || !group.lines || group.lines.length === 0) return group;
+    const ids = [...new Set(group.lines.map((l) => l.cocktailId))];
+    const versionOf = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_current")
+        .select("cocktail_id, version_id")
+        .eq("restaurant_id", restaurantId)
+        .in("cocktail_id", ids.slice(i, i + CHUNK));
+      if (error) return group;
+      for (const r of (data ?? []) as Array<Record<string, any>>) {
+        versionOf.set(String(r.cocktail_id), String(r.version_id));
+      }
+    }
+    const want = item.displayName ? foldName(item.displayName) : "";
+    const named = new Set<string>(); // versions whose stocked, unlinked line is named like this good
+    const versionIds = want ? [...new Set(versionOf.values())] : [];
+    for (let i = 0; i < versionIds.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_lines")
+        .select("version_id, label")
+        .eq("restaurant_id", restaurantId)
+        .eq("role", "stocked")
+        .is("inventory_id", null)
+        .in("version_id", versionIds.slice(i, i + CHUNK))
+        .limit(PAGE);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      if (error || rows.length >= PAGE) return group;
+      for (const r of rows) if (foldName(String(r.label ?? "")) === want) named.add(String(r.version_id));
+    }
+    const lines: CocktailLine[] = [];
+    for (const l of group.lines) {
+      const v = versionOf.get(l.cocktailId);
+      if (v === undefined) lines.push(l);
+      else if (named.has(v)) lines.push({ ...l, namedNotLinked: true });
+    }
+    return { ...group, lines, withoutCurrentRecipe: true };
   }
 
   /** The current menu's lines linked to the item, then the lines that only carry its name. */
@@ -264,35 +334,50 @@ export class ItemUsedInService {
         source: "A cocktail recipe names a catalogue drink, and this item is not one.",
       };
     }
-    const ing = await client
-      .from("cocktail_ingredients")
-      .select("cocktail_id, quantity, unit")
-      .or(keys.join(","));
-    if (ing.error) return failed("The cocktail recipes", ing.error.message);
-    const rows = (ing.data ?? []) as Array<Record<string, any>>;
-    if (rows.length === 0) return { readable: true, lines: [], source };
-    const cocktails = await client
-      .from("cocktails")
-      .select("id, name, display_name")
-      .in("id", [...new Set(rows.map((r) => r.cocktail_id))])
-      // NULL restaurant_id is the catalogue, not this house's.
-      .eq("restaurant_id", restaurantId)
-      .is("deleted_at", null);
-    if (cocktails.error) return failed("The cocktail recipes", cocktails.error.message);
-    const byId = new Map(
-      ((cocktails.data ?? []) as Array<Record<string, any>>).map((c) => [c.id, c]),
-    );
-    const lines = rows
-      .filter((r) => byId.has(r.cocktail_id))
-      .map((r) => {
-        const c = byId.get(r.cocktail_id)!;
-        return {
-          cocktailId: c.id,
-          name: c.display_name || c.name,
+    // cocktail_ingredients carries no restaurant_id, so the house is found
+    // first (its cocktails, paged by id) and only those cocktails' lines are
+    // read. Reading the lines first let another house's lines of a popular
+    // catalogue drink fill PostgREST's 1,000-row page before this house's own.
+    const names = new Map<string, string>();
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("cocktails")
+        .select("id, name, display_name")
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const page = (data ?? []) as Array<Record<string, any>>;
+      for (const c of page) names.set(String(c.id), c.display_name || c.name);
+      if (page.length < PAGE) break;
+      after = String(page[page.length - 1].id);
+    }
+    const ids = [...names.keys()];
+    const lines: CocktailLine[] = [];
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("cocktail_ingredients")
+        .select("cocktail_id, quantity, unit")
+        .in("cocktail_id", ids.slice(i, i + CHUNK))
+        .or(keys.join(","))
+        .limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      // 100 cocktails cannot hold 1,000 lines of one drink; if they do, say so rather than drop some.
+      if (rows.length >= PAGE) return failed("The cocktail recipes", "too many lines for one read");
+      for (const r of rows) {
+        const id = String(r.cocktail_id);
+        lines.push({
+          cocktailId: id,
+          name: names.get(id)!,
           quantity: r.quantity == null ? null : Number(r.quantity),
           unit: r.unit ?? null,
-        };
-      });
+        });
+      }
+    }
     return { readable: true, lines, source };
   }
 

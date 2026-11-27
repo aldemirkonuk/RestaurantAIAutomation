@@ -1,5 +1,6 @@
 import { BadRequestException, InternalServerErrorException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { parsePreview, TasteService } from './taste.service';
+import { rollup } from './taste-rollup';
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const COCKTAIL = '33333333-3333-4333-8333-333333333333';
@@ -79,6 +80,46 @@ describe('TasteService.rollupSubject', () => {
     expect(f.inserts[0].axes.salty.v).toBeGreaterThan(2); // 150000 mg is 150 g, 1200 mg is 1.2 g of salt
     expect(f.inserts[0].axes.herbal.v).toBeGreaterThan(2.5); // 20000 mg is 20 g of parsley, not 20 kg
     expect(f.inserts[0].axes.herbal.v).toBeLessThan(4.5);
+  });
+  it('weighs a counted line by the grams the house stated for that good, and leaves an unstated one unweighed', async () => {
+    const EGG = '77777777-7777-4777-8777-777777777777';
+    const LIME = '88888888-8888-4888-8888-888888888888';
+    const THEIRS = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const t: any = recipe([['Bourbon', 600, 'ml10'], ['Egg white', 1000, 'each_milli'], ['Lime wedge', 1000, 'each_milli'], ['Garnish', 1000, 'each_milli']]);
+    t.recipe_lines[1].inventory_id = EGG; t.recipe_lines[2].inventory_id = LIME; t.recipe_lines[3].inventory_id = THEIRS;
+    // THEIRS is a good of another house: its 99 g is not this house's to use. EGG is also stated at 99 g by another house.
+    t.restaurant_inventory = [
+      { id: EGG, restaurant_id: RID, piece_grams: 33 }, { id: LIME, restaurant_id: RID, piece_grams: null },
+      { id: EGG, restaurant_id: 'other', piece_grams: 99 }, { id: THEIRS, restaurant_id: 'other', piece_grams: 99 },
+    ];
+    const f = fakeDb(t);
+    const out = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(out.rollup).toMatchObject({ lines: 4, unquantified: 2 });
+    // The roll-up read exactly 60 ml, 33 g (this house's egg, not 1 g and not the other house's 99 g), and two unweighed lines.
+    const want = rollup({ kind: 'cocktail', method: 'Shake', components: [{ name: 'drink', lines: [
+      { name: 'Bourbon', qty: 60, unit: 'ml' }, { name: 'Egg white', qty: 33, unit: 'g' },
+      { name: 'Lime wedge', qty: null, unit: 'g' }, { name: 'Garnish', qty: null, unit: 'g' },
+    ] }] });
+    expect(f.inserts[0].ext.rollup.inputHash).toBe(want.basis.inputHash);
+  });
+  it('counts every each line with no stated weight as unquantified, linked to a good with no weight, to a good with no row, or to none (r103 need 5)', async () => {
+    const NONE = '99999999-9999-4999-8999-999999999999';
+    const NOROW = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const t: any = recipe([['Bourbon', 600, 'ml10'], ['Mint sprig', 2000, 'each_milli'], ['Cherry', 1000, 'each_milli'], ['Orange twist', 1000, 'each_milli']]);
+    t.recipe_lines[2].inventory_id = NONE; t.recipe_lines[3].inventory_id = NOROW;
+    t.restaurant_inventory = [{ id: NONE, restaurant_id: RID, piece_grams: null }];
+    const f = fakeDb(t);
+    const out = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(out.rollup).toMatchObject({ lines: 4, unquantified: 3 });
+    // A different count is a different roll-up, so the card's "N not weighed" cannot go stale.
+    t.restaurant_inventory.push({ id: NOROW, restaurant_id: RID, piece_grams: 12 });
+    const again = await new TasteService(f.db).rollupSubject(RID, 'cocktail', COCKTAIL);
+    expect(again.rollup).toMatchObject({ unquantified: 2 });
+  });
+  it('refuses, in a sentence, when the stated weights cannot be read', async () => {
+    const t: any = recipe([['Egg white', 1000, 'each_milli']]);
+    t.recipe_lines[0].inventory_id = '77777777-7777-4777-8777-777777777777';
+    await expect(new TasteService(fakeDb(t, ['restaurant_inventory']).db).rollupSubject(RID, 'cocktail', COCKTAIL)).rejects.toThrow(/cannot read recipes|could not be read/);
   });
   it('adds nothing when the same recipe is worked out again', async () => {
     const f = fakeDb(recipe(sour));
