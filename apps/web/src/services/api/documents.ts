@@ -536,6 +536,6 @@ export interface StatementTieout {
   notCompared: 'vendor_unknown' | null
   entriesRead: number
   rows: StatementTieoutRow[]
-  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; kind: 'invoice' | 'credit' }[]
+  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; currency: string | null; kind: 'invoice' | 'credit' }[]
   paymentsIgnored: number
 }
