@@ -37,7 +37,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
-import { EM, countOf, figure, money, num, ratioPct, shortLabels } from './rp-format';
+import { EM, countOf, figure, money, num, ratioPct, shortLabels, inParens } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
@@ -704,7 +704,7 @@ function Desk({
 
                 {g.unreadable ? (
                   <p className="rp-cap" role="status">
-                    This goal could not be scored ({g.unreadable}). Nothing below it is claimed.
+                    This goal could not be scored ({inParens(g.unreadable)}). Nothing below it is claimed.
                     {/* The same link as beside the pace reason below. */}
                     {g.zoneUnset && (
                       <>

@@ -88,7 +88,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         targetValue: 9,
         direction: "at_most",
       }, { withSales: true }),
-    ).rejects.toThrow(/every bottle on hand carries a recorded cost/);
+    ).rejects.toThrow(/every wine on hand has a recorded cost/);
   });
 
   it("names which input is missing when the cost of what sold is withheld (batch review 2026-11-11)", async () => {
@@ -178,18 +178,29 @@ describe("the goal methods hand their sales gate to the register (ADR 0298 decis
     expect(baselines).toEqual([12.5, 12.5, 12.5]);
   });
 
-  it("listGoals returns the stored row, scores included, whatever the gate", async () => {
-    const row = {
+  it("listGoals withholds a days-of-stock goal's stored scores from a caller without sales (cost-math walk 2026-11-11)", async () => {
+    // Measured on the local stack before this: staff read current_value
+    // 312.07 on the row whose progress said "cannot be read here".
+    const dio = {
       id: "g1",
       metric_key: "days_of_inventory",
       current_value: 12.5,
       baseline_value: 14,
+      target_value: 30,
+    };
+    const revenue = {
+      id: "g2",
+      metric_key: "wine_revenue",
+      current_value: 900,
+      baseline_value: 100,
+      target_value: 1000,
     };
     const chain: any = {
       select: () => chain,
       eq: () => chain,
       order: () => chain,
-      then: (ok: (v: unknown) => unknown) => ok({ data: [row], error: null }),
+      then: (ok: (v: unknown) => unknown) =>
+        ok({ data: [dio, revenue], error: null }),
     };
     const service = new GoalsService(
       { getClient: () => ({ from: () => chain }) } as any,
@@ -199,8 +210,50 @@ describe("the goal methods hand their sales gate to the register (ADR 0298 decis
       verdicts,
       {} as any,
     );
-    for (const gate of [{ withSales: true }, { withSales: false }, undefined]) {
-      expect(await service.listGoals("r1", "all", gate)).toEqual([row]);
+    expect(await service.listGoals("r1", "all", { withSales: true })).toEqual([
+      dio,
+      revenue,
+    ]);
+    for (const gate of [{ withSales: false }, undefined]) {
+      expect(await service.listGoals("r1", "all", gate)).toEqual([
+        { ...dio, current_value: null, baseline_value: null },
+        revenue,
+      ]);
     }
+  });
+
+  it("an edit or a status change answers a caller without sales the same withheld row", async () => {
+    const dio = {
+      id: "g1",
+      metric_key: "days_of_inventory",
+      current_value: 312.07,
+      baseline_value: 290,
+      target_value: 30,
+      status: "archived",
+    };
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      update: () => chain,
+      single: async () => ({ data: dio, error: null }),
+      maybeSingle: async () => ({ data: dio, error: null }),
+    };
+    const service = new GoalsService(
+      { getClient: () => ({ from: () => chain }) } as any,
+      {} as any,
+      { get: () => undefined } as any,
+      {} as any,
+      verdicts,
+      {} as any,
+    );
+    const withheld = { ...dio, current_value: null, baseline_value: null };
+    expect(await service.updateGoal("r1", "g1", { name: "Lean cellar" })).toEqual(withheld);
+    expect(await service.updateGoalStatus("r1", "g1", "archived")).toEqual(withheld);
+    expect(
+      await service.updateGoal("r1", "g1", { name: "Lean cellar" }, { withSales: true }),
+    ).toEqual(dio);
+    expect(
+      await service.updateGoalStatus("r1", "g1", "archived", { withSales: true }),
+    ).toEqual(dio);
   });
 });
