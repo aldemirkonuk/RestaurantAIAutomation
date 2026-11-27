@@ -32,14 +32,14 @@ export type PriceMove =
     };
 
 /** Spoken to the stored precision (up to 6 places), never fewer than 2. */
-const money = (v: number) => {
+export const money = (v: number) => {
   const t = v.toFixed(6).replace(/0+$/, "");
   const [i, f = ""] = t.split(".");
   return `${i}.${f.padEnd(2, "0")}`;
 };
 
 /** Whole percent, but one decimal near the threshold so "up 10 percent" never names a moved 10.4. */
-const speakPct = (pct: number, thresholdPct: number) => {
+export const speakPct = (pct: number, thresholdPct: number) => {
   const a = Math.abs(pct);
   return Math.abs(a - thresholdPct) < 1 ? a.toFixed(1) : String(Math.round(a));
 };
