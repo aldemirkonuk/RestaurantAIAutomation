@@ -40,6 +40,7 @@ import {
   useId,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -275,6 +276,7 @@ function Plot({
           data-draw={state}
           data-tip-hidden={hidden || undefined}
           onKeyDown={onKeyDown}
+          onKeyDownCapture={stretch?.keyCapture}
           onPointerMove={hidden ? () => setHidden(false) : undefined}
           {...(stretch ? { 'data-stretch-id': stretch.id, 'data-stretching': stretch.span ? 'true' : 'false' } : {})}
         >
@@ -307,7 +309,7 @@ function Plot({
 /* ─────────────────────────────────────────────── read a stretch (g3) ───── */
 
 /** Said in the reserved slot before anything is marked. */
-export const STRETCH_HINT = 'Drag across days, or tap a first and a last day, to read a stretch.';
+export const STRETCH_HINT = 'Drag across days, tap a first and a last day, or hold Shift with the arrow keys, to read a stretch.';
 
 interface Stretch {
   id: string;
@@ -317,6 +319,12 @@ interface Stretch {
   state: 'hint' | 'half' | 'read';
   /** The chart's pointer handlers; empty when the drawing offers no stretch. */
   on: Record<string, (st: { activeTooltipIndex?: number } | null, e?: { target?: unknown }) => void>;
+  /**
+   * Shift+Left and Shift+Right mark the stretch from the keyboard (DD-r108-41).
+   * It runs in the capture phase, before recharts' own arrow handler moves the
+   * point; the move then lands in `onMouseMove`, which extends the stretch.
+   */
+  keyCapture: (e: ReactKeyboardEvent<HTMLDivElement>) => void;
 }
 
 /**
@@ -328,6 +336,11 @@ interface Stretch {
 function useStretch(series: CatSeries, slotOf: (drawn: number) => number | undefined): Stretch | undefined {
   const [s, send] = useReducer(stretchStep, NO_STRETCH);
   const id = useId();
+  // The slot the keyboard (or pointer) is on, and a Shift+Arrow waiting for
+  // recharts to move off it: recharts walks its points by spoofing a mouse
+  // move, so the new slot arrives in `onMouseMove`.
+  const onSlot = useRef<number | undefined>(undefined);
+  const keyFrom = useRef<number | undefined>(undefined);
   const offered = series.stretch != null;
   const marked = s.anchor != null;
   useEffect(() => {
@@ -375,11 +388,22 @@ function useStretch(series: CatSeries, slotOf: (drawn: number) => number | undef
         if (i != null) send({ type: 'down', at: i });
       },
       onMouseMove: (st) => {
-        if (!s.down) return;
         const i = at(st);
+        if (i != null) onSlot.current = i;
+        const from = keyFrom.current;
+        keyFrom.current = undefined;
+        if (from != null && i != null) {
+          send({ type: 'key', from, to: i });
+          return;
+        }
+        if (!s.down) return;
         if (i != null) send({ type: 'move', at: i });
       },
       onMouseUp: (st) => send({ type: 'up', at: at(st) }),
+    },
+    keyCapture: (e) => {
+      if (!e.shiftKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      if (onSlot.current != null) keyFrom.current = onSlot.current;
     },
   };
 }
