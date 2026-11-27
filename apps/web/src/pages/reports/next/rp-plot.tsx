@@ -42,7 +42,7 @@ import {
   useReducer,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -249,7 +249,7 @@ function Plot({
   const [said, setSaid] = useState('');
   const [hidden, setHidden] = useState(false);
   const tip = useMemo(() => ({ say: setSaid, hidden }), [hidden]);
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') setHidden(false);
     else if (e.key === 'Escape' && said !== '' && !hidden) {
       // The tip was showing: this Escape is for it. The full-screen view reads `defaultPrevented`, so it stays up.
