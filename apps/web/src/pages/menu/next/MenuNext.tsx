@@ -488,6 +488,28 @@ function MenuRow({ line, currency, onDiscard, discarding, isNew = false, testId 
   );
 }
 
+/**
+ * The menu's lines under its own sections (r108 menu-g14): the gateway sends
+ * them in the printed order, and each section is listed where it first
+ * appears, its lines in that order. A line with no section is its own group,
+ * "No section". Nothing is sorted by name.
+ */
+export function sectionGroups<T extends { category: string | null }>(lines: T[]): Array<{ section: string | null; lines: T[] }> {
+  const groups: Array<{ section: string | null; lines: T[] }> = [];
+  const at = new Map<string | null, number>();
+  for (const l of lines) {
+    const key = l.category && l.category.trim() ? l.category : null;
+    let i = at.get(key);
+    if (i === undefined) {
+      i = groups.length;
+      at.set(key, i);
+      groups.push({ section: key, lines: [] });
+    }
+    groups[i].lines.push(l);
+  }
+  return groups;
+}
+
 export default function MenuNext() {
   const { activeRestaurantId, loading: authLoading, activeRole, user } = useAuth();
   // Choosing the current menu is an owner's or a manager's (ADR 0193); the
@@ -589,6 +611,22 @@ export default function MenuNext() {
   };
   const drinks = lines.filter((l) => !isKitchenMenuLine(l));
   const kitchen = lines.filter(isKitchenMenuLine);
+  // r108 menu-g14: rows under their sections, in the menu's printed order. A
+  // menu of one section shows no sub-heading.
+  const sectioned = (list: MenuLine[], testId?: string) => {
+    const groups = sectionGroups(list);
+    if (groups.length < 2) return list.map((line) => row(line, testId));
+    return groups.map((g) => (
+      <Fragment key={`section:${g.section ?? ''}`}>
+        <tr className="mdv-section-row" data-testid="menu-section-row">
+          <th colSpan={7} scope="colgroup" className="cl-crumb">
+            {g.section ?? 'No section'}
+          </th>
+        </tr>
+        {g.lines.map((line) => row(line, testId))}
+      </Fragment>
+    ));
+  };
   // The answer to a price change sits right under its line, where the person clicked.
   const row = (line: MenuLine, testId?: string) => (
     <Fragment key={line.id}>
@@ -780,7 +818,7 @@ export default function MenuNext() {
                       </td>
                     </tr>
                   ) : (
-                    drinks.map((line) => row(line))
+                    sectioned(drinks)
                   )}
                 </tbody>
               </table>
@@ -796,7 +834,7 @@ export default function MenuNext() {
                 <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 8 }}>
                   <table className="cl-table mdv-cards" style={{ width: '100%' }} aria-label="Kitchen lines on the current menu">
                     {head}
-                    <tbody>{kitchen.map((line) => row(line, 'menu-kitchen-row'))}</tbody>
+                    <tbody>{sectioned(kitchen, 'menu-kitchen-row')}</tbody>
                   </table>
                 </div>
               </section>

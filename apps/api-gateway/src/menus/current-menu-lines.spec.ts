@@ -199,3 +199,51 @@ describe("readCurrentMenuLines", () => {
     );
   });
 });
+
+describe("readCurrentMenuLines -- the menu's printed order (r108 menu-g14)", () => {
+  const active = (...ids: string[]) => ({ restaurant_menus: { rows: ids.map((id) => menu(id, "active")) } });
+
+  it("a menu read as [C, A, B] comes back [C, A, B], though the ids sort A, B, C", async () => {
+    const { db } = fakeDb({
+      ...active("m1"),
+      menu_items: { rows: [line("a", "m1", { line_no: 1 }), line("b", "m1", { line_no: 2 }), line("c", "m1", { line_no: 0 })] },
+    });
+    expect((await readCurrentMenuLines(db, RID)).rows.map((r) => r.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("a line read before places were kept comes after every numbered one", async () => {
+    const { db } = fakeDb({
+      ...active("m1"),
+      menu_items: { rows: [line("a-old", "m1", { line_no: null }), line("z", "m1", { line_no: 3 })] },
+    });
+    expect((await readCurrentMenuLines(db, RID)).rows.map((r) => r.id)).toEqual(["z", "a-old"]);
+  });
+
+  it("1001 numbered lines are read whole across the page edge and come back in printed order", async () => {
+    // ids ascend while the printed places descend, so the keyset pages on id
+    // see the menu backwards and only the post-read sort can put it right.
+    const rows = Array.from({ length: 1001 }, (_, i) =>
+      line(`id-${String(i).padStart(5, "0")}`, "m1", { line_no: 1000 - i }),
+    );
+    const { db, readsOf } = fakeDb({ ...active("m1"), menu_items: { rows } });
+    const out = await readCurrentMenuLines(db, RID);
+    expect(out.rows).toHaveLength(1001);
+    expect(out.rows.map((r) => r.line_no)).toEqual(Array.from({ length: 1001 }, (_, i) => i));
+    expect(readsOf("menu_items").length).toBe(2);
+  });
+
+  it("two current menus are unioned menu by menu, each in its own printed order", async () => {
+    const { db } = fakeDb({
+      ...active("m1", "m2"),
+      menu_items: {
+        rows: [
+          line("p", "m2", { line_no: 1 }),
+          line("q", "m1", { line_no: 1 }),
+          line("r", "m2", { line_no: 0 }),
+          line("s", "m1", { line_no: 0 }),
+        ],
+      },
+    });
+    expect((await readCurrentMenuLines(db, RID)).rows.map((r) => r.id)).toEqual(["s", "q", "r", "p"]);
+  });
+});

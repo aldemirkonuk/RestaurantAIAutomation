@@ -1029,3 +1029,33 @@ describe('MenuNext — the taken-off sentence is in view, and the controls are 4
     expect(rule).not.toMatch(/transition|animation/);
   });
 });
+
+describe('MenuNext — the menu reads in its printed order, under its own sections (r108 menu-g14)', () => {
+  it('groups the drinks under their sections where each first appears, keeping the order the menu came in', async () => {
+    mockGetMenu.mockResolvedValue(
+      menu({
+        items: [
+          line({ id: 'r1', name: 'Syrah', category: 'Red' }),
+          line({ id: 'w1', name: 'Soave', category: 'White' }),
+          line({ id: 'r2', name: 'Barbera', category: 'Red' }),
+          line({ id: 'n1', name: 'House pour', category: null }),
+        ],
+      }),
+    );
+    mount();
+    await screen.findAllByTestId('menu-row');
+    const table = screen.getByRole('table', { name: 'Drinks on the current menu' });
+    const read = within(table)
+      .getAllByRole('row')
+      .map((r) => (r.getAttribute('data-testid') === 'menu-section-row' ? `# ${r.textContent}` : within(r).queryByText(/Syrah|Soave|Barbera|House pour/)?.textContent))
+      .filter(Boolean);
+    expect(read).toEqual(['# Red', 'Syrah', 'Barbera', '# White', 'Soave', '# No section', 'House pour']);
+  });
+
+  it('a menu of one section shows no sub-heading', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', category: 'Red' }), line({ id: 'b', name: 'Other', category: 'Red' })] }));
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryAllByTestId('menu-section-row')).toHaveLength(0);
+  });
+});

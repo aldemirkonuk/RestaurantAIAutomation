@@ -396,6 +396,8 @@ export interface MenuLine {
   flag_reason?: 'corrected' | 'added_by_hand' | 'past_free_limit' | 'unknown' | null
   /** For a correction: the field a manager corrected. */
   flag_field?: string | null
+  /** The line's place on the menu as printed (r108 menu-g14); null for a line read before places were kept. */
+  line_no?: number | null
   created_at: string
   /**
    * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every

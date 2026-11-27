@@ -73,6 +73,8 @@ export const MEMBER_LINE_KEYS = [
   "price_flag",
   "price_flag_note",
   "created_at",
+  // r108 menu-g14: the line's printed place (null before places were kept).
+  "line_no",
 ] as const;
 
 /**

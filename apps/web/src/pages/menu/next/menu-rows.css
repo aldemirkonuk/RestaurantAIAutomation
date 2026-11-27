@@ -93,6 +93,19 @@
   }
 }
 
+/* r108 menu-g14: a section's sub-heading inside the menu's table. */
+.mdv-section-row th {
+  text-align: left;
+  padding: 14px 12px 6px;
+  border-bottom: 1px solid var(--paper-2);
+}
+
+@media (max-width: 599px) {
+  .mdv-cards .mdv-section-row th {
+    display: block;
+  }
+}
+
 /* Touch targets under 600 px (r107 walk finding 4): Put back, Put it back, the sheet download,
    Add to menu and Add details were 18-30 px high. 44 px, centred; nothing else about them
    moves. */

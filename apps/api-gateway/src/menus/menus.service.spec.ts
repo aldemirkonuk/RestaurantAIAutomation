@@ -93,6 +93,11 @@ function makeFakeSupabase(
         extra.push((r) => (r[col] ?? null) === val);
         return api;
       },
+      // `.not(col, "is", null)`: the rows whose column holds a value.
+      not(col: string, op: string, val: any) {
+        if (op === "is") extra.push((r) => (r[col] ?? null) !== val);
+        return api;
+      },
       limit() {
         return api;
       },
@@ -330,7 +335,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
   const MEMBER_KEYS = [
     "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
     "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
-    "price_flag", "price_flag_note", "created_at",
+    "price_flag", "price_flag_note", "created_at", "line_no",
   ];
   const ROOT_KEYS = ["menuId", "name", "status", "items"];
 
@@ -357,6 +362,7 @@ describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 
       price_flag_note: null,
       raw_extracted_text: null,
       created_at: "2026-10-07T10:00:00Z",
+      line_no: null,
       ...over,
     });
     return {
@@ -867,6 +873,71 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
  * inventory row with NO price, dropping the line's by_glass_price /
  * bottle_price. Now the line's prices reach the house, dated by the line.
  */
+describe("MenusService -- a menu reads in its printed order (r108 menu-g14)", () => {
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: unknown[]) =>
+      items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const lineRow = (id: string, line_no: number | null, extra: Row = {}): Row => ({
+    id,
+    menu_id: "menu-1",
+    restaurant_id: "rest-1",
+    name: `Line ${id}`,
+    status: "approved",
+    line_no,
+    ...extra,
+  });
+  const house = (lines: Row[]): Record<string, Row[]> => ({
+    restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "active", name: "Wine List" }],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: lines,
+  });
+
+  it("a menu read as [C, A, B] comes back [C, A, B], an unnumbered line last", async () => {
+    const service = makeService(house([lineRow("a", 1), lineRow("0-old", null), lineRow("b", 2), lineRow("c", 0)]));
+    const menu = await service.getMenu("rest-1");
+    expect(menu.items.map((l: any) => l.id)).toEqual(["c", "a", "b", "0-old"]);
+  });
+
+  it("a typed line goes after the menu's last place, a discarded line's place included, and reads last", async () => {
+    const tables = house([lineRow("a", 0), lineRow("b", 1), lineRow("gone", 5, { status: "discarded" })]);
+    const service = makeService(tables, { wineSubmissions });
+    await service.addMenuItem({ menuId: "menu-1", name: "Typed" } as any, "user-1", "rest-1", true);
+    const typed = tables.menu_items.find((l) => l.name === "Typed")!;
+    expect(typed.line_no).toBe(6);
+    const menu = await service.getMenu("rest-1");
+    expect(menu.items.map((l: any) => l.name)).toEqual(["Line a", "Line b", "Typed"]);
+  });
+
+  it("a CSV read writes each line's place as it was read, 0..n-1", async () => {
+    const tables: Record<string, Row[]> = { restaurants: [{ id: "rest-1", default_threshold_min: 3 }], restaurant_menus: [], menu_items: [], restaurant_inventory: [] };
+    const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
+    await service.importMenu(
+      { method: "csv", data: { csvContent: "name,category,bottle_price\nZinfandel,Red,40\nAlbarino,White,30\nMerlot,Red,35\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(tables.menu_items.map((l) => [l.name, l.line_no])).toEqual([
+      ["Zinfandel", 0],
+      ["Albarino", 1],
+      ["Merlot", 2],
+    ]);
+  });
+
+  it("a typed line on an empty menu is its first place", async () => {
+    const tables = house([]);
+    await makeService(tables, { wineSubmissions }).addMenuItem({ menuId: "menu-1", name: "First" } as any, "user-1", "rest-1", true);
+    expect(tables.menu_items[0].line_no).toBe(0);
+  });
+
+  it("a typed line on a menu read before places were kept stays unnumbered, like its menu", async () => {
+    const tables = house([lineRow("a", null), lineRow("b", null)]);
+    await makeService(tables, { wineSubmissions }).addMenuItem({ menuId: "menu-1", name: "Typed" } as any, "user-1", "rest-1", true);
+    expect(tables.menu_items.find((l) => l.name === "Typed")!.line_no).toBeNull();
+  });
+});
+
 describe("MenusService.addMenuItem — the line's prices reach the house (ADR 0193)", () => {
   const wineSubmissions = {
     resolveLibraryWinesBatch: async (items: unknown[]) =>
