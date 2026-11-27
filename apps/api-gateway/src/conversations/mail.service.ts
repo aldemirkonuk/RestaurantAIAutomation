@@ -209,6 +209,8 @@ export class MailService {
       userId?: string | null;
       /** r103 mail-1: only this kind of person (vendor, team, guest). */
       kind?: unknown;
+      /** The caller does not read storedKinds (the counter's list): skip its two probe reads. */
+      skipStoredKinds?: boolean;
     },
   ): Promise<MailPeoplePage> {
     const limit = clampMailLimit(opts.limit);
@@ -339,10 +341,9 @@ export class MailService {
         rows.length > limit && last
           ? encodeMailCursor(last.last_at, last.key)
           : null,
-      storedKinds: await this.storedKinds(
-        houseId,
-        withholdsHouseLetters(callerRole),
-      ),
+      storedKinds: opts.skipStoredKinds
+        ? ["vendor"]
+        : await this.storedKinds(houseId, withholdsHouseLetters(callerRole)),
     };
   }
 
@@ -761,17 +762,19 @@ export class MailService {
       : null;
     const kept = rows.slice(0, MAIL_THREAD_PAGE);
     const oldest = kept[kept.length - 1];
-    const [files, vouched, who] = await Promise.all([
+    // One read of the page's letters says who sent them and who vouched for a
+    // filed one; only the vouchers' names are a second, soft read.
+    const [files, who] = await Promise.all([
       this.readAttachments(kept.map((m) => m.id)),
-      this.readFiledFromHeld(
-        houseId,
-        kept.filter((m) => direction(m.direction) === "inbound").map((m) => m.id),
-      ),
       this.readWho(
         houseId,
         kept.map((m) => m.id),
       ),
     ]);
+    const vouched = await this.readFiledFromHeld(
+      kept.filter((m) => direction(m.direction) === "inbound").map((m) => m.id),
+      who,
+    );
     const mailboxes = await this.readMailboxes(
       houseId,
       withhold,
@@ -841,13 +844,14 @@ export class MailService {
         grant: string | null;
         auth: unknown;
         delivery: unknown;
+        filed: unknown;
       }
     >();
     if (!letterIds.length) return out;
     const { data, error } = await this.db
       .from("procurement_conversations")
       .select(
-        "id, kind, from_address, to_addresses, mirrored_by_grant_id, auth:email_headers->auth, delivery:email_headers->delivery",
+        "id, kind, from_address, to_addresses, mirrored_by_grant_id, auth:email_headers->auth, delivery:email_headers->delivery, filed:email_headers->filed_from_held",
       )
       .eq("restaurant_id", houseId)
       .in("id", letterIds);
@@ -863,6 +867,7 @@ export class MailService {
             : null,
         auth: r.auth ?? null,
         delivery: r.delivery ?? null,
+        filed: r.filed ?? null,
       });
     }
     return out;
@@ -870,29 +875,23 @@ export class MailService {
 
   /**
    * Which of a page's received letters a person filed from Who is writing
-   * after they were held (r37 walk w3 M-F2), and who. Read by the letters'
-   * own ids, which mail_thread_letters has already proven are this house's
-   * and readable by this caller, as `readAttachments` reads them. Null when
-   * either read fails: the page says so rather than show a vouched letter
-   * as plain mail.
+   * after they were held (r37 walk w3 M-F2), and who. The marks come with the
+   * page's one read of its letters (readWho, `filed`), so a failed read of
+   * the letters fails the page; only the vouchers' names are read here, and a
+   * failure of that read is null: the page says so rather than show a vouched
+   * letter as plain mail.
    */
   private async readFiledFromHeld(
-    houseId: string,
     letterIds: string[],
+    who: Map<string, { filed: unknown }>,
   ): Promise<Map<string, MailFiledFromHeld> | null> {
     const out = new Map<string, MailFiledFromHeld>();
     if (!letterIds.length) return out;
     try {
-      const res = await this.db
-        .from("procurement_conversations")
-        .select("id, email_headers")
-        .eq("restaurant_id", houseId)
-        .in("id", letterIds);
-      if (res.error) throw new Error(res.error.message);
       const marks = new Map<string, Record<string, unknown>>();
-      for (const r of (res.data ?? []) as any[]) {
-        const f = r?.email_headers?.filed_from_held;
-        if (f && typeof f === "object") marks.set(String(r.id), f);
+      for (const id of letterIds) {
+        const f = who.get(id)?.filed;
+        if (f && typeof f === "object") marks.set(id, f as Record<string, unknown>);
       }
       if (!marks.size) return out;
       const ids = [
@@ -1282,7 +1281,7 @@ export class MailService {
         p_withhold_house_letters: withholdsHouseLetters(callerRole),
         p_zone: null,
       }),
-      this.listPeople(houseId, callerRole, { waitingOnly: true, limit: rows }),
+      this.listPeople(houseId, callerRole, { waitingOnly: true, limit: rows, skipStoredKinds: true }),
     ]);
     if (sumRes.error) this.failed("waiting count", sumRes.error);
     const s = (

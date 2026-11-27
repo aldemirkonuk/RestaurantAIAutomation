@@ -996,8 +996,8 @@ describe("getThread: a letter a person filed from Who is writing (r37 w3 M-F2)",
         return (
           over.headers ?? {
             data: [
-              { id: held.id, email_headers: { from: "x@y.example", filed_from_held: mark } },
-              { id: plain.id, email_headers: { from: "x@y.example" } },
+              { id: held.id, kind: "vendor", from_address: "x@y.example", to_addresses: [], filed: mark },
+              { id: plain.id, kind: "vendor", from_address: "x@y.example", to_addresses: [] },
             ],
             error: null,
           }
@@ -1038,17 +1038,22 @@ describe("getThread: a letter a person filed from Who is writing (r37 w3 M-F2)",
     });
   });
 
-  it("a failed read says the marks could not be read, never that there are none", async () => {
-    for (const over of [
-      { headers: { data: null, error: { message: "boom" } } },
-      { users: { data: null, error: { message: "boom" } } },
-    ]) {
-      resolve = answer(over);
-      const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
-      expect(page.heldMarksRead).toBe(false);
-      expect(page.messages.every((m) => m.filedFromHeld === null)).toBe(true);
-      // The letters are still shown.
-      expect(page.messages).toHaveLength(2);
-    }
+  it("a failed read of the vouchers' names says the marks could not be read, never that there are none", async () => {
+    resolve = answer({ users: { data: null, error: { message: "boom" } } });
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    expect(page.heldMarksRead).toBe(false);
+    expect(page.messages.every((m) => m.filedFromHeld === null)).toBe(true);
+    // The letters are still shown.
+    expect(page.messages).toHaveLength(2);
+  });
+
+  it("the letters and their marks are one read; a failed read of it fails the page, never a page with no sender", async () => {
+    resolve = answer({ headers: { data: null, error: { message: "boom" } } });
+    await expect(service().getThread(HOUSE, "owner", { key: "t-1" })).rejects.toThrow(ServiceUnavailableException);
+    queries.splice(0);
+    resolve = answer();
+    await service().getThread(HOUSE, "owner", { key: "t-1" });
+    const reads = queries.filter((q) => q.name === "procurement_conversations");
+    expect(reads).toHaveLength(1);
   });
 });

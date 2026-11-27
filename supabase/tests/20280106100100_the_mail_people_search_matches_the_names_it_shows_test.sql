@@ -20,8 +20,8 @@ INSERT INTO public.procurement_conversations
 INSERT INTO public.users (user_id, email, name, role, restaurant_id) VALUES
   ('a7000000-0000-4000-8000-000000000001', 'Sam@H.Example', 'Sam Staff', 'staff', 'a1000000-0000-4000-8000-000000000003');
 
-SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'Jane Roe', NULL)) = 1, 'a-guest-is-found-by-the-name-shown');
-SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'sam staff', NULL)) = 1, 'a-team-member-is-found-by-the-roster-name');
-SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'nobody here', NULL)) = 0, 'a-name-nobody-has-finds-nobody');
-SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'x.example', NULL)) = 1, 'the-address-still-finds-them');
+SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'Jane Roe', NULL, false)) = 1, 'a-guest-is-found-by-the-name-shown');
+SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'sam staff', NULL, false)) = 1, 'a-team-member-is-found-by-the-roster-name');
+SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'nobody here', NULL, false)) = 0, 'a-name-nobody-has-finds-nobody');
+SELECT pg_temp.ok((SELECT count(*) FROM public.list_mail_people('a1000000-0000-4000-8000-000000000003', false, false, NULL, NULL, 50, 'x.example', NULL, false)) = 1, 'the-address-still-finds-them');
 rollback;
