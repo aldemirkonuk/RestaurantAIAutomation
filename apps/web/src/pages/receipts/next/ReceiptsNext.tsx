@@ -801,7 +801,7 @@ function PairedCell({
  * line between them; each now sits under its own label and a rule.
  */
 /**
- * A line whose cost moved against the good's last invoiced cost, said in words
+ * A line whose price moved against the good's last other paper, said in words
  * (r104 g4). Information only. A line with no earlier cost, or priced in a
  * different unit, says nothing; a failed read says it failed rather than
  * reading as "nothing moved".
@@ -816,7 +816,7 @@ function PriceMovesNote({ docId }: { docId: string }) {
   if (q.isError)
     return (
       <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-        The goods&rsquo; earlier costs could not be read, so no price was compared with them.
+        The goods&rsquo; earlier papers could not be read, so no price was compared with them.
       </p>
     );
   const all = q.data?.lines ?? [];
@@ -840,7 +840,7 @@ function PriceMovesNote({ docId }: { docId: string }) {
       {moved.map((l) => (
         <li key={l.lineId}>
           Line {l.lineNo}
-          {l.description ? `, ${l.description}` : ''}: {l.sentence}, against its last invoiced cost.
+          {l.description ? `, ${l.description}` : ''}: {l.sentence}, against its last paper.
         </li>
       ))}
     </ul>
