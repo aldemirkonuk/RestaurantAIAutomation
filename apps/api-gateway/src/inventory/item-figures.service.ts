@@ -35,6 +35,18 @@ const COST_TREND_NOT_KEPT = {
 const num = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v);
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** How many write-offs the Waste card's evidence lists, newest first (r110 g3). */
+export const WASTE_ENTRIES = 20;
+
+/** One write-off or give-away the drawer lists. `value` is an owner's or manager's only. */
+export interface WasteEntry {
+  at: string | null;
+  type: "waste" | "comp";
+  qty: number;
+  reason: string | null;
+  by: string | null;
+  value?: number | null;
+}
 
 /**
  * The drawer's own figures (proposal K1-K10). On hand, WAC, value, velocity
@@ -75,7 +87,12 @@ export class ItemFiguresService {
     for (;;) {
       let q = client
         .from("inventory_transactions")
-        .select("id, transaction_type, quantity_change, unit_cost")
+        // unit_cost only for a caller who sees money; `notes` is free text and never read (r110 g3).
+        .select(
+          seesMoney
+            ? "id, transaction_type, quantity_change, unit_cost, reason, performed_by, transaction_date"
+            : "id, transaction_type, quantity_change, reason, performed_by, transaction_date",
+        )
         .eq("inventory_id", itemId)
         .eq("restaurant_id", restaurantId)
         .eq("stock_type", "live")
@@ -99,6 +116,9 @@ export class ItemFiguresService {
         qty30d: null,
         given30d: null,
         value30d: null,
+        entries: null,
+        byReason: null,
+        total: null,
         source: `Waste and given-away stock could not be read (${tx.error.message}).`,
       };
     } else {
@@ -119,8 +139,52 @@ export class ItemFiguresService {
           ),
         );
       }
+      // Totals by reason over EVERY paged row, waste and given-away kept apart (K10),
+      // so each type's reasons sum to qty30d and given30d.
+      const reasons = new Map<string, { reason: string | null; type: "waste" | "comp"; qty: number }>();
+      for (const r of rows) {
+        const type = r.transaction_type === "comp" ? "comp" : "waste";
+        const reason = typeof r.reason === "string" && r.reason.trim() !== "" ? r.reason.trim() : null;
+        const key = `${type}\u0000${reason ?? ""}`;
+        const cur = reasons.get(key) ?? { reason, type, qty: 0 };
+        cur.qty += Math.abs(Number(r.quantity_change));
+        reasons.set(key, cur);
+      }
+      const byReason = [...reasons.values()].sort((a, b) =>
+        a.type !== b.type ? (a.type === "waste" ? -1 : 1) : b.qty - a.qty,
+      );
+      const newest = [...rows]
+        .sort((a, b) => {
+          const ta = Date.parse(String(a.transaction_date ?? "")) || 0;
+          const tb = Date.parse(String(b.transaction_date ?? "")) || 0;
+          return tb - ta || String(b.id).localeCompare(String(a.id));
+        })
+        .slice(0, WASTE_ENTRIES);
+      const { people, error: byError } = await readPeople(
+        client,
+        newest.map((r) => r.performed_by),
+      );
+      const entries: WasteEntry[] = newest.map((r) => {
+        const qty = Math.abs(Number(r.quantity_change));
+        const e: WasteEntry = {
+          at: r.transaction_date ?? null,
+          type: r.transaction_type === "comp" ? "comp" : "waste",
+          qty,
+          reason: typeof r.reason === "string" && r.reason.trim() !== "" ? r.reason.trim() : null,
+          by: r.performed_by ? (people.get(String(r.performed_by))?.name ?? null) : null,
+        };
+        if (seesMoney) {
+          const unit = num(r.unit_cost) ?? wac;
+          e.value = unit === null ? null : round2(qty * unit);
+        }
+        return e;
+      });
       waste = {
         readable: true,
+        entries,
+        byReason,
+        total: rows.length,
+        byUnread: byError !== null,
         qty30d: sum(wasted),
         given30d: sum(rows.filter((r) => r.transaction_type === "comp")),
         value30d,

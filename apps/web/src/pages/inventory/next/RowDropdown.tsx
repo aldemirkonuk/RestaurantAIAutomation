@@ -39,6 +39,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { OnOrderEvidence, openOrderCount, type OnOrderLoad } from './OnOrder';
+import { WastedEvidence, type WastedLoad } from './Wasted';
 import { amountUnit, isPoured } from './iv-amount';
 import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
@@ -124,12 +125,18 @@ export interface RowDropdownProps {
    * list row does not, and draws no orders panel.
    */
   onOrder?: OnOrderLoad;
+  /**
+   * What was written off (the figures route's `waste`, or the figures read
+   * itself while it reads or after it failed). The drawer passes it for the
+   * Waste card; the list row does not, and draws no write-offs panel.
+   */
+  wasted?: WastedLoad;
 }
 
 export type SettledProp = ReadonlyArray<{ receivedAt: string; unitCost: number }> | 'reading' | 'failed' | null;
 
 /** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
-export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper' | 'orders';
+export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper' | 'orders' | 'wasted';
 
 export type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
 
@@ -389,9 +396,12 @@ export default function RowDropdown(props: RowDropdownProps) {
 
       {has('facts') ? <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} /> : null}
 
-      {has('where') || has('pace') || has('cost') || (has('orders') && 'onOrder' in props) ? (
+      {has('where') || has('pace') || has('cost') || (has('orders') && 'onOrder' in props) || (has('wasted') && 'wasted' in props) ? (
         <div className="iv-drop-cols">
           {has('orders') && 'onOrder' in props ? <OnOrderEvidence load={props.onOrder} /> : null}
+          {has('wasted') && 'wasted' in props ? (
+            <WastedEvidence load={props.wasted} uom={props.uom ?? null} canManage={canManage} currency={currency} />
+          ) : null}
           {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? (
