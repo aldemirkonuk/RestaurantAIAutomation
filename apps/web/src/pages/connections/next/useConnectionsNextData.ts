@@ -113,6 +113,9 @@ export interface SenderIdentityVM {
   configuredBy: string;
   resolvedFromProfile: boolean;
   perHouse: { supported: boolean; reason: string };
+  /** Where ORDER letters leave from, and the name a vendor sees (gap G3/G12).
+   *  Optional: an older gateway does not send it. */
+  orderMail?: { address: string; fromName: string; words: string };
 }
 
 /**

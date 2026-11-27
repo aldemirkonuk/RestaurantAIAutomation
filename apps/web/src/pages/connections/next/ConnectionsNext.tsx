@@ -184,6 +184,10 @@ function senderIdentityCopy(
   setup: MailSetupView,
   sharedAddress: string | null,
   openSetup: () => void,
+  // Order letters keep the shared address with the house's name in From
+  // (gap G3); said on every branch, so the row never implies that EVERY
+  // letter leaves from the house's own mailbox (gap G12).
+  orderMail: string | null = null,
 ): Pick<
   AttachmentRowProps,
   'owner' | 'chips' | 'subtitle' | 'why' | 'permissions' | 'controls' | 'stopNote'
@@ -211,6 +215,7 @@ function senderIdentityCopy(
           <em>{chosen.address ? `${chosen.address}, ${whose}` : whose}</em>,
           chosen on the mail setup page. A vendor sees this house&rsquo;s own
           address, not one other restaurants share.
+          {orderMail ? <> {orderMail}</> : null}
         </>
       ),
       permissions: [
@@ -235,6 +240,7 @@ function senderIdentityCopy(
           This house has a mailbox of its own that can send, and none is
           chosen, so a letter leaves from the mailbox of the person who sends
           it, or else the first one connected.
+          {orderMail ? <> {orderMail}</> : null}
         </>
       ),
       permissions: [
@@ -255,9 +261,9 @@ function senderIdentityCopy(
     why: (
       <>
         Every vendor letter this house sends leaves from{' '}
-        <em>one mailbox Mudavym restaurants share</em>. The sign-off inside the
-        letter carries this house&rsquo;s name; the envelope does not. A vendor
-        who replies is replying to a mailbox other restaurants also send from.
+        <em>one mailbox Mudavym restaurants share</em>.{' '}
+        {orderMail ?? 'The sign-off inside the letter carries this house’s name.'} A
+        vendor who replies is replying to a mailbox other restaurants also send from.
       </>
     ),
     permissions: [
@@ -687,8 +693,11 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             <AttachmentRow
               icon={<Mail {...ICON} />}
               title="Sender identity"
-              {...senderIdentityCopy(d.mailSetup.data, d.sender.data?.address ?? null, () =>
-                navigate('/communications?tab=mail&setup=1'),
+              {...senderIdentityCopy(
+                d.mailSetup.data,
+                d.sender.data?.address ?? null,
+                () => navigate('/communications?tab=mail&setup=1'),
+                d.sender.data?.orderMail?.words ?? null,
               )}
               lastLabel="Last sent"
               last={null}
