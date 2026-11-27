@@ -144,7 +144,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
   const tasteRef = useRef<HTMLDivElement | null>(null);
   // The first-screen taste line opens the evidence and brings the taste card into view.
   const [wantTaste, setWantTaste] = useState(false);
-  // On a phone the detail card opens below the fold: bring it into view.
+  // On a phone the detail card opens below the fold: bring it into view, smoothly like "Used in" (r109 g7).
   // It waits for the open to finish (200 ms), so the page does not scroll toward a card still at 0 height.
   useEffect(() => {
     if (evidence === null) return;
@@ -152,13 +152,13 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
       carried.current = false;
       return;
     }
-    const t = window.setTimeout(() => detailRef.current?.scrollIntoView?.({ block: 'nearest' }), openMs());
+    const t = window.setTimeout(() => detailRef.current?.scrollIntoView?.({ block: 'nearest', behavior: openMs() === 0 ? 'auto' : 'smooth' }), openMs());
     return () => window.clearTimeout(t);
   }, [evidence]);
   useEffect(() => {
     if (!wantTaste || evidence === null) return;
     const t = window.setTimeout(() => {
-      tasteRef.current?.scrollIntoView?.({ block: 'nearest' });
+      tasteRef.current?.scrollIntoView?.({ block: 'nearest', behavior: openMs() === 0 ? 'auto' : 'smooth' });
       setWantTaste(false);
     }, openMs());
     return () => window.clearTimeout(t);
