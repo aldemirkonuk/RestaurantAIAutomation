@@ -17,6 +17,10 @@ import { ANALYSIS_IDS, type AnalysisId, type GraphType } from './rp-sheet';
 import { failureLine, heldBackFailure } from './rp-format';
 import type { ArrangeApi } from './rp-arrange';
 import type { Register } from './useReportsNextData';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const FLAT_CSS = readFileSync(resolve(__dirname, 'reports-flat.css'), 'utf8');
 
 const noop = vi.fn();
 const arrangeStub: ArrangeApi = {
@@ -343,6 +347,16 @@ describe('full screen steps through the sheet (r108 g1)', () => {
     expect(within(dialog).getByText('3 of 3')).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: /^Next/ })).toBeNull();
     expect(within(dialog).getByRole('button', { name: 'Back to the sheet' })).toHaveFocus();
+  });
+
+  it('[REVERT-FAILS] a step does not replay the arrival: only an opening is marked to settle in (r109)', () => {
+    paint(<Sheet3 />);
+    fireEvent.click(opener(titleOf('till')));
+    expect(dialogNamed('till')).not.toHaveAttribute('data-stepped');
+    fireEvent.click(within(dialogNamed('till')).getByRole('button', { name: `Next: ${titleOf('week')}` }));
+    expect(dialogNamed('week')).toHaveAttribute('data-stepped', 'true');
+    // The stylesheet takes the arrival off a stepped dialog.
+    expect(FLAT_CSS).toMatch(/\.rp-flat\[data-stepped='true'\]\s*\{\s*animation:\s*none;/);
   });
 
   it('a withheld cutting shows its held sentence when stepped to', () => {
