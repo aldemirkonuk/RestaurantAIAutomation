@@ -391,7 +391,9 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
           onFiles={(picked, mode) => setFiles((prev) => (mode === 'add' ? [...prev, ...picked] : picked))}
           onClear={() => setFiles([])}
           reading={read.isPending}
-          stage={readingId ? 'kept' : 'sending'}
+          // `kept` only once the server answers a background scan (onReading); a sheet or CSV, or a scan whose bytes are all
+          // sent, is being read, not sent (r103 review: it sat on a full "Sending" bar for the whole server-side read).
+          stage={readingId ? 'kept' : sent >= 1 ? 'reading' : 'sending'}
           sent={sent}
           accept="image/*,application/pdf,.csv,.xlsx,.xls"
           multiple
