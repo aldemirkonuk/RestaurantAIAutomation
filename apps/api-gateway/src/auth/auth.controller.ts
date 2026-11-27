@@ -259,6 +259,14 @@ export class AuthController {
    */
   @Get("me")
   @UseGuards(JwtAuthGuard)
+  // A signed-in read of one's own profile, not a credential attempt, so it is
+  // not held to the 10-per-minute-per-IP bucket every other `/auth/` route
+  // gets (DD-r108-14). Under that bucket /verify-email's own load, its waiting
+  // poll, the tab-shown asks and the read after the code all spend one IP's
+  // ten, and the read that follows a verified code came back 429: "verified,
+  // but your account could not be loaded". A house on one NAT shares the same
+  // ten at app load. The JWT guard is the gate here; this keeps a flood bound.
+  @RateLimit({ limit: 100, windowSeconds: 60, keyPrefix: "auth-me" })
   // The web client populates `user` from here and nowhere else. Gate this and
   // an unverified session cannot discover that it is unverified — it just
   // fails to load, which is indistinguishable from a broken login.
