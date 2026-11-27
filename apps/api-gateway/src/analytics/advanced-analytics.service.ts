@@ -12,6 +12,7 @@ import {
   readHouseZone,
   shiftHouseDay,
 } from "../common/house-day";
+import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -71,38 +72,43 @@ export class AdvancedAnalyticsService {
   // Shared lean loaders
   // =========================================================================
 
+  /**
+   * Read whole or refused, as `AnalyticsService.loadInventory` is (ADR 0292,
+   * reports lane r3): unranged, both reads stopped at 1,000 rows. A refusal
+   * propagates; both callers read consumption beside it, which already
+   * refuses, and the overview turns a throwing lens into a null one.
+   */
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query, and allSettled
-        // swallows it into an empty inventory.
+        // unknown column 42703s the whole PostgREST query.
         .select(
           "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-    ]);
-    if (invRes.status === "fulfilled" && invRes.value.error)
-      this.logQueryFailure("restaurant_inventory", invRes.value.error);
-    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
-      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    );
+    const lots = await readByIds<any>(
+      "The house's lot totals",
+      inventory.map((i: any) => i.id),
+      (batch) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", batch),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled")
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    for (const r of lots) rollup.set(r.inventory_id, r);
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the
@@ -280,9 +286,10 @@ export class AdvancedAnalyticsService {
   }
 
   /**
-   * A failed loader still degrades to `[]` — an analytics page that 500s
-   * because one lens is unavailable is worse than one that renders the rest.
-   * But it must never do so SILENTLY: a query that fails and returns no rows
+   * A loader whose rows only label something (the wine types) still degrades
+   * to none; the inventory, order and consumption loaders refuse instead, and
+   * the overview renders the other lenses around the one that refused. A
+   * degraded read must never be SILENT: a query that fails and returns no rows
    * is indistinguishable from one that succeeds with no rows, which is exactly
    * how the provider_name drift above survived unnoticed in production.
    */
