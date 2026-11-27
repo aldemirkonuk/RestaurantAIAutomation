@@ -114,12 +114,15 @@ describe('the cocktail list cost columns', () => {
     await waitFor(() => expect(text(`drink-share-${GT}`)).toBe('12.5%'));
   });
 
-  it('with the house basis unset the pour cost is in the warn tone with its sentence under it (r103 need 2)', async () => {
+  it('with the house basis unset the pour cost is in the warn tone and the sentence is said once under the list (r103 need 2)', async () => {
     tax.basis = 'unset';
     try {
       mount();
       await waitFor(() => expect(text(`drink-share-${GT}`)).toContain('%12,5'));
-      expect(text(`drink-share-${GT}`)).toContain('whether that price includes tax is not recorded');
+      // The sentence is not under the row: it is said once, under the table, with its space held.
+      expect(text(`drink-share-${GT}`)).not.toContain('whether that price includes tax');
+      expect(screen.getAllByTestId('share-basis')).toHaveLength(1);
+      expect(screen.getByTestId('share-basis').textContent).toContain('whether that price includes tax is not recorded');
       expect(screen.getByTestId(`drink-share-${GT}`).querySelector('[data-warn="true"]')).not.toBeNull();
     } finally {
       tax.basis = 'prices_exclude_tax';

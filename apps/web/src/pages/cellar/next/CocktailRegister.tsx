@@ -42,7 +42,7 @@ import RecipeSheet from './recipe/RecipeSheet';
 import MenuDrinksOffer from './MenuDrinksOffer';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
-import { ShareFigure, pourCostShare } from './recipe/DrinkCards';
+import { ShareBasisCaption, ShareFigure, pourCostShare } from './recipe/DrinkCards';
 import { useListTax } from './recipe/useListTax';
 import type { ListTax } from './recipe/listTax';
 import { useCanEditRecipe, useDrinkFigures, useHouseMoney, useMenuPrices } from './recipe/useRecipe';
@@ -513,6 +513,7 @@ export default function CocktailRegister({
                 : 'No cocktail matches this reading.'}
             </p>
           ) : (
+            <>
             <div style={{ marginTop: 12, overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
               <table className="cl-table">
                 <thead>
@@ -579,6 +580,8 @@ export default function CocktailRegister({
                 </tbody>
               </table>
             </div>
+              <ShareBasisCaption tax={tax} />
+            </>
           )}
 
           {/* the leaf: recipe + the two acts a house can take on its own row */}
