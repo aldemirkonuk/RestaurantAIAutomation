@@ -3,10 +3,12 @@ import { AreaRoutingModule } from "../areas/area-routing.module";
 import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { OrganizationsModule } from "../organizations/organizations.module";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosHubController } from "./pos-hub.controller";
 import { PosHubService } from "./pos-hub.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
+import { PosHistoryImportService } from "./pos-history-import.service";
 
 /**
  * POS Hub Module — the multiPOS foundation.
@@ -27,9 +29,11 @@ import { PosMappingReviewService } from "./pos-mapping-review.service";
     DatabaseModule,
     forwardRef(() => NotificationsModule),
     AreaRoutingModule,
+    // r109 g3: the history import is owner or manager only.
+    OrganizationsModule,
   ],
   controllers: [PosHubController],
-  providers: [PosHubService, CatalogMatcherService, PosMappingReviewService],
+  providers: [PosHubService, CatalogMatcherService, PosMappingReviewService, PosHistoryImportService],
   exports: [PosHubService, CatalogMatcherService, PosMappingReviewService],
 })
 export class PosHubModule {}
