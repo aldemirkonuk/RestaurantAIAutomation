@@ -2404,6 +2404,20 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect((await makeService({ restaurant_menus: [] }).listVersions("rest-1")).due).toBeNull();
   });
 
+  // r104: a newer read already kept as a draft (or still reading) answers the reminder; a second read is billed.
+  it("says nothing of a due menu when a newer read is already kept as a draft or still reading", async () => {
+    const ago = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+    const cur: Row = { id: "m1", restaurant_id: "rest-1", status: "active", extracted_at: ago(40), made_current_at: ago(40), cadence: "monthly" };
+    const due = async (...more: Row[]) => (await makeService({ restaurant_menus: [cur, ...more] }).listVersions("rest-1")).due;
+    const draft = (extra: Row): Row => ({ id: "m2", restaurant_id: "rest-1", status: "draft", extracted_at: ago(1), ...extra });
+    expect(await due(draft({}))).toBeNull();
+    expect(await due(draft({ read_state: "reading", extracted_at: new Date(Date.now() - 5 * 60_000).toISOString() }))).toBeNull();
+    // Not answers: an older draft, a failed read, an archived menu.
+    expect(await due(draft({ extracted_at: ago(90) }))).toMatchObject({ state: "due" });
+    expect(await due(draft({ read_state: "failed" }))).toMatchObject({ state: "due" });
+    expect(await due(draft({ status: "archived" }))).toMatchObject({ state: "due" });
+  });
+
   // Menu r21: dates in the house's time zone, never the viewing device's.
   it("names the house's own time zone with the list, and only this house's", async () => {
     const tables: Record<string, Row[]> = {
