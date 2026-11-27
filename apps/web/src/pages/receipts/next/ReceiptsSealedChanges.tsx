@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { documentsApi, type SealedChangeEvent, type SealedChanges } from '../../../services/api/documents';
-import { fmtDate, fmtMoney, serverMessage } from './rc2-format';
+import { documentsApi, type SealedChanges } from '../../../services/api/documents';
+import { fmtMoney, serverMessage } from './rc2-format';
 
 /**
- * WHAT SEALING CHANGED (r108 g17), on a verified paper: the stock value its
- * lots moved by and what the sales already made from them now cost, read from
- * the receipts the seal wrote. Corrections are dated rows under the seal.
+ * WHAT VERIFYING ITS DELIVERY CHANGED (r108 g17), on a verified paper: the
+ * stock value its lots moved by and what the sales already made from them now
+ * cost, read from the receipts the cost writes left. ONE TOTAL: the receipts
+ * carry no act id, so a split by timestamp would call the first good "the seal"
+ * and the rest "corrections" (see the gateway's sealed-changes.ts).
  *
  * Motion (MOTIONS.md, ADR 0112): none of its own. It sits inside the card's
  * rc-settle panel; figures arrive as text with no counter tween (the
@@ -21,7 +23,7 @@ const signed = (s: string, cur: string | null) => {
 };
 
 /** One act in words: "Stock value +412.30 across 24 bottles; 6 sales already made now cost 8.40 less." */
-export function changeSentence(e: Omit<SealedChangeEvent, 'at'>, cur: string | null): string {
+export function changeSentence(e: Pick<SealedChanges, 'stockValueDelta' | 'bottles' | 'salesCostDelta' | 'sales'>, cur: string | null): string {
   const parts: string[] = [];
   if (e.bottles > 0) parts.push(`Stock value ${signed(e.stockValueDelta, cur)} across ${plural(e.bottles, 'bottle', 'bottles')}`);
   if (e.sales > 0) {
@@ -58,19 +60,9 @@ export function SealedChangesPart({ docId }: { docId: string }) {
 function Figures({ d }: { d: SealedChanges }) {
   if (!d.orders.length)
     return <p style={P}>This paper is linked to no order, so sealing moved no cost.</p>;
-  const [seal, ...later] = d.events;
   return (
     <>
-      <p style={P}>{changeSentence(seal ?? d, d.currency)}</p>
-      {later.length > 0 && (
-        <ul aria-label="Corrections after the seal" style={{ ...P, paddingLeft: 16, marginTop: 4 }}>
-          {later.map((e) => (
-            <li key={e.at}>
-              Corrected {fmtDate(e.at)}: {changeSentence(e, d.currency)}
-            </li>
-          ))}
-        </ul>
-      )}
+      <p style={P}>{changeSentence(d, d.currency)}</p>
       {d.notKnown > 0 && (
         <p style={MUTED}>
           {plural(d.notKnown, 'cost', 'costs')} had no earlier figure, so {d.notKnown === 1 ? 'it is' : 'they are'} not in these

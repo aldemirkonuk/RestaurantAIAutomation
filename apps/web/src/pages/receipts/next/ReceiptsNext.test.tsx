@@ -318,14 +318,14 @@ describe('ReceiptsNext', () => {
 
   it('shows a verified paper its seal changes to an owner or manager, and asks the gateway', async () => {
     api.sealedChanges.mockResolvedValue({
-      status: 'verified', currency: 'EUR', orders: ['o1'], otherPapers: 0, stockValueDelta: '2', bottles: 1, salesCostDelta: '0', sales: 0, notKnown: 0, events: [],
+      status: 'verified', currency: 'EUR', orders: ['o1'], otherPapers: 0, stockValueDelta: '2', bottles: 1, salesCostDelta: '0', sales: 0, notKnown: 0,
     });
     api.queue = [doc({ status: 'verified' as ProcurementDocument['status'] })];
     api.detail = { document: api.queue[0], lines: [line], links: [] };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     await waitFor(() => expect(api.sealedChanges).toHaveBeenCalledWith('d1'));
-    expect(screen.getByText('What sealing changed')).toBeInTheDocument();
+    expect(screen.getByText('What verifying its delivery changed')).toBeInTheDocument();
   });
 
   it('never asks for, or shows, what sealing changed to staff: no part, no refused request', async () => {
@@ -335,7 +335,7 @@ describe('ReceiptsNext', () => {
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
     expect(api.sealedChanges).not.toHaveBeenCalled();
-    expect(screen.queryByText('What sealing changed')).toBeNull();
+    expect(screen.queryByText('What verifying its delivery changed')).toBeNull();
     expect(screen.queryByTestId('sealed-changes')).toBeNull();
   });
 
