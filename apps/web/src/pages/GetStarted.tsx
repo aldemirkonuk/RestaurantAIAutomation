@@ -135,6 +135,16 @@ function ArrivalShell({
   onSignOut?: () => void
   children?: React.ReactNode
 }) {
+  // A step change after arrival moves focus to the new step's heading, so a
+  // keyboard or screen-reader person lands on the page that turned. Not on
+  // mount: the poem's focus wins on arrival.
+  const prevStep = useRef<Step | null>(step)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    const was = prevStep.current
+    prevStep.current = step
+    if (was && step && was !== step) titleRef.current?.focus({ preventScroll: true })
+  }, [step])
   const folio = step ? { restaurant: '01 · Your restaurant', menu: '02 · Your menu' }[step] : undefined
   return (
     <AuthSpread
@@ -146,6 +156,7 @@ function ArrivalShell({
       title={title}
       voice={voice}
       holdHeading={holdHeading}
+      titleRef={titleRef}
       footer={
         onSignOut ? (
           <button type="button" onClick={onSignOut} className="mdv-spread-textlink">
@@ -167,8 +178,7 @@ function ArrivalShell({
           >
             <span
               data-testid="gs-progress-fill"
-              className="mdv-spread-progress__fill"
-              style={{ width: step === 'menu' ? '100%' : '50%' }}
+              className={`mdv-spread-progress__fill${step === 'menu' ? ' mdv-spread-progress__fill--full' : ''}`}
             />
           </div>
         )}
