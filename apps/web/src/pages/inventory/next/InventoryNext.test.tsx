@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
 
-const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
+const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null, priceRenders: new Map<string, number>() }));
 const exportSpy = vi.hoisted(() => vi.fn(async (_opts: unknown) => undefined));
 vi.mock('../../../lib/tableExport', () => ({ exportTable: exportSpy }));
 
@@ -28,8 +28,14 @@ vi.mock('../command/CellarMapView', () => ({
   },
 }));
 vi.mock('../command/HousePriceCell', () => ({
-  HousePriceCell: ({ bottle, money }: { bottle: number | null; money?: (n: number | null) => string }) => (
-    <span data-testid="house-price">{money ? money(bottle) : String(bottle)}</span>
+  HousePriceCell: ({ bottle, money, inventoryId }: { bottle: number | null; money?: (n: number | null) => string; inventoryId?: string }) => (
+    <span
+      data-testid="house-price"
+      ref={() => {
+        /* counted per render below */
+      }}
+      data-count={(mock.priceRenders.set(String(inventoryId), (mock.priceRenders.get(String(inventoryId)) ?? 0) + 1), '')}
+    >{money ? money(bottle) : String(bottle)}</span>
   ),
 }));
 vi.mock('../../../components/inventory/PosMappingPanel', () => ({ PosMappingPanel: () => null, default: () => null }));

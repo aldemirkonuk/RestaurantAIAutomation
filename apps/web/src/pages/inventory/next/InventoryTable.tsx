@@ -14,7 +14,7 @@
  * managers (it is where a price is changed, ADR 0193); everyone else reads
  * the two figures in the house's currency.
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, statusWord, fmtCount, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
@@ -73,6 +73,170 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
   return held.map((z) => zoneName(z.locationId)).join(' · ');
 }
 
+/**
+ * What a row draws is a function of the row, whether it is open or selected,
+ * the currency, the group it heads and the few reads below. The windowing above
+ * owns which rows exist; this only stops a row that did not change from being
+ * drawn again. The callbacks that change identity each render of the page ride
+ * in `fns`, a ref whose object never changes, so a toggle redraws the two rows
+ * it touches and not every drawn row (r108-3, from #2199).
+ */
+interface TableRowProps {
+  row: InvRow;
+  open: boolean;
+  selecting: boolean;
+  selected: boolean;
+  span: number;
+  /** aria-rowindex of the row's own line, group heads above it counted. */
+  rowIndex: number;
+  /** The severity this row heads, or null when it heads nothing. */
+  groupSev: 0 | 1 | 2 | null;
+  groupCount: number;
+  thing: string;
+  nameHead: string;
+  hidden: ReadonlySet<string>;
+  currency: InventoryTableProps['currency'];
+  canManage: boolean;
+  advice: AdviceLoad;
+  libraryUnread: boolean;
+  /** Not read here: a change of the house's zones must redraw the Zone cell. */
+  locations: InventoryTableProps['locations'];
+  locationsUnavailable: boolean;
+  toggle: (id: string) => void;
+  fns: { current: RowFns };
+}
+interface RowFns {
+  zoneName: (id: string | null) => string;
+  onPriceChanged: () => void;
+  onSelect?: (id: string) => void;
+}
+
+const TableRow = memo(function TableRow(p: TableRowProps) {
+  const { row, open, selecting, selected, span, rowIndex, groupSev, groupCount, thing, nameHead, hidden, currency, canManage, advice, libraryUnread, locationsUnavailable, toggle, fns } = p;
+  // A counted good's unit is said once, after its last figure; nothing read, nothing to say.
+  const tail = row.par === null && row.stock === null ? null : listUnitTail(row.uom, row.par ?? row.stock);
+  return (
+    <>
+                {groupSev !== null ? (
+                  <tr className="iv-group" aria-rowindex={rowIndex}>
+                    <td colSpan={span}>
+                      {SEVERITY_GROUP[groupSev]}
+                      {groupSev < 2 ? <span className="iv-num"> {fmtCount(groupCount)}</span> : null}
+                    </td>
+                  </tr>
+                ) : null}
+                <tr
+                  id={`iv-row-${row.id}`}
+                  className="iv-row"
+                  aria-rowindex={rowIndex + (groupSev !== null ? 1 : 0)}
+                  data-testid={`inv-row-${row.id}`}
+                  data-standing={row.standing}
+                  aria-selected={open}
+                  onClick={() => toggle(row.id)}
+                >
+                  {selecting ? (
+                    <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="iv-focus"
+                        aria-label={`Select ${row.name ?? `this ${thing}`}`}
+                        checked={selected}
+                        onChange={() => fns.current.onSelect?.(row.id)}
+                      />
+                    </td>
+                  ) : null}
+                  <td data-label={nameHead} className="iv-title">
+                    <button
+                      type="button"
+                      className="iv-titlebtn iv-focus"
+                      data-row-id={row.id}
+                      aria-expanded={open}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggle(row.id);
+                      }}
+                    >
+                      <span className="iv-name">
+                        {row.name ?? `Unnamed ${thing}`}
+                        {row.abc ? (
+                          <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
+                            {row.abc}
+                          </span>
+                        ) : null}
+                      </span>
+                      {/* No producer and no vintage: no line, never a bare dash (N-18). */}
+                      {row.producer || row.vintage !== null ? (
+                        <span className="iv-producer">
+                          {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ')}
+                        </span>
+                      ) : null}
+                    </button>
+                    <NameHint inventoryId={row.id} />
+                  </td>
+{!hidden.has('Type') ? (
+                  <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
+                    {row.type ? typeLabel(row.type) : libraryUnread ? EM : 'not recorded'}
+                  </td>
+ ) : null}
+{!hidden.has('Zone') ? (
+                  <td data-label="Zone">{zoneCell(row, fns.current.zoneName, locationsUnavailable)}</td>
+ ) : null}
+                  <td data-label="Live / shadow · par" className="iv-r iv-num">
+                    <span>
+                      <span className="iv-live">{listFigure(row.stock, row.uom)}</span>
+                      <span className="iv-dim"> / {listFigure(row.shadow, row.uom)}</span>
+                      {' · '}
+                      {listFigure(row.par, row.uom)}
+                      {tail === null ? null : ` ${tail}`}
+                    </span>
+                    <ParBar row={row} />
+                  </td>
+{!hidden.has('Vel/day') ? (
+                  <td data-label="Vel/day" className="iv-r iv-num">
+                    {row.velocity === null ? EM : listPace(row.velocity, row.uom)}
+                  </td>
+ ) : null}
+{!hidden.has('Runway') ? (
+                  <td data-label="Runway" className="iv-r iv-num">
+                    {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
+                  </td>
+ ) : null}
+{!hidden.has('Your price') ? (
+                  <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
+                    {canManage ? (
+                      <HousePriceCell
+                        inventoryId={row.id}
+                        wineName={row.name ?? `this ${thing}`}
+                        bottle={row.bottle}
+                        glass={row.glass}
+                        advice={advice}
+                        canEdit
+                        onChanged={() => fns.current.onPriceChanged()}
+                        money={(n) => cellMoney(n, currency)}
+                      />
+                    ) : (
+                      <>
+                        {cellMoney(row.bottle, currency)}
+                        <span className="iv-dim"> · </span>
+                        {cellMoney(row.glass, currency)}
+                      </>
+                    )}
+                  </td>
+ ) : null}
+{!hidden.has('Value') ? (
+                  <td data-label="Value at cost" className="iv-r iv-num">
+                    {row.rollupReadable ? cellMoney(row.value, currency) : 'could not be read'}
+                  </td>
+ ) : null}
+                  <td data-label="Status" className="iv-status" data-standing={row.standing}>
+                    <span className="iv-dot" aria-hidden />
+                    {statusWord(row)}
+                  </td>
+                </tr>
+    </>
+  );
+});
+
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
   // A phone cannot read nine columns: it gets two-line cards (critic c2 P0-2).
@@ -87,6 +251,17 @@ export default function InventoryTable(props: InventoryTableProps) {
   });
   const hidden = showEmpty ? new Set<string>() : empty;
   const cols = COLUMNS.filter((c) => !hidden.has(c));
+  // A new Set each render would redraw every row; the names are the identity.
+  const hiddenKey = [...hidden].sort().join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableHidden = useMemo(() => hidden, [hiddenKey]);
+  // The page hands new function objects every render; rows read the latest
+  // through this ref and take a toggle whose identity never changes.
+  const fns = useRef<RowFns>({ zoneName, onPriceChanged, onSelect: props.onSelect });
+  fns.current = { zoneName, onPriceChanged, onSelect: props.onSelect };
+  const onToggleRef = useRef(onToggle);
+  onToggleRef.current = onToggle;
+  const toggle = useCallback((id: string) => onToggleRef.current(id), []);
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const groupHeads = grouped ? counts.filter((c) => c > 0).length : 0;
@@ -243,128 +418,29 @@ export default function InventoryTable(props: InventoryTableProps) {
             const i = win.start + k;
             const sev = severity(row);
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
-            const open = openId === row.id;
-            // A counted good's unit is said once, after its last figure; nothing read, nothing to say.
-            const tail = row.par === null && row.stock === null ? null : listUnitTail(row.uom, row.par ?? row.stock);
             return (
-              <Fragment key={row.id}>
-                {startsGroup ? (
-                  <tr className="iv-group" aria-rowindex={i + heads(i) + 2}>
-                    <td colSpan={span}>
-                      {SEVERITY_GROUP[sev]}
-                      {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
-                    </td>
-                  </tr>
-                ) : null}
-                <tr
-                  id={`iv-row-${row.id}`}
-                  className="iv-row"
-                  aria-rowindex={i + heads(i) + (startsGroup ? 1 : 0) + 2}
-                  data-testid={`inv-row-${row.id}`}
-                  data-standing={row.standing}
-                  aria-selected={open}
-                  onClick={() => onToggle(row.id)}
-                >
-                  {selecting ? (
-                    <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        className="iv-focus"
-                        aria-label={`Select ${row.name ?? `this ${thing}`}`}
-                        checked={props.selected!.has(row.id)}
-                        onChange={() => props.onSelect!(row.id)}
-                      />
-                    </td>
-                  ) : null}
-                  <td data-label={nameHead} className="iv-title">
-                    <button
-                      type="button"
-                      className="iv-titlebtn iv-focus"
-                      data-row-id={row.id}
-                      aria-expanded={open}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggle(row.id);
-                      }}
-                    >
-                      <span className="iv-name">
-                        {row.name ?? `Unnamed ${thing}`}
-                        {row.abc ? (
-                          <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
-                            {row.abc}
-                          </span>
-                        ) : null}
-                      </span>
-                      {/* No producer and no vintage: no line, never a bare dash (N-18). */}
-                      {row.producer || row.vintage !== null ? (
-                        <span className="iv-producer">
-                          {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ')}
-                        </span>
-                      ) : null}
-                    </button>
-                    <NameHint inventoryId={row.id} />
-                  </td>
-{!hidden.has('Type') ? (
-                  <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
-                    {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}
-                  </td>
- ) : null}
-{!hidden.has('Zone') ? (
-                  <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
- ) : null}
-                  <td data-label="Live / shadow · par" className="iv-r iv-num">
-                    <span>
-                      <span className="iv-live">{listFigure(row.stock, row.uom)}</span>
-                      <span className="iv-dim"> / {listFigure(row.shadow, row.uom)}</span>
-                      {' · '}
-                      {listFigure(row.par, row.uom)}
-                      {tail === null ? null : ` ${tail}`}
-                    </span>
-                    <ParBar row={row} />
-                  </td>
-{!hidden.has('Vel/day') ? (
-                  <td data-label="Vel/day" className="iv-r iv-num">
-                    {row.velocity === null ? EM : listPace(row.velocity, row.uom)}
-                  </td>
- ) : null}
-{!hidden.has('Runway') ? (
-                  <td data-label="Runway" className="iv-r iv-num">
-                    {row.runway === null ? EM : `${fmtCount(Math.round(row.runway))}d`}
-                  </td>
- ) : null}
-{!hidden.has('Your price') ? (
-                  <td data-label="Your price" className="iv-r iv-num" onClick={(e) => e.stopPropagation()}>
-                    {canManage ? (
-                      <HousePriceCell
-                        inventoryId={row.id}
-                        wineName={row.name ?? `this ${thing}`}
-                        bottle={row.bottle}
-                        glass={row.glass}
-                        advice={advice}
-                        canEdit
-                        onChanged={onPriceChanged}
-                        money={(n) => cellMoney(n, currency)}
-                      />
-                    ) : (
-                      <>
-                        {cellMoney(row.bottle, currency)}
-                        <span className="iv-dim"> · </span>
-                        {cellMoney(row.glass, currency)}
-                      </>
-                    )}
-                  </td>
- ) : null}
-{!hidden.has('Value') ? (
-                  <td data-label="Value at cost" className="iv-r iv-num">
-                    {row.rollupReadable ? cellMoney(row.value, currency) : 'could not be read'}
-                  </td>
- ) : null}
-                  <td data-label="Status" className="iv-status" data-standing={row.standing}>
-                    <span className="iv-dot" aria-hidden />
-                    {statusWord(row)}
-                  </td>
-                </tr>
-              </Fragment>
+              <TableRow
+                key={row.id}
+                row={row}
+                open={openId === row.id}
+                selecting={selecting}
+                selected={selecting && props.selected!.has(row.id)}
+                span={span}
+                rowIndex={i + heads(i) + 2}
+                groupSev={startsGroup ? sev : null}
+                groupCount={startsGroup ? counts[sev] : 0}
+                thing={thing}
+                nameHead={nameHead}
+                hidden={stableHidden}
+                currency={currency}
+                canManage={canManage}
+                advice={advice}
+                libraryUnread={props.libraryUnread === true}
+                locations={props.locations}
+                locationsUnavailable={props.locationsUnavailable}
+                toggle={toggle}
+                fns={fns}
+              />
             );
           })}
           {win.after > 0 ? (
