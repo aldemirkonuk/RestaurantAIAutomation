@@ -304,6 +304,19 @@ export class GoalsService {
     );
   }
 
+  /**
+   * A percent measure is scored as a 0-1 share (`wine_attach_rate`: the share
+   * of checks that carry a wine), so a target above 1 is more than the whole.
+   * The goals form sent "50" as typed and the goal then read "5000.0%" (r31
+   * walk w3, F1); the form now sends 0.5, and the writer refuses the rest.
+   */
+  static percentTargetRefusal(metricKey: string, target: number): string | null {
+    if (GoalsService.SUPPORTED_METRICS[metricKey]?.unit !== "percent") return null;
+    return target > 1
+      ? `A ${GoalsService.SUPPORTED_METRICS[metricKey].label.toLowerCase()} target is a share of the whole, from 0 to 1: 50% is 0.5, and ${target} is more than the whole.`
+      : null;
+  }
+
   async createGoal(
     restaurantId: string,
     input: {
@@ -330,6 +343,8 @@ export class GoalsService {
     }
     if (!(Number(input.targetValue) > 0))
       throw new Error("targetValue must be > 0");
+    const overWhole = GoalsService.percentTargetRefusal(input.metricKey, Number(input.targetValue));
+    if (overWhole) throw new Error(overWhole);
     const sourceRuleKey =
       input.sourceRuleKey === undefined || input.sourceRuleKey === null
         ? null
@@ -449,6 +464,19 @@ export class GoalsService {
     if (input.targetValue !== undefined) {
       const target = Number(input.targetValue);
       if (!(target > 0)) throw new Error("targetValue must be > 0");
+      if (target > 1) {
+        // Only a target above the whole needs the goal's measure: read it then.
+        const { data: kept, error: keptError } = await this.dbService
+          .getClient()
+          .from("analytics_goals")
+          .select("metric_key")
+          .eq("restaurant_id", restaurantId)
+          .eq("id", goalId)
+          .maybeSingle();
+        if (keptError) throw new Error(keptError.message);
+        const overWhole = kept ? GoalsService.percentTargetRefusal(String(kept.metric_key), target) : null;
+        if (overWhole) throw new Error(overWhole);
+      }
       patch.target_value = target;
     }
     if (input.deadline !== undefined) {
