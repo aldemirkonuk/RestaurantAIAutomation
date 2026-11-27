@@ -8,6 +8,7 @@ import { MemoryRouter } from 'react-router-dom';
 import ItemUsedIn, {
   DRINKS_DO_NOT_DRAW,
   DRINK_RECIPES_UNREAD,
+  NAMED_NOT_LINKED,
   OLD_RECIPE_BOX,
   drinkHref,
   drinkGroups,
@@ -20,6 +21,8 @@ import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
 const EUR = { state: 'recorded', code: 'EUR' } as const;
 const ok = <T,>(lines: T[]) => ({ readable: true, lines, source: 's' });
+/** What the gateway sends when it read each drink's current recipe. */
+const oldBox = <T,>(lines: T[]) => ({ ...ok(lines), withoutCurrentRecipe: true as const });
 const line = (id: string, name: string) => ({ menuItemId: id, menuId: 'menu', name, byGlassPrice: 18, bottlePrice: 92 });
 
 const NO_DISHES: DishesLoad = { status: 'ready', data: { dishes: [] } };
@@ -58,11 +61,39 @@ describe('Used in', () => {
   it('a drink only the old recipe box holds is marked read only, with its quantity (r103 need 7)', () => {
     render(
       <MemoryRouter>
-        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load({ inDrinkRecipes: ok([]) })} canManage currency={EUR} onRetry={vi.fn()} />
+        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Rakı sour', quantity: 40, unit: 'ml' }]) })} canManage currency={EUR} onRetry={vi.fn()} />
       </MemoryRouter>,
     );
     expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(`40 ml · ${OLD_RECIPE_BOX}`);
     expect(OLD_RECIPE_BOX).toBe('old recipe box, read only');
+  });
+
+  it('a card is not called old unless the gateway said the drink has no current recipe, even when the recipe list is read (r103 finding 5)', () => {
+    render(
+      <MemoryRouter>
+        <ItemUsedIn dishes={NO_DISHES} onRetryDishes={vi.fn()} load={load({ inDrinkRecipes: ok([]) })} canManage currency={EUR} onRetry={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain('40 ml');
+    expect(screen.getByTestId('ivd-used-cocktails').textContent).not.toContain(OLD_RECIPE_BOX);
+  });
+
+  it('a card whose current recipe names the good without a link says so, and is not called old', () => {
+    render(
+      <MemoryRouter>
+        <ItemUsedIn
+          dishes={NO_DISHES}
+          onRetryDishes={vi.fn()}
+          load={load({ inCocktails: oldBox([{ cocktailId: 'c1', name: 'Converted', quantity: 50, unit: 'ml', namedNotLinked: true as const }]) })}
+          canManage
+          currency={EUR}
+          onRetry={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    const text = screen.getByTestId('ivd-used-cocktails').textContent ?? '';
+    expect(text).toContain(`Converted50 ml · ${NAMED_NOT_LINKED}`);
+    expect(text).not.toContain(OLD_RECIPE_BOX);
   });
 
   it('a card is not called old when the recipe read failed, since it may have a current recipe', () => {
@@ -201,12 +232,11 @@ describe('Used in', () => {
         dishes={NO_DISHES}
         onRetryDishes={vi.fn()}
         load={load({
-          inCocktails: ok([
+          inCocktails: oldBox([
             { cocktailId: 'c1', name: 'Rakı sour', quantity: 0.1 + 0.2, unit: 'oz' },
             { cocktailId: 'c1', name: 'Rakı sour', quantity: 0.1 + 0.2, unit: 'oz' },
             { cocktailId: 'c2', name: 'Lion milk', quantity: 29.5735295625, unit: 'ml' },
           ]),
-          inDrinkRecipes: ok([]),
         })}
         canManage
         currency={EUR}
@@ -274,7 +304,7 @@ describe('Used in', () => {
     });
 
     it('lists a drink once: its recipe line, not its card again', () => {
-      draw({ inCocktails: ok([c('c1', 'Rakı sour'), c('c3', 'Old card')]), inDrinkRecipes: ok([d('c1', 'Rakı sour')]) });
+      draw({ inCocktails: oldBox([c('c1', 'Rakı sour'), c('c3', 'Old card')]), inDrinkRecipes: ok([d('c1', 'Rakı sour')]) });
       const cards = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
       expect(cards.map((li) => li.textContent)).toEqual(['Old card40 ml · old recipe box, read only']);
       expect(within(screen.getByTestId('ivd-used-drink-recipes')).getByText(/Rakı sour/)).toBeTruthy();
@@ -499,7 +529,7 @@ describe('In drink recipes, with their cards (the same as a dish)', () => {
 
   it('a drink with cards is not listed again from its cocktail card', () => {
     mountDrinks(drinksReady(drink()), {
-      over: { inCocktails: ok([{ cocktailId: 'c1', name: 'House G&T', quantity: 50, unit: 'ml' }, { cocktailId: 'c3', name: 'Old card', quantity: 1, unit: 'ml' }]) },
+      over: { inCocktails: oldBox([{ cocktailId: 'c1', name: 'House G&T', quantity: 50, unit: 'ml' }, { cocktailId: 'c3', name: 'Old card', quantity: 1, unit: 'ml' }]) },
     });
     const cards = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
     expect(cards.map((li) => li.textContent)).toEqual(['Old card1 ml · old recipe box, read only']);

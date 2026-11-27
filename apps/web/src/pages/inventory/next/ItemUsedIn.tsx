@@ -230,7 +230,7 @@ function Group<T>({
   title: string;
   group: ItemUsedInGroup<T>;
   note?: string;
-  line: (l: T, i: number) => { key: string; text: string; side?: string; to?: string };
+  line: (l: T, i: number) => { key: string; text: string; side?: string; tag?: string; to?: string };
   testid: string;
   /** Only the "named, not linked" group: nothing to link is nothing to say. */
   hideWhenEmpty?: boolean;
@@ -267,7 +267,7 @@ function Group<T>({
           return (
             <li key={v.key}>
               {v.to ? <LineLink to={v.to}>{v.text}</LineLink> : <span>{v.text}</span>}
-              {v.side ? <span className="ivd-dim">{v.side}</span> : null}
+              {v.side || v.tag ? <span className="ivd-dim">{[v.side, v.tag].filter(Boolean).join(' · ')}</span> : null}
             </li>
           );
         })}
@@ -302,6 +302,8 @@ export function drinkGroups<C extends { cocktailId: string }, D extends { cockta
 
 /** Said on a drink only the old recipe box holds: it shows, and cannot be edited here (the box no longer saves). */
 export const OLD_RECIPE_BOX = 'old recipe box, read only';
+/** Said on an old line whose drink's current recipe names this good without a link: the card is not history. */
+export const NAMED_NOT_LINKED = 'named on its recipe, not linked';
 
 export const DRINK_RECIPES_SOURCE = 'Drinks whose current recipe has a line linked to this item.';
 
@@ -361,8 +363,8 @@ export default function ItemUsedIn({
     // A figured drink stands in for a used-in line here only to be grouped; it is drawn by DrinkBlock.
     const groups = drinkGroups(load.data.inCocktails, recipeSource as UsedIn['inDrinkRecipes']);
     const inCocktails = groups.cards;
-    // Only a read recipe list can say a drink has no current recipe; an unread one cannot, so then no card is called old.
-    const oldBoxKnown = read(recipeSource as UsedIn['inDrinkRecipes']);
+    // Only the gateway can say a drink has no current recipe, and only when it read them; without its word no card is called old.
+    const oldBoxKnown = load.data.inCocktails.withoutCurrentRecipe === true;
     const inDrinkRecipes = groups.recipes;
     const figuredRecipes = figured !== null && inDrinkRecipes !== null ? figured : null;
     const drinksFailed =
@@ -389,8 +391,9 @@ export default function ItemUsedIn({
           line={(c, i) => ({
             key: `${c.cocktailId}-${i}`,
             text: c.name,
+            tag: c.namedNotLinked ? NAMED_NOT_LINKED : oldBoxKnown ? OLD_RECIPE_BOX : undefined,
             to: drinkHref(c.cocktailId),
-            side: `${c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : ''}${c.quantity !== null && oldBoxKnown ? ' · ' : ''}${oldBoxKnown ? OLD_RECIPE_BOX : ''}` || undefined,
+            side: c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
           })}
         />
         ) : null}
