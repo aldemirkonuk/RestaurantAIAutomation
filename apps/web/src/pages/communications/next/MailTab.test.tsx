@@ -433,6 +433,20 @@ describe('the tour on the Mail tab', () => {
 });
 
 describe("a person's threads (spec b)", () => {
+  it('a thread row with a blank subject says whose letter it is, never "No subject" (r110 mail-r110-7)', async () => {
+    routes['/mail/threads'] = (p) => ({
+      person: { key: p.with, kind: 'vendor', name: 'Bodega Álvaro' },
+      threads: [
+        { key: 'gm:blank', subject: null, messageCount: 1, lastAt: '2026-11-06T09:00:00Z', lastDirection: 'inbound', waiting: true, orderId: null, orderNumber: null },
+      ],
+      next: null,
+    });
+    mount('/communications?tab=mail&with=vendor%3Ap1');
+    const row = await screen.findByTestId('mail-thread-row');
+    expect(row).toHaveTextContent('A letter from Bodega Álvaro, with no subject line');
+    expect(row).not.toHaveTextContent('No subject');
+  });
+
   it('?with= shows that person\'s threads: subject, count, who wrote last, order', async () => {
     routes['/mail/threads'] = (p) => ({
       person: { key: p.with, kind: 'vendor', name: 'Bodega Álvaro' },

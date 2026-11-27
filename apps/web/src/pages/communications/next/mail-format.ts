@@ -184,6 +184,18 @@ export interface MailPersonRef {
   name: string | null;
 }
 
+/**
+ * What a thread is called when its subject is read: the subject itself, or,
+ * when the letter had none (null or only blanks), the person it is with in
+ * words. "No subject" told the reader nothing about whose letter it was.
+ */
+export function threadTitle(subject: string | null | undefined, personName: string | null | undefined): string {
+  const s = (subject ?? '').trim();
+  if (s) return subject as string;
+  const n = (personName ?? '').trim();
+  return n ? `A letter from ${n}, with no subject line` : 'A letter with no subject line';
+}
+
 export interface MailThreadRow {
   key: string;
   subject: string | null;

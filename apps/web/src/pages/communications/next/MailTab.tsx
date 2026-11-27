@@ -78,6 +78,7 @@ import {
   threadCountWords,
   todayLine,
   unsentChipText,
+  threadTitle,
   type MailAnswer,
   type MailboxReader,
   type MailPersonRow,
@@ -498,7 +499,7 @@ function PersonThreads({
                     {t.waiting && <WaitingDot on={on} />}
                     <NewChip on={t.newToYou} />
                     <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>
-                      {t.subject ?? 'No subject'}
+                      {threadTitle(t.subject, person.name)}
                     </span>
                     {t.orderNumber && (
                       <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>order {t.orderNumber}</span>
