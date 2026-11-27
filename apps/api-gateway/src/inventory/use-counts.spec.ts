@@ -33,13 +33,25 @@ function seed() {
     { id: "c-b", restaurant_id: B, deleted_at: null },
   ];
   db.tables.dishes = [{ id: "d-plate", restaurant_id: A, deleted_at: null }];
+  // Legacy: Campari is used only by an older cocktail_ingredients row of a live house drink.
+  db.tables.restaurant_inventory = [
+    { id: "campari", restaurant_id: A, beverage_id: "bev-campari", master_wine_id: null },
+    { id: "gin", restaurant_id: A, beverage_id: "bev-gin", master_wine_id: null },
+    { id: "b-campari", restaurant_id: B, beverage_id: "bev-campari", master_wine_id: null },
+  ];
+  db.tables.cocktail_ingredients = [
+    { id: "i1", cocktail_id: "c-sour", beverage_id: "bev-campari", wine_id: null },
+    { id: "i2", cocktail_id: "c-sour", beverage_id: "bev-gin", wine_id: null }, // also a current line: counts once
+    { id: "i3", cocktail_id: "c-gone", beverage_id: "bev-campari", wine_id: null }, // deleted drink
+    { id: "i4", cocktail_id: "c-b", beverage_id: "bev-campari", wine_id: null }, // another house
+  ];
   return { db, svc: new ItemUseCountsService({ supabase: db } as any) };
 }
 
 describe("ItemUseCountsService (r105 g5)", () => {
   it("counts each current recipe once, and leaves out old versions and deleted drinks", async () => {
     const { svc } = seed();
-    expect(await svc.counts(A)).toEqual({ counts: { gin: 2 } });
+    expect(await svc.counts(A)).toEqual({ counts: { gin: 2, campari: 1 } });
   });
 
   it("never counts another house's lines", async () => {
@@ -47,7 +59,7 @@ describe("ItemUseCountsService (r105 g5)", () => {
     const a = await svc.counts(A);
     const b = await svc.counts(B);
     expect(a.counts.vodka).toBeUndefined();
-    expect(b.counts).toEqual({ gin: 1, vodka: 1 });
+    expect(b.counts).toEqual({ gin: 1, vodka: 1, "b-campari": 1 });
   });
 
   it("a failed read is unread, never an empty map that reads as nothing is used", async () => {
@@ -55,6 +67,22 @@ describe("ItemUseCountsService (r105 g5)", () => {
     const real = db.from.bind(db);
     (db as any).from = (t: string) => {
       if (t === "recipe_current_dish") throw new Error("boom");
+      return real(t);
+    };
+    await expect(svc.counts(A)).rejects.toThrow(USE_COUNTS_UNREAD);
+  });
+
+  it("a good used only by a legacy drink counts at least 1 (the drawer says used, so the list must)", async () => {
+    const { svc } = seed();
+    const { counts } = await svc.counts(A);
+    expect(counts.campari).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a failed legacy read is unread, not 0", async () => {
+    const { db, svc } = seed();
+    const real = db.from.bind(db);
+    (db as any).from = (t: string) => {
+      if (t === "cocktail_ingredients") throw new Error("boom");
       return real(t);
     };
     await expect(svc.counts(A)).rejects.toThrow(USE_COUNTS_UNREAD);
