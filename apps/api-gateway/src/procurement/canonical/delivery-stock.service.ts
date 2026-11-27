@@ -386,21 +386,29 @@ function paidLine(l: LineRow): LineRow {
   return { ...l, qty_bottles: paidBottles(l) };
 }
 
-/** Each invoice's lines with its corrections laid over them (r109); a door count's lines as stored. */
+/**
+ * Each invoice's lines with its corrections laid over them (r109); a door
+ * count's lines as stored. A corrected line kind comes back on its paper's
+ * `extracted_lines`, the only place costing reads it (r110 invoices-8, D-r110-8b).
+ */
 function overlaid(
   rows: LineRow[],
   corrections: Map<string, CorrectionRowLite[]>,
   papers: PaperHeaderRow[],
-): LineRow[] {
-  if (!corrections.size) return rows;
+): { rows: LineRow[]; papers: PaperHeaderRow[] } {
+  if (!corrections.size) return { rows, papers };
   const out = [...rows];
+  const heads = new Map(papers.map((p) => [p.id, p]));
   for (const [docId, list] of corrections) {
     const at = rows.map((r, i) => (r.document_id === docId ? i : -1)).filter((i) => i >= 0);
-    const head = (papers.find((h) => h.id === docId) ?? { id: docId }) as unknown as Record<string, unknown>;
+    const paper = heads.get(docId);
+    const head = (paper ?? { id: docId }) as unknown as Record<string, unknown>;
     const laid = overlayCorrections(head, at.map((i) => rows[i] as unknown as Record<string, unknown>), list);
     at.forEach((i, k) => (out[i] = laid.lines[k] as unknown as LineRow));
+    if (paper && laid.header.extracted_lines !== head.extracted_lines)
+      heads.set(docId, { ...paper, extracted_lines: laid.header.extracted_lines });
   }
-  return out;
+  return { rows: out, papers: papers.map((p) => heads.get(p.id) ?? p) };
 }
 
 /** What a correction re-cost did, per delivery the paper is the invoice on (r109). */
@@ -1660,7 +1668,9 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      const rows = overlaid((read.data ?? []) as unknown as LineRow[], corrections, papers);
+      const laid = overlaid((read.data ?? []) as unknown as LineRow[], corrections, papers);
+      const rows = laid.rows;
+      papers = laid.papers;
       // R8: a weighed line is costed per one of its ITEM's unit.
       const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
       if (!units.ok) return units;

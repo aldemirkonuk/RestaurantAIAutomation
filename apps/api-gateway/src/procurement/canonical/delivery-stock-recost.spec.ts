@@ -104,6 +104,17 @@ describe("DeliveryStockService.recostAfterCorrection (r109, DD-r108-20)", () => 
     }
   });
 
+  it("a line corrected out of goods into a fee re-costs the lots (r110 invoices-8, D-r110-8b)", async () => {
+    given({
+      head: { freight: 50, extracted_lines: [{ lineNo: 1, lineKind: "goods" }, { lineNo: 2, lineKind: "goods" }] },
+      lines: [line(), line({ line_no: 2, inventory_id: null, qty: 1, qty_bottles: null, uom: null, pack_size: null, unit_price: 50, line_total: 50 })],
+      corrections: [fix(2, "lines[1].lineKind", "fee")],
+    });
+    const r = await recost("lines[1].lineKind", 2);
+    expect(r.ok && r.value.costField).toBe(true);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([65]);
+  });
+
   it("a corrected quantity re-derives the bottles from the corrected count", async () => {
     // The paper printed 2 cases of 6 at 60 a case (line 120); it was 3 cases.
     given({
