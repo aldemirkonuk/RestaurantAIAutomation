@@ -191,7 +191,7 @@ export const documentsApi = {
   },
 
   /**
-   * Lines whose cost moved against the good's last invoiced cost (r104 g4).
+   * Lines whose price moved against the good's last other verified paper (r104 g4, r108 g15).
    * Information only: it never blocks a verification and never changes a cost.
    */
   async priceMoves(id: string): Promise<{
@@ -213,6 +213,48 @@ export const documentsApi = {
   }> {
     try {
       const { data } = await apiClient.get(`/procurement/documents/${id}/price-moves`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Another vendor's last price for each paired line (r108 g14). Owner and
+   * manager only: the gateway answers anyone else with a 403 in words.
+   */
+  async vendorPrices(id: string): Promise<{
+    paperCurrency: string | null
+    providerId: string | null
+    notCompared: 'currency_unknown' | 'vendor_unknown' | null
+    lines: Array<
+      | { lineId: string; lineNo: number; description: string | null; compared: false; reason: string }
+      | {
+          lineId: string
+          lineNo: number
+          description: string | null
+          compared: true
+          cheaper: boolean
+          thisPaper: number
+          sentence: string | null
+        }
+    >
+  }> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/vendor-prices`)
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * A vendor's statement against this house's papers (r109 g5): matched by
+   * document number, never by amount alone. Owner and manager only.
+   */
+  async statementTieout(id: string): Promise<StatementTieout> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/statement-tieout`)
       return data
     } catch (error) {
       return rethrowSpoken(error)
@@ -498,3 +540,29 @@ export function allocatedChargesFor(doc: ProcurementDocument | null): number {
 }
 
 export default documentsApi
+
+/** r109 g5: one statement row against the house's paper of that number. */
+export interface StatementTieoutRow {
+  docNumber: string | null
+  docDate: string | null
+  kind: 'invoice' | 'credit'
+  amount: string | null
+  verdict: 'checked_same' | 'on_file_not_checked' | 'amount_differs' | 'never_received' | 'not_compared'
+  /** Statement minus paper; only for amount_differs. */
+  differsBy: string | null
+  reason: string | null
+  paperId: string | null
+}
+
+export interface StatementTieout {
+  currency: string | null
+  providerId: string | null
+  notCompared: 'vendor_unknown' | null
+  entriesRead: number
+  rows: StatementTieoutRow[]
+  /** Only papers in the statement's money; each row says its own money (r110 F3). */
+  notOnStatement: { id: string; docNumber: string | null; docDate: string | null; total: string | null; currency: string | null; kind: 'invoice' | 'credit' }[]
+  /** Papers left out of notOnStatement because their money is another or not known. */
+  notOnStatementOtherMoney?: number
+  paymentsIgnored: number
+}

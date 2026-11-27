@@ -71,6 +71,7 @@ import {
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import { readLaneRows, writeLaneRows } from './laneMemory';
+import { ReceiptsStatementTieout } from './ReceiptsStatementTieout';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -868,7 +869,7 @@ function PairedCell({
  * line between them; each now sits under its own label and a rule.
  */
 /**
- * A line whose cost moved against the good's last invoiced cost, said in words
+ * A line whose price moved against the good's last other paper, said in words
  * (r104 g4). Information only. A line with no earlier cost, or priced in a
  * different unit, says nothing; a failed read says it failed rather than
  * reading as "nothing moved".
@@ -883,7 +884,7 @@ function PriceMovesNote({ docId }: { docId: string }) {
   if (q.isError)
     return (
       <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
-        The goods&rsquo; earlier costs could not be read, so no price was compared with them.
+        The goods&rsquo; earlier papers could not be read, so no price was compared with them.
       </p>
     );
   const all = q.data?.lines ?? [];
@@ -904,10 +905,61 @@ function PriceMovesNote({ docId }: { docId: string }) {
       {moved.map((l) => (
         <li key={l.lineId}>
           Line {l.lineNo}
-          {l.description ? `, ${l.description}` : ''}: {l.sentence}, against its last invoiced cost.
+          {l.description ? `, ${l.description}` : ''}: {l.sentence}, against its last paper.
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Another vendor's lower price for the same good (r108 g14): one quiet line per
+ * paired line, only when the other price is lower. A text swap, no motion. The
+ * line's height is reserved while it loads and stays, so nothing under it moves.
+ * Owners and managers only: the gateway refuses anyone else, so staff never ask.
+ */
+function VendorPricesNote({ docId }: { docId: string }) {
+  const { activeRole, user } = useAuth();
+  const allowed = canSeeCreditLedger(activeRole, user?.role);
+  const q = useQuery({
+    queryKey: ['receipts-next', 'vendor-prices', docId],
+    queryFn: () => documentsApi.vendorPrices(docId),
+    staleTime: 60_000,
+    retry: false,
+    enabled: allowed,
+  });
+  if (!allowed) return null;
+  const cheaper = (q.data?.lines ?? []).flatMap((l) => (l.compared && l.cheaper && l.sentence ? [l] : []));
+  return (
+    <div data-testid="vendor-prices" style={{ minHeight: 16, margin: '8px 0 0', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+      {q.isError ? (
+        <p role="status" style={{ margin: 0 }}>
+          Other vendors&rsquo; prices could not be read, so none were compared.
+        </p>
+      ) : (
+        cheaper.length > 0 && (
+          <ul aria-label="Cheaper from another vendor" style={{ margin: 0, paddingLeft: 16 }}>
+            {cheaper.map((l) => (
+              <li key={l.lineId}>
+                Line {l.lineNo}
+                {l.description ? `, ${l.description}` : ''}: {l.sentence}.
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
+
+/** r109 g5: a statement against the house's papers, owners and managers only; staff never ask. */
+function StatementTieoutPart({ docId }: { docId: string }) {
+  const { activeRole, user } = useAuth();
+  if (!canSeeCreditLedger(activeRole, user?.role)) return null;
+  return (
+    <CardPart label="Against your papers">
+      <ReceiptsStatementTieout docId={docId} />
+    </CardPart>
   );
 }
 
@@ -1406,7 +1458,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
         <PriceMovesNote docId={doc.id} />
         <HeldCostNote docId={doc.id} />
+        <VendorPricesNote docId={doc.id} />
       </CardPart>
+
+      {doc.doc_type === 'statement' && <StatementTieoutPart docId={doc.id} />}
 
       {/*
         The paper is no longer beside these lines: the sheet above brings it on

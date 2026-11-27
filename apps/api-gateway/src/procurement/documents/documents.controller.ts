@@ -47,7 +47,15 @@ import { DeliveryStockService } from "../canonical/delivery-stock.service";
 import { LineMappingService } from "../canonical/line-mapping.service";
 import { DoorCountDto } from "../dto/deliveries.dto";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
-import { DEFAULT_MOVE_THRESHOLD_PCT, priceMove } from "./price-move";
+import {
+  DEFAULT_MOVE_THRESHOLD_PCT,
+  addPerBottle,
+  money,
+  perBottlePrinted,
+  printedPriceMove,
+  type PerBottle,
+  type PrintedLine,
+} from "./price-move";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -59,6 +67,8 @@ import {
   documentVerifySealArgs,
 } from "./document-seal";
 import { CORRECTABLE_PATHS, splitPath } from "../canonical/correctable-paths";
+import { tieOutStatement, TieOutPaper } from "./statement-tieout";
+import type { ParsedStatementEntry } from "./parsed-document";
 import {
   assertHoldsHouseMoney,
   doorEchoOf,
@@ -136,6 +146,18 @@ function requireUuid(value: string, label: string): void {
     HttpStatus.BAD_REQUEST,
   );
 }
+
+/** How many of the newest papers the first price read takes (r108 g15). */
+const LAST_PAPER_WINDOW = 200;
+interface Earlier {
+  price: PerBottle;
+  formatMl: number | null;
+  providerId?: string | null;
+  on?: string | null;
+}
+/** Another vendor's price counts for this long (r108 g14). */
+const OTHER_VENDOR_DAYS = 180;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
@@ -1508,9 +1530,9 @@ export class DocumentsController {
 
   @Get(":id/price-moves")
   @ApiOperation({
-    summary: "Lines whose cost moved against the good's last invoiced cost",
+    summary: "Lines whose printed price per bottle moved against the good's last other verified paper",
     description:
-      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, the good has an invoiced lot, and both are costed per bottle; every other line is listed as not compared, with the reason.",
+      "Information only: it never blocks a verification and never changes a cost. A line is compared only when it is mapped to a good, its printed total can be counted per bottle, and another verified paper of this house in the same currency priced that good per bottle (r108 g15); every other line is listed as not compared, with the reason.",
   })
   @ApiQuery({ name: "thresholdPct", required: false })
   async priceMoves(
@@ -1564,7 +1586,7 @@ export class DocumentsController {
           : null;
     const { data: lines, error } = await client
       .from("procurement_document_lines")
-      .select("id, line_no, description, uom, unit_price, inventory_id")
+      .select("id, line_no, description, uom, unit_price, inventory_id, line_total, qty, pack_size, qty_bottles, format_ml")
       .eq("document_id", id)
       .eq("restaurant_id", user.restaurantId)
       .order("line_no", { ascending: true });
@@ -1573,36 +1595,18 @@ export class DocumentsController {
         `The lines could not be read, so no price was compared: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
-    const rows = (lines ?? []) as {
+    type Line = PrintedLine & {
       id: string;
       line_no: number;
       description: string | null;
-      uom: string | null;
-      unit_price: number | string | null;
       inventory_id: string | null;
-    }[];
+      format_ml?: number | null;
+    };
+    const rows = (lines ?? []) as Line[];
     const goods = [...new Set(rows.map((l) => l.inventory_id).filter((x): x is string => !!x))];
-    const last = new Map<string, number>();
-    if (goods.length) {
-      const { data: lots, error: lotErr } = await client
-        .from("inventory_lots")
-        .select("inventory_id, unit_cost, received_at")
-        .eq("restaurant_id", user.restaurantId)
-        .eq("cost_provenance", "invoice")
-        .in("inventory_id", goods)
-        .not("unit_cost", "is", null)
-        .order("received_at", { ascending: false })
-        .limit(1000);
-      if (lotErr)
-        throw new HttpException(
-          `The goods' last invoiced costs could not be read, so no price was compared: ${lotErr.message}`,
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      // Newest first: the first lot seen for a good is its last invoiced cost.
-      for (const lot of (lots ?? []) as { inventory_id: string; unit_cost: number | string }[])
-        if (!last.has(lot.inventory_id)) last.set(lot.inventory_id, Number(lot.unit_cost));
-    }
-    const perBottle = (uom: string | null) => /^(bottle|btl|bt)$/i.test((uom ?? "").trim());
+    // r108 g15: against the newest OTHER verified paper's printed price, not a
+    // lot cost (landed, tax basis, FX and revaluations; maybe this paper's own).
+    const last = currencyReason ? new Map<string, Earlier>() : await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId);
     return {
       thresholdPct: threshold,
       // Carried so the page can say WHY nothing was compared (r106): the two
@@ -1610,19 +1614,261 @@ export class DocumentsController {
       paperCurrency: paperCurrency || null,
       houseCurrency: houseCurrency || null,
       lines: rows.map((l) => {
+        const head = { lineId: l.id, lineNo: l.line_no, description: l.description };
+        if (currencyReason) return { ...head, compared: false as const, reason: currencyReason };
+        const next = perBottlePrinted(l);
+        if (typeof next === "string") return { ...head, compared: false as const, reason: next };
         const prev = l.inventory_id ? last.get(l.inventory_id) : undefined;
-        const price = l.unit_price == null ? null : Number(l.unit_price);
-        // A lot's cost is per bottle. A line priced per case (or in a unit this
-        // does not know) is not converted here: it is not compared.
-        if (currencyReason)
-          return { lineId: l.id, lineNo: l.line_no, description: l.description, compared: false as const, reason: currencyReason };
-        const result = priceMove(
-          prev == null ? null : { cost: prev, unit: "bottle" },
-          { cost: price, unit: perBottle(l.uom) ? "bottle" : l.uom },
-          threshold,
-        );
-        return { lineId: l.id, lineNo: l.line_no, description: l.description, ...result };
+        // A 375 ml bottle is not the same unit as a 750 ml one of the good.
+        if (prev && prev.formatMl != null && l.format_ml != null && Number(prev.formatMl) !== Number(l.format_ml))
+          return { ...head, compared: false as const, reason: "unit_differs" as const };
+        return { ...head, ...printedPriceMove(prev?.price, next, threshold) };
       }),
+    };
+  }
+
+  /**
+   * Each good's printed price per bottle on the newest other verified paper of
+   * this house in this money (r108 g15): one bounded read, then limit(1) per
+   * good it missed, so a quarterly good is never lost off a row cap.
+   */
+  private async lastPrintedPrices(
+    paperId: string,
+    currency: string,
+    goods: string[],
+    restaurantId: string,
+    other?: { providerId: string; sinceIso: string },
+  ): Promise<Map<string, Earlier>> {
+    const last = new Map<string, Earlier>();
+    if (!goods.length) return last;
+    const client = this.db.getClient();
+    const read = async (only: string[], limit: number) => {
+      let q = client
+        .from("procurement_documents")
+        .select(
+          "id, verified_at, doc_date, provider_id, procurement_document_lines!inner(inventory_id, restaurant_id, line_total, qty, pack_size, qty_bottles, uom, format_ml)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "verified")
+        .neq("id", paperId)
+        .ilike("currency", currency)
+        .not("doc_type", "in", "(credit_memo,purchase_order,statement)");
+      // `<>` leaves a paper with no vendor out, which is wanted: a price with
+      // no vendor to name is no price to point at.
+      if (other) q = q.neq("provider_id", other.providerId).gte("verified_at", other.sinceIso);
+      const { data, error } = await q
+        .eq("procurement_document_lines.restaurant_id", restaurantId)
+        .in("procurement_document_lines.inventory_id", only)
+        .gt("procurement_document_lines.line_total", 0)
+        .order("verified_at", { ascending: false, nullsFirst: false })
+        .limit(limit);
+      if (error)
+        throw new HttpException(
+          `The goods' earlier papers could not be read, so no price was compared: ${error.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      // Newest first; two lines of one good on a paper are one price, summed.
+      for (const p of (data ?? []) as { id: string; verified_at?: string | null; doc_date?: string | null; provider_id?: string | null; procurement_document_lines: (PrintedLine & { inventory_id: string; format_ml?: number | null })[] }[]) {
+        const here = new Map<string, Earlier>();
+        for (const l of p.procurement_document_lines ?? []) {
+          if (!l.inventory_id || last.has(l.inventory_id)) continue;
+          const pb = perBottlePrinted(l);
+          if (typeof pb === "string") continue;
+          const seen = here.get(l.inventory_id);
+          here.set(l.inventory_id, {
+            price: seen ? addPerBottle(seen.price, pb) : pb,
+            formatMl: seen?.formatMl ?? l.format_ml ?? null,
+            providerId: p.provider_id ?? null,
+            on: p.doc_date ?? p.verified_at ?? null,
+          });
+        }
+        for (const [g, e] of here) last.set(g, e);
+      }
+    };
+    await read(goods, LAST_PAPER_WINDOW);
+    const missing = goods.filter((g) => !last.has(g));
+    await Promise.all(missing.map((g) => read([g], 1)));
+    return last;
+  }
+
+  @Get(":id/vendor-prices")
+  @ApiOperation({
+    summary: "Another vendor's last price for each good on this paper",
+    description:
+      "Owner and manager only. Per paired line: the newest line on a verified paper of a DIFFERENT vendor, same money, within 180 days, never this paper, counted per bottle by the price-moves rule (r108 g14). `cheaper` only when the other price is lower, and only then a `sentence`. Information only; it never changes a cost.",
+  })
+  async vendorPrices(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        "Another vendor's prices are shown to the owner and managers of the house.",
+        HttpStatus.FORBIDDEN,
+      );
+    const client = this.db.getClient();
+    const { data: paper, error: paperErr } = await client
+      .from("procurement_documents")
+      .select("id, currency, provider_id")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (paperErr)
+      throw new HttpException(
+        `The paper could not be read, so no vendor was compared: ${paperErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!paper)
+      throw new HttpException(
+        "This paper is not one of this house's, so no vendor was compared.",
+        HttpStatus.NOT_FOUND,
+      );
+    const paperCurrency = ((paper as { currency?: string | null }).currency ?? "").trim().toUpperCase();
+    const providerId = (paper as { provider_id?: string | null }).provider_id ?? null;
+    const none = (notCompared: "currency_unknown" | "vendor_unknown") => ({
+      paperCurrency: paperCurrency || null,
+      providerId,
+      notCompared,
+      lines: [] as never[],
+    });
+    if (!paperCurrency) return none("currency_unknown");
+    if (!providerId) return none("vendor_unknown");
+
+    const { data: lines, error } = await client
+      .from("procurement_document_lines")
+      .select("id, line_no, description, uom, inventory_id, line_total, qty, pack_size, qty_bottles, format_ml")
+      .eq("document_id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .not("inventory_id", "is", null)
+      .order("line_no", { ascending: true });
+    if (error)
+      throw new HttpException(
+        `The lines could not be read, so no vendor was compared: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    type Line = PrintedLine & { id: string; line_no: number; description: string | null; inventory_id: string; format_ml?: number | null };
+    const rows = (lines ?? []) as Line[];
+    const goods = [...new Set(rows.map((l) => l.inventory_id))];
+    const sinceIso = new Date(Date.now() - OTHER_VENDOR_DAYS * 86_400_000).toISOString();
+    const last = await this.lastPrintedPrices(id, paperCurrency, goods, user.restaurantId, { providerId, sinceIso });
+    const vendorIds = [...new Set([...last.values()].map((e) => e.providerId).filter((x): x is string => !!x))];
+    const names = new Map<string, string>();
+    if (vendorIds.length) {
+      const { data, error: nameErr } = await client
+        .from("providers")
+        .select("id, name, company_name")
+        .in("id", vendorIds);
+      if (nameErr)
+        throw new HttpException(
+          `The other vendors could not be named, so no vendor was compared: ${nameErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      for (const v of (data ?? []) as { id: string; name: string | null; company_name: string | null }[]) {
+        const n = (v.name ?? v.company_name ?? "").trim();
+        if (n) names.set(v.id, n);
+      }
+    }
+    const day = (iso: string | null | undefined) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+      return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}` : null;
+    };
+    return {
+      paperCurrency,
+      providerId,
+      notCompared: null as null,
+      lines: rows.map((l) => {
+        const head = { lineId: l.id, lineNo: l.line_no, description: l.description };
+        const mine = perBottlePrinted(l);
+        if (typeof mine === "string") return { ...head, compared: false as const, reason: mine };
+        const o = last.get(l.inventory_id);
+        if (!o) return { ...head, compared: false as const, reason: "no_other_vendor" as const };
+        // A 375 ml bottle is not the same unit as a 750 ml one of the good.
+        if (o.formatMl != null && l.format_ml != null && Number(o.formatMl) !== Number(l.format_ml))
+          return { ...head, compared: false as const, reason: "unit_differs" as const };
+        const vendor = (o.providerId && names.get(o.providerId)) || null;
+        const cheaper = o.price.cents * mine.milliBottles < mine.cents * o.price.milliBottles;
+        const on = day(o.on);
+        return {
+          ...head,
+          compared: true as const,
+          cheaper,
+          thisPaper: mine.value,
+          other: { providerId: o.providerId ?? null, vendor, price: o.price.value, on },
+          sentence:
+            cheaper && vendor
+              ? `Bought for ${money(o.price.value)} a bottle from ${vendor}${on ? ` on ${on}` : ""} (this paper ${money(mine.value)})`
+              : null,
+        };
+      }),
+    };
+  }
+
+  @Get(":id/statement-tieout")
+  @ApiOperation({
+    summary: "A vendor's statement against this house's papers",
+    description:
+      "Owner and manager only. Each invoice or credit row the statement lists is matched to this house's paper from the same vendor by document number, never by amount alone, and compared in cents in one money: checked_same, on_file_not_checked, amount_differs (differsBy), never_received, or not_compared (with a reason). notOnStatement lists the vendor's papers dated inside the statement's span that it does not list. Payments are ignored and nothing is marked paid (r109 g5).",
+  })
+  async statementTieout(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        `A vendor's statement is tied out for the owner and managers of the house. You are signed in as ${user.role ?? "no role"}.`,
+        HttpStatus.FORBIDDEN,
+      );
+    const client = this.db.getClient();
+    const { data: paper, error: paperErr } = await client
+      .from("procurement_documents")
+      .select("id, doc_type, currency, provider_id, extracted")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (paperErr)
+      throw new HttpException(
+        `The statement could not be read, so nothing was tied out: ${paperErr.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!paper)
+      throw new HttpException(
+        "This paper is not one of this house's, so nothing was tied out.",
+        HttpStatus.NOT_FOUND,
+      );
+    const p = paper as { doc_type?: string | null; currency?: string | null; provider_id?: string | null; extracted?: unknown };
+    if (p.doc_type !== "statement")
+      throw new HttpException(
+        `This paper was read as ${p.doc_type ?? "no kind"}, not a vendor's statement, so there is nothing to tie out.`,
+        HttpStatus.CONFLICT,
+      );
+    const raw = (p.extracted as { statementEntries?: unknown } | null)?.statementEntries;
+    const entries = (Array.isArray(raw) ? raw : []).filter(
+      (e): e is ParsedStatementEntry =>
+        !!e && typeof e === "object" && ["invoice", "credit", "payment"].includes((e as { kind?: string }).kind ?? ""),
+    );
+    const providerId = p.provider_id ?? null;
+    const papers: TieOutPaper[] = [];
+    if (providerId && entries.length) {
+      const PAGE = 1000;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await client
+          .from("procurement_documents")
+          .select("id, doc_type, doc_number, doc_date, total, currency, status")
+          .eq("restaurant_id", user.restaurantId)
+          .eq("provider_id", providerId)
+          .in("doc_type", ["invoice", "credit_memo"])
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error)
+          throw new HttpException(
+            `The vendor's papers could not be read, so nothing was tied out: ${error.message}`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        papers.push(...((data ?? []) as TieOutPaper[]));
+        if (!data || data.length < PAGE) break;
+      }
+    }
+    const out = tieOutStatement(entries, papers, { vendorNamed: !!providerId, currency: p.currency ?? null });
+    return {
+      currency: (p.currency ?? "").trim().toUpperCase() || null,
+      providerId,
+      notCompared: providerId ? null : ("vendor_unknown" as const),
+      entriesRead: entries.length,
+      ...out,
     };
   }
 
