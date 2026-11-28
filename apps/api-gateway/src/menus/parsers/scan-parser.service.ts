@@ -121,6 +121,9 @@ const WINE_EXTRACTION_PROMPT =
   '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
 
 /** What a house is told when this gateway has no menu reader switched on. */
+/** A web page's visible text: sent as a plain-text document, never as base64 (DD-r108-66). */
+const PAGE_TEXT = "text/plain";
+
 export const MENU_READER_OFF =
   "The menu reader is not switched on here, so nothing was read. Type the lines in instead, or try again later.";
 
@@ -142,6 +145,27 @@ export class ScanParserService {
     const warnings: MenuReadWarning[] = [];
     const items = await this.parse(imageBase64, restaurantId, false, warnings);
     return { items, warnings };
+  }
+
+  /**
+   * A web page's visible text, read as a menu (DD-r108-66, POST
+   * /menus/import-url). One plain-text document block in place of the photo
+   * or PDF block, with the same prompt and reply shape. Text cannot be split
+   * by page, so a cut-off reply keeps what it read and says so.
+   */
+  async parseTextWithWarnings(
+    pageText: string,
+    restaurantId?: string,
+  ): Promise<{ items: WineExtractItem[]; warnings: MenuReadWarning[] }> {
+    if (!this.configService.get<string>("ANTHROPIC_API_KEY")) {
+      this.logger.error("Menu read refused: ANTHROPIC_API_KEY is not set on this gateway");
+      throw new ServiceUnavailableException(MENU_READER_OFF);
+    }
+    const read = await this.parseOne(pageText, PAGE_TEXT, false, restaurantId, false);
+    const warnings: MenuReadWarning[] = [];
+    if (read.truncated) warnings.push({ kind: "truncated", pages: null });
+    else if (read.unreadable) warnings.push({ kind: "unreadable_reply", pages: null });
+    return { items: read.items, warnings };
   }
 
   /**
@@ -456,14 +480,16 @@ export class ScanParserService {
             {
               role: "user",
               content: [
-                {
-                  type: isPdf ? "document" : "image",
-                  source: {
-                    type: "base64",
-                    media_type: mediaType,
-                    data: imageBase64,
-                  },
-                },
+                mediaType === PAGE_TEXT
+                  ? { type: "document", source: { type: "text", media_type: PAGE_TEXT, data: imageBase64 } }
+                  : {
+                      type: isPdf ? "document" : "image",
+                      source: {
+                        type: "base64",
+                        media_type: mediaType,
+                        data: imageBase64,
+                      },
+                    },
                 { type: "text", text: WINE_EXTRACTION_PROMPT },
               ],
             },
@@ -486,7 +512,7 @@ export class ScanParserService {
         nf: {
           subjectId: "ScanParser",
           taskType: "menu_scan",
-          stimulus: isPdf ? "menu_pdf" : "menu_image",
+          stimulus: mediaType === PAGE_TEXT ? "menu_page_text" : isPdf ? "menu_pdf" : "menu_image",
           choice: "wine_extraction",
           restaurantId: restaurantId ?? null,
           // The request-scoped correlation id (ALS) already groups every

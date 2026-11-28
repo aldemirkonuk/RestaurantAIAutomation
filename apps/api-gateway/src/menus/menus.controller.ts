@@ -25,6 +25,7 @@ import { seesRawLine } from "./menu-line-view";
 import { blankMenuSheet, menuSheet } from "./menu-sheet";
 import { withheldRawText } from "./import-reply-view";
 import { ImportMenuDto } from "./dto/import-menu.dto";
+import { ImportMenuUrlDto } from "./dto/import-menu-url.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { SetThresholdDto } from "./dto/set-threshold.dto";
@@ -116,6 +117,26 @@ export class MenusController {
     // row as the file had it -- for a spreadsheet, the cost and supplier cells
     // too -- so only a role that sees money and suppliers is sent it (the same
     // ROLE_POLICY rule GET /menu-versions/:id follows, menu-line-view.ts).
+    return withheldRawText(read, seesRawLine(user.role));
+  }
+
+  @Post("import-url")
+  @ApiOperation({
+    summary: "Read a menu from a web link (owner or manager), kept as its own version, in draft",
+    description:
+      "DD-r108-66. The gateway fetches the link itself, inside the SSRF fence (menu-url-fetch.ts): https on 443 only, every address of every hop public, at most 3 redirects each checked again, 15 s and 5 MB. A refusal is 422 in the fence's words. A PDF or photo is read as an upload of it; a web page as its visible text (422 when it shows none). The read runs in the background like a scan (reading: true; poll GET /menu-versions/:menuId/read), and the version keeps the link it came from (source_url). The house is the session's; a restaurantId in the body is ignored. Staff are refused (403).",
+  })
+  async importMenuFromUrl(
+    @Body() dto: ImportMenuUrlDto,
+    @CurrentUser() user: { userId?: string; restaurantId?: string; role?: string | null },
+  ) {
+    if (!user?.userId || !user?.restaurantId) {
+      throw new ForbiddenException(
+        "Reading a menu from a link names the person and the house, and this session names neither. Nothing was read.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, user.restaurantId, "read a menu from a link");
+    const read = await this.menusService.importMenuFromUrl(user.restaurantId, user.userId, dto.url);
     return withheldRawText(read, seesRawLine(user.role));
   }
 
