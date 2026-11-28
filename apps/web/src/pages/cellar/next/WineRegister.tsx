@@ -328,7 +328,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
   };
 
   return (
-    <div data-testid="wine-register">
+    <div data-testid="wine-register" data-settling={data.booking ? 'true' : undefined}>
       {/* The parent's own name. A wine house always reads "The Cellar" here by
           the rule, but the rule is what renders it — not a literal that would
           survive the house changing what it pours. */}
@@ -362,7 +362,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
       <hr className="cl-rule" style={{ margin: '14px 0' }} />
 
       {/* ── the control rail ─────────────────────────────────────────────── */}
-      <div className="cl-row-controls">
+      <div className="cl-row-controls" data-hold={data.booking ? 'true' : undefined}>
         <label htmlFor="cl-search" className="cl-sr">
           Search the register
         </label>
@@ -609,7 +609,9 @@ export default function WineRegister({ data }: { data: CellarData }) {
         /* ── the register itself ──────────────────────────────────────── */
         <div style={{ marginTop: 14 }}>
           {shown === null ? (
-            <p className="cl-said cl-dim">{data.bookError ? 'The register is unread.' : 'Opening the book…'}</p>
+            <div className={data.booking ? 'cl-book-hold' : undefined}>
+              <p className="cl-said cl-dim">{data.bookError ? 'The register is unread.' : 'Opening the book…'}</p>
+            </div>
           ) : shown.length === 0 ? (
             <p className="cl-said cl-dim">
               {(bottles?.length ?? 0) === 0
@@ -721,11 +723,13 @@ export default function WineRegister({ data }: { data: CellarData }) {
       {/* The live path, said out loud. A page that claims to be realtime and
           does not say what it measured is claiming, not reporting. Always
           shown, whichever of the two views above is open. */}
+      {data.booking ? null : (
       <p className="cl-note" data-testid="wine-live-note">
         {data.live.lastApplyMs === null
           ? 'Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured.'
           : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later — measured in this tab, from the event to the painted frame. The transport leg is separate and is stated in MOTIONS.md.`}
       </p>
+      )}
     </div>
   );
 }
