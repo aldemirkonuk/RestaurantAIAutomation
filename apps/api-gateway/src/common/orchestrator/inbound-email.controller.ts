@@ -144,13 +144,30 @@ export class InboundEmailController {
     // receiving server prepends its own verdict (Postmark: Received-SPF,
     // X-Spam-Tests), so a later copy is one the sender wrote, and letting it
     // win would let anyone claim a pass for a forged From.
+    // A trace header is also dropped when it appears twice (the receiving
+    // server writes one of each, so a second is the sender's and which one is
+    // ours is unknown) or below the second Received line (past our own hop).
+    const ambiguous = new Set<string>();
     const set = (name: string, value: string) => {
-      if (TRACE_HEADERS.has(name) && name in headerMap) return;
+      if (TRACE_HEADERS.has(name)) {
+        if (ambiguous.has(name)) return;
+        if (name in headerMap) {
+          delete headerMap[name];
+          ambiguous.add(name);
+          return;
+        }
+      }
       headerMap[name] = value;
     };
     if (Array.isArray(b.Headers)) {
-      for (const h of b.Headers)
-        if (h?.Name) set(String(h.Name).toLowerCase(), String(h.Value ?? ""));
+      let received = 0;
+      for (const h of b.Headers) {
+        if (!h?.Name) continue;
+        const name = String(h.Name).toLowerCase();
+        if (name === "received") received++;
+        else if (TRACE_HEADERS.has(name) && received >= 2) continue;
+        set(name, String(h.Value ?? ""));
+      }
     }
     if (
       b.headers &&
