@@ -84,6 +84,30 @@ describe('goals as bullet bars', () => {
     expect(c.note).toMatch(/^49 of a limit of 30 used; the schedule allows 20 by now\. That is more than the schedule allows by now\./);
   });
 
+  it('[REVERT-FAILS] a level metric (average check) gets no tick and no schedule words, and is read against its target', () => {
+    const v = view([entry('k', { unit: 'currency', current: 48, target: 60, progressPct: 0.8, expectedByNow: 30, onTrack: true }, { metric_key: 'avg_check' })]);
+    const k = cat(v, 'Goal k');
+    expect(k.mark).toBeNull();
+    expect(k.note).not.toMatch(/schedule says|by now/);
+    expect(k.note).toContain('read against its target, not a schedule. Short of the target.');
+  });
+
+  it('[REVERT-FAILS] a days-of-stock ceiling under its limit says inside the limit, never "more than the schedule allows"', () => {
+    const v = view([entry('s', { unit: 'days', current: 25, target: 30, progressPct: 25 / 30, expectedByNow: 15, onTrack: false }, { metric_key: 'days_of_inventory', direction: 'at_most' })]);
+    const s = cat(v, 'Goal s');
+    expect(s.mark).toBeNull();
+    expect(s.note).not.toMatch(/schedule allows|more than the schedule/);
+    expect(s.note).toContain('Inside the limit.');
+  });
+
+  it('[REVERT-FAILS] a ceiling inside the 10% the pace allows (21 against 20) is not called over', () => {
+    const v = view([entry('p', { current: 21, target: 30, progressPct: 0.7, expectedByNow: 20, onTrack: true }, { direction: 'at_most', metric_key: 'purchase_spend' })]);
+    const p = cat(v, 'Goal p');
+    expect(p.note).toContain('the schedule allows 20 by now.');
+    expect(p.note).not.toContain('more than the schedule allows');
+    expect(p.note).toContain('On the pace this goal needs');
+  });
+
   it('[REVERT-FAILS] the drawing puts one 2 px tick per scheduled goal on the value axis, and the target rule', () => {
     const v = view([entry('a'), entry('b', { current: 24, progressPct: 0.8, expectedByNow: 27 }), entry('n', { expectedByNow: null, onTrack: null }, { deadline: null })]);
     const { container } = render(<CatPlot series={v.cats!} kind="bars" />);

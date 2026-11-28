@@ -147,6 +147,13 @@ function unscorableTarget(g: GoalRow): boolean {
 }
 
 /**
+ * Metrics that are a reading taken at an instant, not a running total
+ * (goals.service.ts): a straight-line schedule of target × elapsed/total says
+ * nothing about them, so no tick is drawn and no schedule figure is spoken.
+ */
+const LEVEL_METRICS = new Set(['avg_check', 'wine_attach_rate', 'days_of_inventory']);
+
+/**
  * Where the schedule says the bar should be by now, as a per cent of the
  * goal's own target: `expectedByNow / target × 100`. None without a target
  * above zero, without a schedule (no deadline, or the pace not read), or on a
@@ -154,6 +161,7 @@ function unscorableTarget(g: GoalRow): boolean {
  */
 export function scheduleMark(g: GoalRow): number | null {
   if (!scoredGoal(g) || g.current === null || g.expectedByNow === null) return null;
+  if (LEVEL_METRICS.has(g.metricKey)) return null;
   return Math.round(((g.expectedByNow / (g.target as number)) * 100) * 10) / 10;
 }
 
@@ -168,10 +176,18 @@ export function bulletWords(g: GoalRow, currency?: string | null): string {
   if (g.current === null || g.target === null) return pace;
   const now = inUnit(g.current, g.unit, currency);
   const target = inUnit(g.target, g.unit, currency);
+  if (LEVEL_METRICS.has(g.metricKey)) {
+    const ceiling = g.direction === 'at_most';
+    const met = ceiling ? g.current <= g.target : g.current >= g.target;
+    const verdict = ceiling
+      ? met ? 'Inside the limit.' : 'Over the limit.'
+      : met ? 'At or above the target.' : 'Short of the target.';
+    return `${now} of ${ceiling ? 'a limit' : 'a target'} of ${target}${ceiling ? ' used' : ''}. This is a reading, not a running total, so it is read against its ${ceiling ? 'limit' : 'target'}, not a schedule. ${verdict}`;
+  }
   const due = scheduleMark(g) !== null ? inUnit(g.expectedByNow, g.unit, currency) : null;
   if (g.direction === 'at_most') {
     const over =
-      due !== null && g.expectedByNow !== null && g.current > g.expectedByNow
+      due !== null && g.onTrack === false
         ? ' That is more than the schedule allows by now.'
         : '';
     return `${now} of a limit of ${target} used${due !== null ? `; the schedule allows ${due} by now` : ''}.${over} ${pace}`;
