@@ -39,7 +39,7 @@ import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
-import { fetchAuctionLotRecords, getUseCounts, inventoryUseCountsKey, type AuctionLotRecord } from '../../../services/api/inventory';
+import { fetchAuctionLotRecords, getUseCounts, inventoryUseCountsKey, type AuctionLotRecord, type ItemOnOrder } from '../../../services/api/inventory';
 import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
@@ -358,10 +358,19 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   };
 }
 
-/** Bottles to bring a title back to par, when both figures are read and it is short. */
-export function suggestedToPar(row: InvRow): number | null {
+/**
+ * What to order to bring a title back to par, when both figures are read and it
+ * is short. Given what is on order and read, what the supplier already has on
+ * its way (sent orders, in the book's own unit) is taken off first (r110 g5).
+ * Orders not yet sent are never taken off: a hold to the same vendor replaces
+ * such an order's quantity (procurement.service createOrder's merge), so the
+ * figure must stand alone. An unread or other-unit order takes nothing off.
+ */
+export function suggestedToPar(row: InvRow, onOrder?: ItemOnOrder | 'reading' | 'failed'): number | null {
   if (row.stock === null || row.par === null || row.par <= 0) return null;
-  const short = row.par - row.stock;
+  const arriving =
+    onOrder !== undefined && typeof onOrder === 'object' && onOrder.readable ? (onOrder.arrivingInBookUnit ?? 0) : 0;
+  const short = row.par - row.stock - arriving;
   return short > 0 ? short : null;
 }
 

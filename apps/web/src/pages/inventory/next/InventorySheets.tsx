@@ -22,7 +22,7 @@
  *    and the same OrderCeremony as BottleLeaf.tsx:211-225 and :544-570;
  *  - Transfer and Record a pour call `transferStock` and `recordPour`.
  */
-import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { CountInput, HoldToApprove, Select, Sheet } from '@/components/mudavym';
@@ -38,8 +38,8 @@ import OrderCeremony from '../../cellar/next/OrderCeremony';
 import OrderLetter from './OrderLetter';
 import { useCellarSettings } from '../../cellar/next/useCellarNextData';
 import { fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
+import { holdEffect, toParSentence, type OnOrderLoad } from './OnOrder';
 import { amountUnit, orderUnitOf, type AmountUnit } from './iv-amount';
-import { holdEffect } from './OnOrder';
 import type { ItemOpenOrder } from '../../../services/api/inventory';
 import { LANDED_EARLIER, SAFE_RETRY, failureReason, landedEarlier, writeFailure } from './iv-failure';
 
@@ -684,12 +684,18 @@ export function OrderSheet({
   restaurantId,
   uom,
   openOrders = null,
+  onOrder,
 }: SheetProps & {
   providers: Provider[] | null;
   providersError: string | null;
   restaurantId: string | null;
   /** Orders for this good already open on Orders (r109 g1), said above the hold; null when not read. */
   openOrders?: ItemOpenOrder[] | null;
+  /**
+   * What is on order: the drawer's cached figures read, or that read while it
+   * reads or after it failed (r110 g5). Absent, nothing is taken off.
+   */
+  onOrder?: OnOrderLoad;
 }) {
   const queryClient = useQueryClient();
   // The order's unit is the book's own; a good the order vocabulary cannot
@@ -703,14 +709,25 @@ export function OrderSheet({
   // book; otherwise the hold would order from a vendor nobody can see here.
   const vendorId = providers?.some((p) => p.id === picked) ? picked : '';
   // INV-W21: the suggestion to par, or nothing. A made-up 6 was a default.
-  const [qty, setQty] = useState(() => {
-    const s = suggestedToPar(row);
-    return s === null ? '' : String(s);
-  });
+  // r110 g5: less what is on its way, so the field stays empty while the
+  // orders read and is filled once, when they answer. A typed value is the
+  // person's and is never overwritten, nor is it changed by a later reread.
+  const answered = onOrder !== 'reading';
+  const toPar = suggestedToPar(row, onOrder);
+  const [qty, setTyped] = useState(() => (answered && toPar !== null ? String(toPar) : ''));
+  const filled = useRef(answered);
+  const setQty = (v: string) => {
+    filled.current = true;
+    setTyped(v);
+  };
+  useEffect(() => {
+    if (!answered || filled.current) return;
+    filled.current = true;
+    setTyped(toPar === null ? '' : String(toPar));
+  }, [answered, toPar]);
   const n = wholeNumber(qty);
   // A blocked sheet never says the count, so a null one reads as nothing (INV-W33).
   const nText = n === null ? '' : fmtCount(n);
-  const toPar = suggestedToPar(row);
 
   const recommendedIds = useMemo(() => {
     const s = new Set<string>();
@@ -783,15 +800,7 @@ export function OrderSheet({
         </p>
       ) : (
       <>
-      <p className="iv-said">
-        {toPar !== null && row.par !== null
-          ? `${fmtCount(toPar)} bring it back to par (${fmtCount(row.par)}).`
-          : row.par === null || row.par <= 0
-            ? 'No par is set on this row, so there is no suggested quantity.'
-            : row.stock === null
-              ? 'The stock could not be read, so there is no suggested quantity.'
-              : 'It is at or above par, so there is no suggested quantity.'}
-      </p>
+      <p className="iv-said" data-testid="iv-order-to-par">{toParSentence(row, onOrder)}</p>
       <div className="iv-sheet-fields">
         <Select
           label="Vendor"
