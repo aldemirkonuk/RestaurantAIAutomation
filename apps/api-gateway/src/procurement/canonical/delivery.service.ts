@@ -983,7 +983,7 @@ export class DeliveryService {
     }
 
     const note = cost.value.finalised.length
-      ? `Cost posted for ${cost.value.finalised.length} item(s); ${cost.value.stillProvisional.length} left provisional because no agreed price reaches them.`
+      ? `Cost posted for ${cost.value.finalised.length} item(s); ${cost.value.stillProvisional.length} left provisional because no agreed price reaches them.${cost.value.salesCosted ? ` ${cost.value.salesCosted} earlier sale(s) that sold with no cost were costed from it.` : ""}`
       : cost.value.stillProvisional.length
         ? `No cost was posted: ${cost.value.stillProvisional.length} item(s) have no agreed price on the record, so their lots stay provisional rather than becoming a final cost nobody agreed.`
         : "This delivery booked no stock at the door, so there was no cost to settle.";

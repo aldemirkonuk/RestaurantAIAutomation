@@ -1,6 +1,9 @@
 import {
   COST_PARTS_CAP,
+  COSTED_AFTER_SALE_WORDS,
   NO_COST_SNAPSHOT,
+  checkMarginFromRows,
+  costShareOf,
   pickSaleCostSource,
   snapshotLineCost,
 } from "./sale-cost";
@@ -84,7 +87,45 @@ describe("a sale keeps the shelf it was costed on (r109 g1)", () => {
   });
 
   it("a line with no cost keeps no parts either", () => {
-    expect(snapshotLineCost(null, "volume", 150, 750, 1)).toEqual(NO_COST_SNAPSHOT);
+    expect(snapshotLineCost(null, "volume", 150, 750, 1)).toEqual({ ...NO_COST_SNAPSHOT, cost_share: 0.2 });
     expect(NO_COST_SNAPSHOT).toMatchObject({ cost_parts: null, cost_parts_capped: false });
+  });
+});
+
+/**
+ * r110 g3: every new row keeps its share of one bottle, costed or not, so the
+ * first paper checked after the sale can cost a sale that sold with no cost
+ * (cost_unpriced_sales sets round(cost_share x unit cost, 4)).
+ */
+describe("a sale keeps its share of a bottle (r110 g3)", () => {
+  const source = { unitCost: 30, basis: "invoice_lot_wac" as const, lotId: "l", orderId: "o" };
+
+  it("a pour with no cost still keeps its share: 150 ml of 750 is 0.2", () => {
+    const s = snapshotLineCost(null, "volume", 150, 750, 1);
+    expect(s.cost_at_sale).toBeNull();
+    expect(s.cost_share).toBe(0.2);
+  });
+
+  it("a pour from a bottle of unknown size keeps no share, never a guessed 750", () => {
+    expect(snapshotLineCost(null, "volume", 150, null, 1).cost_share).toBeNull();
+    expect(snapshotLineCost(source, "volume", 150, null, 1)).toEqual(NO_COST_SNAPSHOT);
+    expect(costShareOf("volume", 150, 0, 1)).toBeNull();
+  });
+
+  it("whole bottles keep the quantity, and a costed row keeps its share too", () => {
+    expect(snapshotLineCost(null, "whole_bottle", 1500, 750, 2).cost_share).toBe(2);
+    expect(snapshotLineCost(source, "volume", 250, 750, 1)).toMatchObject({
+      cost_at_sale: 10,
+      cost_share: 0.333333,
+    });
+  });
+
+  it("the line says it was costed after the sale, never that it was checked", () => {
+    const m = checkMarginFromRows([
+      { wine_name: "w", quantity: 1, volume_ml: 150, total_revenue: 12, cost_at_sale: 1.554, cost_basis: "costed_after_sale" },
+    ]);
+    expect(m.lines[0].costNote).toBe(COSTED_AFTER_SALE_WORDS);
+    expect(m.lines[0].restated).toBe(false);
+    expect(m.cost).toBe(1.554);
   });
 });
