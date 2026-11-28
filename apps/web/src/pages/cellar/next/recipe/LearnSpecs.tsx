@@ -3,9 +3,10 @@
  * the glass and the method word; Space shows the spec (lines, garnish, method); 1 is "Knew it", 2 is "Not yet" (learnBoxes.ts).
  * Reads GET drinks/cards (no money at all). Progress is kept in this browser only. The house Sheet carries the panel motion
  * (no exit animation, ADR 0112); the reveal and the next face fade in a little, and under reduced motion nothing animates.
- * The room under the face is held at the tallest card's height, measured on read, so the buttons never move.
+ * The room under the face is held at the tallest card's height, so the buttons never move: every card's spec is laid out in a
+ * hidden probe and the largest height is held, measured on read and again whenever the sheet is resized or turned.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GraduationCap } from 'lucide-react';
 import { Sheet } from '../../../../components/mudavym/Sheet';
 import { useAuth } from '../../../../contexts/AuthContext';
@@ -33,13 +34,6 @@ function Spec({ c }: { c: DrinkCard }) {
   );
 }
 
-/** The card most likely to stand tallest: the most lines, then the longest method. */
-const tallest = (cards: DrinkCard[]): DrinkCard | null =>
-  cards.reduce<DrinkCard | null>((best, c) => {
-    const size = (x: DrinkCard) => x.lines.length * 3 + Math.ceil((x.method?.length ?? 0) / 40) + (x.garnish ? 1 : 0);
-    return !best || size(c) > size(best) ? c : best;
-  }, null);
-
 export default function LearnSpecs() {
   const { activeRestaurantId, user } = useAuth();
   const reduced = useReducedMotion();
@@ -53,6 +47,7 @@ export default function LearnSpecs() {
   const boxes = useRef<Boxes>({});
   const ask = useRef(0);
   const probe = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
   const personId = user?.userId ?? null;
   const key = activeRestaurantId && personId ? progressKey(activeRestaurantId, personId) : null;
 
@@ -87,13 +82,20 @@ export default function LearnSpecs() {
   const cards = Array.isArray(read) ? read : null;
   const done = deck.length > 0 && at >= deck.length;
   const card = deck[at] ?? null;
-  const tall = useMemo(() => (cards ? tallest(cards) : null), [cards]);
 
-  // Measured once the cards are read: the buttons below never move when a spec is shown.
+  // The tallest spec of them all (a newline-stepped method is as tall as its steps, which no count of characters knows),
+  // measured once the cards are read and again on a resize or a turn of the phone: the buttons below never move.
   useLayoutEffect(() => {
-    if (tall && probe.current) setRoom(probe.current.offsetHeight || null);
-    else setRoom(null);
-  }, [tall]);
+    const measure = () => {
+      const tallest = Math.max(0, ...[...(probe.current?.children ?? [])].map((c) => (c as HTMLElement).offsetHeight));
+      setRoom(tallest || null);
+    };
+    measure();
+    if (!cards || cards.length === 0 || !sheet.current || typeof ResizeObserver === 'undefined') return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(sheet.current);
+    return () => watch.disconnect();
+  }, [cards]);
 
   const answer = (didKnow: boolean) => {
     if (!card || !shown) return;
@@ -132,12 +134,14 @@ export default function LearnSpecs() {
         {read === 'unread' ? <p className="cl-note" role="alert" data-testid="learn-unread">{LEARN_UNREAD}</p> : null}
         {cards && cards.length === 0 ? <p className="cl-note" data-testid="learn-empty">{LEARN_EMPTY}</p> : null}
         {cards && cards.length > 0 ? (
-          <div className="cl-learn" data-testid="learn-sheet">
-            {tall ? (
-              <div className="cl-learn-probe" ref={probe} aria-hidden="true">
-                <Spec c={tall} />
-              </div>
-            ) : null}
+          <div className="cl-learn" data-testid="learn-sheet" ref={sheet}>
+            <div className="cl-learn-probe" ref={probe} aria-hidden="true">
+              {cards.map((c) => (
+                <div key={c.cocktailId} className="cl-learn-probe-spec">
+                  <Spec c={c} />
+                </div>
+              ))}
+            </div>
             {done ? (
               <>
                 <p className="cl-note" role="status" data-testid="learn-end">{endWords(knew, deck.length)}</p>

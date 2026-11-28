@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { DrinkCard } from '../../../../services/api/recipes';
 
 const RID = '11111111-1111-4111-8111-111111111111';
@@ -25,12 +25,17 @@ const four = [card('a', 'Alpha'), card('b', 'Bravo'), card('c', 'Charlie'), card
 let reduced = false;
 beforeEach(() => {
   reduced = false;
+  // The setup file's ResizeObserver is a vi.fn that restoreAllMocks empties; a plain one stands in for every test.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   window.localStorage.clear();
   Object.values(h).forEach((f) => f.mockReset());
   window.matchMedia = ((q: string) => ({ matches: reduced && q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} })) as never;
   h.get.mockImplementation(async () => ({ data: { drinks: four } }));
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const open = async () => {
   render(<LearnSpecs />);
@@ -129,17 +134,41 @@ describe('Learn the specs', () => {
     expect(await screen.findByTestId('learn-unread')).toHaveTextContent(LEARN_UNREAD);
   });
 
+  /** A hidden spec is as tall as its lines plus its method's steps (a newline starts a row), 20 px a row. */
+  const rowsHeight = (el: HTMLElement) => el.querySelectorAll('li').length * 20 + (el.querySelector('.cl-learn-method')?.textContent ?? '').split('\n').length * 20;
+  const mockHeights = (extra: () => number = () => 0) =>
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('cl-learn-probe-spec') ? rowsHeight(this) + extra() : 0;
+    });
+
   it('holds the room under the face at the tallest card, measured on read, so showing a spec moves nothing', async () => {
     h.get.mockImplementation(async () => ({ data: { drinks: [card('a', 'Alpha'), card('b', 'Bravo', { lines: [1, 2, 3, 4, 5].map((n) => ({ label: `g${n}`, qty: 10, unit: 'ml', name: null })), method: 'Stir for thirty seconds then pour over a single large cube' })] } }));
-    const heights: string[] = [];
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
-      const lines = this.querySelectorAll('li').length;
-      if (this.classList.contains('cl-learn-probe')) heights.push(this.textContent ?? '');
-      return this.classList.contains('cl-learn-probe') ? 40 + lines * 20 : 0;
-    });
+    mockHeights();
     await open();
-    await waitFor(() => expect(screen.getByTestId('learn-room')).toHaveStyle({ minHeight: '140px' }));
-    expect(heights.join('')).toMatch(/g5/);
+    await waitFor(() => expect(screen.getByTestId('learn-room')).toHaveStyle({ minHeight: '120px' }));
+  });
+
+  it('a card whose method has many newline steps holds the room, though another card has more lines', async () => {
+    const fiveLines = card('a', 'Alpha', { lines: [1, 2, 3, 4, 5].map((n) => ({ label: `g${n}`, qty: 10, unit: 'ml', name: null })), method: 'Shake and strain' });
+    const sixSteps = card('b', 'Bravo', { lines: [1, 2, 3, 4].map((n) => ({ label: `s${n}`, qty: 10, unit: 'ml', name: null })), method: ['Chill the glass', 'Add the base', 'Stir thirty turns', 'Top with soda', 'Lift the bar spoon', 'Garnish at the pass'].join('\n') });
+    h.get.mockImplementation(async () => ({ data: { drinks: [fiveLines, sixSteps] } }));
+    mockHeights();
+    await open();
+    // Alpha: 5 lines + 1 row = 120; Bravo: 4 lines + 6 rows = 200. The deal puts Alpha first, so Bravo's room must already be held.
+    await waitFor(() => expect(screen.getByTestId('learn-room')).toHaveStyle({ minHeight: '200px' }));
+    expect(face()).toBe('Alpha');
+  });
+
+  it('re-measures the room when the sheet is resized or the phone turned', async () => {
+    let tick: () => void = () => undefined;
+    vi.stubGlobal('ResizeObserver', class { constructor(cb: () => void) { tick = cb; } observe() {} disconnect() {} unobserve() {} });
+    let wrap = 0;
+    mockHeights(() => wrap);
+    await open();
+    await waitFor(() => expect(screen.getByTestId('learn-room')).toHaveStyle({ minHeight: '40px' }));
+    wrap = 60;
+    act(() => tick());
+    await waitFor(() => expect(screen.getByTestId('learn-room')).toHaveStyle({ minHeight: '100px' }));
   });
 
   it('the reveal and the next face fade in; under reduced motion nothing animates and no animation class is there', async () => {
