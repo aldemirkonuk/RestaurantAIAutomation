@@ -57,7 +57,7 @@ describe("the Waste card's write-offs, by reason (r110 inventory g3)", () => {
   it("totals by reason are summed over every row past a 1000-row page edge, and equal qty30d and given30d", async () => {
     const { db, svc } = seed();
     db.maxRows = 1000;
-    const rows = [];
+    const rows: ReturnType<typeof tx>[] = [];
     for (let i = 0; i < 1500; i++) rows.push(tx({ reason: "Spoiled", quantity_change: -2, transaction_date: ago(2, i) }));
     for (let i = 0; i < 700; i++) rows.push(tx({ reason: "Breakage", quantity_change: -1, transaction_date: ago(3, i) }));
     for (let i = 0; i < 300; i++) rows.push(tx({ transaction_type: "comp", reason: "Given to staff", quantity_change: -3, transaction_date: ago(4, i) }));
@@ -80,7 +80,7 @@ describe("the Waste card's write-offs, by reason (r110 inventory g3)", () => {
 
   it("lists the 20 newest, newest first, with who wrote each off and what it was worth to a manager", async () => {
     const { db, svc } = seed();
-    const rows = [];
+    const rows: ReturnType<typeof tx>[] = [];
     for (let i = 0; i < 25; i++) rows.push(tx({ quantity_change: -(i + 1), transaction_date: ago(1 + i), performed_by: i === 0 ? "u-2" : "u-1" }));
     rows.push(tx({ reason: null, performed_by: null, unit_cost: null, quantity_change: -400, transaction_date: ago(0, 5) }));
     db.tables.inventory_transactions = rows.reverse();
