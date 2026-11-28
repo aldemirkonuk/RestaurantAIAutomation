@@ -254,12 +254,30 @@ export function createAnchorScanner(opts: {
     return e
   }
 
-  /** `lazy(() => import('./X'))` → the import call. */
-  function lazyImport(arg: ts.Expression): ts.CallExpression | undefined {
+  /**
+   * `lazy(() => import('./X'))` → the import call and `default`;
+   * `lazy(() => import('./X').then((m) => ({ default: m.Named })))` → the import call and `Named`.
+   */
+  function lazyImport(arg: ts.Expression): { imp: ts.CallExpression; name: string } | undefined {
     const a = unwrap(arg)
     if (!ts.isArrowFunction(a) || ts.isBlock(a.body)) return undefined
     const body = unwrap(a.body)
-    return ts.isCallExpression(body) && body.expression.kind === ts.SyntaxKind.ImportKeyword ? body : undefined
+    const isImport = (c: ts.Expression): c is ts.CallExpression =>
+      ts.isCallExpression(c) && c.expression.kind === ts.SyntaxKind.ImportKeyword
+    if (isImport(body)) return { imp: body, name: 'default' }
+    if (!ts.isCallExpression(body) || !ts.isPropertyAccessExpression(body.expression)) return undefined
+    const target = unwrap(body.expression.expression)
+    if (body.expression.name.text !== 'then' || !isImport(target) || !body.arguments[0]) return undefined
+    const lift = unwrap(body.arguments[0])
+    if (!ts.isArrowFunction(lift) || ts.isBlock(lift.body)) return undefined
+    const obj = unwrap(lift.body)
+    if (!ts.isObjectLiteralExpression(obj)) return undefined
+    for (const p of obj.properties) {
+      if (!ts.isPropertyAssignment(p) || p.name.getText() !== 'default') continue
+      const v = unwrap(p.initializer)
+      if (ts.isPropertyAccessExpression(v)) return { imp: target, name: v.name.text }
+    }
+    return undefined
   }
 
   function fnOfDecl(d: ts.Declaration | undefined, depth: number): ts.SignatureDeclaration | null {
@@ -277,11 +295,11 @@ export function createAnchorScanner(opts: {
     if (ts.isCallExpression(e) && e.arguments[0]) {
       const callee = e.expression.getText()
       if (/^(React\.)?(memo|forwardRef)$/.test(callee)) return fnOfExpr(e.arguments[0], depth + 1)
-      const imp = lazyImport(e.arguments[0])
-      if (imp && imp.arguments[0]) {
-        const mod = checker.getSymbolAtLocation(imp.arguments[0])
-        const dflt = mod && checker.getExportsOfModule(mod).find((s) => s.escapedName === 'default')
-        return fnOfDecl(declOf(dflt), depth + 1)
+      const lz = lazyImport(e.arguments[0])
+      if (lz && lz.imp.arguments[0]) {
+        const mod = checker.getSymbolAtLocation(lz.imp.arguments[0])
+        const exp = mod && checker.getExportsOfModule(mod).find((s) => s.escapedName === lz.name)
+        return fnOfDecl(declOf(exp), depth + 1)
       }
     }
     return null

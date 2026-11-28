@@ -25,7 +25,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 vi.mock('./recipe/useListTax', () => ({ useListTax: () => ({ basis: 'prices_exclude_tax' }) }));
 vi.mock('./recipe/RecipeSheet', () => ({ default: () => <div data-testid="sheet" /> }));
-vi.mock('../../../lib/tableExport', () => ({ exportTable: (o: unknown) => h.exported(o) }));
+vi.mock('../../../lib/tableExport', () => ({ exportTable: (o: unknown) => h.exported(o), warmExportLibraries: () => {} }));
 const base = { display_name: null, menu_section: null, method: null, glass: null, garnish: null };
 vi.mock('./useCellarNextData', () => ({
   useCocktailRegister: () => ({

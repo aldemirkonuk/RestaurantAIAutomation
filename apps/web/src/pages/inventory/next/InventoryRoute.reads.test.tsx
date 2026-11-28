@@ -55,6 +55,8 @@ function answer(path: string): unknown {
   if (/\/feature-flags|\/flags?\b/.test(path)) return { active: true, enabled: true };
   if (/\/inventory\/r1$/.test(path)) return ITEMS;
   if (/\/storage-locations\/r1$/.test(path)) return [];
+  if (/\/inventory\/r1\/use-counts$/.test(path)) return { counts: {} };
+  if (/\/drinks\/loose-lines$/.test(path)) return { groups: [], unread: [] };
   if (/\/inventory\/research$/.test(path)) return { items: [] };
   if (/\/pricing\/advice$/.test(path)) return { wines: [], target: { set: false }, locks: { readable: true } };
   if (/\/wines$/.test(path)) return ITEMS.map((i) => ({ id: i.wineId, name: i.wineName }));
