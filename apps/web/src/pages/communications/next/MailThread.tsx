@@ -50,7 +50,7 @@ import {
   type MailAnswer,
   type MailMessage,
   type MailThreadsPage,
-  threadTitle,
+  threadHeading,
 } from './mail-format';
 import { LetterFiles } from './LetterFiles';
 import { FadeAway, MailMotionStyles, prefersReducedMotion, useArriveFocus, useEnteringKeys } from './mail-motion';
@@ -315,6 +315,13 @@ export function MailThread({
     .slice()
     .reverse()
     .flatMap((p) => p.messages);
+  // The first letter's words name a thread with no subject, but only once the oldest page is in:
+  // while older letters are unloaded, the first one held is not the thread's first.
+  const heading = threadHeading(
+    head?.subject,
+    head?.person?.name,
+    q.hasNextPage ? null : letters.find((m) => m.text.trim())?.text,
+  );
   const vendor = personWords(head?.person?.name, mailKindOf(head?.person));
   const order = head?.order ?? null;
   const replyOrder = canReply && order && draftedOrderIds.has(order.id) ? order.id : null;
@@ -482,7 +489,15 @@ export function MailThread({
                 overflowWrap: 'anywhere',
               }}
             >
-              {threadTitle(head.subject, head.person?.name)}
+              {heading.title}
+              {heading.quiet && (
+                <span
+                  data-testid="thread-no-subject"
+                  style={{ fontFamily: SANS, fontSize: 12, fontWeight: 400, color: 'var(--ink-4, #665D50)', marginLeft: 8 }}
+                >
+                  {heading.quiet}
+                </span>
+              )}
             </h2>
             <p className="flex flex-wrap items-baseline gap-2" style={{ margin: 0, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
               {head.person ? (

@@ -286,12 +286,21 @@ describe('a thread', () => {
     expect(screen.queryByTestId('write-thread-reply')).toBeNull();
   });
 
-  it('a vendor thread with a blank subject is titled by whose letter it is, never "No subject" (r110 mail-r110-7)', async () => {
+  it('a thread with a blank subject is titled by its first letter\'s first words, then a quiet "no subject line" (r110 mail-gap g6)', async () => {
     routes['/mail/thread'] = () => ({ ...THREAD, subject: '  ' });
     mount('/communications?thread=gm%3Aabc');
     const h = await screen.findByRole('heading', { level: 2 });
-    expect(h).toHaveTextContent('A letter from Bodega Álvaro, with no subject line');
+    expect(h).toHaveTextContent('First, from the vendor.');
+    expect(within(h).getByTestId('thread-no-subject')).toHaveTextContent('no subject line');
     expect(screen.queryByText('No subject')).toBeNull();
+  });
+
+  it('with older letters not yet loaded the first one held is not the thread\'s first, so the person names it', async () => {
+    routes['/mail/thread'] = () => ({ ...THREAD, subject: null, before: '2026-10-01T00:00:00Z' });
+    mount('/communications?thread=gm%3Aabc');
+    const h = await screen.findByRole('heading', { level: 2 });
+    expect(h).toHaveTextContent('A letter from Bodega Álvaro, with no subject line');
+    expect(screen.queryByTestId('thread-no-subject')).toBeNull();
   });
 
   it('a thread that is not this house\'s says so', async () => {
