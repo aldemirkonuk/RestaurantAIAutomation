@@ -251,6 +251,12 @@ describe("everyone else keeps today's path", () => {
 });
 
 describe("sender authentication is aligned to the From domain", () => {
+  beforeEach(() => {
+    process.env.INBOUND_AUTHSERV_ID = "mx";
+  });
+  afterEach(() => {
+    delete process.env.INBOUND_AUTHSERV_ID;
+  });
   it("reads DMARC, aligned DKIM, aligned SPF and Postmark's verdicts", () => {
     const from = "owner@house.test";
     expect(
@@ -318,10 +324,48 @@ describe("the webhook keeps the receiving server's own verdict", () => {
         { Name: "Subject", Value: "last" },
       ],
     });
-    expect(norm.headers["received-spf"]).toMatch(/^Fail/);
-    expect(norm.headers["x-spam-tests"]).toBe("SPF_FAIL");
+    // Two copies: which is ours is unknown, so neither is trusted.
+    expect(norm.headers["received-spf"]).toBeUndefined();
+    expect(norm.headers["x-spam-tests"]).toBeUndefined();
     expect(senderAuthenticated(norm.headers, "owner@gmail.com")).toBe(false);
     // Other headers keep today's last-wins reading.
     expect(norm.headers["subject"]).toBe("last");
+  });
+});
+
+describe("a sender-written Authentication-Results proves nothing", () => {
+  const forged = "x; dmarc=pass header.from=gmail.com";
+  const postmark = [
+    { Name: "Received", Value: "by inbound.postmarkapp.com" },
+    { Name: "Received-SPF", Value: "Fail (not authorized) envelope-from=owner@gmail.com" },
+    { Name: "X-Spam-Tests", Value: "SPF_FAIL" },
+    { Name: "Received", Value: "from stranger.test" },
+    { Name: "Authentication-Results", Value: forged },
+  ];
+  const norm = (Headers: unknown[]) => {
+    const { InboundEmailController } = require("./inbound-email.controller");
+    const c = new InboundEmailController({} as any, {} as any, {} as any);
+    return (c as any).normalizePayload({ From: "owner@gmail.com", Headers }).headers;
+  };
+  afterEach(() => {
+    delete process.env.INBOUND_AUTHSERV_ID;
+  });
+  it("Postmark says fail and a forged A-R is present: false, with the id unset", () => {
+    expect(senderAuthenticated(norm(postmark), "owner@gmail.com")).toBe(false);
+  });
+  it("a configured authserv-id still rejects a line from another id", () => {
+    process.env.INBOUND_AUTHSERV_ID = "mx.ours.test";
+    expect(senderAuthenticated(norm(postmark), "owner@gmail.com")).toBe(false);
+    expect(
+      senderAuthenticated({ "authentication-results": "mx.ours.test; dmarc=pass header.from=gmail.com" }, "owner@gmail.com"),
+    ).toBe(true);
+  });
+  it("a trace header below the second Received line is not ours", () => {
+    const h = norm([
+      { Name: "Received", Value: "a" },
+      { Name: "Received", Value: "b" },
+      { Name: "X-Spam-Tests", Value: "DKIM_VALID_AU" },
+    ]);
+    expect(senderAuthenticated(h, "owner@gmail.com")).toBe(false);
   });
 });

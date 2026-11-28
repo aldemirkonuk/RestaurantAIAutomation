@@ -94,8 +94,14 @@ export function senderAuthenticated(
   const from = domainOf(senderEmail);
   if (!from) return false;
 
+  // An Authentication-Results line vouches only when its authserv-id (the
+  // token before the first `;`) is OUR receiving server's. Postmark writes no
+  // A-R, so on that provider the only one present came from the sender; with
+  // INBOUND_AUTHSERV_ID unset the line is ignored.
   const ar = header(headers, "authentication-results");
-  for (const segment of ar.split(";")) {
+  const want = (process.env.INBOUND_AUTHSERV_ID ?? "").trim().toLowerCase();
+  const servId = ar.split(";")[0].trim().toLowerCase();
+  for (const segment of want && servId === want ? ar.split(";") : []) {
     const s = segment.trim();
     if (/\bdmarc=pass\b/i.test(s)) {
       const hf = propertyOf(s, "header.from");
