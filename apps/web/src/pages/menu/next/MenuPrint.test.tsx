@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import MenuPrint, { printedPrices, printedSections } from './MenuPrint';
+import MenuPrint, { printedHeading, printedPrices, printedSections } from './MenuPrint';
 import { getMenu, getMenuPlan, listMenuVersions, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
@@ -200,6 +200,24 @@ describe('the menu printed for the guests', () => {
     expect(s.map((x) => [x.heading, x.lines.map((l) => l.name)])).toEqual([
       ['Spirits', ['Y']],
       [null, ['X', 'Z']],
+    ]);
+  });
+
+  // r110 review R7: a scanned line's category is a vocabulary word and a read dish's is "food", never the printed heading.
+  it('heads a scanned wine by its vocabulary word as a heading, and a plain dish by no heading at all', () => {
+    expect(['red', 'rose', 'soft drink', 'non-alcoholic'].map(printedHeading)).toEqual(['Red', 'Rosé', 'Soft drinks', 'Non-alcoholic']);
+    expect(printedHeading('food')).toBeNull();
+    expect(printedHeading('Çorbalar')).toBe('Çorbalar');
+    expect(printedHeading('Red')).toBe('Red');
+    expect(printedHeading(null)).toBeNull();
+    const s = printedSections([
+      line({ id: 'a', name: 'Mercimek', category: 'food', line_no: 0 }),
+      line({ id: 'b', name: 'Kalecik', category: 'red', line_no: 1 }),
+      line({ id: 'c', name: 'Künefe', category: 'food', line_no: 2 }),
+    ] as never);
+    expect(s.map((x) => [x.heading, x.lines.map((l) => l.name)])).toEqual([
+      [null, ['Mercimek', 'Künefe']],
+      ['Red', ['Kalecik']],
     ]);
   });
 });
