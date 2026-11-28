@@ -95,9 +95,9 @@ describe("MailWaitingProducer", () => {
   });
 
   it("days from two days on", async () => {
-    const { notifications, producer } = build({ people: [fikri(ago(NINE, 75 * H))], threads: [thread("t1", ago(NINE, 75 * H))] });
+    const { notifications, producer } = build({ people: [fikri(ago(NINE, 50 * H))], threads: [thread("t1", ago(NINE, 50 * H))] });
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NINE);
-    expect(sent(notifications)[0].title).toBe("Fikri Tarım has waited 3 days for an answer");
+    expect(sent(notifications)[0].title).toBe("Fikri Tarım has waited 2 days for an answer");
   });
 
   it("once per thread per house day, counted in the house's zone across UTC midnight", async () => {
@@ -169,7 +169,7 @@ describe("MailWaitingProducer", () => {
     const since = ago(NINE, 30 * H);
     const { notifications, producer } = build({
       people: [fikri(since)],
-      threads: [thread("answered", null, false), thread("waits", since), thread("recent", ago(NINE, 2 * H))],
+      threads: [thread("answered", null, false), thread("not-now", since, false), thread("waits", since), thread("recent", ago(NINE, 2 * H))],
     });
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NINE);
     expect(sent(notifications).map((p) => p.metadata.threadKey)).toEqual(["waits"]);
