@@ -25,6 +25,15 @@ export interface ThroughOwner {
   perServeQtyBase: number | null;
   baseUnit: BaseUnit | null;
   why: ThroughWhy | null;
+  /**
+   * 'serve': the amount is in one serve of this drink or dish. 'batch': the
+   * owner is itself a house-made component, so the amount is in one whole batch
+   * of it (a prep drawing a prep has no serve), and `makesQtyBase` in
+   * `makesBaseUnit` is what that batch makes.
+   */
+  per: "serve" | "batch";
+  makesQtyBase: number | null;
+  makesBaseUnit: BaseUnit | null;
 }
 
 export interface ThroughComponent {
@@ -122,8 +131,12 @@ export function throughOf(g: ThroughGraph): ThroughComponent[] {
       if (!name) continue;
       const batch = sum(o.lines.map((l) => drawnBy(l, c)));
       const serves = g.serves.get(o.version) ?? null;
+      // An owner that is itself a component (a yield, or reached as one) is
+      // read per batch: its yield_serves defaults to 1 and is not a serve.
+      const own = o.kind === "dish" ? g.dishes.get(o.id) : undefined;
+      const perBatch = o.kind === "dish" && (g.levelOf.has(o.id) || (own?.yieldQtyBase ?? 0) > 0);
       let amount: Amount | null = batch;
-      if (batch && !("why" in batch)) {
+      if (!perBatch && batch && !("why" in batch)) {
         amount = serves !== null && Number.isInteger(serves) && serves > 0 ? { qty: batch.qty / serves, unit: batch.unit } : { why: "no_serves" };
       }
       if (amount === null) continue; // draws none of the good after all
@@ -134,6 +147,9 @@ export function throughOf(g: ThroughGraph): ThroughComponent[] {
         perServeQtyBase: "why" in amount ? null : round2(amount.qty),
         baseUnit: "why" in amount ? null : amount.unit,
         why: "why" in amount ? amount.why : null,
+        per: perBatch ? "batch" : "serve",
+        makesQtyBase: perBatch && own?.yieldQtyBase && own.yieldQtyBase > 0 ? own.yieldQtyBase : null,
+        makesBaseUnit: perBatch && own?.yieldQtyBase && own.yieldQtyBase > 0 ? (own.yieldBaseUnit as BaseUnit | null) : null,
       });
     }
     if (owners.length === 0) continue;

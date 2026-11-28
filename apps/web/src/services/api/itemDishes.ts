@@ -73,6 +73,14 @@ export interface ItemThroughOwner {
   perServeQtyBase: number | null;
   baseUnit: 'mg' | 'ml10' | 'each_milli' | null;
   why: ThroughWhy | null;
+  /**
+   * 'batch': the owner is itself a house-made component, so the amount is in one
+   * whole batch of it (what it makes is `makesQtyBase` in `makesBaseUnit`), never
+   * a serve. Absent from an older gateway, which meant a serve.
+   */
+  per?: 'serve' | 'batch';
+  makesQtyBase?: number | null;
+  makesBaseUnit?: 'mg' | 'ml10' | 'each_milli' | null;
 }
 
 /** A house-made component that takes this good (level 1), or one made from such a component (2, 3). */
