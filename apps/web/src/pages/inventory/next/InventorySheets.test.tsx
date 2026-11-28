@@ -303,7 +303,13 @@ describe('Order more suggests par less what is already on its way (r110 g5)', ()
   it('an order in another unit leaves par - stock and says that order is not counted', () => {
     mount(sheet(ready([o('a', 'IN_TRANSIT', 2, 'case', null)], [], null)));
     expect(field()).toBe('6');
-    expect(said()).toBe('6 bring it to par (10): 2 cases on their way are not counted, as they could not be put in the book\u2019s unit.');
+    expect(said()).toBe('6 bring it to par (10): 2 cases on their way are not counted: one is in a unit the book does not count.');
+  });
+
+  it('5 bottles in transit and 1 case confirmed: says none of it is taken off, naming both', () => {
+    mount(sheet(ready([o('a', 'IN_TRANSIT', 5, 'bottle', 5), o('b', 'CONFIRMED', 1, 'case', null)], [], null)));
+    expect(field()).toBe('6');
+    expect(said()).toBe('6 bring it to par (10): 5 bottles + 1 case on their way are not counted: one is in a unit the book does not count.');
   });
 
   it('an unread onOrder says so, and the suggestion stays par - stock', () => {

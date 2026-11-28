@@ -371,7 +371,7 @@ describe('Suggested to par reads what is on its way, as the Order more sheet doe
     expect(toPar()).toBe('3 (less 3 on its way)');
     a.unmount();
     const b = renderDrop({ row: gin, onOrder: { readable: true, source: 'x', sent: [sent(2, 'case', null)], unsent: [], arrivingInBookUnit: null } });
-    expect(toPar()).toBe('6 (an order in another unit is not counted)');
+    expect(toPar()).toBe('6 (nothing on its way is counted: an order is in another unit)');
     b.unmount();
     const c = renderDrop({ row: gin, onOrder: 'failed' });
     expect(toPar()).toBe('6 (what is on order could not be read)');
