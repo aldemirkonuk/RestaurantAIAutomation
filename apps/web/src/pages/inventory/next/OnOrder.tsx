@@ -105,11 +105,16 @@ const isAre = (n: number) => (n === 1 ? 'is' : 'are');
 function notCounted(o: Extract<ItemOnOrder, { readable: true }>): string[] {
   const out: string[] = [];
   if (o.arrivingInBookUnit === null) {
+    // One order in a unit the book does not count means nothing on its way is
+    // taken off, the orders in the book's own unit included (r110 inventory fix).
     const byUnit = new Map<string | null, number>();
-    for (const x of o.sent) if (x.inBookUnit === null) byUnit.set(x.unit, (byUnit.get(x.unit) ?? 0) + x.openQty);
+    for (const x of o.sent) byUnit.set(x.unit, (byUnit.get(x.unit) ?? 0) + x.openQty);
     const total = [...byUnit.values()].reduce((a, b) => a + b, 0);
     const words = [...byUnit].map(([u, q]) => orderQty(q, u)).join(' + ');
-    out.push(`${words} on ${total === 1 ? 'its' : 'their'} way ${isAre(total)} not counted, as ${total === 1 ? 'it' : 'they'} could not be put in the book\u2019s unit`);
+    const other = distinct(o.sent.filter((x) => x.inBookUnit === null));
+    out.push(
+      `${words} on ${total === 1 ? 'its' : 'their'} way ${isAre(total)} not counted: ${other === 1 ? 'one is' : `${fmtCount(other)} are`} in a unit the book does not count`,
+    );
   }
   const k = distinct(o.unsent);
   if (k > 0) {
@@ -158,7 +163,7 @@ export function toParSentence(row: InvRow, load: OnOrderLoad): string {
 export function toParNote(load: OnOrderLoad): string | null {
   if (load === undefined || load === 'reading') return null;
   if (load === 'failed' || !load.readable) return 'what is on order could not be read';
-  if (load.arrivingInBookUnit === null) return 'an order in another unit is not counted';
+  if (load.arrivingInBookUnit === null) return 'nothing on its way is counted: an order is in another unit';
   if (load.arrivingInBookUnit > 0) return `less ${fmtCount(load.arrivingInBookUnit)} on its way`;
   return null;
 }
