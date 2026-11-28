@@ -74,6 +74,11 @@ export function TillHistory({ houseId }: { houseId: string | null | undefined })
       {answer && state.kind !== 'reading' && (
         <div className="mt-2 font-sans text-base" role="status">
           <p>{daysSaid(answer.daysRead)}</p>
+          {answer.daysHeldByChecksSaid && (
+            <p className="mt-1 text-sm text-[#6d685f]" data-testid="house-till-held">
+              {answer.daysHeldByChecksSaid}
+            </p>
+          )}
           {answer.netDropped && (
             <p className="mt-1 text-sm text-[#6d685f]">The money was left out: the house&apos;s money is not set yet.</p>
           )}

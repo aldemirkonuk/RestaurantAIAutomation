@@ -287,6 +287,11 @@ export interface TillHistoryAnswer {
   /** Rows whose net was written in another currency than the house's (left out, quantity kept). Absent on an older gateway. */
   netForeign?: string[];
   netForeignCount?: number;
+  /** Days the till's own checks already hold: their history was not brought in. Absent on an older gateway. */
+  daysHeldByChecks?: string[];
+  daysHeldByChecksCount?: number;
+  /** The gateway's own sentence for those days, or null when there are none. */
+  daysHeldByChecksSaid?: string | null;
   stockMoved: false;
   fileRefused: string | null;
   errors: string[];

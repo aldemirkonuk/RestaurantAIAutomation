@@ -144,4 +144,21 @@ describe("/house: the till's last 90 days", () => {
     expect(note).toHaveTextContent('left out of 2 rows')
     expect(note).toHaveTextContent('House Red')
   })
+  it('says which days the till\'s own checks already hold, so "2 days read" is not the whole answer', async () => {
+    const said = '1 day already holds the till\'s own checks, so its history was not brought in: 2026-11-21.'
+    h.importTillHistory.mockResolvedValue(
+      answer({ daysRead: 2, daysHeldByChecks: ['2026-11-21'], daysHeldByChecksCount: 1, daysHeldByChecksSaid: said }),
+    )
+    await page()
+    drop(exportFile())
+    expect(await screen.findByTestId('house-till-held')).toHaveTextContent(said)
+  })
+
+  it('draws no held-days line when none is held', async () => {
+    h.importTillHistory.mockResolvedValue(answer({ daysRead: 2, daysHeldByChecksSaid: null }))
+    await page()
+    drop(exportFile())
+    await screen.findByText(/2 days read/)
+    expect(screen.queryByTestId('house-till-held')).toBeNull()
+  })
 })
