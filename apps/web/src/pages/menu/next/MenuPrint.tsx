@@ -64,13 +64,20 @@ export function printedSections(lines: PrintLine[]): PrintSection[] {
   return out;
 }
 
-/** The prices a line prints: its sizes when it prints two or more, else glass and bottle. Never 0 for none. */
+/**
+ * The prices a line prints: the till's glass and bottle prices, always. Its other printed sizes
+ * go with them only when every glass and bottle price the line has appears among them unchanged;
+ * a correction or a "Raise prices" leaves `printed_sizes` as the import wrote it, so a size that
+ * no longer agrees with the till is left off the paper (r110 review R3). Never 0 for none.
+ */
 export function printedPrices(line: PrintLine, currency: string | null): string[] {
-  const sizes = (line.printed_sizes ?? []).filter((s) => s && s.label && Number.isFinite(Number(s.price)));
-  if (sizes.length >= 2) return sizes.map((s) => `${s.label} ${formatMoney(Number(s.price), currency)}`);
-  const out: string[] = [];
   const glass = line.by_glass_price;
   const bottle = line.bottle_price;
+  const till = [glass, bottle].filter((p) => p !== null && p !== undefined).map(Number);
+  const sizes = (line.printed_sizes ?? []).filter((s) => s && s.label && Number.isFinite(Number(s.price)));
+  const agree = till.length > 0 && till.every((t) => sizes.some((s) => Math.abs(Number(s.price) - t) < 0.005));
+  if (sizes.length >= 2 && agree) return sizes.map((s) => `${s.label} ${formatMoney(Number(s.price), currency)}`);
+  const out: string[] = [];
   if (glass !== null && glass !== undefined) out.push(`Glass ${formatMoney(glass, currency)}`);
   if (bottle !== null && bottle !== undefined) out.push(glass !== null && glass !== undefined ? `Bottle ${formatMoney(bottle, currency)}` : formatMoney(bottle, currency));
   return out;

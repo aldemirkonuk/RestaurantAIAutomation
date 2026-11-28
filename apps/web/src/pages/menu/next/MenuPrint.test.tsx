@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import MenuPrint, { printedSections } from './MenuPrint';
+import MenuPrint, { printedPrices, printedSections } from './MenuPrint';
 import { getMenu, getMenuPlan, listMenuVersions, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
@@ -140,6 +140,24 @@ describe('the menu printed for the guests', () => {
     mount();
     await waitFor(() => expect(print).toHaveBeenCalled());
     expect(screen.getByTestId('menu-print-price').textContent).toMatch(/^20 cl .*450.* · 70 cl .*1[.,]?250/);
+  });
+
+  // r110 review R3: PATCH and "Raise prices" change the till's price, never `printed_sizes`.
+  it("prints the till's price, not a stale printed size, after a correction or a raise", async () => {
+    vi.mocked(getMenu).mockResolvedValue({
+      menuId: 'm1', name: null, status: 'active',
+      items: [line({ by_glass_price: 15, bottle_price: 70, printed_sizes: [{ label: 'Glass', price: 15 }, { label: 'Bottle', price: 62.5 }] } as never)],
+    });
+    mount();
+    await waitFor(() => expect(print).toHaveBeenCalled());
+    const text = screen.getByTestId('menu-print-price').textContent ?? '';
+    expect(text).toMatch(/Glass .*15/);
+    expect(text).toMatch(/Bottle .*70/);
+    expect(text).not.toMatch(/62/);
+  });
+
+  it('a sized line whose till price is unset prints no size price', () => {
+    expect(printedPrices(line({ bottle_price: null, printed_sizes: [{ label: 'a', price: 1 }, { label: 'b', price: 2 }] } as never), 'TRY')).toEqual([]);
   });
 
   it('a line with no section and no place is printed after the placed ones, in the order received', () => {
