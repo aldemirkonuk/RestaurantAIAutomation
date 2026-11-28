@@ -147,6 +147,8 @@ export type WhatIsIn =
       allergens: Record<string, 'contains' | 'may_contain' | 'free' | 'not_stated'>;
       /** Lines that leave an allergen unstated; absent from an older gateway. */
       allergensUnstatedBy?: string[];
+      /** Made lines counted through their component (r110 g2); absent from an older gateway. */
+      through?: Array<{ label: string; componentName: string }>;
     }
   | { readable: false; sentence: string };
 

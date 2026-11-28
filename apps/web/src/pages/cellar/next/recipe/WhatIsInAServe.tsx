@@ -98,6 +98,16 @@ function Allergens({ w }: { w: Extract<NonNullable<CocktailRecipe['whatIsIn']>, 
  * ring shows whether the card was opened by key or by mouse (`cl-rcp-target`,
  * r39 walk: a click moved the focus with no ring to show where it went).
  */
+/**
+ * "Counted through House orgeat, as the house makes it.": a made line's
+ * figures and allergens come from its component's recipe (r110 g2). A line
+ * named otherwise than its component names the line too.
+ */
+export function throughWords(through: Array<{ label: string; componentName: string }>): string {
+  const parts = [...new Set(through.map((t) => (t.label === t.componentName ? t.componentName : `${t.componentName} (for ${t.label})`)))];
+  return `Counted through ${parts.join('; ')}, as the house makes ${parts.length === 1 ? 'it' : 'them'}.`;
+}
+
 export default function WhatIsInAServe({ data, unsaved, id }: { data: CocktailRecipe; unsaved: boolean; id?: string }) {
   if (!data.current) return null;
   const dish = data.kind === 'dish';
@@ -134,6 +144,11 @@ export default function WhatIsInAServe({ data, unsaved, id }: { data: CocktailRe
           </div>
         ) : null}
       </dl>
+      {w.through && w.through.length > 0 ? (
+        <p className="cl-note" data-testid="recipe-whatisin-through">
+          {throughWords(w.through)}
+        </p>
+      ) : null}
       {w.notCounted.length > 0 ? (
         <p className="cl-note" data-testid="recipe-whatisin-notcounted">
           Not counted: {w.notCounted.map((n) => `${n.label} (${n.why})`).join('; ')}.
