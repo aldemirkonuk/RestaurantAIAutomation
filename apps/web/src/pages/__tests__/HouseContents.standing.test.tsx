@@ -4,15 +4,17 @@
  * on the book, the last invoice sent or skipped, and the money set. An unknown
  * read is never counted as unset (ADR 0020).
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getOnboardingProgress, houseCurrency, upload, skipFolio } = vi.hoisted(() => ({
+const { getOnboardingProgress, houseCurrency, upload, skipFolio, readEvidenceRecorded, listDocuments } = vi.hoisted(() => ({
   getOnboardingProgress: vi.fn(),
   houseCurrency: vi.fn(),
   upload: vi.fn(),
   skipFolio: vi.fn(),
+  readEvidenceRecorded: vi.fn(),
+  listDocuments: vi.fn(),
 }))
 
 vi.mock('../../services/api/vendors', () => ({
@@ -22,8 +24,8 @@ vi.mock('../../services/api/vendors', () => ({
 }))
 vi.mock('../../services/api/menus', () => ({ getOnboardingProgress, updateOnboardingProgress: vi.fn() }))
 vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency } }))
-vi.mock('../../services/api/documents', () => ({ documentsApi: { upload } }))
-vi.mock('../../services/api/arrival', () => ({ skipFolio }))
+vi.mock('../../services/api/documents', () => ({ documentsApi: { upload, list: listDocuments } }))
+vi.mock('../../services/api/arrival', () => ({ skipFolio, readEvidenceRecorded }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../components/onboarding/KeepOnPhone', () => ({ KeepOnPhone: () => null }))
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }))
@@ -37,6 +39,8 @@ beforeEach(() => {
   houseCurrency.mockResolvedValue({ readable: true, code: 'TRY' })
   upload.mockResolvedValue({ documentId: 'd1' })
   skipFolio.mockResolvedValue(undefined)
+  readEvidenceRecorded.mockResolvedValue(false)
+  listDocuments.mockResolvedValue([])
   sessionStorage.clear()
 })
 
@@ -64,23 +68,62 @@ describe('HouseContents standing', () => {
     expect(document.body.textContent).not.toMatch(/\d of 4 set/)
   })
 
-  it('a failed setup read is unknown, not 0 of 4', async () => {
-    getOnboardingProgress.mockRejectedValue(new Error('down'))
+  it('a failed setup read says it failed, draws no count, and Look again reads again', async () => {
+    getOnboardingProgress.mockRejectedValueOnce(new Error('down')).mockResolvedValue(settled)
     houseCurrency.mockResolvedValue({ readable: true, code: 'TRY' })
     page()
     await screen.findByTestId('house-menu-unread')
-    expect(screen.getByText('Looking at your house…')).toBeInTheDocument()
+    const line = await screen.findByText(/We could not read all of your house just now/)
+    expect(screen.queryByText('Looking at your house…')).toBeNull()
     expect(screen.queryByTestId('house-standing-fill')).toBeNull()
     expect(document.body.textContent).not.toMatch(/\d of 4 set/)
+    fireEvent.click(within(line.closest('[data-testid="house-standing"]') as HTMLElement).getByRole('button', { name: 'Look again' }))
+    expect(await screen.findByText('3 of 4 set')).toBeInTheDocument()
   })
 
-  it('a money read that does not answer keeps the line at looking', async () => {
+  it('a money read that fails or is unreadable says it failed, not "looking" forever', async () => {
     getOnboardingProgress.mockResolvedValue({ ...settled, next_steps: {} })
     houseCurrency.mockRejectedValue(new Error('down'))
     page()
     await screen.findByText(/Your vendor is saved/)
-    await waitFor(() => expect(houseCurrency).toHaveBeenCalled())
-    expect(screen.getByText('Looking at your house…')).toBeInTheDocument()
+    expect(await screen.findByText(/We could not read all of your house just now/)).toBeInTheDocument()
+    expect(screen.queryByText('Looking at your house…')).toBeNull()
+  })
+
+  it('an unreadable money answer is a failure too', async () => {
+    getOnboardingProgress.mockResolvedValue({ ...settled, next_steps: {} })
+    houseCurrency.mockResolvedValue({ readable: false })
+    page()
+    expect(await screen.findByText(/We could not read all of your house just now/)).toBeInTheDocument()
+  })
+
+  it('an invoice read that fails is a failure; one that answers none is "not yet"', async () => {
+    getOnboardingProgress.mockResolvedValue(settled)
+    readEvidenceRecorded.mockRejectedValue(new Error('down'))
+    const first = page()
+    expect(await screen.findByText(/We could not read all of your house just now/)).toBeInTheDocument()
+    first.unmount()
+    readEvidenceRecorded.mockResolvedValue(false)
+    listDocuments.mockRejectedValue(new Error('down'))
+    const second = page()
+    expect(await screen.findByText(/We could not read all of your house just now/)).toBeInTheDocument()
+    second.unmount()
+    listDocuments.mockResolvedValue([])
+    page()
+    expect(await screen.findByText('3 of 4 set')).toBeInTheDocument()
+  })
+
+  it('on a return visit the invoice is set by the book\'s recorded skip, or by a document the house holds', async () => {
+    getOnboardingProgress.mockResolvedValue(settled)
+    readEvidenceRecorded.mockResolvedValue(true)
+    const first = page()
+    expect(await screen.findByText('The house is set.')).toBeInTheDocument()
+    expect(screen.getByTestId('house-go-to-desk').className).toMatch(/bg-\[#1a5e6b\]/)
+    first.unmount()
+    readEvidenceRecorded.mockResolvedValue(false)
+    listDocuments.mockResolvedValue([{ id: 'd1' }])
+    page()
+    expect(await screen.findByText('The house is set.')).toBeInTheDocument()
   })
 
   it('reads 0 of 4 on a house with nothing set, and an optional row adds nothing', async () => {
