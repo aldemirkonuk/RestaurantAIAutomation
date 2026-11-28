@@ -88,7 +88,7 @@ const owner = (out: Awaited<ReturnType<DishesService["componentUsesOfItem"]>>, c
 describe("Used in, through a house-made component (r110 inventory g1)", () => {
   it("40 ml of a 700 ml syrup made from 500 g of sugar is 28.57 g of sugar a serve", async () => {
     const out = await service().componentUsesOfItem(HOUSE_A, SUGAR);
-    expect(owner(out, SYRUP, DAIQ)).toEqual({ kind: "cocktail", id: DAIQ, name: "Daiquiri", perServeQtyBase: 28_571.43, baseUnit: "mg", why: null });
+    expect(owner(out, SYRUP, DAIQ)).toEqual({ kind: "cocktail", id: DAIQ, name: "Daiquiri", perServeQtyBase: 28_571.43, baseUnit: "mg", why: null, per: "serve", makesQtyBase: null, makesBaseUnit: null });
     expect(owner(out, SYRUP, MOJITO)).toMatchObject({ perServeQtyBase: 14_285.71, baseUnit: "mg" });
   });
 
@@ -96,10 +96,12 @@ describe("Used in, through a house-made component (r110 inventory g1)", () => {
     const out = await service().componentUsesOfItem(HOUSE_A, SUGAR);
     // The batch mix is itself listed under the syrup: 2 l of syrup a batch, one batch a "serve".
     expect(owner(out, SYRUP, BATCH)).toMatchObject({ kind: "dish", name: "Punch batch", perServeQtyBase: 142_857.14 });
+    // ... and a prep drawing a prep is read per batch, with what the batch makes: it has no serve.
+    expect(owner(out, SYRUP, BATCH)).toMatchObject({ per: "batch", makesQtyBase: 10_000, makesBaseUnit: "ml10" });
     const batch = out.find((c) => c.componentId === BATCH)!;
     expect(batch.level).toBe(2);
     // 100 ml of a 1 l batch that holds 2/7 of 500 g.
-    expect(batch.owners).toEqual([{ kind: "cocktail", id: PUNCH, name: "Punch", perServeQtyBase: 14_285.71, baseUnit: "mg", why: null }]);
+    expect(batch.owners).toEqual([{ kind: "cocktail", id: PUNCH, name: "Punch", perServeQtyBase: 14_285.71, baseUnit: "mg", why: null, per: "serve", makesQtyBase: null, makesBaseUnit: null }]);
   });
 
   it("a recipe that makes several serves gives one serve's share, and one that says no serves gives no amount", async () => {

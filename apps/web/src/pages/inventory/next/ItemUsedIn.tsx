@@ -249,6 +249,13 @@ export function throughQty(q: number, unit: ItemThroughOwner['baseUnit'], code: 
   return `${n(q / 1000)} each`;
 }
 
+/** "28.6 g a serve", or for an owner that is itself a component "142.9 g a batch (makes 1 l)": it has no serve. */
+export function throughAmountWords(o: ItemThroughOwner, code: string | null): string {
+  const q = throughQty(o.perServeQtyBase as number, o.baseUnit, code);
+  if (o.per !== 'batch') return `${q} a serve`;
+  return o.makesQtyBase != null && o.makesBaseUnit ? `${q} a batch (makes ${throughQty(o.makesQtyBase, o.makesBaseUnit, code)})` : `${q} a batch`;
+}
+
 /** Why a serve's amount is not said, naming the component (or, deeper, what it is made from). */
 export function throughWhyWords(o: ItemThroughOwner, c: ItemThroughComponent): string {
   const of = c.level > 1 ? `${c.componentName} or what it is made from` : c.componentName;
@@ -285,7 +292,7 @@ function DrawnBy({ c, through, code, seen }: { c: ItemThroughComponent; through:
           <span key={`${o.kind}-${o.id}`}>
             {i > 0 ? ' · ' : null}
             <LineLink to={o.kind === 'dish' ? dishHref(o.id) : drinkHref(o.id)}>{o.name}</LineLink>{' '}
-            {o.perServeQtyBase !== null ? `${throughQty(o.perServeQtyBase, o.baseUnit, code)} a serve` : throughWhyWords(o, c)}
+            {o.perServeQtyBase !== null ? throughAmountWords(o, code) : throughWhyWords(o, c)}
           </span>
         ))}
       </p>

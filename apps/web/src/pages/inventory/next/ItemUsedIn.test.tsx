@@ -378,6 +378,8 @@ describe('Drawn by, through a house-made component (r110 g1)', () => {
   const syrup = dish({ dishId: 's1', name: 'Simple syrup', uses: [{ label: 'Sugar', qtyEntered: 500, unitCode: 'g' }], yieldServes: 1 });
   const owner = (kind: 'dish' | 'cocktail', id: string, name: string, q: number | null, why: 'no_yield' | 'unit_mismatch' | null = null) => ({
     kind, id, name, perServeQtyBase: q, baseUnit: q === null ? null : ('mg' as const), why,
+    // A dish that is itself a component is read per batch, with what the batch makes.
+    ...(kind === 'dish' ? { per: 'batch' as const, makesQtyBase: 10_000, makesBaseUnit: 'ml10' as const } : { per: 'serve' as const }),
   });
   // A plain dish that takes the good too, listed first: nothing draws it, so no line goes under it.
   const cake = dish({ dishId: 'c0', name: 'Almond cake' });
@@ -389,7 +391,7 @@ describe('Drawn by, through a house-made component (r110 g1)', () => {
       { componentId: 'b1', componentName: 'Punch batch', level: 2, owners: [owner('cocktail', 'k3', 'Punch', 14_285.71)] },
     ]));
     const line = screen.getByTestId('ivd-drawn-s1');
-    expect(line.textContent).toBe('Drawn by: Daiquiri 28.6 g a serve · Mojito 14.3 g a serve · Punch batch 142.9 g a serve');
+    expect(line.textContent).toBe('Drawn by: Daiquiri 28.6 g a serve · Mojito 14.3 g a serve · Punch batch 142.9 g a batch (makes 1 l)');
     expect(within(line).getByRole('link', { name: 'Daiquiri' }).getAttribute('href')).toBe('/cocktails?open=k1');
     expect(within(line).getByRole('link', { name: 'Punch batch' }).getAttribute('href')).toBe('/dishes?open=b1');
     expect(screen.getByTestId('ivd-drawn-b1').textContent).toBe('Punch batch is drawn by: Punch 14.3 g a serve');
