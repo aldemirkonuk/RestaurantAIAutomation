@@ -132,6 +132,37 @@ describe('the menu printed for the guests', () => {
     expect(screen.getByTestId('menu-print-price').textContent).not.toMatch(/₺|\$/);
   });
 
+  // r110 review R4: the page prints itself on fonts.ready; the currency read was never waited for.
+  it('waits for the house currency before it prints, and never prints "currency not recorded"', async () => {
+    let answer: (v: HouseCurrency) => void = () => {};
+    vi.mocked(settingsApi.houseCurrency).mockReturnValue(new Promise<HouseCurrency>((r) => { answer = r; }));
+    vi.mocked(getMenu).mockResolvedValue({ menuId: 'm1', name: null, status: 'active', items: [line()] });
+    mount();
+    await screen.findByText(/Getting the current menu ready/);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(print).not.toHaveBeenCalled();
+    answer({ restaurantId: 'r1', code: 'TRY', country: null, readable: true, reason: null, statedAt: null } as HouseCurrency);
+    await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('menu-print-price').textContent).not.toMatch(/not recorded/);
+  });
+
+  it('refuses in words, and never prints, when the house has no currency set', async () => {
+    vi.mocked(settingsApi.houseCurrency).mockResolvedValue({ restaurantId: 'r1', code: null, country: null, readable: false, reason: 'not set', statedAt: null } as HouseCurrency);
+    vi.mocked(getMenu).mockResolvedValue({ menuId: 'm1', name: null, status: 'active', items: [line()] });
+    mount();
+    expect(await screen.findByTestId('menu-print-refused')).toHaveTextContent(/no currency set.*Set the house's currency first/);
+    expect(print).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('menu-print-price')).toBeNull();
+  });
+
+  it('refuses in words, and never prints, when the currency could not be read', async () => {
+    vi.mocked(settingsApi.houseCurrency).mockRejectedValue({ response: { data: { message: 'settings are down' } } });
+    vi.mocked(getMenu).mockResolvedValue({ menuId: 'm1', name: null, status: 'active', items: [line()] });
+    mount();
+    expect(await screen.findByTestId('menu-print-refused')).toHaveTextContent(/currency could not be read \(settings are down\)/);
+    expect(print).not.toHaveBeenCalled();
+  });
+
   it('prints a line\'s sizes when it prints two or more', async () => {
     vi.mocked(getMenu).mockResolvedValue({
       menuId: 'm1', name: null, status: 'active',

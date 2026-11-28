@@ -12,12 +12,32 @@ import { settingsApi } from '../../../services/api/settings';
  * "currency not recorded" rather than a silent dollar-sign default.
  */
 export function useHouseCurrency(restaurantId: string | null): string | null {
-  const { data } = useQuery({
+  return useHouseCurrencyRead(restaurantId).code;
+}
+
+/**
+ * The same read with its state, for a page that must not draw money before it is known
+ * (`/menu/print` prints on its own). `settled` is true once the read has answered or failed;
+ * `code` is null unless the answer was readable, which `failed` and a null `code` with `settled`
+ * tell apart from "not set".
+ */
+export function useHouseCurrencyRead(restaurantId: string | null): {
+  code: string | null;
+  settled: boolean;
+  failed: boolean;
+  error: unknown;
+} {
+  const { data, isSuccess, isError, error } = useQuery({
     // The house is in the key: one house's currency never prices another's
     // menu (MENU-01).
     queryKey: ['settings', 'currency', restaurantId],
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
   });
-  return data?.readable ? (data.code ?? null) : null;
+  return {
+    code: data?.readable ? (data.code ?? null) : null,
+    settled: isSuccess || isError,
+    failed: isError,
+    error,
+  };
 }

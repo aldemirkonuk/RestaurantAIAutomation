@@ -20,7 +20,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { getMenu, getMenuPlan, listMenuVersions, type MenuLine } from '../../../services/api/menus';
 import { formatMoney } from '@/lib/currency';
-import { useHouseCurrency } from './house-currency';
+import { useHouseCurrencyRead } from './house-currency';
 import { houseDay } from './menu-clock';
 import './menu-print.css';
 
@@ -111,7 +111,8 @@ export default function MenuPrint() {
     queryFn: listMenuVersions,
     retry: false,
   });
-  const currency = useHouseCurrency(house);
+  const money = useHouseCurrencyRead(house);
+  const currency = money.code;
 
   const toCarry = plan.data ? (plan.data.counts.change ?? 0) + (plan.data.counts.new_wine ?? 0) : null;
   const lines = (menu.data?.items ?? []) as PrintLine[];
@@ -120,7 +121,9 @@ export default function MenuPrint() {
   const since = versions.data?.current?.madeCurrentAt
     ? houseDay(versions.data.current.madeCurrentAt, versions.data.timezone ?? null)
     : null;
-  const ready = menu.isSuccess && lines.length > 0 && toCarry === 0;
+  // The page prints itself once ready, so money is drawn only when the house's currency is known: without it
+  // formatMoney writes "(currency not recorded)" beside every price, and that must not reach the paper.
+  const ready = menu.isSuccess && lines.length > 0 && toCarry === 0 && money.settled && currency !== null;
 
   // Only this page prints: the app around it is hidden from the printer.
   useEffect(() => {
@@ -149,6 +152,10 @@ export default function MenuPrint() {
   else if (menu.isSuccess && lines.length === 0) refusal = 'The current menu has no lines, so there is nothing to print.';
   else if (plan.isError)
     refusal = `Whether every price has reached the house could not be checked (${said(plan.error)}). Print once it can, so the printed price is the till's.`;
+  else if (menu.isSuccess && money.failed)
+    refusal = `The house's currency could not be read (${said(money.error)}). Nothing was printed, so no price goes on paper without its currency.`;
+  else if (menu.isSuccess && money.settled && currency === null)
+    refusal = "This house has no currency set, so a price would print without one. Set the house's currency first, then print.";
   else if (toCarry !== null && toCarry > 0)
     refusal = `${toCarry} ${toCarry === 1 ? 'price is' : 'prices are'} still being carried to the house; print once they are, so the printed price is the till's.`;
 
