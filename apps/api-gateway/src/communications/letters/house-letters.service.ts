@@ -183,6 +183,10 @@ export type LetterCategory = (typeof LETTER_CATEGORIES)[number];
  *  (procurement.service.ts:2697-2703 filters on that last one). */
 export const LETTER_TEMPLATE_TYPE = "letter";
 
+/** A sending address's signature (r110 g3): `name` is the lower-cased address. */
+export const MAIL_SIGNATURE_TYPE = "mail_signature";
+export const MAIL_SIGNATURE_MAX = 600;
+
 export type { GuardrailHit } from "./composer-guardrails";
 
 /** A claim's letter, as the credits lane shows it (ADR 0230). */
@@ -1962,6 +1966,81 @@ export class HouseLettersService {
       );
     }
     return { id: String((data as Record<string, unknown>).id), saved: true };
+  }
+
+  // ==========================================================================
+  // A signature per sending address (r110 g3)
+  // ==========================================================================
+
+  /** The address, lower case, when this house sends from it; else 404 in words. */
+  private async ownSendingAddress(restaurantId: string, userId: string, address: string): Promise<string> {
+    const want = (address ?? "").trim().toLowerCase();
+    let ours: Set<string>;
+    try {
+      ours = await this.sender.sendsFrom(restaurantId, userId);
+    } catch (err) {
+      throw new BadRequestException(`${err instanceof Error ? err.message : String(err)} Nothing was read or saved.`);
+    }
+    if (!want || !ours.has(want)) {
+      throw new NotFoundException(`This house does not send from ${want || "that address"}, so it has no signature there.`);
+    }
+    return want;
+  }
+
+  private async readSignatureRow(restaurantId: string, name: string) {
+    const { data, error } = await this.db.client
+      .from("communication_templates")
+      .select("id, body, updated_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("type", MAIL_SIGNATURE_TYPE)
+      .eq("name", name)
+      .maybeSingle();
+    if (error) throw new BadRequestException(`The signature could not be read (${error.message}).`);
+    return data as { id: string; body: string; updated_at: string | null } | null;
+  }
+
+  /** GET /communications/letters/signature?address= (owner or manager). */
+  async signature(restaurantId: string, userId: string, address: string) {
+    const name = await this.ownSendingAddress(restaurantId, userId, address);
+    const row = await this.readSignatureRow(restaurantId, name);
+    return { address: name, body: row?.body ?? null, updatedAt: row?.updated_at ?? null };
+  }
+
+  /**
+   * PUT /communications/letters/signature (owner or manager). One row per
+   * house and address: read, then update or insert; an insert that loses a
+   * race to the unique index updates the winner. An empty body clears it.
+   * Answers with the row as stored, read back.
+   */
+  async saveSignature(params: { restaurantId: string; userId: string; address: string; body: string }) {
+    const { restaurantId } = params;
+    const userId = assertNamedActor(params.userId, "saved");
+    const name = await this.ownSendingAddress(restaurantId, userId, params.address);
+    const body = (params.body ?? "").replace(/\s+$/, "");
+    if (body.length > MAIL_SIGNATURE_MAX) {
+      throw new BadRequestException(`A signature is at most ${MAIL_SIGNATURE_MAX} characters. Nothing was saved.`);
+    }
+    const table = () => this.db.client.from("communication_templates");
+    let row = await this.readSignatureRow(restaurantId, name);
+    if (!body) {
+      if (row) {
+        const { error } = await table().delete().eq("id", row.id).eq("restaurant_id", restaurantId);
+        if (error) throw new BadRequestException(`The signature was NOT cleared (${error.message}).`);
+      }
+      return { address: name, body: null, updatedAt: null, saved: true };
+    }
+    const payload = { body, updated_by: userId, updated_at: new Date().toISOString() };
+    if (!row) {
+      const { error } = await table().insert({ restaurant_id: restaurantId, type: MAIL_SIGNATURE_TYPE, name, subject: null, ...payload });
+      if (error && error.code !== "23505") throw new BadRequestException(`The signature was NOT saved (${error.message}).`);
+      if (error) row = await this.readSignatureRow(restaurantId, name);
+    }
+    if (row) {
+      const { error } = await table().update(payload).eq("id", row.id).eq("restaurant_id", restaurantId);
+      if (error) throw new BadRequestException(`The signature was NOT saved (${error.message}).`);
+    }
+    const stored = await this.readSignatureRow(restaurantId, name);
+    return { address: name, body: stored?.body ?? null, updatedAt: stored?.updated_at ?? null, saved: true };
   }
 
   private async stampTemplateUse(restaurantId: string, templateId: string) {

@@ -28,6 +28,8 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
+  Query,
   ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
@@ -44,7 +46,14 @@ import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersCron } from "./house-letters.cron";
 import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
-import { DeclineLetterRequestDto, QueueLetterDto, UploadLetterFilesDto, UpsertLetterTemplateDto } from "./house-letters.dto";
+import {
+  DeclineLetterRequestDto,
+  QueueLetterDto,
+  SaveSignatureDto,
+  SignatureQueryDto,
+  UploadLetterFilesDto,
+  UpsertLetterTemplateDto,
+} from "./house-letters.dto";
 import { HouseLetterFilesService } from "./house-letter-files.service";
 import { houseActor, type TokenUser } from "./house-letters.actor";
 
@@ -161,6 +170,28 @@ export class HouseLettersController {
   ) {
     const { restaurantId } = houseActor(user);
     return this.letters.discardDraft({ restaurantId, id });
+  }
+
+  @Get("signature")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "The signature for one address this house sends from (r110 g3); 404 for any other address",
+  })
+  async signature(@CurrentUser() user: TokenUser, @Query() q: SignatureQueryDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.signature(restaurantId, userId, q.address);
+  }
+
+  @Put("signature")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Save the signature for one address this house sends from (r110 g3); an empty body clears it",
+  })
+  async saveSignature(@CurrentUser() user: TokenUser, @Body() dto: SaveSignatureDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.saveSignature({ restaurantId, userId, address: dto.address, body: dto.body });
   }
 
   @Get("templates")
