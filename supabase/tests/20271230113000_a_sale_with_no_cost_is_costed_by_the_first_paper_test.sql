@@ -118,6 +118,18 @@ begin
   r := public.restate_sale_cost(h, inv, oa, 12.34);
   select cost_at_sale into c from public.wine_consumption_log where id = s7;
   if c <> 0.0123 then raise exception 'CA8: the taste is round(0.001 x 12.34, 4) = 0.0123, got %', c; end if;
+
+  -- CA9: the callers' own shape, five NAMED arguments, resolves to exactly one
+  -- function (a second overload is 42725) and it still re-costs from the share.
+  select count(*) into n from pg_proc
+   where proname = 'restate_sale_cost' and pronamespace = 'public'::regnamespace;
+  if n <> 1 then raise exception 'CA9: one restate_sale_cost, got % overloads', n; end if;
+  r := public.restate_sale_cost(p_restaurant_id => h, p_inventory_id => inv,
+         p_source_order_id => oa, p_unit_cost => 9.5, p_performed_by => null);
+  select cost_at_sale, cost_basis into c, b from public.wine_consumption_log where id = s6;
+  if c <> round(0.333333 * 9.5, 4) or b <> 'costed_after_sale' then
+    raise exception 'CA9: five named arguments re-cost from the share and keep the word, got % %', c, b;
+  end if;
 end $$;
 
 rollback;
