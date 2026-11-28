@@ -2,7 +2,14 @@
  * pdf-line-geometry — a box is a citation, never an estimate (ADR 0104).
  * EVERY value below is SYNTHETIC: a PDF drawn here with pdf-lib.
  */
+import * as childProcess from "node:child_process";
 import { PDFDocument, StandardFonts } from "pdf-lib";
+
+// The real spawn, watched: the child's options are what the test reads.
+jest.mock("node:child_process", () => {
+  const actual = jest.requireActual("node:child_process");
+  return { ...actual, spawn: jest.fn(actual.spawn) };
+});
 import {
   lineGeometryForPdf,
   matchLineGeometry,
@@ -105,6 +112,29 @@ describe("lineGeometryForPdf", () => {
       lines,
     );
     expect([...out.values()].every((v) => v === null)).toBe(true);
+  });
+});
+
+describe("the pdfjs child holds none of the gateway's secrets", () => {
+  it("is spawned with PATH only and without code generation, and still reads the paper", async () => {
+    const spy = childProcess.spawn as unknown as jest.Mock;
+    spy.mockClear();
+    const had = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+    try {
+      const out = await lineGeometryForPdf(await fixture(), lines);
+      const [, args, opts] = spy.mock.calls[0] as [string, string[], { env?: Record<string, string> }];
+      expect(Object.keys(opts.env ?? { UNSET: "" })).toEqual(["PATH"]);
+      expect(Object.keys(opts.env ?? {}).some((k) => k.startsWith("SUPABASE_"))).toBe(false);
+      expect(args).toContain("--disallow-code-generation-from-strings");
+      // what the child really sees, with those options
+      const seen = childProcess.spawnSync(process.execPath, ["-e", "process.stdout.write(Object.keys(process.env).join())"], { env: opts.env });
+      expect(String(seen.stdout)).not.toMatch(/SUPABASE/);
+      expect(out.get(1)).not.toBeNull();
+    } finally {
+      if (had === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+      else process.env.SUPABASE_SERVICE_ROLE_KEY = had;
+    }
   });
 });
 
