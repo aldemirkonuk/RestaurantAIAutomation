@@ -46,7 +46,9 @@ export type CommandSection =
   | "Insights"
   | "Recent"
   | "On the counter"
-  | "Rooms";
+  | "Rooms"
+  /** Goods from the house's list, found by name (r108 inventory g13). */
+  | "Goods";
 
 export interface Command {
   id: string;

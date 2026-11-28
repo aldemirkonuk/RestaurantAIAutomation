@@ -160,7 +160,7 @@ describe("adapters — a line carries one unit's price and the units rung", () =
 
   it("toast keeps the money in a selection's modifiers", () => {
     const pour = toast({ quantity: 2, price: 24, receiptLinePrice: 0 });
-    expect(pour.price * pour.qty).toBe(24);
+    expect(pour.price! * pour.qty).toBe(24);
     const large = toast({ quantity: 1, price: 14, receiptLinePrice: 9 });
     expect(large.price).toBe(14);
   });
@@ -172,7 +172,7 @@ describe("adapters — a line carries one unit's price and the units rung", () =
   it("clover reads unitQty in thousandths on a per-unit line", () => {
     const it = clover({ price: 2000, unitQty: 1500 });
     expect(it.qty).toBe(1.5);
-    expect(it.price * it.qty).toBe(30);
+    expect(it.price! * it.qty).toBe(30);
   });
 
   it("clover counts a fixed-price line as one unit", () => {

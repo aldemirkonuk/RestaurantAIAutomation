@@ -78,9 +78,13 @@ export function normalizeInventoryItem(
     wineProducer: item.wineProducer ?? item.wine_producer ?? item.producer ?? undefined,
     wineVintage: item.wineVintage ?? item.wine_vintage ?? item.vintage ?? undefined,
     providerName: item.providerName ?? item.provider_name ?? undefined,
-    stockLive: item.stockLive ?? item.stock_live ?? 0,
+    // An unread stock stays null (never 0 = "none on hand"): the screens
+    // that show it say a dash, and a sum that claims completeness skips it.
+    stockLive: item.stockLive ?? item.stock_live ?? null,
     physicalStock: item.physicalStock ?? item.physical_stock ?? undefined,
-    shadowStock: item.shadowStock ?? item.shadow_stock ?? 0,
+    // Likewise the shadow stock: absent is unread (the low-stock view row has
+    // none), not "none"; every reader that adds it says `?? 0` itself.
+    shadowStock: item.shadowStock ?? item.shadow_stock ?? undefined,
     thresholdMin: item.thresholdMin ?? item.threshold_min ?? 0,
     thresholdMax: item.thresholdMax ?? item.threshold_max ?? 0,
     toastItemGuid: item.toastItemGuid ?? item.toast_item_guid ?? undefined,
@@ -96,7 +100,7 @@ export function normalizeInventoryItem(
     wac: item.wac ?? undefined,
     costProvenance: item.costProvenance ?? undefined,
     lotLocationCount: item.lotLocationCount ?? undefined,
-    openMl: item.openMl ?? 0,
+    openMl: item.rollupReadable === false ? undefined : (item.openMl ?? 0),
     velocityPerDay: item.velocityPerDay ?? undefined,
     daysOfCover: item.daysOfCover ?? undefined,
     reorderPoint: item.reorderPoint ?? undefined,
@@ -104,8 +108,18 @@ export function normalizeInventoryItem(
     abcClass: item.abcClass ?? undefined,
     deadStock: item.deadStock ?? false,
     daysSinceSale: item.daysSinceSale ?? undefined,
+    usageSource: item.usageSource === 'sales' || item.usageSource === 'counts' ? item.usageSource : undefined,
+    usageSince: item.usageSince ?? undefined,
+    usageUntil: item.usageUntil ?? undefined,
+    usageQty: typeof item.usageQty === 'number' ? item.usageQty : undefined,
     analyticsReadable: item.analyticsReadable ?? true,
-    locations: item.locations ?? [],
+    lastSettledCost: typeof item.lastSettledCost === 'number' ? item.lastSettledCost : undefined,
+    previousSettledCost: typeof item.previousSettledCost === 'number' ? item.previousSettledCost : undefined,
+    settledCostsReadable: item.settledCostsReadable,
+    settledCostTaxBasis:
+      item.settledCostTaxBasis === 'net' || item.settledCostTaxBasis === 'gross_cost' ? item.settledCostTaxBasis : undefined,
+    settledCostsCapped: item.settledCostsCapped,
+    locations: item.locationsReadable === false ? undefined : (item.locations ?? []),
   } as InventoryItem;
 }
 
@@ -142,7 +156,7 @@ export async function getItemActivity(
  */
 export async function reconcileItem(
   inventoryId: string,
-  body: { wineId: string; actualCount: number; notes?: string }
+  body: { wineId?: string; actualCount: number; notes?: string }
 ): Promise<unknown> {
   const response = await apiClient.post(
     `/inventory-ledger/inventory/${inventoryId}/reconcile`,
@@ -562,6 +576,265 @@ export async function fetchHouseItemResearch(): Promise<HouseItemResearch[]> {
 }
 
 // ==================== Export all functions ====================
+
+// ── The item drawer's reads (gateway item-detail.controller.ts) ─────────────
+
+/**
+ * The house's own fields on a list row: its kind, its unit and the name it
+ * gave a good the library does not hold (migration
+ * 20260903171000_the_house_item_is_the_ledgers_key). Snake or camel, as sent.
+ */
+export interface HouseFields {
+  kind: string | null;
+  uom: string | null;
+  displayName: string | null;
+}
+
+export function houseFieldsOf(item: unknown): HouseFields {
+  const r = (item ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return { kind: str(r.kind), uom: str(r.uom), displayName: str(r.displayName) ?? str(r.display_name) };
+}
+
+/** GET /inventory/:rid/item/:id/figures. Money fields are null for anyone but an owner or manager. */
+export interface ItemFigures {
+  waste: { readable: boolean; qty30d: number | null; given30d: number | null; value30d: number | null; source: string };
+  countGap: {
+    readable: boolean;
+    last: Array<{
+      countedAt: string;
+      expected: number | null;
+      counted: number | null;
+      variance: number | null;
+      by: string | null;
+      money: number | null;
+    }> | null;
+    source: string;
+  };
+  costTrend: { readable: boolean; points: Array<{ receivedAt: string; unitCost: number }> | null; changePct: number | null; source: string };
+  /** What is on order and not yet received: quantities only, never a price. Absent from an older gateway. */
+  onOrder?: ItemOnOrder;
+}
+
+/** One open order of a good, in its own unit; `inBookUnit` is null when that unit is not the book's. */
+export interface ItemOpenOrder {
+  id: string;
+  orderNumber: string | null;
+  status: string;
+  openQty: number;
+  unit: string | null;
+  expected: string | null;
+  inBookUnit: number | null;
+}
+
+/** Sent = confirmed, on its way or part received; `arrivingInBookUnit` sums only those, or is null. */
+export type ItemOnOrder =
+  | { readable: true; source: string; sent: ItemOpenOrder[]; unsent: ItemOpenOrder[]; arrivingInBookUnit: number | null }
+  | { readable: false; source: string; sent: null; unsent: null; arrivingInBookUnit: null };
+
+/** One group of "Used in": a failed read is `lines: null`, never [] (ADR 0067). */
+export interface ItemUsedInGroup<T> {
+  readable: boolean;
+  lines: T[] | null;
+  source: string;
+}
+
+export interface ItemMenuLine {
+  menuItemId: string;
+  menuId: string;
+  name: string;
+  byGlassPrice: number | null;
+  bottlePrice: number | null;
+  linkedBy?: 'inventory_item_id' | 'wine_library_id';
+  /** The current menu the line is on (r109 g2); absent from an older gateway. */
+  menuName?: string | null;
+}
+
+/** GET /inventory/:rid/item/:id/used-in */
+export interface ItemUsedIn {
+  item: { id: string; kind: string | null; displayName: string | null };
+  soldAs: ItemUsedInGroup<ItemMenuLine>;
+  inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null }>;
+  /** Optional: an older gateway does not send it. */
+  inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
+  namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
+  /** Till buttons mapped to this good (r109 g3). Optional: an older gateway does not send it. */
+  atTill?: ItemUsedInGroup<ItemTillButton>;
+}
+
+/** One till button that draws this good on a sale. No money. */
+export interface ItemTillButton {
+  id: string;
+  source: string;
+  itemName: string;
+  category: string | null;
+  saleUnit: string | null;
+}
+
+/** Under `inventory`, so every inventory write rereads them too. */
+export const inventoryItemKeys = {
+  figures: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'figures'] as const,
+  usedIn: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'used-in'] as const,
+  nutrition: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'nutrition'] as const,
+  nutritionCoverage: (restaurantId: string) => ['inventory', restaurantId, 'nutrition', 'coverage'] as const,
+};
+
+export async function getItemUsedIn(itemId: string, restaurantId?: string): Promise<ItemUsedIn> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemUsedIn>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in`);
+  return response.data;
+}
+
+/**
+ * POST /inventory/:rid/item/:id/used-in/link (r109 g2): link one same-named
+ * current-menu line to this good. Owner/manager only; answers the fresh Used
+ * in, or 409 (not current, another name, already linked by another good).
+ */
+export async function linkUsedInLine(itemId: string, menuItemId: string, restaurantId?: string): Promise<ItemUsedIn> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.post<ItemUsedIn>(
+    `${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in/link`,
+    { menuItemId },
+  );
+  return response.data;
+}
+
+/** GET /inventory/:rid/use-counts: how many current recipes use each good. A good no recipe uses is absent. */
+export const inventoryUseCountsKey = (restaurantId: string) => ['inventory', 'use-counts', restaurantId] as const;
+export async function getUseCounts(restaurantId?: string): Promise<{ counts: Record<string, number> }> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<{ counts: Record<string, number> }>(`${INVENTORY_PATH}/${id}/use-counts`);
+  return response.data;
+}
+
+export async function getItemFigures(itemId: string, restaurantId?: string): Promise<ItemFigures> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemFigures>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/figures`);
+  return response.data;
+}
+
+/** POST /inventory/:rid/house-items: "Carry this", a good the wine library does not hold. */
+export interface CarryHouseItemBody {
+  kind: string;
+  uom: string;
+  displayName: string;
+  thresholdMin?: number;
+}
+
+export interface CarriedHouseItem {
+  id: string;
+  kind: string;
+  uom: string;
+  displayName: string;
+  thresholdMin: number;
+}
+
+export async function carryHouseItem(body: CarryHouseItemBody, restaurantId?: string): Promise<CarriedHouseItem> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.post<CarriedHouseItem>(`${INVENTORY_PATH}/${id}/house-items`, body);
+  return response.data;
+}
+
+/**
+ * What a good is made of: GET/PUT /inventory/:rid/item/:id/nutrition and the
+ * label lookup. Every figure is per 100 g or 100 ml (basis), and null when not
+ * known, never 0. All 14 allergens always come back; one nobody stated is
+ * 'not_stated'.
+ */
+export type NutritionBasis = '100g' | '100ml';
+export type NutritionSource = 'house' | 'pack_label' | 'open_food_facts' | 'usda_fdc';
+export type AllergenStatus = 'contains' | 'may_contain' | 'free' | 'not_stated';
+export const ALLERGENS = [
+  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soy', 'milk',
+  'tree_nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs',
+] as const;
+export type Allergen = (typeof ALLERGENS)[number];
+
+export interface NutritionFigures {
+  energyKcal: number | null;
+  fatG: number | null;
+  saturatesG: number | null;
+  carbohydrateG: number | null;
+  sugarsG: number | null;
+  proteinG: number | null;
+  saltG: number | null;
+  abvPct: number | null;
+}
+
+export interface StoredNutrition extends NutritionFigures {
+  basis: NutritionBasis;
+  /** Energy was worked out from the ABV alone: the alcohol, not any sugar. */
+  energyFromAbv: boolean;
+  source: NutritionSource;
+  sourceRef: string | null;
+  statedByName: string;
+  statedAt: string;
+}
+
+export interface ItemNutrition {
+  item: { id: string; name: string; kind: string | null; uom: string | null };
+  suggestedBasis: NutritionBasis | null;
+  figures: StoredNutrition | null;
+  allergens: Array<{ allergen: Allergen; status: AllergenStatus; statedByName: string | null; statedAt: string | null }>;
+}
+
+export interface SaveItemNutritionBody {
+  figures: (Partial<NutritionFigures> & { basis: NutritionBasis; source: NutritionSource; sourceRef?: string | null }) | null;
+  allergens: Array<{ allergen: Allergen; status: AllergenStatus }>;
+}
+
+export interface NutritionDraft {
+  source: 'open_food_facts' | 'usda_fdc';
+  sourceRef: string;
+  productName: string | null;
+  basis: NutritionBasis;
+  figures: NutritionFigures;
+  allergens: Array<{ allergen: Allergen; status: 'contains' | 'may_contain' }>;
+  notes: string[];
+  attribution: string;
+}
+
+export type NutritionLookup =
+  | { kind: 'draft'; draft: NutritionDraft }
+  | { kind: 'choices'; choices: Array<{ source: 'open_food_facts' | 'usda_fdc'; ref: string; name: string; brand: string | null }>; said: string[] }
+  | { kind: 'none'; why: string; said: string[] };
+
+const nutritionPath = (restaurantId: string | undefined, itemId: string) => {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  return `${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/nutrition`;
+};
+
+/** DD-r108-36: which of the house's items have their nutrition recorded (ids only, read whole). */
+export interface NutritionCoverage {
+  recordedItemIds: string[];
+  houseItems: number;
+}
+
+export async function getNutritionCoverage(restaurantId: string): Promise<NutritionCoverage> {
+  return (await apiClient.get<NutritionCoverage>(`${INVENTORY_PATH}/${restaurantId}/nutrition/coverage`)).data;
+}
+
+export async function getItemNutrition(itemId: string, restaurantId?: string): Promise<ItemNutrition> {
+  return (await apiClient.get<ItemNutrition>(nutritionPath(restaurantId, itemId))).data;
+}
+
+export async function saveItemNutrition(itemId: string, body: SaveItemNutritionBody, restaurantId?: string): Promise<ItemNutrition> {
+  return (await apiClient.put<ItemNutrition>(nutritionPath(restaurantId, itemId), body)).data;
+}
+
+export async function lookupItemNutrition(
+  itemId: string,
+  by: { barcode?: string; name?: string; fdcId?: string },
+  restaurantId?: string,
+): Promise<NutritionLookup> {
+  return (await apiClient.post<NutritionLookup>(`${nutritionPath(restaurantId, itemId)}/lookup`, by)).data;
+}
 
 export const inventoryApi = {
   getInventory,

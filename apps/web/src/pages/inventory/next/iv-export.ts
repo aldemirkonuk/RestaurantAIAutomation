@@ -5,6 +5,10 @@
  * import cycle (InventoryNext → InventoryTable → RowDropdown).
  *
  * A figure that was not read is left blank in the file, never written as 0.
+ * The one exception is cost: when the cost read failed the cost cells say
+ * "could not be read" (the words the page's cells use), so a blank in a cost
+ * column only ever means the house has no cost for the title. Numbers stay
+ * numbers, so the column still parses; only the unread cell is text.
  * Legacy's valuation wrote 0 for a missing count (InventoryCommandPage.tsx
  * valuationColumns); that is the one deliberate difference.
  */
@@ -15,6 +19,19 @@ import { fmtCount, typeLabel, type InvRow } from './useInventoryNextData';
 
 export function blank(v: number | null): number | string {
   return v === null ? '' : v;
+}
+
+/** The words the /inventory cells show for a cost that could not be read. */
+export const COST_NOT_READ = 'could not be read';
+
+/** WAC cell: the number, blank for no cost on record, the marker when the cost read failed. */
+export function wacCell(r: InvRow): number | string {
+  return r.rollupReadable ? blank(r.wac) : COST_NOT_READ;
+}
+
+/** Value-at-cost cell: two-decimal figure, blank when it cannot be worked out, the marker when the cost read failed. */
+export function valueCell(r: InvRow): string {
+  return r.rollupReadable ? (r.value === null ? '' : r.value.toFixed(2)) : COST_NOT_READ;
 }
 
 /** A name on one line: a newline inside it would split it into two rows on paste. */
@@ -48,9 +65,15 @@ export async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], f
   }
 }
 
-export function valuationColumns(currencyCode: string | null): TableExportColumn<InvRow>[] {
-  return [
-    { header: 'Title', value: (r) => r.name ?? '' },
+/**
+ * `nameHead` is the name column's head: "Title" for a drink, "Good" in a house of goods.
+ * A house of goods has no producer, bottle price or glass price to write, so those
+ * columns are left out of its file rather than sent empty.
+ */
+export function valuationColumns(currencyCode: string | null, nameHead = 'Title'): TableExportColumn<InvRow>[] {
+  const goods = nameHead === 'Good';
+  const cols: TableExportColumn<InvRow>[] = [
+    { header: nameHead, value: (r) => r.name ?? '' },
     { header: 'Producer', value: (r) => r.producer ?? '' },
     { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
     { header: 'Live', value: (r) => blank(r.stock) },
@@ -58,15 +81,44 @@ export function valuationColumns(currencyCode: string | null): TableExportColumn
     { header: 'Par', value: (r) => blank(r.par) },
     { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
     { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-    { header: 'WAC', value: (r) => blank(r.wac) },
+    { header: 'WAC', value: wacCell },
     { header: 'Your bottle price', value: (r) => blank(r.bottle) },
     { header: 'Your glass price', value: (r) => blank(r.glass) },
-    { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+    { header: 'Value at cost', value: valueCell },
+    // The number, or the words when the count was not read: never 0 for a good nobody could count.
+    { header: 'Used in (recipes)', value: (r) => (typeof r.usedIn === 'number' ? r.usedIn : r.usedIn === null ? 'could not be read' : 'not read yet') },
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
+  return forHouse(goods, cols);
 }
+
+/** A house of goods' file without the drink-only columns; a house with a drink keeps them all. */
+export function forHouse<T>(goods: boolean, columns: TableExportColumn<T>[]): TableExportColumn<T>[] {
+  return goods ? columns.filter((c) => !DRINK_ONLY_HEADERS.has(c.header)) : columns;
+}
+
+/** Columns that only a drink fills: left out of a house of goods' files. */
+export const DRINK_ONLY_HEADERS: ReadonlySet<string> = new Set([
+  'Producer',
+  'Vintage',
+  'Bottle size (ml)',
+  'Your bottle price',
+  'Your glass price',
+]);
 
 /** Legacy's file name for one row: the title, slugged (InventoryCommandPage.tsx "Export this row"). */
 export function rowFilename(row: InvRow): string {
   return (row.name ?? '').replace(/[^\w]+/g, '-').toLowerCase() || 'inventory-row';
+}
+
+/** The cost columns a valuation export carries: WAC and value at cost. */
+export const COST_HEADERS: ReadonlySet<string> = new Set(['WAC', 'Value at cost']);
+
+/**
+ * The columns this reader may take away: all of them for an owner or a
+ * manager, the counts and prices without the cost for staff (inventory r28
+ * audit, gap 9; the gateway withholds the figures too, #1355).
+ */
+export function costColumnsFor<T>(columns: TableExportColumn<T>[], canManage: boolean): TableExportColumn<T>[] {
+  return canManage ? columns : columns.filter((c) => !COST_HEADERS.has(c.header));
 }

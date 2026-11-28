@@ -163,3 +163,23 @@ describe('RowExpansion — moving bottles between locations', () => {
     expect(transferStock.mock.calls[0][1].fromLocationId).not.toBeNull()
   })
 })
+
+describe('RowExpansion says what it could not read (G15, ADR 0020)', () => {
+  beforeEach(() => {
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('a failed rollup read: open bottle and paid could not be read', () => {
+    renderRow({ rollupReadable: false, openMl: undefined, wac: undefined })
+    expect(screen.getByText('Open bottle:').textContent).toContain('could not be read')
+    expect(screen.getByText('You paid (WAC)').parentElement?.textContent).toContain('could not be read')
+    expect(screen.getByText('You paid (WAC)').parentElement?.textContent).not.toContain('$42')
+  })
+
+  it('a failed location read: locations could not be read', () => {
+    renderRow({ locationsReadable: false, locations: undefined })
+    expect(screen.getByText('Locations').parentElement?.textContent).toContain('could not be read')
+  })
+})

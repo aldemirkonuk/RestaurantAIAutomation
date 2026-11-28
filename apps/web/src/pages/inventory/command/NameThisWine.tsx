@@ -35,6 +35,9 @@ export function useHouseItemResearch() {
     queryKey: HOUSE_ITEM_RESEARCH_KEY,
     queryFn: fetchHouseItemResearch,
     staleTime: 60_000,
+    // App.tsx defaults to refetchOnMount 'always'; every row mounts this hook, so a
+    // book drawn in slices would re-ask once per slice. Fresh data is enough.
+    refetchOnMount: true,
   })
 }
 

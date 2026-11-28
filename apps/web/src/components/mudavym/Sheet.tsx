@@ -69,6 +69,7 @@ import {
   lockBodyScroll,
   markSheetOpen,
   openStack,
+  openStackChanged,
   warnIfLabelIsATitle,
   type SheetLayout,
 } from './overlayState';
@@ -807,9 +808,11 @@ function OverlayRoot({
   useEffect(() => {
     if (!live || !holdsLevel()) return;
     openStack.push(titleId);
+    openStackChanged();
     return () => {
       const idx = openStack.lastIndexOf(titleId);
       if (idx !== -1) openStack.splice(idx, 1);
+      openStackChanged();
     };
   }, [live, holdsLevel, titleId]);
 

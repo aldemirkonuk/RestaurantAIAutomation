@@ -20,7 +20,28 @@ import { useCallback } from 'react'
 // Query: Inventory list
 // ---------------------------------------------------------------------------
 
-export function useInventory() {
+/**
+ * The house's goods list: the one key and fetcher /inventory reads, so any
+ * route can start it before the page that draws it mounts (p10-2) and any
+ * other reader (the Cmd-K palette's Goods, r108 g13) shares its cache. The key
+ * carries the restaurant id, so one house's list is never read as another's.
+ */
+export function inventoryListQuery(restaurantId: string) {
+  return {
+    queryKey: queryKeys.inventory.list(restaurantId),
+    queryFn: async (): Promise<InventoryItem[]> => {
+      const items = await inventoryApi.getInventory(restaurantId)
+      return items.map(normalizeInventoryItem)
+    },
+    staleTime: 30_000,
+  }
+}
+
+/**
+ * `opts.enabled: false` mounts the hook without reading (a page that shows no
+ * stock on this view, such as /cocktails inside the cellar). Default true.
+ */
+export function useInventory(opts: { enabled?: boolean } = {}) {
   const { activeRestaurantId, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
 
@@ -60,13 +81,14 @@ export function useInventory() {
   )
 
   return useQuery({
-    queryKey: queryKeys.inventory.list(activeRestaurantId ?? ''),
-    queryFn: async () => {
-      const items = await inventoryApi.getInventory(activeRestaurantId!)
-      return items.map(normalizeInventoryItem)
-    },
-    enabled: !!activeRestaurantId && isAuthenticated,
+    ...inventoryListQuery(activeRestaurantId ?? ''),
+    enabled: !!activeRestaurantId && isAuthenticated && opts.enabled !== false,
     staleTime: 30_000,
+    // The app-wide default is `'always'`, which refetches on every mount and
+    // so overrides the 30 s above: moving Inventory -> Cellar re-downloaded the
+    // 745 KB list read a few seconds earlier. `true` refetches only when stale.
+    // A stock change still lands at once: `stock:updated` invalidates the list.
+    refetchOnMount: true,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   })
@@ -126,7 +148,7 @@ export function useUpdateInventoryItem() {
       return inventoryApi.updateInventoryItem(
         itemId,
         {
-          stockLive: data.stockLive,
+          stockLive: data.stockLive ?? undefined,
           shadowStock: data.shadowStock,
           thresholdMin: data.thresholdMin,
           thresholdMax: data.thresholdMax,

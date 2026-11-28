@@ -78,6 +78,96 @@ describe("InventoryService", () => {
     service = module.get<InventoryService>(InventoryService);
   });
 
+  describe("createInventoryItem — a par of 0 stays 0 (QA round 2, U-3)", () => {
+    const queueNewWine = () =>
+      mockSingle
+        .mockResolvedValueOnce({ data: { name: "Lime wedge" }, error: null })
+        .mockResolvedValueOnce({
+          data: null,
+          error: { code: "PGRST116", message: "not found" },
+        })
+        .mockResolvedValueOnce({
+          data: { id: "inv-par-0", wine_name: "Lime wedge" },
+          error: null,
+        });
+
+    it("saves par 0 and max 0 as 0, not as 6 and 24", async () => {
+      queueNewWine();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-0",
+        stockLive: 0,
+        providerId: null,
+        thresholdMin: 0,
+        thresholdMax: 0,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(0);
+      expect(insertCall.threshold_max).toBe(0);
+    });
+
+    it("gives a par the caller left out the one the house stated", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockResolvedValue({
+        data: { default_threshold_min: 12 },
+        error: null,
+      });
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-house",
+        stockLive: 0,
+        providerId: null,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(12);
+      expect(insertCall.threshold_max).toBe(24);
+    });
+
+    it("adds nothing when the house's par could not be read", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockResolvedValue({
+        data: null,
+        error: { message: "timeout" },
+      });
+      mockSupabaseChain.insert.mockClear();
+      await expect(
+        service.createInventoryItem("rest-1", {
+          wineId: "mw-par-unread",
+          stockLive: 0,
+          providerId: null,
+        } as any),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+    });
+
+    it("gives a house that stated none the same 3 the menu path gives, not 6", async () => {
+      queueNewWine();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-none",
+        stockLive: 0,
+        providerId: null,
+      } as any);
+
+      const insertCall = mockSupabaseChain.insert.mock.calls[0][0];
+      expect(insertCall.threshold_min).toBe(3);
+      expect(insertCall.threshold_max).toBe(24);
+    });
+
+    it("does not ask the house when the caller typed a par, even 0", async () => {
+      queueNewWine();
+      mockMaybeSingle.mockClear();
+      await service.createInventoryItem("rest-1", {
+        wineId: "mw-par-typed",
+        stockLive: 0,
+        providerId: null,
+        thresholdMin: 0,
+      } as any);
+
+      expect(mockSupabaseChain.insert.mock.calls[0][0].threshold_min).toBe(0);
+      expect(mockMaybeSingle).not.toHaveBeenCalled();
+    });
+  });
+
   describe("createInventoryItem — wine_name population (regression: Bug 1)", () => {
     it("returns a non-null wineName when the master wine library resolves a name", async () => {
       // Call 1: no existing inventory item (duplicate check → PGRST116 = not found)
@@ -333,6 +423,7 @@ describe("InventoryService", () => {
       // library row (resolveBulkLineWine), the house's existing row (none),
       // and the library name for the new row's label; the insert returns the id.
       mockMaybeSingle
+        .mockResolvedValueOnce({ data: { default_threshold_min: 3 }, error: null }) // the house's par, read once up front
         .mockResolvedValueOnce({ data: { id: "mw-9", name: "Rioja", library_tier: 1 }, error: null })
         .mockResolvedValueOnce({ data: null, error: null })
         .mockResolvedValueOnce({ data: { name: "Rioja" }, error: null });
@@ -354,6 +445,47 @@ describe("InventoryService", () => {
         p_change_source: "manual",
       });
       expect(out.results[0]).toMatchObject({ status: "created", priceSync: "changed" });
+    });
+
+    it("bulk: the house's par is read ONCE for the whole request, before any line resolves (r102 review)", async () => {
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: { default_threshold_min: 12 }, error: null })
+        .mockResolvedValueOnce({ data: { id: "mw-a", name: "A", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "A" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "mw-b", name: "B", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "B" }, error: null });
+      mockSingle
+        .mockResolvedValueOnce({ data: { id: "inv-a" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "inv-b" }, error: null });
+      const out: any = await service.bulkCreateInventoryItems(
+        "rest-1",
+        { items: [{ wineId: "mw-a" }, { wineId: "mw-b" }] } as any,
+        "user-8",
+      );
+      expect(out.created).toBe(2);
+      expect(mockSupabaseChain.from.mock.calls.filter((c: any[]) => c[0] === "restaurants")).toHaveLength(1);
+      expect(mockSupabaseChain.insert.mock.calls.map((c: any[]) => c[0].threshold_min)).toEqual([12, 12]);
+    });
+
+    it("bulk: a par that cannot be read refuses the whole request before any line resolves or is written (r102 review)", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({ data: null, error: { message: "connection reset" } });
+      await expect(
+        service.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "mw-a" }, { wineId: "mw-b" }] } as any, "user-8"),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(mockSupabaseChain.from.mock.calls.filter((c: any[]) => c[0] === "master_wine_library")).toHaveLength(0);
+      expect(mockSupabaseChain.insert).not.toHaveBeenCalled();
+    });
+
+    it("bulk: lines that all state their own par never read the house's (r102 review)", async () => {
+      mockMaybeSingle
+        .mockResolvedValueOnce({ data: { id: "mw-a", name: "A", library_tier: 1 }, error: null })
+        .mockResolvedValueOnce({ data: null, error: null })
+        .mockResolvedValueOnce({ data: { name: "A" }, error: null });
+      mockSingle.mockResolvedValueOnce({ data: { id: "inv-a" }, error: null });
+      await service.bulkCreateInventoryItems("rest-1", { items: [{ wineId: "mw-a", thresholdMin: 0 }] } as any, "user-8");
+      expect(mockSupabaseChain.from.mock.calls.filter((c: any[]) => c[0] === "restaurants")).toHaveLength(0);
     });
 
     it("omits the bottle price from the INSERT when the caller never sent it -- never a silent 0", async () => {
@@ -909,5 +1041,100 @@ describe("InventoryService", () => {
       // Still no stock movement — the whole point of E46.
       expect(mockRpc).not.toHaveBeenCalled();
     });
+  });
+});
+
+// G15: a failed rollup or breakdown read is not 0 ml open or "in no location".
+describe("InventoryService list reads say when they fail (G15)", () => {
+  type Answer = { data: any; error: any; failFrom?: number };
+  const ROW = { id: "inv1", restaurant_id: "r1", master_wine_id: "w1" };
+
+  function serviceWith(answers: Record<string, Answer>, rows: any[] = [ROW]) {
+    const client = {
+      from: (table: string) => {
+        const answer = answers[table] ?? { data: [], error: null };
+        let range: [number, number] | null = null;
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          order: () => builder,
+          range: (a: number, b: number) => ((range = [a, b]), builder),
+          then: (resolve: (a: Answer) => unknown, reject?: any) => {
+            const [a, b] = range ?? [0, 999];
+            if (a >= (answer.failFrom ?? Infinity)) return Promise.resolve(failed).then(resolve, reject);
+            const data = Array.isArray(answer.data) ? answer.data.slice(a, Math.min(b, a + 999) + 1) : answer.data;
+            // readViewWhole asks for an exact count on every page.
+            const count = Array.isArray(answer.data) ? answer.data.length : null;
+            return Promise.resolve({ ...answer, data, count }).then(resolve, reject);
+          },
+        };
+        return builder;
+      },
+    };
+    const db = {
+      getClient: () => client,
+      getRestaurantInventory: jest.fn().mockResolvedValue(rows),
+    };
+    return new InventoryService(db as unknown as DatabaseService);
+  }
+
+  const failed: Answer = { data: null, error: { message: "boom" } };
+  async function firstItem(answers: Record<string, Answer>) {
+    const items = await serviceWith(answers).getRestaurantInventory("r1");
+    return items[0] as Record<string, any>;
+  }
+
+  it("a failed rollup read gives no open ml and says it was not read", async () => {
+    const item = await firstItem({ inventory_lot_rollup: failed });
+    expect(item.openMl).toBeUndefined();
+    expect(item.rollupReadable).toBe(false);
+    expect(item.locations).toEqual([]);
+    expect(item.locationsReadable).toBe(true);
+  });
+
+  it("a failed location read gives no location list and says it was not read", async () => {
+    const item = await firstItem({ inventory_location_breakdown: failed });
+    expect(item.locations).toBeUndefined();
+    expect(item.locationsReadable).toBe(false);
+    expect(item.openMl).toBe(0);
+    expect(item.rollupReadable).toBe(true);
+  });
+
+  it("a read with no row for the item says 0 ml and no locations", async () => {
+    const item = await firstItem({});
+    expect(item.openMl).toBe(0);
+    expect(item.locations).toEqual([]);
+    expect(item.rollupReadable).toBe(true);
+    expect(item.locationsReadable).toBe(true);
+  });
+
+  // QA round 10b: PostgREST's max_rows (1000) cut the rest of the house off.
+  const ids = Array.from({ length: 1200 }, (_, i) => `inv${i}`);
+  const big = (failFrom?: number) =>
+    serviceWith(
+      {
+        inventory_lot_rollup: { data: ids.map((id) => ({ inventory_id: id, open_ml: 100 })), error: null, failFrom },
+        inventory_location_breakdown: { data: ids.map((id) => ({ inventory_id: id, location_id: "z1", qty: 1, wac: 5 })), error: null, failFrom },
+      },
+      ids.map((id) => ({ ...ROW, id })),
+    ).getRestaurantInventory("r1") as Promise<Record<string, any>[]>;
+
+  it("reads every page past the 1000-row cap", async () => {
+    const last = (await big())[1199];
+    expect(last.openMl).toBe(100);
+    expect(last.locations).toEqual([{ locationId: "z1", qty: 1, wac: 5 }]);
+    expect(last.rollupReadable).toBe(true);
+  });
+
+  it("a failed later page fails the whole read", async () => {
+    const first = (await big(1000))[0];
+    expect(first.rollupReadable).toBe(false);
+    expect(first.locationsReadable).toBe(false);
+  });
+
+  it("a mapper call that read neither side claims no read", () => {
+    const item = (serviceWith({}) as any).mapInventoryItem(ROW);
+    expect(item).not.toHaveProperty("rollupReadable");
+    expect(item).not.toHaveProperty("locationsReadable");
   });
 });

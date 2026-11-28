@@ -82,7 +82,6 @@ export interface CellarNextProps {
 }
 
 export default function CellarNext({ ground, category }: CellarNextProps) {
-  const data = useCellarNextData();
   const { pathname } = useLocation();
   const [params] = useSearchParams();
 
@@ -94,6 +93,9 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
       ? (queried as RegisterId)
       : null;
   const open: RegisterId | null = category ?? fromQuery;
+  // The register shown decides what is read: the wine book, the inventory and
+  // the vendors only where they are drawn (r41 recipes audit, gap 1).
+  const data = useCellarNextData(open);
 
   // Only the registers this house carries appear in the spine. While the
   // readout is unread the spine holds the wine register alone — the one this
@@ -128,13 +130,28 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
       data-ground={ground}
       style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}
     >
-      <div style={{ margin: '0 auto', maxWidth: 1200, padding: '22px 16px 40px' }}>
+      {/* A column as tall as the room under the shell's header, with the
+          signature at its foot: while a register reads, the page is shorter
+          than it will be, and a signature that sits right under the content
+          rides down the screen each time a read lands. At the foot it is
+          where it will be, and only a page taller than the screen moves it
+          (below the fold, where nobody sees it go). */}
+      <div
+        style={{
+          margin: '0 auto',
+          maxWidth: 1200,
+          padding: '22px 16px 40px',
+          minHeight: 'calc(100vh - 52px)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         {/* ── the book's spine: wordmark + the four registers ───────────── */}
         <header style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
           <Link to="/cellar" className="cl-focus" style={{ textDecoration: 'none' }}>
             <Wordmark size={13} />
           </Link>
-          <nav aria-label="Cellar registers" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
+          <nav aria-label="Cellar registers" className="cl-spine-nav" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginLeft: 'auto' }}>
             {spine.map((id) => {
               const href = registerHref(id);
               return (
@@ -163,7 +180,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
           </nav>
         </header>
 
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, flex: '1 0 auto' }}>
           {data.authLoading ? (
             <div role="status" data-testid="cellar-opening">
               <h1 className="cl-h1">{naming.name}.</h1>
@@ -218,7 +235,15 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
 
         {/* ── the signature ─────────────────────────────────────────────── */}
         <footer
+          className="cl-signature"
           style={{
+            // Kept in its place but not drawn until the page has been read: the
+            // signature says what was read, so before the read it has nothing
+            // to say, and a drawn line that the content then pushes down is a
+            // shift. (A hidden element holds its room and is not a shift.) A
+            // register still settling (data-settling, see cellar-next.css) hides
+            // it the same way; its rule can only win while this stays unset.
+            visibility: data.authLoading || data.registersLoading ? 'hidden' : undefined,
             marginTop: 40,
             paddingTop: 12,
             borderTop: '1px solid var(--paper-2)',

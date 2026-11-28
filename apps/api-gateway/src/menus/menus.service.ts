@@ -1,4 +1,5 @@
 import { restoreArrivalEntry } from "../arrival/restore-entry";
+import { readHouseThresholdMin } from "../inventory/house-par";
 import * as crypto from "crypto";
 import {
   Injectable,
@@ -34,7 +35,6 @@ const SOURCE_BUCKET = "vendor-attachments";
 const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
-const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
 interface ResolvedItem {
@@ -749,7 +749,9 @@ export class MenusService {
       .maybeSingle();
 
     if (readErr) {
-      throw new Error(`Could not read the menu item: ${readErr.message}`);
+      throw new InternalServerErrorException(
+        `The menu line could not be looked up just now, so it was not discarded. Nothing was changed. Try again (${readErr.message}).`,
+      );
     }
     if (!row || row.restaurant_id !== restaurantId) {
       throw new NotFoundException("No menu item of this restaurant");
@@ -764,7 +766,9 @@ export class MenusService {
       .eq("restaurant_id", restaurantId);
 
     if (writeErr) {
-      throw new Error(`The item was not discarded: ${writeErr.message}`);
+      throw new InternalServerErrorException(
+        `The menu line could not be discarded just now. It is still on the menu and nothing was changed. Try again (${writeErr.message}).`,
+      );
     }
 
     return { menuItemId, status: "discarded" };
@@ -813,7 +817,9 @@ export class MenusService {
       .maybeSingle();
 
     if (error) {
-      throw new Error(`Could not read the menu item: ${error.message}`);
+      throw new InternalServerErrorException(
+        `The menu line could not be looked up just now, so the correction was not saved. Nothing was changed. Try again (${error.message}).`,
+      );
     }
     if (!menuItem || menuItem.restaurant_id !== callerRestaurantId) {
       throw new NotFoundException("No menu item of this restaurant");
@@ -845,7 +851,9 @@ export class MenusService {
       .eq("restaurant_id", callerRestaurantId);
 
     if (updateErr) {
-      throw new Error(`Failed to update menu_item: ${updateErr.message}`);
+      throw new InternalServerErrorException(
+        `The correction could not be saved just now. Nothing was changed. Try again (${updateErr.message}).`,
+      );
     }
 
     // Keep the restaurant's own inventory display name in sync.
@@ -969,7 +977,11 @@ export class MenusService {
       .eq("status", "active")
       .maybeSingle();
 
-    if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
+    if (menuErr) {
+      throw new InternalServerErrorException(
+        `The current menu could not be read just now. Try again (${menuErr.message}).`,
+      );
+    }
     const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
     if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
 
@@ -1010,7 +1022,11 @@ export class MenusService {
       .select("id, name, made_current_at, extracted_at, menu_date")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
-    if (error) throw new Error(`The current menu (restaurant_menus) could not be read: ${error.message}`);
+    if (error) {
+      throw new InternalServerErrorException(
+        `The current menu could not be read just now. Try again (${error.message}).`,
+      );
+    }
     const actives = (data ?? []) as Array<{
       id: string;
       name: string | null;
@@ -1056,7 +1072,11 @@ export class MenusService {
         .neq("status", "discarded");
       if (after) q = q.gt("id", after);
       const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
-      if (error) throw new Error(`Failed to load menu items: ${error.message}`);
+      if (error) {
+        throw new InternalServerErrorException(
+          `The current menu's lines could not be read just now. Try again (${error.message}).`,
+        );
+      }
       const rows = (data ?? []) as Array<Record<string, unknown>>;
       out.push(...rows);
       if (rows.length < PAGE_ROWS) break;
@@ -1481,6 +1501,11 @@ export class MenusService {
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
       );
     }
+    // The house's par is read BEFORE the switch too (r102 review): it is the
+    // one read addToInventory makes that can refuse, and read after the RPC a
+    // refusal said "nothing was added" about a menu that was already current,
+    // and the retry answered already_current with no lines.
+    const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
     const { data, error } = await this.dbService.supabase.rpc("make_menu_current", {
       p_restaurant_id: restaurantId,
       p_menu_id: menuId,
@@ -1528,7 +1553,7 @@ export class MenusService {
     const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
       effectiveFrom: madeCurrentAt,
       menuId,
-    });
+    }, thresholdMin);
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     const counts: Record<string, number> = {};
@@ -1640,6 +1665,11 @@ export class MenusService {
   ): Promise<MenuImportReviewItem[]> {
     if (items.length === 0) return [];
 
+    // The house's par is read before ANY write (library rows, menu_items): it
+    // is the one read on the add path that can refuse, and a refusal that
+    // says "nothing was added" must be true (r102 review).
+    const thresholdMin = current ? await this.getDefaultThresholdMin(restaurantId) : undefined;
+
     // Resolve every item against master_wine_library BEFORE inserting
     // menu_items — wine_library_id and restaurant_inventory.master_wine_id
     // are both FK targets and must point at a real row, not be populated
@@ -1749,7 +1779,7 @@ export class MenusService {
     // A line added to the CURRENT menu is dated now (the writer's default)
     // and names its menu (ADR 0193 round 3, L11).
     const { inventoryMap, priceSync } = current
-      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
+      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId }, thresholdMin)
       : {
           inventoryMap: Object.assign(new Map<string, string>(), {
             created: new Set<string>(),
@@ -1900,6 +1930,9 @@ export class MenusService {
     restaurantId: string,
     userId: string,
     dating: CarryDating,
+    // The house par, read by the caller BEFORE its first write. Absent only
+    // for a caller that has not written anything yet.
+    knownThresholdMin?: number,
   ): Promise<{
     inventoryMap: Map<string, string> & { created: Set<string> };
     priceSync: Map<string, PriceSyncEntry>;
@@ -1911,7 +1944,7 @@ export class MenusService {
     const validItems = menuItems.filter((i) => i.wine_library_id);
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
-    const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
+    const thresholdMin = knownThresholdMin ?? (await this.getDefaultThresholdMin(restaurantId));
 
     for (const item of validItems) {
       const { data: existing, error: existingErr } = await this.dbService.supabase
@@ -2075,12 +2108,7 @@ export class MenusService {
   }
 
   private async getDefaultThresholdMin(restaurantId: string): Promise<number> {
-    const { data } = await this.dbService.supabase
-      .from("restaurants")
-      .select("default_threshold_min")
-      .eq("id", restaurantId)
-      .maybeSingle();
-    return data?.default_threshold_min ?? DEFAULT_THRESHOLD_MIN_FALLBACK;
+    return readHouseThresholdMin(this.dbService.supabase, restaurantId);
   }
 
   private async backfillMenuItemColumn(

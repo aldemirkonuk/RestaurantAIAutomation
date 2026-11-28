@@ -26,8 +26,9 @@
  * Unknown is never zero (ADRs 0020, 0067, 0149): every figure here is
  * `number | null`, and a read that is pending or failed is `null`.
  */
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatHouseNumber, houseNumberLocale } from '../../../lib/house-number';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
@@ -38,7 +39,7 @@ import { failureReason } from './iv-failure';
 import { settingsApi } from '../../../services/api/settings';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
 import { fetchDeliveriesToName } from '../../../services/api/orders';
-import { fetchAuctionLotRecords, type AuctionLotRecord } from '../../../services/api/inventory';
+import { fetchAuctionLotRecords, getUseCounts, inventoryUseCountsKey, type AuctionLotRecord } from '../../../services/api/inventory';
 import { getPriceAdvice } from '../../../services/api/pricing';
 import type { InventoryItem as ApiItem, Wine as ApiWine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
@@ -47,6 +48,8 @@ import { fmtMoney } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
+import { DRINK_WORDS, type HouseWords } from './iv-house-words';
+import { rowRecordRead } from '../../cellar/next/useCellarNextData';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
@@ -96,17 +99,57 @@ export interface InvRow {
   vintage: number | null;
   grape: string | null;
   bottleSizeMl: number | null;
+  /**
+   * The bottle size the house or the library actually recorded; null when
+   * neither did. The gateway's `bottleSizeMl` falls back to 750 for an unsized
+   * good, so a margin read from it would cost a bottle no one measured (r33
+   * walk). Absent on a row not built by toRow: read `bottleSizeMl` then.
+   */
+  bottleSizeRecordedMl?: number | null;
+  /**
+   * The house's own bottle size and nothing else. The library's size is
+   * `integer DEFAULT 750 NOT NULL`, so a library row that kept its default
+   * cannot be told from a recorded 750; the pack line on the nutrition card
+   * counts only this, so a 375 ml or 1.5 L wine is never read as 750 ml.
+   */
+  bottleSizeHouseMl?: number | null;
+  /**
+   * The good's own unit (house item `uom`): 'g', 'ml', 'each', 'bottle', 'keg'.
+   * Null = none recorded (a drink, so bottles). Absent on a row not built by
+   * toRow: the list then says the plain count.
+   */
+  uom?: string | null;
   stock: number | null;
   shadow: number | null;
   par: number | null;
   reorderPoint: number | null;
   /** False when the gateway's analytics join failed for this read. */
   analyticsReadable: boolean;
+  /** The unit costs of the last two settled deliveries; null when fewer than two (or unread). Absent on a row not built by toRow. */
+  lastSettledCost?: number | null;
+  previousSettledCost?: number | null;
+  /** Whether both settled costs hold tax the same way; null = mixed or not stated (r108: then not compared). */
+  settledCostTaxBasis?: 'net' | 'gross_cost' | null;
+  /** False when the settled-price read failed: a price move is then unknown, not none. */
+  settledCostsReadable?: boolean;
+  /** How many current recipes use this good. Null: the read failed (never 0). Absent: not read yet. */
+  usedIn?: number | null;
+  /** True when the gateway read only the newest settled deliveries; the chip then says its count is partial. */
+  settledCostsCapped?: boolean;
   velocity: number | null;
   /** Days of cover. Null at zero velocity: a title nobody buys has no runway. */
   runway: number | null;
   daysSinceSale: number | null;
   deadStock: boolean;
+  /**
+   * Where `velocity` comes from: 'sales' (the till drew it), 'counts' (two
+   * counts and what moved between them), or null (neither, or unread).
+   */
+  usageSource: 'sales' | 'counts' | null;
+  /** The window the pace covers, and what was used in it (the good's own unit). */
+  usageSince: string | null;
+  usageUntil: string | null;
+  usageQty: number | null;
   /** The analytics ABC class (inventory.service.ts:169); absent when not sent. */
   abc?: 'A' | 'B' | 'C' | null;
   bottle: number | null;
@@ -117,8 +160,12 @@ export interface InvRow {
   /** stock × WAC; null when either is unknown. */
   value: number | null;
   lastCountedAt: string | null;
+  /** False: rollup read failed (G15), openMl null, never 0. */
+  rollupReadable: boolean;
   openMl: number | null;
-  /** Null when the row carried no lot list at all. */
+  /** False: breakdown read failed (G15), zones null, never []. */
+  locationsReadable: boolean;
+  /** Null when the row carried no lot list at all, or the breakdown failed. */
   zones: ZoneQty[] | null;
   providerId: string | null;
   providerName: string | null;
@@ -199,6 +246,31 @@ export function typeLabel(key: string): string {
 /** The Type filter's value for every wine at once, shown only when the house holds other drinks too. */
 export const ALL_WINE = 'kind:wine';
 
+/**
+ * The gateway row carries the library's type, grape, kind, producer, vintage
+ * and display name (`libraryType`, `libraryGrape`, `libraryKind`,
+ * `libraryProducer`, `libraryVintage`, `libraryDisplayName`). A value there is
+ * the answer, null included
+ * ("the library records none"); only an absent field (an older gateway) falls
+ * back to the library wine read.
+ */
+function fromRow(onRow: unknown, onWine: unknown): unknown {
+  return onRow === undefined ? onWine : onRow;
+}
+
+/** True when a row carries what the library read would add, so that read can be skipped. */
+export function carriesLibraryType(item: ApiItem): boolean {
+  const r = item as unknown as Raw;
+  return (
+    r.libraryType !== undefined &&
+    r.libraryGrape !== undefined &&
+    r.libraryKind !== undefined &&
+    r.libraryProducer !== undefined &&
+    r.libraryVintage !== undefined &&
+    r.libraryDisplayName !== undefined
+  );
+}
+
 /** One gateway row (already through `normalizeInventoryItem`) and its library wine. */
 export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const r = item as unknown as Raw;
@@ -206,40 +278,67 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   const stock = num(r.stockLive);
   const par = num(r.thresholdMin);
   const analyticsReadable = r.analyticsReadable !== false;
+  const settledCostsReadable = r.settledCostsReadable !== false;
   const velocity = analyticsReadable ? num(r.velocityPerDay) : null;
   const cover = analyticsReadable ? num(r.daysOfCover) : null;
   const runway =
     cover !== null ? cover : velocity !== null && velocity > 0 && stock !== null ? stock / velocity : null;
-  const wac = num(r.wac);
+  // G15: the lot rollup carries the cost too (inventory.service.ts:174-179), so
+  // when it failed the cost is unread, never "no cost yet".
+  const rollupReadable = r.rollupReadable !== false;
+  const wac = rollupReadable ? num(r.wac) : null;
   // `wineName` is the house's alias when it set one; `libraryName` is the
   // library's own name, carried beside it (inventory.service.ts:95-103).
-  const name = text(r.wineName) ?? text(w?.displayName) ?? text(w?.name);
+  // A food or supply has no library wine, so its name is the house's own
+  // (`display_name` on the inventory row), read before the library's names.
+  const name =
+    text(r.wineName) ??
+    text(r.displayName) ??
+    text(r.display_name) ??
+    text(fromRow(r.libraryDisplayName, w?.displayName)) ??
+    text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
-  const zones = Array.isArray(r.locations)
+  // G15: the normaliser fills 0 and [], so only the flags tell failed from empty.
+  const locationsReadable = r.locationsReadable !== false;
+  const zones = locationsReadable && Array.isArray(r.locations)
     ? (r.locations as Raw[])
         .map((l) => ({ locationId: text(l.locationId), qty: num(l.qty) }))
         .filter((l): l is ZoneQty => l.qty !== null)
     : null;
-  const provenance = r.costProvenance === 'invoice' || r.costProvenance === 'estimated' ? r.costProvenance : null;
+  const provenance =
+    rollupReadable && (r.costProvenance === 'invoice' || r.costProvenance === 'estimated') ? r.costProvenance : null;
   return {
     id: String(r.id),
     wineId: text(r.wineId),
     name,
     libraryName: library && library !== name ? library : null,
-    producer: text(r.wineProducer) ?? text(w?.producer),
-    ...typeOf(w?.category, w?.beverageKind),
-    vintage: num(r.wineVintage) ?? num(w?.vintage),
-    grape: text(w?.grapeVariety),
+    producer: text(r.wineProducer) ?? text(fromRow(r.libraryProducer, w?.producer)),
+    ...typeOf(fromRow(r.libraryType, w?.category), fromRow(r.libraryKind, w?.beverageKind)),
+    vintage: num(r.wineVintage) ?? num(fromRow(r.libraryVintage, w?.vintage)),
+    grape: text(fromRow(r.libraryGrape, w?.grapeVariety)),
     bottleSizeMl: num(r.bottleSizeMl) ?? num(w?.bottleSizeMl),
+    bottleSizeRecordedMl: ('bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl)) ?? num(w?.bottleSizeMl),
+    bottleSizeHouseMl: 'bottle_size_ml' in r ? num(r.bottle_size_ml) : num(r.bottleSizeMl),
+    uom: text(r.uom),
     stock,
     shadow: num(r.shadowStock),
     par,
     reorderPoint: num(r.reorderPoint),
     analyticsReadable,
+    lastSettledCost: settledCostsReadable ? num(r.lastSettledCost) : null,
+    previousSettledCost: settledCostsReadable ? num(r.previousSettledCost) : null,
+    settledCostsReadable,
+    settledCostTaxBasis:
+      settledCostsReadable && (r.settledCostTaxBasis === 'net' || r.settledCostTaxBasis === 'gross_cost') ? r.settledCostTaxBasis : null,
+    settledCostsCapped: settledCostsReadable && r.settledCostsCapped === true,
     velocity,
     runway,
     daysSinceSale: num(r.daysSinceSale),
     deadStock: r.deadStock === true,
+    usageSource: analyticsReadable && (r.usageSource === 'sales' || r.usageSource === 'counts') ? r.usageSource : null,
+    usageSince: analyticsReadable ? text(r.usageSince) : null,
+    usageUntil: analyticsReadable ? text(r.usageUntil) : null,
+    usageQty: analyticsReadable ? num(r.usageQty) : null,
     abc: r.abcClass === 'A' || r.abcClass === 'B' || r.abcClass === 'C' ? r.abcClass : null,
     bottle: num(r.menuPriceBottle),
     glass: num(r.menuPriceGlass),
@@ -248,7 +347,9 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     costProvenance: provenance,
     value: stock !== null && wac !== null ? stock * wac : null,
     lastCountedAt: text(r.lastCountedAt),
-    openMl: num(r.openMl),
+    rollupReadable,
+    openMl: rollupReadable ? num(r.openMl) : null,
+    locationsReadable,
     zones,
     providerId: text(r.providerId),
     providerName: text(r.providerName),
@@ -273,6 +374,23 @@ export function severity(row: InvRow): 0 | 1 | 2 {
   return 2;
 }
 
+/** The status word, never a colour alone. */
+export function statusWord(row: InvRow): string {
+  const dry = row.runway !== null && row.runway < 1.5;
+  switch (row.standing) {
+    case 'out':
+      return 'Out';
+    case 'below':
+      return dry ? 'Below par · dry tomorrow' : 'Below par';
+    case 'unknown':
+      return 'Stock not read';
+    case 'nopar':
+      return dry ? 'Dry tomorrow' : 'No par set';
+    default:
+      return dry ? 'Dry tomorrow' : row.standing === 'at' ? 'At par' : 'Above par';
+  }
+}
+
 export const SEVERITY_GROUP = ['Out', 'Below par', 'Everything else, by runway'] as const;
 
 /**
@@ -290,13 +408,14 @@ export function needsYouFirst(a: InvRow, b: InvRow): number {
   return (a.name ?? '').localeCompare(b.name ?? '');
 }
 
-export type SortId = 'needs' | 'name' | 'value' | 'pace';
+export type SortId = 'needs' | 'name' | 'value' | 'pace' | 'used';
 
 export const SORT_LABEL: Record<SortId, string> = {
   needs: 'Needs you first',
   name: 'Name',
   value: 'Value at cost',
   pace: 'Fastest moving',
+  used: 'Fewest recipes first',
 };
 
 /**
@@ -304,12 +423,15 @@ export const SORT_LABEL: Record<SortId, string> = {
  * listed title the value sort has nothing to sort by and falls back to Needs
  * you first (sortRows below); the line says so instead of going quiet.
  */
-export function sortWords(sort: SortId, rows: InvRow[]): string {
+export function sortWords(sort: SortId, rows: InvRow[], words: HouseWords = DRINK_WORDS): string {
   if (sort === 'value' && rows.length > 0 && rows.every((r) => r.value === null)) {
-    return 'sorted Value at cost, though no title listed has a cost yet, so they stay in Needs you first order';
+    return `sorted Value at cost, though no ${words.one} listed has a cost yet, so they stay in Needs you first order`;
   }
   if (sort === 'pace' && rows.length > 0 && rows.every((r) => r.velocity === null)) {
-    return 'sorted Fastest moving, though no pace was read for any title listed, so they stay in Needs you first order';
+    return `sorted Fastest moving, though no pace was read for any ${words.one} listed, so they stay in Needs you first order`;
+  }
+  if (sort === 'used' && rows.length > 0 && rows.every((r) => typeof r.usedIn !== 'number')) {
+    return `sorted Fewest recipes first, though no recipe count was read for any ${words.one} listed, so they stay in name order`;
   }
   return `sorted ${SORT_LABEL[sort]}`;
 }
@@ -318,6 +440,15 @@ export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
   const out = [...rows];
   if (sort === 'needs') return out.sort(needsYouFirst);
   if (sort === 'name') return out.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  // Fewest recipes first, so dead stock leads. A count that was not read (failed or still
+  // loading) sorts after every read one, never as 0; ties by name, then id, so the order is total.
+  if (sort === 'used')
+    return out.sort((a, b) => {
+      const ua = typeof a.usedIn === 'number' ? a.usedIn : Number.POSITIVE_INFINITY;
+      const ub = typeof b.usedIn === 'number' ? b.usedIn : Number.POSITIVE_INFINITY;
+      if (ua !== ub) return ua < ub ? -1 : 1;
+      return (a.name ?? '').localeCompare(b.name ?? '') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    });
   // The legacy velocity sort (InventoryCommandPage.tsx:96), fastest first; an
   // unread pace sorts after every read one, never as 0.
   if (sort === 'pace')
@@ -373,7 +504,7 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
 
 /* ── chips ───────────────────────────────────────────────────────────────── */
 
-export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price';
+export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price' | 'unused' | 'nutrition';
 
 export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -383,6 +514,8 @@ export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'count', label: 'Count due' },
   { id: 'dead', label: 'Dead stock' },
   { id: 'price', label: 'Price signals' },
+  { id: 'unused', label: 'Unused' },
+  { id: 'nutrition', label: 'Nutrition not recorded' },
 ];
 
 export function countDue(row: InvRow, now = Date.now()): boolean {
@@ -393,11 +526,73 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 }
 
 /**
- * Whether a row belongs under a chip. `price` matches nothing: a price signal
- * needs a market figure and none is read (`retail_price_avg` is not selected,
- * database.service.ts:42-53), so its count is the dash, never 0.
+ * A good is a price signal when its latest settled delivery cost per unit
+ * differs from the one before by more than this many percent. The house will
+ * set its own; until then it is said in words on the chip (r104 g3).
  */
-export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean {
+export const PRICE_SIGNAL_PCT = 10;
+
+/** What the Unused chip says it holds. */
+export const UNUSED_WORDS = 'A good no current drink or dish recipe uses. Not the same as unsold: a bottle sold as it is has no recipe.';
+
+/** What the chip says it holds, in words (the default is stated, not hidden). */
+export const PRICE_SIGNAL_WORDS = `A good whose last settled delivery cost per unit moved by more than ${PRICE_SIGNAL_PCT} percent from the delivery before. Two costs are compared only when both are known to hold tax the same way: both before tax, or both with it; a cost whose tax basis is not stated is not compared`;
+
+/** The basis a compared move is on, in words. */
+export const TAX_BASIS_WORDS: Record<'net' | 'gross_cost', string> = { net: 'both before tax', gross_cost: 'both with tax' };
+
+/** Two settled costs are there, but they do not state the same tax basis: "basis not stated". */
+export function priceBasisUnstated(row: InvRow): boolean {
+  return row.lastSettledCost != null && row.previousSettledCost != null && (row.settledCostTaxBasis ?? null) === null;
+}
+
+/** How far the last settled unit cost moved from the one before, in percent; null when there are not two settled costs to compare (a first delivery, an unread or free one), or when the two do not state the same tax basis (r108). */
+export function priceMovePct(row: InvRow): number | null {
+  const last = row.lastSettledCost ?? null;
+  const before = row.previousSettledCost ?? null;
+  if (last === null || before === null || !(before > 0)) return null;
+  if ((row.settledCostTaxBasis ?? null) === null) return null;
+  return ((last - before) / before) * 100;
+}
+
+/** Whether the house has anything to compare: the read answered and some good has two settled costs. */
+export function priceSignalsReadable(rows: InvRow[]): boolean {
+  return rows.length > 0 && rows.every((r) => r.settledCostsReadable !== false);
+}
+/** The chip's count is partial when the gateway read only the newest settled deliveries. */
+export const PRICE_SIGNAL_CAPPED_WORDS = 'Only the newest settled deliveries were read, so a good whose earlier delivery is older may be missing here';
+export function priceSignalsCapped(rows: InvRow[]): boolean {
+  return rows.some((r) => r.settledCostsCapped === true);
+}
+export function priceSignalsHaveBasis(rows: InvRow[]): boolean {
+  return rows.some((r) => priceMovePct(r) !== null);
+}
+
+/**
+ * Whether a good has contents to state (nutrition, allergens). A supply
+ * (napkins, foil, bleach) is not eaten or drunk, so it has none; every other
+ * kind, and a kind not yet read, does. One rule for the drawer, the list chip,
+ * the nutrition lane and the gateway lookup.
+ */
+export function holdsContents(kind: string | null | undefined): boolean {
+  return kind !== 'supply';
+}
+
+/**
+ * Whether a row belongs under a chip. `price` matches a good whose last
+ * settled delivery cost moved by more than PRICE_SIGNAL_PCT from the one
+ * before; a good with one delivery, or none settled, never matches (and is
+ * never read as a 0 % move). `nutrition` matches a good the coverage read
+ * says has no nutrition recorded and that holds contents (never a supply); with no coverage read (`recorded` null) it
+ * matches nothing, so an unread answer never lists every good as missing.
+ */
+export function chipMatch(
+  row: InvRow,
+  chip: ChipId,
+  now = Date.now(),
+  recorded: ReadonlySet<string> | null = null,
+  goodKind: string | null = null,
+): boolean {
   switch (chip) {
     case 'all':
       return true;
@@ -411,8 +606,15 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
       return countDue(row, now);
     case 'dead':
       return row.deadStock;
-    case 'price':
-      return false;
+    case 'unused':
+      // Only a read zero: an unread or not-yet-read count is never "no recipe uses it".
+      return row.usedIn === 0;
+    case 'price': {
+      const pct = priceMovePct(row);
+      return pct !== null && Math.abs(pct) > PRICE_SIGNAL_PCT;
+    }
+    case 'nutrition':
+      return recorded !== null && holdsContents(goodKind) && !recorded.has(row.id);
   }
 }
 
@@ -449,11 +651,35 @@ export function ofType(row: InvRow, type: string): boolean {
 
 /* ── money ───────────────────────────────────────────────────────────────── */
 
-export type HouseCurrency =
+/**
+ * The money code whose number form this page writes quantities in ("1.250,5"
+ * in a lira house, "1,250.5" in a pound house). A quantity is written deep in
+ * helpers with no house in reach (fmtCount, fmtQty), so the page, and the
+ * drawer's cards, say which house they are once they have read it
+ * (`sayHouseNumbers`). Until then, or when the money could not be read, no
+ * house's form is guessed: the reader's own is used (r103 need 3; it was a
+ * fixed en-GB, so a lira house read a pound house's numbers).
+ */
+let houseNumberCode: string | null = null;
+
+export function sayHouseNumbers(currency: { state: string; code: string | null }): void {
+  houseNumberCode = currency.state === 'recorded' ? currency.code : null;
+}
+
+/** A plain number in the house's form, up to `max` places (trailing zeros drop). */
+export function houseNumber(n: number, max: number): string {
+  return formatHouseNumber(n, houseNumberCode, { max });
+}
+
+export type HouseCurrency = (
   | { state: 'reading'; code: null }
   | { state: 'recorded'; code: string }
   | { state: 'not_recorded'; code: null }
-  | { state: 'unreadable'; code: null };
+  | { state: 'unreadable'; code: null }
+) & {
+  /** restaurants.country as the same read (GET /settings/currency) answers it; absent when unread. */
+  country?: string | null;
+};
 
 /**
  * A money figure for a cell. The house's code when it is recorded; the dash
@@ -472,7 +698,11 @@ export function fmtPace(v: number): string {
   return v < 0.1 ? v.toFixed(2) : v.toFixed(1);
 }
 
-/** Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30). */
+/**
+ * Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30).
+ * Only a fallback for a row with no usageQty: the pace of a good carried less
+ * than 30 days is over the days it was carried, not 30.
+ */
 export function sold30(v: number): number {
   return Math.round(v * 30);
 }
@@ -480,8 +710,8 @@ export function sold30(v: number): number {
 export function cellMoney(v: number | null, currency: HouseCurrency): string {
   if (v === null || !Number.isFinite(v)) return EM;
   if (currency.state === 'reading') return EM;
-  if (currency.state === 'recorded') return fmtMoney(v, currency.code);
-  return v.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+  if (currency.state === 'recorded') return fmtMoney(v, currency.code, houseNumberLocale(currency.code));
+  return houseNumber(v, 2);
 }
 
 /* ── the read sentence ───────────────────────────────────────────────────── */
@@ -492,7 +722,7 @@ export function cellMoney(v: number | null, currency: HouseCurrency): string {
  * the bare number.
  */
 export function fmtCount(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+  return houseNumber(n, 1);
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -508,7 +738,12 @@ export function dryTomorrow(row: InvRow): boolean {
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
  */
-export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean): string {
+export function readSentence(
+  rows: InvRow[],
+  currency: HouseCurrency,
+  zonesReadable: boolean,
+  words: HouseWords = DRINK_WORDS,
+): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
   const bottles = read.reduce((sum, r) => sum + Math.max(0, r.stock ?? 0), 0);
@@ -516,19 +751,32 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   for (const r of rows) for (const z of r.zones ?? []) if (z.locationId !== null && z.qty > 0) zoneIds.add(z.locationId);
   const parts: string[] = [];
 
-  let first =
-    read.length === 0
-      ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
-      : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
-        : `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')}`;
+  const count = plural(n, words.one, words.many);
+  let first: string;
+  if (!words.bottles) {
+    // Kilograms, litres and each do not add up to one number, so a house of
+    // goods says how many it carries and how many were read, and no sum.
+    first =
+      read.length === 0
+        ? `${count}; no ${words.one}'s stock could be read, so what is on hand is unknown`
+        : read.length < n
+          ? `${count}, ${fmtCount(read.length)} with stock read (${fmtCount(n - read.length)} could not be read)`
+          : count;
+  } else {
+    first =
+      read.length === 0
+        ? `${count}; no ${words.one}'s stock could be read, so the bottle count is unknown`
+        : read.length < n
+          ? `${count}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
+          : `${count}, ${plural(bottles, 'bottle', 'bottles')}`;
+  }
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
 
   const out = rows.filter((r) => r.standing === 'out').length;
   const below = rows.filter((r) => r.standing === 'below').length;
   const dry = rows.filter(dryTomorrow).length;
-  const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
+  const lead = read.length < n ? `Of the ${words.many} read, nothing` : 'Nothing';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
   } else if (out === 0 && below === 0) {
@@ -543,15 +791,23 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   }
 
   const priced = rows.filter((r) => r.value !== null);
-  if (priced.length === 0) {
-    parts.push('No title has a cost on the books yet, so the value at cost reads —, not 0.');
+  // A failed lot read is not a house without costs: say so, never "no cost yet".
+  const costUnread = rows.filter((r) => !r.rollupReadable).length;
+  if (priced.length === 0 && costUnread > 0) {
+    parts.push(
+      costUnread === n
+        ? `The lot costs could not be read, so the value at cost is not known.`
+        : `The lot costs of ${fmtCount(costUnread)} ${costUnread === 1 ? words.one : words.many} could not be read, so the value at cost is not known.`,
+    );
+  } else if (priced.length === 0) {
+    parts.push(`No ${words.one} has a cost on the books yet, so the value at cost reads —, not 0.`);
   } else {
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
     const missing = n - priced.length;
     parts.push(
-      `At cost the cellar holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} titles priced${
+      `At cost the ${words.place} holds ${cellMoney(total, currency)}, with ${fmtCount(priced.length)} of ${fmtCount(n)} ${words.many} priced${
         missing > 0 ? `; the ${fmtCount(missing)} without a cost show —, never 0` : ''
-      }.`,
+      }${costUnread > 0 ? `, ${fmtCount(costUnread)} of them because their lot costs could not be read` : ''}.`,
     );
   }
   // No market figure is read at all (`retail_price_avg` is not selected), so
@@ -599,8 +855,17 @@ export function useInventoryNextData() {
   const list = useInventory();
   const items = list.data ?? null;
 
+  // Only a row that does not carry its library type, grape and kind (an older
+  // gateway) sends the page to /wines for them.
   const wineIds = useMemo(
-    () => [...new Set((items ?? []).map((i) => i.wineId).filter((id): id is string => !!id))],
+    () => [
+      ...new Set(
+        (items ?? [])
+          .filter((i) => !carriesLibraryType(i))
+          .map((i) => i.wineId)
+          .filter((id): id is string => !!id),
+      ),
+    ],
     [items],
   );
   const wines = useWinesByIds(wineIds);
@@ -610,9 +875,27 @@ export function useInventoryNextData() {
     return m;
   }, [wines.data]);
 
-  const rows = useMemo<InvRow[] | null>(
+  const baseRows = useMemo<InvRow[] | null>(
     () => (items === null ? null : items.map((i) => toRow(i, i.wineId ? winesById.get(i.wineId) : null))),
     [items, winesById],
+  );
+  // How many recipes use each good (r105 g5). A failed read is `null` on every row: unread, never 0.
+  const useCountsQ = useQuery({
+    queryKey: inventoryUseCountsKey(rid ?? ''),
+    queryFn: () => getUseCounts(rid ?? undefined),
+    enabled: rid !== null,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const rows = useMemo<InvRow[] | null>(
+    () =>
+      baseRows === null
+        ? null
+        : baseRows.map((r) => ({
+            ...r,
+            usedIn: useCountsQ.isError ? null : useCountsQ.data ? (useCountsQ.data.counts[r.id] ?? 0) : undefined,
+          })),
+    [baseRows, useCountsQ.isError, useCountsQ.data],
   );
 
   const currencyQ = useQuery({
@@ -625,8 +908,9 @@ export function useInventoryNextData() {
     : currencyQ.isError || !currencyQ.data?.readable
       ? { state: 'unreadable', code: null }
       : currencyQ.data.code
-        ? { state: 'recorded', code: currencyQ.data.code }
-        : { state: 'not_recorded', code: null };
+        ? { state: 'recorded', code: currencyQ.data.code, country: currencyQ.data.country ?? null }
+        : { state: 'not_recorded', code: null, country: currencyQ.data.country ?? null };
+  sayHouseNumbers(currency);
 
   const storage = useStorageLocations();
   const providersQ = useProviders(rid ?? '');
@@ -712,6 +996,11 @@ export function useInventoryNextData() {
   // (inventory.service.ts:163,265), so "Dead stock 0" would read a failure as health.
   const paceUnread = (rows ?? []).some((r) => !r.analyticsReadable);
   if (paceUnread) unread.push('the selling pace, so pace, runway and dead stock show —');
+  const openUnread = (rows ?? []).some((r) => !r.rollupReadable);
+  const whereUnread = (rows ?? []).some((r) => !r.locationsReadable);
+  if (openUnread) unread.push('the open bottles, so open ml says it could not be read');
+  if (openUnread) unread.push('the lot costs, so cost, value and margin say they could not be read');
+  if (whereUnread) unread.push('where each title sits, so its zones say they could not be read');
   if (wines.isError) unread.push('the wine library, so type shows —, the type filter is off, and grapes are left out of details and search');
   if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');
   if (currency.state === 'unreadable') unread.push('the house’s currency');
@@ -732,7 +1021,7 @@ export function useInventoryNextData() {
   if (invoicesQ.isPending) pending.push('the invoices waiting for a match');
   if (deliveriesQ.isPending) pending.push('the delivered lines waiting for their item');
   const rereadUnread = () => {
-    if (paceUnread) void list.refetch();
+    if (paceUnread || openUnread || whereUnread) void list.refetch();
     if (wines.isError) void wines.refetch();
     if (storage.locationsUnavailable) void queryClient.invalidateQueries({ queryKey: ['storageLocations', rid] });
     if (currency.state === 'unreadable') void currencyQ.refetch();
@@ -764,6 +1053,8 @@ export function useInventoryNextData() {
     libraryAnswered,
     /** The selling-pace join failed for this read: pace, runway and dead stock are unread, not zero (INV-W29). */
     paceUnread,
+    /** Whether the recipe use counts answered: the Unused chip and the Used in column read it. */
+    useCountsRead: (useCountsQ.isError ? 'unread' : useCountsQ.data ? 'ready' : 'reading') as 'reading' | 'unread' | 'ready',
     currency,
     locations: {
       list: storage.locations as StorageLocation[],
@@ -815,21 +1106,37 @@ export interface PaperRead {
 const PAPERWORK_LINES = 3;
 
 /**
- * The opened row's own reads, made on the gesture rather than on the page:
- * the last purchases from the ledger (GET /inventory-ledger/transactions with
- * transactionType=purchase), each one's paper (GET /procurement/documents
- * ?orderId=), and the auction lots that carried the title in.
+ * Which of the opened row's reads a caller draws. Absent reads them all, as
+ * the row always has. The drawer mounts its acts with no evidence panel, and a
+ * staff reader is never shown a cost, so each open read the purchase ledger,
+ * up to three order-document reads after it and the auction lots for nothing
+ * (inventory r36 audit, gap 7).
  */
-export function useRowDetail(inventoryId: string) {
-  const { activeRestaurantId } = useAuth();
-  const purchasesQ = useQuery({
-    queryKey: ['inventory-next', 'purchases', activeRestaurantId, inventoryId],
+export interface RowDetailNeed {
+  /** The ledger's purchases: the Paperwork table, or the cost panel's ledger fallback. */
+  purchases: boolean;
+  /** Each purchase's order documents (Paperwork only). Needs the purchases. */
+  paper: boolean;
+  /** The auction lots (a drink's cost panel). */
+  lots: boolean;
+}
+
+const READ_ALL: RowDetailNeed = { purchases: true, paper: true, lots: true };
+
+/**
+ * The two reads an opened row makes of its own, as options, so the page can
+ * make the same read on intent (`useWarmRow`) under the very key the open uses.
+ * `refetchOnMount: true` because App.tsx's 'always' would otherwise read a
+ * warmed key again the moment the row opens.
+ */
+function purchasesRead(restaurantId: string | null | undefined, inventoryId: string) {
+  return {
+    queryKey: ['inventory-next', 'purchases', restaurantId, inventoryId] as const,
     queryFn: async () => {
-      // No `limit` param: the gateway's query DTO has no number transform, so
-      // any limit arrives as a string and is refused with a 400. The route
-      // answers newest first (50 by default); the page keeps the first three.
+      // The page shows three, so it asks for three (newest first); the total
+      // still counts every purchase.
       const r = await apiClient.get('/inventory-ledger/transactions', {
-        params: { inventoryId, transactionType: 'purchase' },
+        params: { inventoryId, transactionType: 'purchase', limit: PAPERWORK_LINES },
       });
       const body = r.data as { transactions?: Raw[]; total?: unknown };
       if (!Array.isArray(body?.transactions)) throw new Error('the ledger answered in a shape this page cannot read');
@@ -846,23 +1153,75 @@ export function useRowDetail(inventoryId: string) {
         total: num(body.total),
       };
     },
-    enabled: Boolean(activeRestaurantId) && inventoryId !== '',
+    enabled: Boolean(restaurantId) && inventoryId !== '',
     staleTime: 30_000,
-  });
+    refetchOnMount: true,
+  };
+}
+
+function lotsRead(restaurantId: string | null | undefined, inventoryId: string) {
+  return {
+    queryKey: ['inventory-next', 'auction-lots', restaurantId, inventoryId] as const,
+    queryFn: (): Promise<AuctionLotRecord[]> => fetchAuctionLotRecords(inventoryId),
+    enabled: Boolean(restaurantId) && inventoryId !== '',
+    staleTime: 60_000,
+    refetchOnMount: true,
+  };
+}
+
+/**
+ * Reads an opened row's three reads ahead of the click: the purchases, the
+ * auction lots and the till record. Same keys as the open, so the open renders
+ * from cache; a read still fresh is not made again. Keyed by the active house
+ * like the reads themselves.
+ */
+export function useWarmRow(canManage: boolean) {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useCallback(
+    (row: { id: string; name: string | null; kind?: string | null }) => {
+      if (!activeRestaurantId || row.id === '') return;
+      // Only what an open draws for this viewer (the rule RowDropdown's
+      // useRowDetail need follows): the purchase ledger is a manager's cost and
+      // paperwork, and the auction lots are a manager's drink cost panel. A
+      // staff reader is shown neither, so warming them would read a unit-cost
+      // ledger nobody draws.
+      if (canManage) {
+        void qc.prefetchQuery(purchasesRead(activeRestaurantId, row.id));
+        if (row.kind !== 'food' && row.kind !== 'supply') void qc.prefetchQuery(lotsRead(activeRestaurantId, row.id));
+      }
+      if (row.name !== null) void qc.prefetchQuery(rowRecordRead(activeRestaurantId, row.name));
+    },
+    [activeRestaurantId, qc, canManage],
+  );
+}
+
+/**
+ * The opened row's own reads, made on the gesture rather than on the page:
+ * the last purchases from the ledger (GET /inventory-ledger/transactions with
+ * transactionType=purchase), each one's paper (GET /procurement/documents
+ * ?orderId=), and the auction lots that carried the title in. Each is read
+ * only when `need` asks for it; what is not asked for stays null, never "none".
+ */
+export function useRowDetail(inventoryId: string, need: RowDetailNeed = READ_ALL) {
+  const { activeRestaurantId } = useAuth();
+  const readPaper = need.paper && need.purchases;
+  const purchases = purchasesRead(activeRestaurantId, inventoryId);
+  const purchasesQ = useQuery({ ...purchases, enabled: need.purchases && purchases.enabled });
 
   const orderIds = useMemo(
     () => [...new Set((purchasesQ.data?.lines ?? []).map((l) => l.orderId).filter((id): id is string => !!id))],
     [purchasesQ.data],
   );
   const docQs = useQueries({
-    queries: orderIds.map((orderId) => ({
+    queries: (readPaper ? orderIds : []).map((orderId) => ({
       queryKey: ['inventory-next', 'order-docs', activeRestaurantId, orderId],
       queryFn: () => documentsApi.forOrder(orderId),
       staleTime: 60_000,
     })),
   });
   const paper = new Map<string, PaperRead>();
-  orderIds.forEach((orderId, i) => {
+  (readPaper ? orderIds : []).forEach((orderId, i) => {
     const q = docQs[i];
     paper.set(orderId, {
       docs: q?.data ?? null,
@@ -870,12 +1229,8 @@ export function useRowDetail(inventoryId: string) {
     });
   });
 
-  const lotsQ = useQuery<AuctionLotRecord[]>({
-    queryKey: ['inventory-next', 'auction-lots', activeRestaurantId, inventoryId],
-    queryFn: () => fetchAuctionLotRecords(inventoryId),
-    enabled: Boolean(activeRestaurantId) && inventoryId !== '',
-    staleTime: 60_000,
-  });
+  const lots = lotsRead(activeRestaurantId, inventoryId);
+  const lotsQ = useQuery({ ...lots, enabled: need.lots && lots.enabled });
 
   return {
     purchases: purchasesQ.data?.lines ?? null,

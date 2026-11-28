@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   HttpException,
   HttpStatus,
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
+import { verifiedCsv, type ExportRow } from "./documents-export";
 import {
   ApplyExtractionDto,
   CorrectFieldDto,
@@ -36,6 +38,7 @@ import {
 import { DeliverySpineService } from "../canonical/delivery-spine.service";
 import { DocumentCorrectionService } from "../canonical/document-correction.service";
 import { createHash } from "node:crypto";
+import { composePages, ComposePagesError } from "./compose-pages";
 import { looksLikeEdi832 } from "../../distributor-feed/parse-edi832";
 import { DISTRIBUTORS } from "../../distributor-feed/distributor-feed.registry";
 import { CatalogIngestService } from "../../distributor-feed/catalog-ingest.service";
@@ -1048,13 +1051,36 @@ export class DocumentsController {
     @CurrentUser() user: AuthedUser,
   ) {
     let buffer: Buffer;
-    try {
-      buffer = Buffer.from(body.contentBase64, "base64");
-    } catch {
-      throw new HttpException(
-        "contentBase64 is not valid base64",
-        HttpStatus.BAD_REQUEST,
-      );
+    let filename = body.filename ?? null;
+    let mimeType = body.mimeType ?? null;
+    if (body.pages !== undefined) {
+      // ONE PAPER, MANY PAGES (r108 g13): the pages become one PDF here, so the
+      // extractor and the dedup index see one paper, not one per photograph.
+      if (body.contentBase64 !== undefined)
+        throw new HttpException(
+          "Send either contentBase64 or pages, not both.",
+          HttpStatus.BAD_REQUEST,
+        );
+      try {
+        buffer = await composePages(
+          body.pages.map((p) => Buffer.from(p, "base64")),
+        );
+      } catch (e) {
+        if (e instanceof ComposePagesError)
+          throw new HttpException(e.message, HttpStatus.BAD_REQUEST);
+        throw e;
+      }
+      filename = filename ?? "paper.pdf";
+      mimeType = "application/pdf";
+    } else {
+      try {
+        buffer = Buffer.from(body.contentBase64 ?? "", "base64");
+      } catch {
+        throw new HttpException(
+          "contentBase64 is not valid base64",
+          HttpStatus.BAD_REQUEST,
+        );
+      }
     }
     if (!buffer.length)
       throw new HttpException("Document is empty", HttpStatus.BAD_REQUEST);
@@ -1063,10 +1089,10 @@ export class DocumentsController {
       restaurantId: user.restaurantId,
       providerId: body.providerId ?? null,
       orderId: body.orderId ?? null,
-      source: body.source ?? "upload",
+      source: body.source ?? (body.pages ? "photo" : "upload"),
       buffer,
-      filename: body.filename ?? null,
-      mimeType: body.mimeType ?? null,
+      filename,
+      mimeType,
       sourceRef: `user:${user.userId}`,
     });
 
@@ -1317,6 +1343,56 @@ export class DocumentsController {
     return out;
   }
 
+  @Get("export/verified.csv")
+  @Header("Content-Type", "text/csv; charset=utf-8")
+  @Header("Content-Disposition", 'attachment; filename="verified-papers.csv"')
+  @ApiOperation({
+    summary:
+      "Every verified paper of this house as one CSV (managers: money roles only)",
+  })
+  async exportVerified(@CurrentUser() user: AuthedUser): Promise<string> {
+    // The role before any read: a person who may not see house money gets a
+    // refusal in words, not an empty file.
+    if (!holdsHouseMoney(user.role ?? null))
+      throw new HttpException(
+        "The papers' money is for the people who keep the books here; ask a manager for the export.",
+        HttpStatus.FORBIDDEN,
+      );
+    // Paged past the list's 200-row cap so the file holds the whole book.
+    const PAGE = 1000;
+    const rows: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .select("*")
+        .eq("restaurant_id", user.restaurantId)
+        .eq("status", "verified")
+        .order("created_at", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error)
+        throw new HttpException(
+          `The verified papers could not be read, so no file was made: ${error.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      rows.push(...((data ?? []) as Record<string, unknown>[]));
+      if ((data ?? []).length < PAGE) break;
+    }
+    const names = await this.vendorNamesFor(rows);
+    const out: ExportRow[] = rows.map((r) => ({
+      doc_number: (r.doc_number as string | null) ?? null,
+      doc_date: (r.doc_date as string | null) ?? null,
+      doc_type: (r.doc_type as string | null) ?? null,
+      vendor: names.get(r.id as string) ?? null,
+      currency: (r.currency as string | null) ?? null,
+      subtotal: (r.subtotal as number | null) ?? null,
+      freight: (r.freight as number | null) ?? null,
+      tax: (r.tax as number | null) ?? null,
+      total: (r.total as number | null) ?? null,
+    }));
+    return verifiedCsv(out);
+  }
+
   @Get()
   @ApiOperation({ summary: "List vendor documents, newest first" })
   @ApiQuery({ name: "status", required: false })
@@ -1328,14 +1404,37 @@ export class DocumentsController {
       "Only documents linked to this order. Resolved through procurement_document_links, which is many-to-many because one distributor invoice routinely covers several POs.",
   })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({
+    name: "q",
+    required: false,
+    description:
+      "Find papers by vendor name or document number (part of either, any case).",
+  })
+  @ApiQuery({
+    name: "before",
+    required: false,
+    description:
+      "ISO time: only papers created before it. Pass the last row's `nextBefore` to read the next older page.",
+  })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("status") status?: string,
     @Query("docType") docType?: string,
     @Query("orderId") orderId?: string,
     @Query("limit") limit?: string,
+    @Query("q") q?: string,
+    @Query("before") before?: string,
   ) {
     const n = Math.min(200, Math.max(1, parseInt(limit ?? "50", 10) || 50));
+    const beforeAt = before ? new Date(before) : null;
+    if (before && (!beforeAt || Number.isNaN(beforeAt.getTime())))
+      throw new HttpException(
+        "`before` has to be a date and time, such as 2026-11-01T00:00:00Z.",
+        HttpStatus.BAD_REQUEST,
+      );
+    // Letters, digits, space and . - # / only: the rest would break the filter
+    // grammar below, and no paper is found by a comma.
+    const term = (q ?? "").replace(/[^\p{L}\p{N} .\-#/]/gu, "").trim().slice(0, 60);
 
     let documentIds: string[] | null = null;
     if (orderId) {
@@ -1357,20 +1456,52 @@ export class DocumentsController {
       if (!documentIds.length) return { items: [] };
     }
 
-    let q = this.db
+    // One more than asked for, so "there are older papers" is KNOWN, not
+    // guessed from a full page.
+    let query = this.db
       .getClient()
       .from("procurement_documents")
       .select("*")
       .eq("restaurant_id", user.restaurantId)
       .order("created_at", { ascending: false })
-      .limit(n);
-    if (status) q = q.eq("status", status);
-    if (docType) q = q.eq("doc_type", docType);
-    if (documentIds) q = q.in("id", documentIds);
+      .limit(n + 1);
+    if (status) query = query.eq("status", status);
+    if (docType) query = query.eq("doc_type", docType);
+    if (documentIds) query = query.in("id", documentIds);
+    if (beforeAt) query = query.lt("created_at", beforeAt.toISOString());
+    if (term) {
+      // A vendor is named by the provider row or by what the paper itself
+      // carried (`vendorNamesFor` reads both), so the search reads both.
+      const { data: found, error: findErr } = await this.db
+        .getClient()
+        .from("providers")
+        .select("id")
+        .eq("restaurant_id", user.restaurantId)
+        .or(`name.ilike.%${term}%,company_name.ilike.%${term}%`)
+        .limit(200);
+      if (findErr)
+        throw new HttpException(
+          `The vendors could not be searched, so no papers were filtered: ${findErr.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const ids = ((found ?? []) as { id: string }[]).map((p) => p.id);
+      query = query.or(
+        [
+          `doc_number.ilike.%${term}%`,
+          `extracted->>vendorName.ilike.%${term}%`,
+          ...(ids.length ? [`provider_id.in.(${ids.join(",")})`] : []),
+        ].join(","),
+      );
+    }
 
-    const { data, error } = await q;
+    const { data: fetched, error } = await query;
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    const hasMore = (fetched ?? []).length > n;
+    const data = (fetched ?? []).slice(0, n);
+    const nextBefore = hasMore
+      ? ((data[data.length - 1] as { created_at?: string } | undefined)?.created_at ?? null)
+      : null;
 
     /*
      * B4 — THE INVOICE AND ITS ORDER, SIDE BY SIDE (founder, 2026-09-06 batch
@@ -1409,7 +1540,7 @@ export class DocumentsController {
       ),
     }));
 
-    if (!orderId) return { items };
+    if (!orderId) return { items, hasMore, nextBefore };
 
     const { data: order, error: orderError } = await this.db
       .getClient()
@@ -1622,6 +1753,24 @@ export class DocumentsController {
         );
       throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+  }
+
+  @Get(":id/held-costs")
+  @ApiOperation({
+    summary: "Which items on this paper could not be costed, and whether the house's tax basis is why",
+    description:
+      "The items whose landed cost the delivery holds (the lot stays provisional), each with its sentence, and `taxBasisKnown`: false when the house has not said how it treats the tax it pays. Owners and managers only: a cost is desk work. A document that is not this house's is a 404, the same as one that does not exist; an unreadable step is a 500 in words, never an empty list.",
+  })
+  async heldCosts(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    requireUuid(id, "document id");
+    if (!holdsHouseMoney(user?.role ? String(user.role).trim() : null))
+      throw new HttpException(
+        "What a paper's cost is held for is desk work, so it is an owner's or a manager's to read. Ask a manager or an owner of this house.",
+        HttpStatus.FORBIDDEN,
+      );
+    const read = await this.deliveryStock.heldCostsOfDocument(user.restaurantId, id);
+    if (!read.ok) throw new HttpException(read.error, read.status);
+    return read.value;
   }
 
   @Get(":id/line-mappings")

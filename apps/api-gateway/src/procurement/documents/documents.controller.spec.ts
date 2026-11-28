@@ -627,9 +627,14 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
 /** A list() controller over a thenable fake db, one canned result per table; records writes. */
 function listControllerWith(results: Record<string, { data: unknown; error: unknown }>) {
   const writes: string[] = [];
-  const builder = () => {
+  const calls: Array<[string, string, unknown[]]> = [];
+  const builder = (table: string) => {
     const b: any = {};
-    for (const m of ["select", "eq", "order", "limit", "in", "range"]) b[m] = jest.fn(() => b);
+    for (const m of ["select", "eq", "order", "limit", "in", "range", "lt", "or"])
+      b[m] = jest.fn((...args: unknown[]) => {
+        calls.push([table, m, args]);
+        return b;
+      });
     for (const m of ["insert", "update", "upsert", "delete"])
       b[m] = jest.fn(() => {
         writes.push(m);
@@ -640,7 +645,7 @@ function listControllerWith(results: Record<string, { data: unknown; error: unkn
   const db = {
     getClient: () => ({
       from: (table: string) => {
-        const b = builder();
+        const b = builder(table);
         b.then = (res: any, rej: any) => Promise.resolve(results[table]).then(res, rej);
         return b;
       },
@@ -659,7 +664,7 @@ function listControllerWith(results: Record<string, { data: unknown; error: unkn
     {} as any,
     {} as any,
   );
-  return { controller, writes };
+  return { controller, writes, calls };
 }
 
 describe("DocumentsController.list — the verdict as the rule gives it now (walk-through W7, 2026-10-01)", () => {
@@ -774,5 +779,79 @@ describe("DocumentsController.list — who sent it (walk-through W8, 2026-10-01)
       "SYNTHETIC PAPER TWO",
       null,
     ]);
+  });
+});
+
+describe("DocumentsController.list — older papers and a search (r104 g2)", () => {
+  const paper = (i: number) => ({
+    id: `d${i}`,
+    restaurant_id: "rest-1",
+    doc_type: "invoice",
+    status: "verified",
+    provider_id: null,
+    extracted: null,
+    created_at: `2026-11-${String(30 - i).padStart(2, "0")}T10:00:00Z`,
+  });
+  const none = { data: [], error: null };
+  const user = { userId: "u1", restaurantId: "rest-1" } as any;
+
+  it("says there are older papers when it found more than it was asked for, and hands over the cursor", async () => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: { data: [paper(1), paper(2), paper(3)], error: null },
+      procurement_document_lines: none,
+    });
+    const out: any = await controller.list(user, "verified", undefined, undefined, "2");
+    expect(out.items.map((i: any) => i.id)).toEqual(["d1", "d2"]);
+    expect(out.hasMore).toBe(true);
+    expect(out.nextBefore).toBe("2026-11-28T10:00:00Z");
+    expect(calls).toContainEqual(["procurement_documents", "limit", [3]]);
+  });
+
+  it("says nothing is older when the page is not full", async () => {
+    const { controller } = listControllerWith({
+      procurement_documents: { data: [paper(1)], error: null },
+      procurement_document_lines: none,
+    });
+    const out: any = await controller.list(user, "verified", undefined, undefined, "2");
+    expect([out.hasMore, out.nextBefore]).toEqual([false, null]);
+  });
+
+  it("reads only papers before the cursor", async () => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: none,
+      procurement_document_lines: none,
+    });
+    await controller.list(user, "verified", undefined, undefined, undefined, undefined, "2026-11-01T00:00:00Z");
+    expect(calls).toContainEqual(["procurement_documents", "lt", ["created_at", "2026-11-01T00:00:00.000Z"]]);
+  });
+
+  it("refuses a cursor that is not a date", async () => {
+    const { controller } = listControllerWith({ procurement_documents: none });
+    await expect(
+      controller.list(user, "verified", undefined, undefined, undefined, undefined, "yesterday"),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("searches the document number, the name the paper carried and the linked vendors", async () => {
+    const { controller, calls } = listControllerWith({
+      procurement_documents: none,
+      procurement_document_lines: none,
+      providers: { data: [{ id: "p1" }, { id: "p2" }], error: null },
+    });
+    await controller.list(user, "verified", undefined, undefined, undefined, "Acme, (inv)%");
+    const or = calls.find((c) => c[0] === "procurement_documents" && c[1] === "or")!;
+    expect(or[2][0]).toBe(
+      "doc_number.ilike.%Acme inv%,extracted->>vendorName.ilike.%Acme inv%,provider_id.in.(p1,p2)",
+    );
+  });
+
+  it("a search that cannot read the vendors says so instead of returning everything", async () => {
+    const { controller } = listControllerWith({
+      procurement_documents: none,
+      providers: { data: null, error: { message: "boom" } },
+    });
+    await expect(
+      controller.list(user, "verified", undefined, undefined, undefined, "acme"),
+    ).rejects.toMatchObject({ status: 500 });
   });
 });

@@ -119,6 +119,7 @@ export function HousePriceCell({
   canEdit,
   onChanged,
   money = fmtMoneyExact,
+  hideNoTarget = false,
 }: {
   inventoryId: string
   wineName: string
@@ -131,6 +132,8 @@ export function HousePriceCell({
    * new page passes the house's own currency (or bare numbers when none is
    * recorded) and its em dash for a missing figure. */
   money?: (n: number | null) => string
+  /** A list that says "no target set" once, above its rows, does not repeat it on each. */
+  hideNoTarget?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [bottleText, setBottleText] = useState('')
@@ -358,7 +361,7 @@ export function HousePriceCell({
               ),
             )}
           {advice.status === 'ready' && actionable.length === 0 && lines.length > 0 && (
-            <QuietState lines={lines} targetSet={advice.targetSet} />
+            <QuietState lines={lines} targetSet={advice.targetSet} hideNoTarget={hideNoTarget} />
           )}
         </div>
       )}
@@ -376,8 +379,9 @@ export function HousePriceCell({
 }
 
 /** One short line when there is nothing to tap: why there is no advice. */
-function QuietState({ lines, targetSet }: { lines: PriceAdvice[]; targetSet: boolean }) {
+function QuietState({ lines, targetSet, hideNoTarget }: { lines: PriceAdvice[]; targetSet: boolean; hideNoTarget: boolean }) {
   if (!targetSet) {
+    if (hideNoTarget) return null
     return (
       <a href="/settings?tab=target-margin" className="text-gray-400 hover:text-gray-600 hover:underline">
         no target set

@@ -33,14 +33,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { invalidateItemReads } from '../../inventory/next/item-queries';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
+import { recipesApi } from '../../../services/api/recipes';
+import { copyFields, copyRecipeBody, type CopySource } from './recipe/copyDrink';
 import { useInventory } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import { apiClient } from '../../../services/api/client';
+import { managesHouse } from '../../communications/next/cm-format';
 import type { Wine } from '../../../services/api/types';
 import type { Provider } from '../../../services/api/providers';
 import {
@@ -673,7 +677,7 @@ export interface CellarLive {
   lastApplyMs: number | null;
 }
 
-export function useCellarLive(): CellarLive {
+export function useCellarLive(listen = true): CellarLive {
   const { activeRestaurantId } = useAuth();
   const queryClient = useQueryClient();
   const [touched, setTouched] = useState<Record<string, number>>({});
@@ -725,9 +729,10 @@ export function useCellarLive(): CellarLive {
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     };
 
+    if (!listen) return undefined;
     window.addEventListener('inventory_change', onChange);
     return () => window.removeEventListener('inventory_change', onChange);
-  }, [queryClient]);
+  }, [queryClient, listen]);
 
   return { touched, lastApplyMs };
 }
@@ -967,19 +972,27 @@ export interface RowRecordVM {
  * so a branch switch cannot show the previous house's ledger under the same
  * bottle — the exact failure the tenant-keying rule exists for.
  */
-export function useRowRecord(label: string | null) {
-  const { activeRestaurantId } = useAuth();
-  const q = useQuery({
-    queryKey: ['cellar', 'row-record', activeRestaurantId, label],
-    enabled: Boolean(activeRestaurantId) && label !== null && label.trim() !== '',
+export function rowRecordRead(restaurantId: string | null | undefined, label: string | null) {
+  return {
+    queryKey: ['cellar', 'row-record', restaurantId, label] as const,
+    enabled: Boolean(restaurantId) && label !== null && label.trim() !== '',
     queryFn: async (): Promise<RowRecordVM> => {
       const r = await apiClient.get(
-        `/beverages/${activeRestaurantId}/row-record`,
+        `/beverages/${restaurantId}/row-record`,
         { params: { label } },
       );
       return r.data as RowRecordVM;
     },
-  });
+    // A row warmed on intent (inventory, perf p8-3) is fresh when the row opens.
+    // App.tsx's `refetchOnMount: 'always'` would read it again regardless.
+    staleTime: 30_000,
+    refetchOnMount: true,
+  };
+}
+
+export function useRowRecord(label: string | null) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery(rowRecordRead(activeRestaurantId, label));
   return {
     data: q.data ?? null,
     loading: q.isLoading || q.isFetching,
@@ -1005,7 +1018,8 @@ export interface CocktailInput {
   method?: string;
   glass?: string;
   garnish?: string;
-  price?: number;
+  /** Absent: not sent. null (amend only): the price is taken off. */
+  price?: number | null;
   description?: string;
 }
 
@@ -1018,12 +1032,30 @@ export interface RecipeLineVM {
   sort_order?: number | null;
 }
 
+/**
+ * Whether this person may change the house's cocktail list: an owner or a
+ * manager OF THIS HOUSE (r34 walk w1 F13). The gateway refuses the four
+ * cocktail writes to anyone else with 403 (`@Roles("owner", "manager")` on
+ * BeveragesController), so the register does not offer them. Read the way the
+ * rest of the app reads it (`managesHouse`): the house role first, the
+ * account role only while no house is active, anything else is staff.
+ */
+export function useCocktailManages(): boolean {
+  const { activeRole, user } = useAuth();
+  return managesHouse(activeRole, user?.role);
+}
+
 export function useCocktailWrites() {
   const { activeRestaurantId } = useAuth();
   const queryClient = useQueryClient();
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId] });
     void queryClient.invalidateQueries({ queryKey: ['cellar', 'register', activeRestaurantId] });
+  };
+  // A card retired or its lines replaced changes which goods are used in a drink.
+  const invalidateUse = () => {
+    invalidate();
+    invalidateItemReads(queryClient, activeRestaurantId);
   };
 
   const create = useMutation({
@@ -1050,24 +1082,36 @@ export function useCocktailWrites() {
       const r = await apiClient.delete(`/cocktails/${activeRestaurantId}/${id}`);
       return r.data;
     },
-    onSuccess: invalidate,
+    onSuccess: invalidateUse,
   });
 
-  const setRecipe = useMutation({
-    mutationFn: async (v: {
-      id: string;
-      lines: { freeText?: string; quantity?: number; unit?: string; sortOrder?: number }[];
-    }) => {
-      const r = await apiClient.put(
-        `/cocktails/${activeRestaurantId}/${v.id}/ingredients`,
-        { lines: v.lines },
-      );
-      return r.data;
+  /**
+   * Copy a drink: read its recipe, make the new drink, write the recipe onto it.
+   * `recipe_failed`: the drink exists and its recipe write was refused (it is kept).
+   * `cannot`: a line cannot be carried, nothing was written.
+   */
+  const copy = useMutation({
+    mutationFn: async (src: CopySource): Promise<{ state: 'copied' | 'recipe_failed'; id: string } | { state: 'cannot'; id: null }> => {
+      const body = copyRecipeBody(await recipesApi.get(activeRestaurantId as string, src.id));
+      if (body === 'cannot') return { state: 'cannot', id: null };
+      const made = (await apiClient.post(`/cocktails/${activeRestaurantId}`, copyFields(src))).data as { id: string };
+      if (!body) return { state: 'copied', id: made.id };
+      try {
+        await recipesApi.save(activeRestaurantId as string, made.id, body);
+      } catch {
+        return { state: 'recipe_failed', id: made.id };
+      }
+      return { state: 'copied', id: made.id };
     },
-    onSuccess: invalidate,
+    onSuccess: () => {
+      // A copied drink's lines are new uses of goods (invalidateUse, inventory r10x).
+      invalidateUse();
+      void queryClient.invalidateQueries({ queryKey: ['recipes', activeRestaurantId ?? null] });
+      void queryClient.invalidateQueries({ queryKey: ['cellar', 'cocktails', activeRestaurantId ?? null, 'figures'] });
+    },
   });
 
-  return { create, amend, retire, setRecipe };
+  return { create, amend, retire, copy };
 }
 
 /** One cocktail's recipe lines. Read only when the leaf for it is open. */
@@ -1304,11 +1348,29 @@ export function useCocktailRegister(enabled: boolean) {
   };
 }
 
-export function useCellarNextData() {
+/**
+ * Whether the page draws the wine book: the overview and the wine register do;
+ * every other register (cocktails, beer, spirits…) reads only its own rows and
+ * `registers`. Exported for the test that counts what each register reads.
+ */
+export function drawsTheBook(open: RegisterId | null): boolean {
+  return open === null || open === 'wines';
+}
+
+/**
+ * `open` is the register the page shows (null for the overview). The wine
+ * library (up to 500 rows of every column), the house inventory (re-read every
+ * minute) and the vendors are read only where the book is drawn: /cocktails
+ * used to pay for all three and show none of them (r41 recipes audit, gap 1).
+ * The live stock listener follows the same rule, so a sale during service no
+ * longer re-renders a register that shows no stock (gap 10, for /cocktails).
+ */
+export function useCellarNextData(open: RegisterId | null = null) {
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const registers = useCellarRegisters();
-  const live = useCellarLive();
+  const book = drawsTheBook(open);
+  const live = useCellarLive(book);
 
   /**
    * The book's pagination (cellar confirmer BLOCKER, fixed). "Load 500 more"
@@ -1325,6 +1387,7 @@ export function useCellarNextData() {
    */
   const winesQ = useInfiniteQuery({
     queryKey: [...queryKeys.wines.all, 'book', BOOK_READ_LIMIT] as const,
+    enabled: book,
     initialPageParam: 0,
     queryFn: async ({ pageParam }): Promise<WireWine[]> => {
       const r = await apiClient.get('/wines', {
@@ -1340,8 +1403,9 @@ export function useCellarNextData() {
         ? undefined
         : allPages.reduce((sum, page) => sum + page.length, 0),
   });
-  const inventoryQ = useInventory();
-  const providersQ = useProviders(activeRestaurantId ?? '');
+  const inventoryQ = useInventory({ enabled: book });
+  // `useProviders` reads nothing for an empty id (its own `enabled`).
+  const providersQ = useProviders(book ? (activeRestaurantId ?? '') : '');
 
   // Live catalogue edits arrive as a `wine_update` window event from the
   // websocket bridge (RealtimeContext) — the book re-reads itself rather than

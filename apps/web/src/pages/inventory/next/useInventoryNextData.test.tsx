@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 const m = vi.hoisted(() => ({
   winesError: false,
   winesPending: false,
+  winesAsked: [] as string[][],
   role: 'owner' as string,
   locationsLoading: false,
   items: [] as Array<Record<string, unknown>>,
@@ -33,7 +34,8 @@ vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useInventory: () => ({ data: m.items, isError: false, refetch: m.listRefetch }),
 }));
 vi.mock('../../../hooks/queries/useWineQueries', () => ({
-  useWinesByIds: () => ({
+  useWinesByIds: (ids: string[]) => ({
+    asked: m.winesAsked.push(ids),
     data: m.winesError || m.winesPending ? undefined : [],
     isError: m.winesError,
     isPending: m.winesPending,
@@ -67,7 +69,7 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { useInventoryNextData } from './useInventoryNextData';
+import { chipMatch, priceBasisUnstated, priceMovePct, priceSignalsHaveBasis, priceSignalsReadable, readSentence, toRow, useInventoryNextData, type InvRow } from './useInventoryNextData';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -78,6 +80,7 @@ function mount() {
 
 beforeEach(() => {
   m.winesError = false;
+  m.winesAsked = [];
   m.locationsUnavailable = false;
   m.winesPending = false;
   m.locationsLoading = false;
@@ -179,6 +182,18 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     expect(result.current.pending).toEqual([]);
   });
 
+  it('carries the house country its currency read answered, and none when that read failed (r109 inventory-g5)', async () => {
+    m.currency.mockResolvedValue({ readable: true, code: null, country: 'Türkiye' });
+    const first = mount();
+    await waitFor(() => expect(first.result.current.currency.state).toBe('not_recorded'));
+    expect(first.result.current.currency.country).toBe('Türkiye');
+    first.unmount();
+    m.currency.mockResolvedValue({ readable: false, code: 'TRY', country: 'Türkiye' });
+    const second = mount();
+    await waitFor(() => expect(second.result.current.currency.state).toBe('unreadable'));
+    expect(second.result.current.currency.country).toBeUndefined();
+  });
+
   it('does not wait on a library with nothing to ask (no wine ids, so the query never runs)', async () => {
     m.winesPending = true; // a disabled query stays pending for ever
     const { result } = mount();
@@ -223,5 +238,174 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     await waitFor(() => expect(m.docs.mock.calls.length).toBe(before.docs + 1));
     // The delivered lines answered, so they are not read again.
     expect(m.deliveries.mock.calls.length).toBe(before.deliveries);
+  });
+});
+
+describe('useInventoryNextData: the library fields come on the row', () => {
+  const carried = {
+    libraryType: 'red', libraryGrape: 'Nebbiolo', libraryKind: 'wine',
+    libraryProducer: 'Cantina', libraryVintage: 2016, libraryDisplayName: null,
+  };
+
+  it('asks /wines for nothing when every row carries them, and reads type, grape and producer off the row', () => {
+    m.items = [{ id: 'a', wineId: 'w1', wineName: 'Barolo', ...carried }];
+    const { result } = mount();
+    expect(m.winesAsked.every((ids) => ids.length === 0)).toBe(true);
+    const row = result.current.rows?.[0];
+    expect(row?.type).toBe('red');
+    expect(row?.kind).toBe('wine');
+    expect(row?.grape).toBe('Nebbiolo');
+    expect(row?.producer).toBe('Cantina');
+    expect(row?.vintage).toBe(2016);
+  });
+
+  it('asks /wines only for the rows that do not carry them (an older gateway)', () => {
+    m.items = [
+      { id: 'a', wineId: 'w1', wineName: 'Barolo', ...carried },
+      { id: 'b', wineId: 'w2', wineName: 'Old row' },
+    ];
+    mount();
+    expect(m.winesAsked.at(-1)).toEqual(['w2']);
+  });
+
+  it('takes a null on the row as the answer: the library records none', () => {
+    m.items = [{ id: 'a', wineId: 'w1', wineName: 'X', ...carried, libraryType: null, libraryKind: null, libraryGrape: null }];
+    const { result } = mount();
+    expect(result.current.rows?.[0]?.type).toBeNull();
+    expect(result.current.rows?.[0]?.grape).toBeNull();
+    expect(m.winesAsked.every((ids) => ids.length === 0)).toBe(true);
+  });
+});
+
+// G15: the normaliser fills 0 and [], so only the flags tell failed from empty.
+describe('useInventoryNextData — open bottles and zones that could not be read (G15)', () => {
+  const normalised = { id: 'i1', restaurantId: 'r1', wineId: 'w1', wineName: 'Barolo', stockLive: 2, openMl: 0, locations: [] };
+
+  it('a failed rollup read is no open-ml figure, never 0', () => {
+    const r = toRow({ ...normalised, rollupReadable: false } as never);
+    expect(r.rollupReadable).toBe(false);
+    expect(r.openMl).toBeNull();
+  });
+
+  it('a failed location read is no zone list, never an empty one', () => {
+    const r = toRow({ ...normalised, locationsReadable: false } as never);
+    expect(r.locationsReadable).toBe(false);
+    expect(r.zones).toBeNull();
+  });
+
+  it('read and empty is 0 ml and no zones; no flags (older gateway) reads as read', () => {
+    const read = toRow({ ...normalised, rollupReadable: true, locationsReadable: true } as never);
+    expect(read.openMl).toBe(0);
+    expect(read.zones).toEqual([]);
+    const older = toRow(normalised as never);
+    expect(older.rollupReadable).toBe(true);
+    expect(older.locationsReadable).toBe(true);
+    expect(older.openMl).toBe(0);
+  });
+
+  it('names both unread reads and reads the stock again for them', async () => {
+    m.items = [{ ...normalised, rollupReadable: false, locationsReadable: false }];
+    const { result } = mount();
+    await waitFor(() => expect(result.current.advice.status).toBe('ready'));
+    expect(result.current.unread).toContain(
+      'the open bottles and costs, so open ml, cost, value and margin say they could not be read',
+    );
+    expect(result.current.unread).toContain('where each title sits, so its zones say they could not be read');
+    act(() => result.current.rereadUnread());
+    expect(m.listRefetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Price signals: chipMatch reads the last two settled delivery costs (r104 g3)', () => {
+  const base = toRow({ id: 'i1', thresholdMin: 2, currentStock: 3 } as never);
+  const two = (last: number | null, prev: number | null, basis: 'net' | 'gross_cost' | null = 'net'): InvRow => ({
+    ...base,
+    lastSettledCost: last,
+    previousSettledCost: prev,
+    settledCostTaxBasis: basis,
+  });
+
+  it('r108: a move is compared only on a common stated tax basis; mixed or unstated is "basis not stated"', () => {
+    expect(chipMatch(two(11.8, 10, 'gross_cost'), 'price')).toBe(true);
+    expect(priceMovePct(two(11.8, 10, null))).toBeNull();
+    expect(chipMatch(two(11.8, 10, null), 'price')).toBe(false);
+    expect(priceBasisUnstated(two(11.8, 10, null))).toBe(true);
+    expect(priceBasisUnstated(two(11.8, 10, 'net'))).toBe(false);
+    expect(priceBasisUnstated(two(null, null, null))).toBe(false);
+    expect(priceSignalsHaveBasis([two(11.8, 10, null)])).toBe(false);
+  });
+
+  it('r108: toRow carries the gateway basis, only its two words, and drops it when the read failed', () => {
+    expect(toRow({ id: 'i1', settledCostTaxBasis: 'gross_cost', settledCostsReadable: true } as never).settledCostTaxBasis).toBe('gross_cost');
+    expect(toRow({ id: 'i1', settledCostTaxBasis: 'included', settledCostsReadable: true } as never).settledCostTaxBasis).toBeNull();
+    expect(toRow({ id: 'i1', settledCostTaxBasis: 'net', settledCostsReadable: false } as never).settledCostTaxBasis).toBeNull();
+  });
+
+  it('two deliveries 12 percent apart match; 5 percent apart does not; one delivery never does', () => {
+    expect(chipMatch(two(11.2, 10), 'price')).toBe(true);
+    expect(chipMatch(two(8.8, 10), 'price')).toBe(true);
+    expect(chipMatch(two(10.5, 10), 'price')).toBe(false);
+    expect(chipMatch(two(null, null), 'price')).toBe(false);
+    expect(chipMatch(two(11.2, null), 'price')).toBe(false);
+  });
+
+  it('a free first delivery makes no move, and an unpriced good is never a 0 percent move', () => {
+    expect(priceMovePct(two(5, 0))).toBeNull();
+    expect(priceMovePct(two(null, null))).toBeNull();
+    expect(priceMovePct(two(11, 10))).toBeCloseTo(10, 5);
+    expect(chipMatch(two(11, 10), 'price')).toBe(false); // exactly the default is not "more than"
+  });
+
+  it('toRow carries the two costs from the gateway row, and drops them when the read failed', () => {
+    const ok = toRow({ id: 'i1', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true } as never);
+    expect([ok.lastSettledCost, ok.previousSettledCost, ok.settledCostsReadable]).toEqual([11.2, 10, true]);
+    const bad = toRow({ id: 'i1', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: false } as never);
+    expect([bad.lastSettledCost, bad.previousSettledCost, bad.settledCostsReadable]).toEqual([null, null, false]);
+  });
+
+  it('toRow carries that only the newest settled deliveries were read, and not when the read failed', () => {
+    expect(toRow({ id: 'i1', settledCostsReadable: true, settledCostsCapped: true } as never).settledCostsCapped).toBe(true);
+    expect(toRow({ id: 'i1', settledCostsReadable: true } as never).settledCostsCapped).toBe(false);
+    expect(toRow({ id: 'i1', settledCostsReadable: false, settledCostsCapped: true } as never).settledCostsCapped).toBe(false);
+  });
+
+  it('the chip has a basis only when a good has two settled costs, and is readable only when no row failed', () => {
+    expect(priceSignalsHaveBasis([two(11, 10), two(null, null)])).toBe(true);
+    expect(priceSignalsHaveBasis([two(null, null)])).toBe(false);
+    expect(priceSignalsReadable([two(11, 10)])).toBe(true);
+    expect(priceSignalsReadable([{ ...two(11, 10), settledCostsReadable: false }])).toBe(false);
+  });
+});
+
+// r103 review: the lot rollup carries the cost too, so a failed rollup is an unread cost, never "no cost yet".
+describe('useInventoryNextData — a failed lot-rollup read leaves the cost unread (r103)', () => {
+  const failed = { id: 'i1', restaurantId: 'r1', wineId: 'w1', wineName: 'Barolo', stockLive: 6, rollupReadable: false, locations: [] };
+  const cur = { state: 'recorded', code: 'EUR' } as never;
+
+  it('toRow carries no cost, value or provenance for it, and says the rollup was not read', () => {
+    const r = toRow({ ...failed, wac: 40, costProvenance: 'invoice' } as never);
+    expect(r.rollupReadable).toBe(false);
+    expect(r.wac).toBeNull();
+    expect(r.value).toBeNull();
+    expect(r.costProvenance).toBeNull();
+  });
+
+  it('the read sentence says the lot costs could not be read, not that no title has a cost', () => {
+    const s = readSentence([toRow(failed as never)], cur, true);
+    expect(s).toContain('The lot costs could not be read');
+    expect(s).not.toContain('has a cost on the books yet');
+  });
+
+  it('a house that read some lots still names the ones it could not', () => {
+    const ok = toRow({ id: 'i2', wineName: 'B', stockLive: 2, wac: 10, rollupReadable: true } as never);
+    const s = readSentence([ok, toRow(failed as never)], cur, true);
+    expect(s).toContain('1 of them because their lot costs could not be read');
+  });
+
+  it('the unread banner names the lot costs and what says so', async () => {
+    m.items = [failed];
+    const { result } = mount();
+    await waitFor(() => expect(result.current.advice.status).toBe('ready'));
+    expect(result.current.unread).toContain('the lot costs, so cost, value and margin say they could not be read');
   });
 });

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { readWholeWindow } from "../common/read-whole-window";
 
 @Injectable()
 export class DatabaseService implements OnModuleInit {
@@ -39,27 +40,38 @@ export class DatabaseService implements OnModuleInit {
   }
 
   // Helper methods for common operations
+  /**
+   * Every active good the house holds, whole, or a refusal (ADR 0292).
+   *
+   * One unranged `select` stopped at PostgREST's `max_rows` (1,000,
+   * `supabase/config.toml:18`) without saying so, and /inventory then told a
+   * house with 1,400 goods "All 1,000 of 1,000 titles are listed" with a
+   * stock value short by the 400 it never read (QA round 2, H-1). The read is
+   * keyset-paged on `id` to the end; any page that fails, or a count that
+   * cannot be met, throws, so a caller gets the whole list or an error and
+   * never the first thousand rows dressed as all of them.
+   */
   async getRestaurantInventory(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("restaurant_inventory")
-      .select(
-        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true);
-
-    if (error) throw error;
-    return data;
+    return readWholeWindow<any>("The house's inventory list", () =>
+      this.supabase
+        .from("restaurant_inventory")
+        .select(
+          "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, beverage_kind, display_name, country, region)",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .is("deleted_at", null),
+    );
   }
 
   async getLowStockItems(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("v_low_stock_items")
-      .select("*")
-      .eq("restaurant_id", restaurantId);
-
-    if (error) throw error;
-    return data;
+    return readWholeWindow<any>("The house's low-stock wines", () =>
+      this.supabase
+        .from("v_low_stock_items")
+        .select("*", { count: "exact" })
+        .eq("restaurant_id", restaurantId),
+    );
   }
 
   /**

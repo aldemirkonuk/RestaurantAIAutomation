@@ -295,7 +295,11 @@ export class ReceivingService {
     // synchronous, and it names the question they can answer in two seconds
     // ("cases or bottles?"). The web door client already treats 4xx as a
     // permanent refusal and surfaces it rather than retrying (`doorOutbox.ts`).
-    const uom: Uom | null = normalizeUom(input.countedUom);
+    // A weight reads (`kg`, R8) but `counted_uom` keeps the seven container
+    // units: refused here by name, never a CHECK failure on insert.
+    const read: Uom | null = normalizeUom(input.countedUom);
+    const uom: Uom | null =
+      read && (ORDER_UNIT_TYPES as readonly string[]).includes(read) ? read : null;
     if (!uom) {
       this.logger.warn(
         `door receipt refused for order ${input.orderId}: unit ` +

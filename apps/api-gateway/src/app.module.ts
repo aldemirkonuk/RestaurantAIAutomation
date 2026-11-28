@@ -7,6 +7,7 @@ import { LivenessController } from "./health/liveness.controller";
 import { ReadinessController } from "./health/readiness.controller";
 import { AuthModule } from "./auth/auth.module";
 import { InventoryModule } from "./inventory/inventory.module";
+import { ItemNutritionModule } from "./item-nutrition/item-nutrition.module";
 import { ProcurementModule } from "./procurement/procurement.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { ReportsModule } from "./reports/reports.module";
@@ -42,6 +43,8 @@ import { WinesModule } from "./wines/wines.module";
 import { StorageLocationsModule } from "./storage-locations/storage-locations.module";
 import { CellarModule } from "./cellar/cellar.module";
 import { BeveragesModule } from "./beverages/beverages.module";
+import { RecipesModule } from "./recipes/recipes.module";
+import { TasteModule } from "./taste/taste.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { UserPreferencesModule } from "./user-preferences/user-preferences.module";
 import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-templates.module";
@@ -119,6 +122,7 @@ import { HouseModule } from "./house/house.module";
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration
     InventoryModule,
+    ItemNutritionModule, // What a good is made of: nutrition + the 14 allergens
     InventoryLedgerModule, // Immutable inventory transaction ledger
     ProcurementModule,
     NotificationsModule,
@@ -130,6 +134,8 @@ import { HouseModule } from "./house/house.module";
     StorageLocationsModule, // Storage locations and wine-to-location mappings
     CellarModule, // Which cellar registers a house carries (inferred → confirmed)
     BeveragesModule, // Read-only lists over public.beverages / public.cocktails
+    RecipesModule, // A cocktail's versioned recipe over house items, and its cost per serve (ADR 0360)
+    TasteModule, // How a good, cocktail or dish tastes: layered, append-only, fused on read
     CalendarModule, // Calendar with recurrence support
     CommunicationsModule, // Gmail, SMS, and scheduled communications
     ConversationsModule, // Procurement conversation history, threads, summaries

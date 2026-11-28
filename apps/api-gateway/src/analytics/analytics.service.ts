@@ -17,6 +17,12 @@ import {
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { houseDayBounds } from "../common/house-day";
+import {
+  TillCostRead,
+  TillSalesRead,
+  tillFigures,
+  withheldTillFigures,
+} from "./cost-of-goods";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -73,6 +79,12 @@ export interface PosConsumptionRow {
  */
 export interface SalesGate {
   withSales?: boolean;
+}
+
+/** A recorded money figure above 0, else null (never a fabricated 0). */
+function positiveOrNull(v: unknown): number | null {
+  const n = typeof v === "string" ? Number(v) : (v as number);
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : null;
 }
 
 @Injectable()
@@ -217,10 +229,38 @@ export class AnalyticsService {
     if (error) this.logQueryFailure("procurement_orders", error);
     return (data || []).map((o: any) => ({
       providerId: o.provider_id || "unknown",
-      cost: o.total_cost || o.final_price || 0,
+      // A delivered order with no recorded cost is an unknown, never 0: the
+      // purchases total below withholds rather than counting it as free.
+      cost: positiveOrNull(o.total_cost) ?? positiveOrNull(o.final_price),
       bottles: o.bottles_total || o.quantity || 0,
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
     }));
+  }
+
+  /**
+   * The till's two reads for the cost of what sold (cost-math lane 3.1): net
+   * sales of stocked items and the cost their bottles carried when they left.
+   * Each is one jsonb value from a function, so no row cap cuts it. A failed
+   * read is null (logged), never an empty till: the figures it feeds go null.
+   */
+  private async loadTill(
+    restaurantId: string,
+    sinceDays: number,
+  ): Promise<{ sales: TillSalesRead | null; cost: TillCostRead | null }> {
+    const client = this.dbService.getClient();
+    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const args = { p_restaurant_id: restaurantId, p_since: since };
+    const [sales, cost] = await Promise.all([
+      client.rpc("pos_item_sales", args),
+      client.rpc("pos_cost_of_goods", args),
+    ]);
+    if (sales?.error) this.logQueryFailure("pos_item_sales", sales.error);
+    if (cost?.error) this.logQueryFailure("pos_cost_of_goods", cost.error);
+    const asObject = (r: any) =>
+      !r || r.error || r.data == null || typeof r.data !== "object"
+        ? null
+        : r.data;
+    return { sales: asObject(sales), cost: asObject(cost) };
   }
 
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
@@ -463,10 +503,14 @@ export class AnalyticsService {
     opts: SalesGate = {},
   ) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const [inventory, orders, consumption] = await Promise.all([
+    const TILL_WINDOW_DAYS = 365;
+    const withSales = opts.withSales === true;
+    const [inventory, orders, consumption, till] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
+      // ADR 0298 d9: the till is not read at all for a caller without sales.
+      withSales ? this.loadTill(restaurantId, TILL_WINDOW_DAYS) : null,
     ]);
 
     // A row holding no bottles contributes 0 to the valuation whatever it
@@ -486,53 +530,38 @@ export class AnalyticsService {
       ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
       : null;
 
-    // `E.stats.sum([])` is 0, and BOTH loaders above degrade a failed query to
-    // `[]` (see their comments), so an unconditional sum reported "the query
-    // failed" and "this restaurant bought nothing in a year" as the same $0 —
-    // absence rendered as a fact. An empty result set is not a measured zero:
-    // it is the absence of any row to measure, so it is null and the basis
-    // says which. A restaurant that genuinely placed orders still gets its
-    // real total, including a real 0 if every order carried no cost.
-    const cogs =
-      orders.length === 0 ? null : E.stats.sum(orders.map((o) => o.cost));
+    // Cost of goods is what SOLD, not what was bought (cost-math lane 3.1,
+    // ADR 0298 with its cost source moved to the stamped draws). It used to
+    // be the sum of delivered orders, so a month with a big buy and few sales
+    // printed the buy, and the ratios divided today's stock by a shelf
+    // valuation. The till's figures replace both; the old two keep their own
+    // names (`deliveredPurchases`, `shelfValueAtMenuPrice`) and feed no ratio.
+    const t = till
+      ? tillFigures({
+          sales: till.sales,
+          cost: till.cost,
+          inventoryValue,
+          labor,
+          now: new Date(),
+          windowDays: TILL_WINDOW_DAYS,
+        })
+      : withheldTillFigures(TILL_WINDOW_DAYS);
 
-    // Revenue basis: sell-price valuation of purchased bottles (proxy until a
-    // POS revenue feed lands). Menu price is recorded, so this survives an
-    // unknown cost — it is the cost-derived fields below that go null.
-    const revenue =
+    // `E.stats.sum([])` is 0, and the loader degrades a failed query to `[]`,
+    // so an empty list is "none, or no answer": null, never $0. An order with
+    // no recorded cost withholds the total rather than adding 0 for it.
+    const ordersUncosted = orders.filter((o) => o.cost == null).length;
+    const deliveredPurchases =
+      orders.length === 0 || ordersUncosted > 0
+        ? null
+        : E.stats.sum(orders.map((o) => o.cost as number));
+
+    // Sell-price valuation of the bottles on hand. Not revenue: nothing here
+    // was sold. Kept under its own name for whoever reads it.
+    const shelfValueAtMenuPrice =
       inventory.length === 0
         ? null
         : E.stats.sum(inventory.map((i) => i.unitPrice * (i.qty || 0)));
-    const marginDollars =
-      inventoryValue == null || revenue == null ? null : revenue - inventoryValue;
-
-    // Every one of these takes inventory value as its cost input, and the two
-    // ratios take revenue as their denominator. A null on either side makes
-    // them unknown, not zero and not infinite.
-    const turnover =
-      inventoryValue == null || cogs == null
-        ? null
-        : E.inventory.inventoryTurnover(cogs, inventoryValue);
-    const dio =
-      inventoryValue == null || cogs == null
-        ? null
-        : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
-    const gmroi =
-      inventoryValue == null || marginDollars == null
-        ? null
-        : E.inventory.gmroi(marginDollars, inventoryValue);
-    const grossMargin =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.grossMargin(inventoryValue, revenue)
-        : null;
-    const cogsRatioVal =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.cogsRatio(inventoryValue, revenue)
-        : null;
-    const primeCost =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
-        : null;
 
     // Dead stock: on hand, but NOT MOVING. The previous definition was a
     // depth test (`qty > max(thresholdMin*3, 12)`) with no consumption join at
@@ -600,33 +629,48 @@ export class AnalyticsService {
 
     return {
       basis: {
-        cogs:
+        cogs: t.basis.cogs,
+        revenue: t.basis.revenue,
+        deliveredPurchases:
           orders.length === 0
             ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
-            : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
-        revenue:
+            : ordersUncosted > 0
+              ? `delivered procurement_orders (trailing 365d) — null: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as $0 would understate what was bought`
+              : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
+        shelfValueAtMenuPrice:
           inventory.length === 0
-            ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
-            : `unit_price × on-hand qty (POS-revenue proxy) — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued`,
+            ? "unit_price × on-hand qty — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
+            : `unit_price × on-hand qty — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued at menu price. Not sales: it feeds no ratio`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
-        costDerived:
-          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
+        costDerived: t.basis.costDerived,
       },
       costCoverage,
       inventoryValue,
-      cogs,
-      revenue,
-      grossMarginDollars: marginDollars,
-      grossMargin,
-      cogsRatio: cogsRatioVal,
-      primeCostRatio: primeCost,
-      inventoryTurnover: turnover,
-      daysInventoryOutstanding: dio,
-      gmroi,
+      salesWithheld: !withSales,
+      cogs: t.cogs,
+      cogsCoverage: t.cogsCoverage,
+      cogsSettledAfterSale: t.settledAfterSale,
+      // Named apart, feeding no ratio (batch review 2026-11-11): late prices
+      // settled in the window on bottles sold before it, and, while cogs is
+      // withheld, the exact cost of the items whose every bottle is costed.
+      settledOnEarlierSales: t.settledOnEarlierSales,
+      costOfCostedItems: t.costOfCostedItems,
+      cogsWindow: t.cogsWindow,
+      revenue: t.revenue,
+      salesCoverage: t.salesCoverage,
+      grossMarginDollars: t.grossMarginDollars,
+      grossMargin: t.grossMargin,
+      cogsRatio: t.cogsRatio,
+      primeCostRatio: t.primeCostRatio,
+      inventoryTurnover: t.inventoryTurnover,
+      daysInventoryOutstanding: t.daysInventoryOutstanding,
+      gmroi: t.gmroi,
+      deliveredPurchases,
+      shelfValueAtMenuPrice,
       deadStockCapital,
       deadStockTop: deadStock.slice(0, 10),
       generatedAt: new Date().toISOString(),
@@ -816,11 +860,15 @@ export class AnalyticsService {
 
     // Vendor concentration (HHI on spend share).
     const spendByVendor = new Map<string, number>();
-    for (const o of orders)
+    // An order with no recorded cost carries no spend weight (as before the
+    // purchases total stopped reading it as 0); it is left out, not priced.
+    for (const o of orders) {
+      if (o.cost == null) continue;
       spendByVendor.set(
         o.providerId,
         (spendByVendor.get(o.providerId) || 0) + o.cost,
       );
+    }
     const vendorWeights = Array.from(spendByVendor.values());
     const hhi = E.finance.herfindahlIndex(vendorWeights);
     const effectiveVendors = E.finance.effectiveCount(vendorWeights);

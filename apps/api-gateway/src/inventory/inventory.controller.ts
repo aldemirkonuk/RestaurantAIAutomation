@@ -10,6 +10,7 @@ import {
   HttpException,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { InventoryService } from "./inventory.service";
@@ -30,10 +31,14 @@ import {
   AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+import { WithholdCostFromStaffInterceptor } from "./inventory-cost-for-role";
 
 @ApiTags("inventory")
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
+// Staff read stock, not cost: every answer here reaches a role that does not
+// see money with its cost fields null (inventory-cost-for-role.ts).
+@UseInterceptors(WithholdCostFromStaffInterceptor)
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
@@ -148,9 +153,16 @@ export class InventoryController {
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })
   @ApiResponse({ status: 200, description: "Returns all inventory items" })
-  async getRestaurantInventory(@Param("restaurantId") restaurantId: string) {
+  async getRestaurantInventory(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string },
+  ) {
     try {
-      return await this.inventoryService.getRestaurantInventory(restaurantId);
+      return await this.inventoryService.getRestaurantInventory(
+        restaurantId,
+        { role: user?.role },
+        { lean: true },
+      );
     } catch (error) {
       const msg =
         error?.message || String(error) || "Failed to fetch inventory";

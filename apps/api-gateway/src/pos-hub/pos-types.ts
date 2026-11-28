@@ -14,8 +14,17 @@ export interface CanonicalItem {
   externalItemId?: string | null;
   category?: string | null;
   qty: number;
-  /** Unit price in major currency units (dollars/lira), not cents. */
-  price: number;
+  /**
+   * Unit price in major currency units (dollars/lira), not cents. null when
+   * the till sent none: absent is not zero (r57 D5), and a rung zero is a zero.
+   */
+  price: number | null;
+  /** The provider's own id for this line, when it has a stable one (r57 D2). */
+  lineId?: string | null;
+  /** Modifier ids or names on the line, sorted and comma-joined (r57 D2). */
+  modifiers?: string | null;
+  /** The till said outright that this line was comped or discounted away. */
+  comped?: boolean;
   /** Resolved by the hub via pos_item_mappings + heuristics. */
   is_wine?: boolean;
   master_wine_id?: string | null;

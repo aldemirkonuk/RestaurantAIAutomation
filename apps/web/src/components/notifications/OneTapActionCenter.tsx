@@ -250,7 +250,7 @@ function saveActionsToStorage(actions: ActionItem[]): void {
 // Generate real actions from data sources
 function generateRealActions(
   wines: WineType[],
-  lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number; shadowStock?: number; thresholdMin?: number; thresholdMax?: number; providerName?: string }>,
+  lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number | null; shadowStock?: number; thresholdMin?: number; thresholdMax?: number; providerName?: string }>,
   apiOrders: Order[] = [],
 ): ActionItem[] {
   const actions: ActionItem[] = []
@@ -489,7 +489,7 @@ function generateRealActions(
 }
 
 // Initial actions - load from storage first, generate with empty API orders if no persisted
-function getInitialActions(wines: WineType[], lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number; thresholdMin?: number }>): ActionItem[] {
+function getInitialActions(wines: WineType[], lowStockItems: Array<{ wineId?: string; wineName?: string; stockLive?: number | null; thresholdMin?: number }>): ActionItem[] {
   const persisted = loadPersistedActions()
   if (persisted.length > 0) return persisted
   // Generate actions without API orders initially - they'll be updated when API data loads

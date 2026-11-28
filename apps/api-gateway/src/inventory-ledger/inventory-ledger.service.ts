@@ -34,7 +34,7 @@ interface TransactionRow {
   id: string;
   restaurant_id: string;
   inventory_id: string;
-  wine_id: string;
+  wine_id: string | null;
   transaction_type: string;
   source: string;
   quantity_change: number;
@@ -57,6 +57,14 @@ interface TransactionRow {
   transaction_date: string;
   created_at: string;
 }
+
+/** The columns `mapTransaction` reads — a list read names them, not `*`. */
+const TRANSACTION_COLUMNS =
+  "id, restaurant_id, inventory_id, wine_id, transaction_type, source, " +
+  "quantity_change, quantity_before, quantity_after, stock_type, " +
+  "reference_type, reference_id, pos_transaction_id, order_id, " +
+  "from_location_id, to_location_id, unit_cost, total_cost, performed_by, " +
+  "performed_by_type, reason, notes, metadata, transaction_date, created_at";
 
 // ============================================================================
 // SERVICE
@@ -249,7 +257,9 @@ export class InventoryLedgerService {
         eventType: EventType.INVENTORY_CHANGE,
         sourcePage: SourcePage.INVENTORY,
         payload: {
-          wineId: dto.wineId,
+          // A food or supply has no library title; the item id names it.
+          wineId: dto.wineId ?? null,
+          inventoryId: dto.inventoryId,
           quantity: dto.quantityChange,
           previousQuantity: transaction.quantityBefore,
           changeType: this.mapTransactionTypeToChangeType(dto.transactionType),
@@ -478,7 +488,7 @@ export class InventoryLedgerService {
 
     let supabaseQuery = this.databaseService.supabase
       .from("inventory_transactions")
-      .select("*", { count: "exact" })
+      .select(TRANSACTION_COLUMNS, { count: "exact" })
       .eq("restaurant_id", restaurantId);
 
     if (query.inventoryId) {
@@ -522,8 +532,9 @@ export class InventoryLedgerService {
       throw error;
     }
 
-    const transactions = (data || []).map((row: TransactionRow) =>
-      this.mapTransaction(row),
+    // A column list in a constant is read as text by the client's typing.
+    const transactions = ((data ?? []) as unknown as TransactionRow[]).map(
+      (row) => this.mapTransaction(row),
     );
     const total = count ?? transactions.length;
 
@@ -698,7 +709,7 @@ export class InventoryLedgerService {
     restaurantId: string,
     userId: string,
     inventoryId: string,
-    wineId: string,
+    wineId: string | undefined,
     actualCount: number,
     notes?: string,
     clientCountId?: string,

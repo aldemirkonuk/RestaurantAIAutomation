@@ -1,7 +1,7 @@
 /**
- * The opened row's receipts read (INV-W8). The gateway's ledger query DTO has
- * no number transform, so any `limit` is refused with a 400: the page must not
- * send one, and keeps the newest three itself.
+ * The opened row's receipts read (INV-W8). The page shows three purchases, so
+ * it asks the ledger for three (the gateway DTO now turns the query string into
+ * a number) and keeps the newest three of what answers.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -34,7 +34,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe('useRowDetail receipts', () => {
-  it('sends no limit and keeps the newest three of what the ledger answers', async () => {
+  it('asks for three and keeps the newest three of what the ledger answers', async () => {
     const tx = (n: number) => ({ id: `t${n}`, transactionDate: `2026-09-0${n}T10:00:00Z`, quantityChange: 6, unitCost: 20, orderId: null });
     get.mockResolvedValueOnce({ data: { transactions: [tx(5), tx(4), tx(3), tx(2), tx(1)], total: 5 } });
 
@@ -44,8 +44,7 @@ describe('useRowDetail receipts', () => {
     expect(get).toHaveBeenCalledTimes(1);
     const [url, config] = get.mock.calls[0];
     expect(url).toBe('/inventory-ledger/transactions');
-    expect(config.params).toEqual({ inventoryId: 'i1', transactionType: 'purchase' });
-    expect('limit' in config.params).toBe(false);
+    expect(config.params).toEqual({ inventoryId: 'i1', transactionType: 'purchase', limit: 3 });
     expect(result.current.purchases?.map((l) => l.id)).toEqual(['t5', 't4', 't3']);
     expect(result.current.purchasesTotal).toBe(5);
   });

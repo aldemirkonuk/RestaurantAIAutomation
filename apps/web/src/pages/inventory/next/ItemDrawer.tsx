@@ -1,0 +1,544 @@
+/**
+ * The /inventory item drawer (proposal §2 S2, §3 I13, §4 K1-K2): one item in
+ * a right-side sheet over the list, the whole screen on a phone. The head says
+ * what it is, where it sits and when it was last counted; then eight cards
+ * (ItemCards), the item's acts (Count, Order more, Write off, More) always
+ * under them, and the detail card a card opens: that card's own evidence
+ * (CARD_EVIDENCE) and the NutritionCard slot. Below them is where it is used
+ * (ItemUsedIn).
+ */
+import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Sheet } from '@/components/mudavym';
+import { inventoryItemKeys, inventoryUseCountsKey, linkUsedInLine, type HouseFields } from '../../../services/api/inventory';
+import { fmtWhen } from '../../../lib/mudavym/format';
+import type { Provider } from '../../../services/api/providers';
+import type { StorageLocation } from '../../../hooks/useStorageLocations';
+import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
+import { useListTaxFor } from '../../cellar/next/recipe/useListTax';
+import ItemUsedIn, { type DishesLoad, type DrinksLoad, type UsedInLoad } from './ItemUsedIn';
+import WhatIsInIt from './NutritionCard';
+import HowItTastes from './TasteCard';
+import TasteSummary from './TasteSummary';
+import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
+import { failureReason } from './iv-failure';
+import { dishesQuery, drinksQuery, figuresQuery, nutritionQuery, usedInQuery } from './item-queries';
+import { holdsContents, noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
+import './item-drawer.css';
+
+const KIND_WORDS: Record<string, string> = {
+  food: 'Food',
+  supply: 'Supply',
+  other: 'Other drink',
+  non_alcoholic: 'Non-alcoholic drink',
+  soft_drink: 'Soft drink',
+};
+
+const DRINK_UNITS = new Set(['bottle', 'case', 'keg', 'glass', 'shot']);
+
+/**
+ * What each card's own evidence is. A card opens its panel first and the
+ * nutrition card under it (founder /goal 2026-11-07: a KPI card opens the
+ * good's nutrition card); "What's in it" opens the nutrition card alone, and
+ * "All the evidence" opens every panel.
+ */
+export const CARD_EVIDENCE: Record<CardId | 'all', ReadonlyArray<EvidenceSection>> = {
+  onhand: ['where', 'facts'],
+  value: ['cost', 'paper'],
+  usage: ['pace'],
+  cover: ['pace', 'where'],
+  onorder: ['orders', 'where'],
+  cost: ['cost', 'paper'],
+  waste: ['where'],
+  gap: ['where'],
+  inside: [],
+  all: ['facts', 'where', 'pace', 'cost', 'paper'],
+};
+
+/** The kind in words: a wine's style, else the house's own kind. */
+export function kindWords(row: InvRow, house: HouseFields): string {
+  const k = house.kind ?? row.kind;
+  if (k === null || k === 'wine') {
+    if (row.kind === 'wine' && row.type && row.type !== 'wine' && row.type !== 'unclassified') return `${typeLabel(row.type)} wine`;
+    return k === null ? 'Kind not recorded' : 'Wine';
+  }
+  return KIND_WORDS[k] ?? typeLabel(k);
+}
+
+function bottleWords(row: InvRow, house: HouseFields): string | null {
+  // The list fills a missing bottle size with 750 for every row, so a size is
+  // said only for a good kept in bottles.
+  if (row.bottleSizeMl === null || house.kind === 'food' || house.kind === 'supply') return null;
+  if (house.uom !== null && !DRINK_UNITS.has(house.uom)) return null;
+  return `${row.bottleSizeMl} ml bottle`;
+}
+
+/** What the NutritionCard slot is handed: the item as the drawer knows it. */
+export interface NutritionCardProps {
+  row: InvRow;
+  house: HouseFields;
+  restaurantId: string | null;
+  /** Owners and managers may change what is recorded; staff read it. */
+  canManage: boolean;
+  /** restaurants.country, as the house's currency read answers it; absent when unread. */
+  country?: string | null;
+}
+
+export interface ItemDrawerProps {
+  /** Close the drawer and open the house's Map POS buttons (r109 g3); absent for staff. */
+  onMapTill?: () => void;
+  /** The row the URL opened, or null when its id is not on the list. */
+  row: InvRow | null;
+  house: HouseFields;
+  canManage: boolean;
+  currency: HouseCurrency;
+  zoneName: (id: string | null) => string;
+  locations: StorageLocation[];
+  locationsUnavailable: boolean;
+  providers: Provider[] | null;
+  providersError: string | null;
+  restaurantId: string | null;
+  onClose: () => void;
+  /** NutritionCard slot: what mounts in the detail card a KPI card opens. */
+  NutritionCard?: ComponentType<NutritionCardProps>;
+  /** TasteCard slot: how it tastes, mounted directly after the nutrition card. */
+  TasteCard?: ComponentType<NutritionCardProps>;
+  /** A sheet to open with the drawer: the staff "Count" bar opens it on the count. */
+  startWith?: SheetId;
+  /** The list's "Used in" count opened this: scroll to where the good is used once it is open. */
+  scrollToUsed?: boolean;
+  /**
+   * The visible rows, in the order the list shows them (after the filter and the sort), and what stepping to one
+   * does. Absent: the drawer has no step buttons (a drawer opened from anywhere that has no list behind it).
+   */
+  steps?: { ids: readonly string[]; onStep: (id: string) => void };
+}
+
+/** How long the evidence takes to open: its 200 ms tween, or none when the person asked for reduced motion. */
+function openMs(): number {
+  try {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
+  } catch {
+    return 220;
+  }
+}
+
+type EvidenceId = CardId | 'all' | null;
+
+function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId; setEvidence: (next: EvidenceId | ((cur: EvidenceId) => EvidenceId)) => void }) {
+  const { row, house, canManage, currency, zoneName, restaurantId, evidence, setEvidence } = props;
+  const NutritionCard = props.NutritionCard ?? WhatIsInIt;
+  const TasteCard = props.TasteCard ?? HowItTastes;
+  // A card kept open across a step (r109 g6): this body mounted with it open, so its detail rides the body's own
+  // entry and does not also fade in, and the sheet is not scrolled again. The first press of anything ends it.
+  const [instant, setInstant] = useState(evidence !== null);
+  const carried = useRef(evidence !== null);
+  // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
+  const [sheet, setSheet] = useState<SheetId | null>(props.startWith ?? null);
+  const detailRef = useRef<HTMLElement | null>(null);
+  const clipRef = useRef<HTMLDivElement | null>(null);
+  const [switched, setSwitched] = useState(false);
+  // The held height is let go one frame after the swap was drawn.
+  useEffect(() => {
+    const clip = clipRef.current;
+    if (!clip || clip.style.minHeight === '') return;
+    const f = window.requestAnimationFrame(() => {
+      clip.style.minHeight = '';
+    });
+    return () => window.cancelAnimationFrame(f);
+  }, [evidence]);
+  const tasteRef = useRef<HTMLDivElement | null>(null);
+  // The first-screen taste line opens the evidence and brings the taste card into view.
+  const [wantTaste, setWantTaste] = useState(false);
+  // On a phone the detail card opens below the fold: bring it into view, smoothly like "Used in" (r109 g7).
+  // It waits for the open to finish (200 ms), so the page does not scroll toward a card still at 0 height.
+  useEffect(() => {
+    if (evidence === null) return;
+    if (carried.current) {
+      carried.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => detailRef.current?.scrollIntoView?.({ block: 'nearest', behavior: openMs() === 0 ? 'auto' : 'smooth' }), openMs());
+    return () => window.clearTimeout(t);
+  }, [evidence]);
+  useEffect(() => {
+    // Closed before the open finished: the ask dies with the card, so the next card is not scrolled to the taste.
+    if (evidence === null) {
+      setWantTaste(false);
+      return;
+    }
+    if (!wantTaste) return;
+    const t = window.setTimeout(() => {
+      tasteRef.current?.scrollIntoView?.({ block: 'nearest', behavior: openMs() === 0 ? 'auto' : 'smooth' });
+      setWantTaste(false);
+    }, openMs());
+    return () => window.clearTimeout(t);
+  }, [wantTaste, evidence]);
+  const scrollToUsed = props.scrollToUsed === true;
+  useEffect(() => {
+    if (!scrollToUsed) return;
+    const t = window.setTimeout(
+      () => document.getElementById('ivd-used')?.scrollIntoView?.({ block: 'start', behavior: openMs() === 0 ? 'auto' : 'smooth' }),
+      openMs(),
+    );
+    return () => window.clearTimeout(t);
+  }, [scrollToUsed]);
+  const id = row?.id ?? '';
+  // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
+  // allergens to state, so the drawer neither reads nor offers them.
+  const hasContents = holdsContents(house.kind ?? row?.kind ?? null);
+
+  const enabled = row !== null && restaurantId !== null;
+  // The tax basis is read for owners and managers only: staff see no share.
+  const tax = useListTaxFor(restaurantId, canManage);
+  const figuresQ = useQuery({ ...figuresQuery(restaurantId ?? '', id), enabled });
+  // The same query the slot's card reads, so the KPI card and the card agree.
+  const nutritionQ = useQuery({ ...nutritionQuery(restaurantId ?? '', id), enabled: enabled && hasContents });
+  const usedInQ = useQuery({ ...usedInQuery(restaurantId ?? '', id), enabled });
+  const dishesQ = useQuery({ ...dishesQuery(restaurantId ?? '', id), enabled });
+  // The drinks that use it, with the cards a dish has (founder /goal 2026-11-07).
+  const drinksQ = useQuery({ ...drinksQuery(restaurantId ?? '', id), enabled });
+
+  const figures: FiguresLoad = figuresQ.isError
+    ? { status: 'failed', reason: failureReason(figuresQ.error) }
+    : figuresQ.data
+      ? { status: 'ready', data: figuresQ.data }
+      : { status: 'reading' };
+  const inside: InsideLoad = nutritionQ.isError
+    ? { status: 'failed' }
+    : nutritionQ.data
+      ? { status: 'ready', data: nutritionQ.data }
+      : { status: 'reading' };
+  const queryClient = useQueryClient();
+  // Link a same-named menu line to this good (r109 g2): the answer is the fresh
+  // Used in, seeded in place; the list's use counts, this good's dishes and the
+  // menu pages read again. A refusal rejects with the server's words.
+  const linkLine = async (menuItemId: string) => {
+    if (!restaurantId) return;
+    let fresh;
+    try {
+      fresh = await linkUsedInLine(id, menuItemId, restaurantId);
+    } catch (e) {
+      throw new Error(failureReason(e));
+    }
+    queryClient.setQueryData(inventoryItemKeys.usedIn(restaurantId, id), fresh);
+    void queryClient.invalidateQueries({ queryKey: inventoryUseCountsKey(restaurantId) });
+    void queryClient.invalidateQueries({ queryKey: [...inventoryItemKeys.usedIn(restaurantId, id), 'dishes'] });
+    void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  };
+  const usedIn: UsedInLoad = usedInQ.isError
+    ? { status: 'failed', reason: failureReason(usedInQ.error) }
+    : usedInQ.data
+      ? { status: 'ready', data: usedInQ.data }
+      : { status: 'reading' };
+  const dishes: DishesLoad = dishesQ.isError
+    ? { status: 'failed', reason: failureReason(dishesQ.error) }
+    : dishesQ.data
+      ? { status: 'ready', data: dishesQ.data }
+      : { status: 'reading' };
+  const drinks: DrinksLoad = drinksQ.isError
+    ? { status: 'failed', reason: failureReason(drinksQ.error) }
+    : drinksQ.data
+      ? { status: 'ready', data: drinksQ.data }
+      : { status: 'reading' };
+  // Where a good is used is the first question and the last block: one line up top says how many and goes
+  // there. Said only when all three reads answered with something; a pending or failed read says nothing here.
+  // A drink counts once whether its recipe line or a catalogue cocktail card names the good (the block below
+  // lists both), so the line never says fewer than the block shows.
+  const cardsRead = usedIn.status === 'ready' && usedIn.data.inCocktails.readable && usedIn.data.inCocktails.lines !== null;
+  const drinkIds = new Set<string>();
+  if (drinks.status === 'ready') for (const d of drinks.data.drinks) drinkIds.add(d.cocktailId);
+  if (usedIn.status === 'ready' && cardsRead) for (const c of usedIn.data.inCocktails.lines ?? []) drinkIds.add(c.cocktailId);
+  // The block's first group is what the good is sold as (the wine list); an unread group is not none.
+  const soldRead = usedIn.status === 'ready' && usedIn.data.soldAs.readable && usedIn.data.soldAs.lines !== null;
+  const nSold = usedIn.status === 'ready' ? (usedIn.data.soldAs.lines?.length ?? 0) : 0;
+  const nDishes = dishes.status === 'ready' ? dishes.data.dishes.length : 0;
+  const nDrinks = drinkIds.size;
+  const usedChip =
+    dishes.status === 'ready' && drinks.status === 'ready' && cardsRead && soldRead && nDishes + nDrinks + nSold > 0
+      ? `Used in ${[nDishes > 0 ? `${nDishes} ${nDishes === 1 ? 'dish' : 'dishes'}` : '', nDrinks > 0 ? `${nDrinks} ${nDrinks === 1 ? 'drink' : 'drinks'}` : '', nSold > 0 ? `${nSold} on the menu` : ''].filter(Boolean).join(', ')}`
+      : null;
+  // The line's 44 px is held from first paint, under the cards so the taste line stays first (r103 review): the chip lands after three reads, and a
+  // conditional line pushed the taste line, the cards and the acts down 44 px under the finger. Pending says
+  // so, a failed read says so (ADR 0020), a good used nowhere says that; the chip is only the settled answer.
+  const usedReads = [usedIn.status, dishes.status, drinks.status];
+  const usedSlot: { state: 'reading' | 'unread' | 'none' | 'chip'; words: string } = usedReads.includes('reading')
+    ? { state: 'reading', words: 'Reading where it is used…' }
+    : usedReads.includes('failed') || !cardsRead || !soldRead
+      ? { state: 'unread', words: 'Where it is used could not be read.' }
+      : usedChip
+        ? { state: 'chip', words: usedChip }
+        : { state: 'none', words: 'Not used in a dish or drink' };
+
+  const name = row.name ?? house.displayName ?? 'Unnamed item';
+  const held = row.zones?.filter((z) => z.qty > 0) ?? null;
+  const where =
+    row.zones === null || props.locationsUnavailable
+      ? 'where it sits could not be read'
+      : held && held.length > 0
+        ? held.map((z) => zoneName(z.locationId)).join(' · ')
+        : (noZoneWord(row.stock) ?? 'in no zone');
+  const counted = row.lastCountedAt ? `counted ${fmtWhen(row.lastCountedAt)}` : 'never counted';
+  const head = [kindWords(row, house), bottleWords(row, house), where, counted].filter(Boolean).join(' · ');
+
+  // Pressing a second card swaps the detail card's content in one frame. Its clip holds the height it had for
+  // that one frame, so the block under it (Used in) is not dropped under the reader, then lets go (r108 g15).
+  const toggle = (next: CardId | 'all') => {
+    const switching = evidence !== null && evidence !== next;
+    setSwitched(switching);
+    setInstant(false);
+    if (switching && clipRef.current) clipRef.current.style.minHeight = `${clipRef.current.offsetHeight}px`;
+    setEvidence((cur) => (cur === next ? null : next));
+  };
+
+  return (
+    <>
+      <p className="ivd-head" data-testid="ivd-head">
+        {head}
+      </p>
+      {hasContents ? (
+        <TasteSummary
+          id={id}
+          restaurantId={restaurantId}
+          placement="head"
+          open={evidence !== null}
+          onOpen={() => {
+            setInstant(false);
+            setEvidence('all');
+            setWantTaste(true);
+          }}
+        />
+      ) : null}
+      <ItemCards
+        row={row}
+        uom={house.uom}
+        kind={house.kind ?? row.kind}
+        canManage={canManage}
+        currency={currency}
+        figures={figures}
+        inside={inside}
+        open={evidence === 'all' ? null : evidence}
+        onOpen={toggle}
+      />
+      <div className="ivd-usedslot" data-testid="ivd-used-slot" data-state={usedSlot.state}>
+        {usedSlot.state === 'chip' ? (
+          <button
+            type="button"
+            className="ivd-usedchip iv-focus"
+            data-testid="ivd-used-chip"
+            onClick={() =>
+              document.getElementById('ivd-used')?.scrollIntoView?.({ block: 'start', behavior: openMs() === 0 ? 'auto' : 'smooth' })
+            }
+          >
+            {usedSlot.words}
+          </button>
+        ) : (
+          <span className="ivd-usedsaid">{usedSlot.words}</span>
+        )}
+      </div>
+      {/* The acts sit under the cards, always: a count or a write-off never waits on opening a card. */}
+      <RowDropdown
+        row={row}
+        canManage={canManage}
+        currency={currency}
+        zoneName={zoneName}
+        locations={props.locations}
+        locationsUnavailable={props.locationsUnavailable}
+        providers={props.providers}
+        providersError={props.providersError}
+        restaurantId={restaurantId}
+        uom={house.uom}
+        kind={house.kind ?? row.kind}
+        sections={[]}
+        onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
+        sheet={sheet}
+        onSheet={setSheet}
+      />
+      {hasContents ? (
+        <TasteSummary
+          id={id}
+          restaurantId={restaurantId}
+          open={evidence !== null}
+          onOpen={() => {
+            setInstant(false);
+            setEvidence('all');
+            setWantTaste(true);
+          }}
+        />
+      ) : null}
+      <p className="ivd-evbar">
+        <button
+          type="button"
+          className="iv-linkish iv-focus"
+          aria-expanded={evidence !== null}
+          aria-controls={evidence !== null ? 'ivd-evidence' : undefined}
+          onClick={() => toggle('all')}
+        >
+          {evidence !== null ? 'Hide the evidence' : 'All the evidence'}
+        </button>
+      </p>
+      <div className="ivd-evwrap" data-open={evidence !== null} data-testid="ivd-evwrap">
+        <div ref={clipRef} className="ivd-evclip">
+      {evidence !== null ? (
+        <section
+          key={evidence}
+          ref={detailRef}
+          id="ivd-evidence"
+          className="ivd-evidence"
+          aria-label={`${name}: detail card`}
+          data-testid="ivd-evidence"
+          data-card={evidence}
+          data-switched={switched ? 'true' : undefined}
+          data-instant={instant ? 'true' : undefined}
+        >
+          <h3 className="iv-sec">{evidence === 'all' ? 'All the evidence' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
+          {CARD_EVIDENCE[evidence].length > 0 ? (
+            <RowDropdown
+              row={row}
+              canManage={canManage}
+              currency={currency}
+              zoneName={zoneName}
+              locations={props.locations}
+              locationsUnavailable={props.locationsUnavailable}
+              providers={props.providers}
+              providersError={props.providersError}
+              restaurantId={restaurantId}
+              uom={house.uom}
+              kind={house.kind ?? row.kind}
+              sections={CARD_EVIDENCE[evidence]}
+              actions={false}
+              settled={figures.status === 'ready' ? (figures.data.costTrend.points ?? null) : figures.status}
+              onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
+              sheet={sheet}
+              onSheet={setSheet}
+            />
+          ) : null}
+          {hasContents ? (
+            <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
+              {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
+              <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} country={currency.country ?? null} />
+            </div>
+          ) : null}
+          {hasContents ? (
+            <div ref={tasteRef} className="ivd-taste" data-slot="TasteCard" data-testid="ivd-taste-slot">
+              <h4 className="ivd-used-h">How it tastes</h4>
+              <TasteCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+        </div>
+      </div>
+      <ItemUsedIn
+        load={usedIn}
+        dishes={dishes}
+        drinks={drinks}
+        canManage={canManage}
+        currency={currency}
+        tax={tax}
+        onRetry={() => void usedInQ.refetch()}
+        onRetryDishes={() => void dishesQ.refetch()}
+        onRetryDrinks={() => void drinksQ.refetch()}
+        onLink={canManage && restaurantId ? linkLine : undefined}
+        onMapTill={props.onMapTill}
+      />
+    </>
+  );
+}
+
+/** The shortcut keys the sheet answers to while focus is in it and not in a field or a menu. J and K only, as aria-keyshortcuts says: the arrow keys stay with scrolling and the Sheet grabber. */
+const STEP_KEYS: Record<string, 'next' | 'prev'> = { j: 'next', J: 'next', k: 'prev', K: 'prev' };
+
+/**
+ * The drawer: one Sheet that stays up while the good in it changes. Stepping to the next or the previous good
+ * swaps the body (keyed by the good) under the same head and the same buttons, so focus stays where it was
+ * pressed (r108 g12; SOTA: Linear's peek, J and K move the preview through the list).
+ */
+export default function ItemDrawer(props: ItemDrawerProps) {
+  const { row, house, onClose, steps, restaurantId } = props;
+  const qc = useQueryClient();
+  const [dir, setDir] = useState<'next' | 'prev' | null>(null);
+  // The open card lives here, above the body that is remounted per good, so a step keeps it (r109 g6). A supply has
+  // no 'inside' card, so it falls back to closed there.
+  const [evidence, setEvidence] = useState<EvidenceId>(null);
+  const noInside = (house.kind ?? row?.kind ?? null) === 'supply';
+  const shownEvidence: EvidenceId = noInside && evidence === 'inside' ? null : evidence;
+  useEffect(() => {
+    if (shownEvidence !== evidence) setEvidence(shownEvidence);
+  }, [shownEvidence, evidence]);
+  const at = steps && row ? steps.ids.indexOf(row.id) : -1;
+  const prevId = steps && at > 0 ? steps.ids[at - 1] : null;
+  const nextId = steps && at >= 0 && at < steps.ids.length - 1 ? steps.ids[at + 1] : null;
+  const stepRef = useRef<(d: 'next' | 'prev') => void>(() => {});
+  stepRef.current = (d) => {
+    const to = d === 'next' ? nextId : prevId;
+    if (to === null || !steps) return;
+    setDir(d);
+    steps.onStep(to);
+  };
+  useEffect(() => {
+    if (!steps) return;
+    const onKey = (e: KeyboardEvent) => {
+      const d = STEP_KEYS[e.key];
+      if (!d || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest?.('.iv-drawer')) return;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
+      if (t.closest('[role="menu"],[role="listbox"]')) return;
+      e.preventDefault();
+      stepRef.current(d);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [steps !== undefined]);
+  // The next row's reads are warmed once the drawer is on a row, so the swap lands on an answered body.
+  useEffect(() => {
+    if (restaurantId === null) return;
+    for (const other of [prevId, nextId]) {
+      if (other === null) continue;
+      void qc.prefetchQuery(figuresQuery(restaurantId, other));
+      void qc.prefetchQuery(usedInQuery(restaurantId, other));
+    }
+  }, [qc, restaurantId, prevId, nextId]);
+
+  if (row === null) {
+    return (
+      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer" bodyClassName="iv-sheet-body">
+        <p className="iv-said" data-testid="ivd-gone">
+          This item is not on the list any more. It may have been removed, or the link is from another house.
+          Close returns to the list.
+        </p>
+      </Sheet>
+    );
+  }
+  const name = row.name ?? house.displayName ?? 'Unnamed item';
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      label={`${name}: its figures, their evidence and where it is used. Closing writes nothing.`}
+      eyebrow="Item"
+      title={name}
+      spine={name}
+      wide
+      className="iv-drawer"
+      // The body's side gutter: without it the head, the evidence and "Used in"
+      // sat flush on the sheet's edge (browser walk 2026-11-11).
+      bodyClassName="iv-sheet-body"
+    >
+      {steps && at >= 0 ? (
+        <div className="ivd-steps" role="group" aria-label="Step through the list">
+          <button type="button" className="ivd-step iv-focus" data-testid="ivd-prev" aria-keyshortcuts="K" disabled={prevId === null} onClick={() => stepRef.current('prev')}>
+            Previous good
+          </button>
+          <button type="button" className="ivd-step iv-focus" data-testid="ivd-next" aria-keyshortcuts="J" disabled={nextId === null} onClick={() => stepRef.current('next')}>
+            Next good
+          </button>
+        </div>
+      ) : null}
+      <div key={row.id} className="ivd-stepbody" data-step={dir ?? undefined} data-testid="ivd-stepbody">
+        <DrawerBody {...props} row={row} evidence={shownEvidence} setEvidence={setEvidence} />
+      </div>
+    </Sheet>
+  );
+}

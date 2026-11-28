@@ -113,7 +113,16 @@ const ANY = { value: 'all', label: 'Any' };
 
 /* ── the register head: whose register this is, and how it was decided ───── */
 
-function Head({ id, readout }: { id: RegisterId; readout: CellarData['registers'] }) {
+function Head({
+  id,
+  readout,
+  reading = false,
+}: {
+  id: RegisterId;
+  readout: CellarData['registers'];
+  /** The readout is still being read (not failed): hold the room its two lines will take. */
+  reading?: boolean;
+}) {
   const r = readout?.registers.find((x) => x.id === id);
   const source = REGISTER_SOURCE[id];
   // The parent's own name, not the literal "The Cellar": a house that pours no
@@ -131,6 +140,14 @@ function Head({ id, readout }: { id: RegisterId; readout: CellarData['registers'
         <>
           <p className="cl-said" style={{ marginTop: 6 }}>{r.basis}</p>
           <RegisterEvidenceLine evidence={r.evidence} confidence={r.confidence} />
+        </>
+      ) : reading ? (
+        // The basis line and the evidence line arrive with the readout; their
+        // room is held (same classes, one line each) so the rule and the
+        // register under them do not drop when it lands.
+        <>
+          <p className="cl-said" style={{ marginTop: 6 }} aria-hidden="true">&nbsp;</p>
+          <p className="cl-note" style={{ marginTop: 4 }} aria-hidden="true">&nbsp;</p>
         </>
       ) : null}
       {r?.needsEvidence ? <RegisterNotice registers={[id]} /> : null}
@@ -300,7 +317,7 @@ export default function CatalogueRegister({
   if (id === 'cocktails') {
     return (
       <div data-testid="catalogue-cocktails">
-        <Head id={id} readout={data.registers} />
+        <Head id={id} readout={data.registers} reading={data.registersLoading} />
         <CocktailRegister register={reg} registerLoading={register.loading} />
       </div>
     );
@@ -320,7 +337,7 @@ export default function CatalogueRegister({
 
   return (
     <div data-testid={`catalogue-${id}`}>
-      <Head id={id} readout={data.registers} />
+      <Head id={id} readout={data.registers} reading={data.registersLoading} />
 
       {register.loading ? (
         <p className="cl-said" role="status" data-testid="register-loading">

@@ -61,6 +61,7 @@ const EVERY: Record<SettingsRegister, true> = {
   "target-margin": true,
   "ask-training": true,
   "state-and-country": true,
+  "tax-basis": true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {

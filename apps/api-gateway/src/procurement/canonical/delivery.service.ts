@@ -905,20 +905,35 @@ export class DeliveryService {
     const delivery = found.value;
 
     // A RE-VERIFY IS NOT A SECOND VERIFICATION. The stamp that exists is the
-    // one returned; the cost is not re-posted, because `finalise_delivery_cost`
-    // has already settled these lots and a second pass would write a
-    // revaluation row for a correction nobody made.
-    if (delivery.verified_at)
+    // one returned and the cost is not re-posted, with one exception (QA 9a):
+    // a lot finalised at the invoice's PRINTED price (QA 7c B1) is corrected,
+    // or, when its line is now refused, named as wrong instead of kept quietly.
+    if (delivery.verified_at) {
+      // QA round 15 (4): a post that failed partway at the first verify is
+      // finished here, for the lots still provisional, and only once.
+      const finish = await this.stock.finishProvisional(restaurantId, deliveryId, userId);
+      const fix = await this.stock.repairPrintedCost(restaurantId, deliveryId, userId);
+      let costNote = "This delivery was already verified; a cost already posted is not posted twice.";
+      if (!finish.ok) {
+        this.logger.error(`delivery ${deliveryId} re-verify could not finish its cost: ${finish.error}`);
+        costNote += ` The cost of the items still provisional could not be posted: ${finish.error}`;
+      } else if (finish.value.finalised.length) {
+        costNote += ` Cost posted now for ${finish.value.finalised.length} item(s) whose cost had not posted at the first verify.`;
+      }
+      if (!fix.ok) {
+        this.logger.error(`delivery ${deliveryId} re-verify could not repair its cost: ${fix.error}`);
+        costNote += ` A cost booked at the printed price could not be checked: ${fix.error}`;
+      } else {
+        const { repaired, flagged } = fix.value;
+        if (repaired.length)
+          costNote += ` ${repaired.length} item(s) had been booked at the invoice's printed price and now carry their landed cost per bottle: the price of one bottle with its share of the invoice's charges and discount.`;
+        for (const f of flagged) costNote += ` Item ${f.inventoryId}: ${f.reason}`;
+      }
       return {
         ok: true,
-        value: {
-          delivery,
-          alreadyVerified: true,
-          cost: null,
-          costNote:
-            "This delivery was already verified; its cost was posted then and is not posted twice.",
-        },
+        value: { delivery, alreadyVerified: true, cost: null, costNote },
       };
+    }
 
     if (delivery.state !== "AGREED")
       return {
@@ -959,7 +974,8 @@ export class DeliveryService {
     //
     // A COST FAILURE DOES NOT UN-VERIFY THE DELIVERY. A named person asserted
     // receipt and that assertion is durable; the lots simply stay provisional,
-    // the sentence says so, and posting is safe to retry. Reporting the
+    // the sentence says so, and a re-verify posts the items still provisional
+    // (finishProvisional, QA round 15 (4)). Reporting the
     // verification as failed would send them to press it again on a delivery
     // that is already verified.
     const cost = await this.stock.finaliseAtVerified(
@@ -982,10 +998,27 @@ export class DeliveryService {
       };
     }
 
+    // Each item's own reason: a price refused per bottle is not "no price".
+    const held = cost.value.stillProvisional;
+    const why = [...new Set(held.map((p) => p.reason))]
+      .map((r) => r.charAt(0).toUpperCase() + r.slice(1))
+      .join(" ");
+    // Once per invoice: what it carries that is in no bottle's cost (deposits,
+    // a fee printed as a line), and what was done with its tax (lane 1.4).
+    const papers = cost.value.papers ?? [];
+    const paperNote = papers
+      .map((p, i) => {
+        const which =
+          papers.length === 1
+            ? "On the invoice"
+            : `On invoice ${p.docNumber ?? `${i + 1} of ${papers.length}`}`;
+        return ` ${which}: ${p.leftOut} ${p.taxSaid}`;
+      })
+      .join("");
     const note = cost.value.finalised.length
-      ? `Cost posted for ${cost.value.finalised.length} item(s); ${cost.value.stillProvisional.length} left provisional because no agreed price reaches them.`
-      : cost.value.stillProvisional.length
-        ? `No cost was posted: ${cost.value.stillProvisional.length} item(s) have no agreed price on the record, so their lots stay provisional rather than becoming a final cost nobody agreed.`
+      ? `Cost posted for ${cost.value.finalised.length} item(s); ${held.length} left provisional.${held.length ? ` ${why}` : ""}${paperNote}`
+      : held.length
+        ? `No cost was posted: ${held.length} item(s) stay provisional. ${why}${paperNote}`
         : "This delivery booked no stock at the door, so there was no cost to settle.";
 
     return {

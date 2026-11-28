@@ -61,7 +61,7 @@ describe('getLowStockItems delivers the type it declares', () => {
     expect(wine.wineName || wine.wineProducer || 'Unknown wine').toBe("Graham's Tawny Porto")
     expect(wine.stockLive).toBe(3)
     expect(wine.thresholdMin).toBe(4)
-    expect(wine.stockLive <= wine.thresholdMin * 0.5).toBe(false) // 'high', not 'critical'
+    expect((wine.stockLive ?? 0) <= wine.thresholdMin * 0.5).toBe(false) // 'high', not 'critical'
     // The rest of the declared shape the card's navigation and menu rely on.
     expect(wine.id).toBe('inv-porto')
     expect(wine.wineId).toBe('mw-porto')
@@ -100,5 +100,14 @@ describe('normalizeInventoryItem is idempotent and lets camelCase win', () => {
   it('keeps a real zero as zero', () => {
     const wine = normalizeInventoryItem({ ...viewRow, stock_live: 0 })
     expect(wine.stockLive).toBe(0)
+  })
+})
+
+describe('normalizeInventoryItem keeps a failed read unknown (G15)', () => {
+  it('undefined, not 0 and []', () => {
+    const wine = normalizeInventoryItem({ ...viewRow, rollupReadable: false, locationsReadable: false } as never)
+    expect(wine.openMl).toBeUndefined()
+    expect(wine.locations).toBeUndefined()
+    expect(normalizeInventoryItem(viewRow).openMl).toBe(0)
   })
 })

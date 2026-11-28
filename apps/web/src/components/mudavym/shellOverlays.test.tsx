@@ -159,12 +159,16 @@ describe('with no Mudavym page on screen', () => {
   });
 
   it('CommandPalette renders its legacy chrome, class string for class string', () => {
+    // The palette reads the inventory list for its goods (usePaletteGoods), so it needs a query client.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { container } = render(
-      <MemoryRouter>
-        <ToastProvider>
-          <CommandPalette open onClose={() => {}} />
-        </ToastProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <ToastProvider>
+            <CommandPalette open onClose={() => {}} />
+          </ToastProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     const root = container.firstElementChild as HTMLElement;
     expect(root.getAttribute('class')).toBe(PALETTE_POSITIONER);

@@ -28,9 +28,11 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { clearFlagSeeds } from "../lib/mudavym/flagSeed";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
+import { forgetDrafts } from "../pages/cellar/next/recipe/drafts";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
@@ -55,6 +57,7 @@ export const SIGN_OUT_CACHE_CLEAR_MAX_MS = 2000;
  * provider bare) there is no cache to forget.
  */
 export function forgetHouseReads(client: QueryClient | undefined): void {
+  clearFlagSeeds(); // the page-design answers were this house's too (perf-p10-2)
   if (!client) return;
   const cache = client.getQueryCache();
   notifyManager.batch(() => {
@@ -1097,6 +1100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // it is the next person's to see.
       forgetHouseReads(queryClient);
       queryClient?.getMutationCache().clear();
+      // Unsaved recipe lines are the signed-out person's, not the next one's.
+      forgetDrafts();
       delete api.defaults.headers.common["Authorization"];
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);

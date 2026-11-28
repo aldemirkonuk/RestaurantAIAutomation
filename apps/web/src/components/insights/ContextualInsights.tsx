@@ -23,7 +23,8 @@
  * NEW-758 shared contract · NEW-759 stable deep links · NEW-760 taught empty state
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import "./contextual-insights.css";
 import {
   Lightbulb,
   ArrowRight,
@@ -77,17 +78,22 @@ const HOST_CONFIG: Record<InsightHost, HostConfig> = {
   },
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  sales: "bg-emerald-100 text-emerald-700",
-  purchasing: "bg-blue-100 text-blue-700",
-  inventory: "bg-amber-100 text-amber-700",
-  efficiency: "bg-indigo-100 text-indigo-700",
-  tables: "bg-purple-100 text-purple-700",
-  staff: "bg-pink-100 text-pink-700",
-  basket: "bg-rose-100 text-rose-700",
-  risk: "bg-red-100 text-red-700",
-  forecast: "bg-cyan-100 text-cyan-700",
-  goals: "bg-gray-100 text-gray-700",
+/**
+ * Each category is a hue, drawn by `contextual-insights.css` from the page's own
+ * paper and ink tokens, so a chip is a pale tint on paper and a deep tint on
+ * Warm Charcoal. (Fixed pastel utilities were a light tile on a dark page.)
+ */
+const CATEGORY_HUES: Record<string, number> = {
+  sales: 155,
+  purchasing: 250,
+  inventory: 75,
+  efficiency: 275,
+  tables: 305,
+  staff: 350,
+  basket: 15,
+  risk: 27,
+  forecast: 205,
+  goals: 0,
 };
 
 interface Insight {
@@ -322,30 +328,30 @@ export function ContextualInsights({
 
   return (
     <div
-      className={`bg-white rounded-2xl border border-gray-200 overflow-hidden ${className}`}
+      className={`ci-card rounded-2xl border overflow-hidden ${className}`}
     >
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+        className="ci-head w-full flex items-center justify-between px-4 py-3"
       >
-        <span className="flex items-center gap-2 text-sm font-bold text-gray-900">
-          <span className="p-1.5 bg-amber-100 rounded-lg">
-            <Lightbulb className="w-4 h-4 text-amber-600" />
+        <span className="flex items-center gap-2 text-sm font-bold text-[var(--ink-1,#1f2937)]">
+          <span className="ci-chip p-1.5 rounded-lg" style={{ "--h": 75 } as CSSProperties}>
+            <Lightbulb className="w-4 h-4" />
           </span>
           {cfg.title}
           {entityLabel ? (
-            <span className="text-gray-400 font-normal">· {entityLabel}</span>
+            <span className="text-[var(--ink-4,#9ca3af)] font-normal">· {entityLabel}</span>
           ) : null}
           {insights.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700">
+            <span className="ci-chip px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ "--h": 75 } as CSSProperties}>
               {insights.length}
             </span>
           )}
         </span>
         {open ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4 text-[var(--ink-4,#9ca3af)]" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4 text-[var(--ink-4,#9ca3af)]" />
         )}
       </button>
 
@@ -354,12 +360,12 @@ export function ContextualInsights({
           {loading ? (
             <div className="space-y-2 py-2">
               {[0, 1].map((i) => (
-                <div key={i} className="h-4 bg-gray-100 rounded animate-pulse" style={{ width: `${85 - i * 20}%` }} />
+                <div key={i} className="h-4 bg-[var(--paper-1,#f3f4f6)] rounded animate-pulse" style={{ width: `${85 - i * 20}%` }} />
               ))}
             </div>
           ) : error ? (
             /* A failed request must never read as "you have no insights". */
-            <div className="py-3 text-sm text-red-700">
+            <div className="py-3 text-sm text-[var(--alarm,#b91c1c)]">
               Couldn't load insights — {error}
               <button
                 onClick={() => void load()}
@@ -370,13 +376,13 @@ export function ContextualInsights({
             </div>
           ) : insights.length === 0 ? (
             /* Taught empty state (NEW-760) — never a blank panel */
-            <div className="py-3 text-sm text-gray-500">
+            <div className="py-3 text-sm text-[var(--ink-3,#6b7280)]">
               {available === false
                 ? "Connect your POS / import checks to unlock insights for this page."
                 : "No insights for this scope yet — they appear as sales, pours, and orders accumulate."}
               <a
                 href={browseHref}
-                className="inline-flex items-center gap-1 ml-1 text-amber-700 font-medium hover:underline"
+                className="inline-flex items-center gap-1 ml-1 text-[var(--warn,#b45309)] font-medium hover:underline"
               >
                 <Layers className="w-3.5 h-3.5" /> Browse all types
               </a>
@@ -390,25 +396,26 @@ export function ContextualInsights({
                     <li key={ins.ruleKey} className="group">
                       <div className="flex items-start gap-2.5">
                         <span
-                          className={`shrink-0 mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${CATEGORY_COLORS[ins.category] ?? "bg-gray-100 text-gray-700"}`}
+                          className="ci-chip shrink-0 mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                          style={{ "--h": CATEGORY_HUES[ins.category] ?? 0, "--c": ins.category in CATEGORY_HUES && ins.category !== "goals" ? 1 : 0 } as CSSProperties}
                         >
                           {ins.category}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm text-gray-800 leading-snug flex items-start gap-1.5">
-                            {ins.pinned && <Pin className="w-3 h-3 text-amber-500 shrink-0 mt-1" />}
+                          <span className="text-sm text-[var(--ink-1,#1f2937)] leading-snug flex items-start gap-1.5">
+                            {ins.pinned && <Pin className="w-3 h-3 text-[var(--warn,#b45309)] shrink-0 mt-1" />}
                             {ins.sentence}
                           </span>
                           <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                             <button
                               onClick={() => act(ins)}
-                              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md"
+                              className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-semibold text-[var(--seal-deep,#047857)] bg-[var(--seal-tint,#ecfdf5)] hover:bg-[var(--seal-tint,#d1fae5)] rounded-md"
                             >
                               Act <ArrowRight className="w-3 h-3" />
                             </button>
                             <button
                               onClick={() => setExpanded(isOpen ? null : ins.ruleKey)}
-                              className="px-2 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-gray-100 rounded-md"
+                              className="px-2 py-0.5 text-[11px] font-medium text-[var(--ink-3,#6b7280)] hover:bg-[var(--paper-2,#e5e7eb)] rounded-md"
                             >
                               Explain
                             </button>
@@ -416,7 +423,7 @@ export function ContextualInsights({
                               <button
                                 onClick={() => pin(ins)}
                                 title={ins.pinned ? "Unpin" : "Pin"}
-                                className={`p-0.5 rounded-md hover:bg-gray-100 ${ins.pinned ? "text-amber-600" : "text-gray-300"}`}
+                                className={`p-0.5 rounded-md hover:bg-[var(--paper-2,#e5e7eb)] ${ins.pinned ? "text-[var(--warn,#b45309)]" : "text-[var(--ink-4,#9ca3af)]"}`}
                               >
                                 <Pin className="w-3.5 h-3.5" />
                               </button>
@@ -429,7 +436,7 @@ export function ContextualInsights({
                                 title="Dismiss"
                                 aria-label="Dismiss"
                                 aria-expanded={reasonFor === ins.ruleKey}
-                                className="p-0.5 rounded-md text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                                className="p-0.5 rounded-md text-[var(--ink-4,#9ca3af)] hover:bg-[var(--paper-2,#e5e7eb)] hover:text-[var(--ink-1,#1f2937)]"
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -441,13 +448,13 @@ export function ContextualInsights({
                               aria-label="Why dismiss it"
                               className="mt-1 flex flex-wrap items-center gap-1 text-[11px]"
                             >
-                              <span className="text-gray-500">Why?</span>
+                              <span className="text-[var(--ink-3,#6b7280)]">Why?</span>
                               {DISMISS_CHOICES.map((r) => (
                                 <button
                                   key={r.id}
                                   title={r.note}
                                   onClick={() => void dismiss(ins, r.id)}
-                                  className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                  className="px-2 py-0.5 rounded-md bg-[var(--paper-1,#f3f4f6)] text-[var(--ink-2,#374151)] hover:bg-[var(--paper-2,#e5e7eb)]"
                                 >
                                   {r.label}
                                 </button>
@@ -455,12 +462,12 @@ export function ContextualInsights({
                             </div>
                           )}
                           {isOpen && (
-                            <div className="mt-1.5 p-2 bg-gray-50 rounded-lg text-xs text-gray-500 space-y-0.5">
+                            <div className="mt-1.5 p-2 bg-[var(--paper-1,#f3f4f6)] rounded-lg text-xs text-[var(--ink-3,#6b7280)] space-y-0.5">
                               {ins.effectPct != null && (
                                 <p>Effect: {(Math.abs(ins.effectPct) * 100).toFixed(0)}%</p>
                               )}
                               {ins.zScore != null && <p>Signal (z): {Number(ins.zScore).toFixed(2)}</p>}
-                              <p className="font-mono text-gray-400">[{ins.ruleKey}]</p>
+                              <p className="font-mono text-[var(--ink-4,#9ca3af)]">[{ins.ruleKey}]</p>
                             </div>
                           )}
                         </div>
@@ -469,11 +476,11 @@ export function ContextualInsights({
                   );
                 })}
               </ul>
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <a href={browseHref} className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800">
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-[var(--paper-2,#f3f4f6)]">
+                <a href={browseHref} className="flex items-center gap-1 text-xs font-medium text-[var(--ink-3,#6b7280)] hover:text-[var(--ink-1,#1f2937)]">
                   <Layers className="w-3.5 h-3.5" /> Browse all types
                 </a>
-                <a href="/recommendations" className="text-xs font-medium text-amber-700 hover:underline">
+                <a href="/recommendations" className="text-xs font-medium text-[var(--warn,#b45309)] hover:underline">
                   Recommendations →
                 </a>
               </div>
@@ -481,14 +488,14 @@ export function ContextualInsights({
           )}
 
           {stateUnread && (
-            <p role="status" className="mt-2 text-xs text-amber-800">
+            <p role="status" className="mt-2 text-xs text-[var(--warn,#b45309)]">
               What was dismissed, snoozed or marked done could not be read just
               now, so some of these may be ones you already put away.
             </p>
           )}
 
           {actError && (
-            <p role="alert" className="mt-2 text-xs text-red-700">
+            <p role="alert" className="mt-2 text-xs text-[var(--alarm,#b91c1c)]">
               Not saved ({actError}) — the item is back where it was.
             </p>
           )}

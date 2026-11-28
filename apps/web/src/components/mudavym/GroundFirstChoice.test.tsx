@@ -15,8 +15,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { GroundFirstChoice } from './GroundFirstChoice';
+import { Sheet } from './Sheet';
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate';
 import {
   GROUND_CHOICE_ATTR,
@@ -62,12 +63,23 @@ function readout(over: Partial<DataTermsReadout> = {}): DataTermsReadout {
   } as DataTermsReadout;
 }
 
+/** A stand-in for the drawer's close: it drops the link's `?open=`. */
+function CloseDrawer() {
+  const go = useNavigate();
+  return (
+    <button type="button" onClick={() => go('/inventory')}>
+      close drawer
+    </button>
+  );
+}
+
 let client: QueryClient;
-function mount() {
+function mount(entry = '/') {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>
+        <CloseDrawer />
         <DataTermsSignInGate />
         <GroundFirstChoice />
       </MemoryRouter>
@@ -176,6 +188,43 @@ describe('when it asks', () => {
   });
 });
 
+describe('never under a good\'s drawer (/inventory?open=)', () => {
+  it('a staff deep link to a good waits: the theme sheet is not up under the drawer', () => {
+    roleMock.current = 'staff';
+    neverChose();
+    mount('/inventory?open=item-1');
+    expect(ask()).toBeNull();
+  });
+
+  it('asks once the drawer has closed', async () => {
+    roleMock.current = 'staff';
+    neverChose();
+    mount('/inventory?open=item-1');
+    expect(ask()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'close drawer' }));
+    await waitFor(() => expect(ask()).toBeInTheDocument());
+  });
+
+  it('a highlight link opens the same drawer, so it waits too', () => {
+    roleMock.current = 'staff';
+    neverChose();
+    mount('/inventory?highlight=item-1');
+    expect(ask()).toBeNull();
+  });
+
+  it('an open= on another page is not a drawer, and asks as usual', () => {
+    neverChose();
+    mount('/orders?open=o1');
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('the inventory page with no drawer asks as usual', () => {
+    neverChose();
+    mount('/inventory');
+    expect(ask()).toBeInTheDocument();
+  });
+});
+
 describe('never on top of the data terms', () => {
   it('waits while an owner\'s terms read is in flight', () => {
     roleMock.current = 'owner';
@@ -227,6 +276,30 @@ describe('never on top of the data terms', () => {
     neverChose();
     mount();
     expect(termsMock.getDataTerms).not.toHaveBeenCalled();
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('waits while a deep-linked drawer is open, and asks once it closes (r109 inventory-5)', () => {
+    setGroundOwner(ALICE);
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = (drawer: boolean) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          {drawer ? (
+            <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+              <p>the drawer</p>
+            </Sheet>
+          ) : null}
+          <DataTermsSignInGate />
+          <GroundFirstChoice />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(page(true));
+    act(() => applyAccountGround(undefined));
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(ask()).toBeNull();
+    rerender(page(false));
     expect(ask()).toBeInTheDocument();
   });
 });

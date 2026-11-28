@@ -1,0 +1,581 @@
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
+import { SupabaseClient } from "@supabase/supabase-js";
+import { DatabaseService } from "../database/database.service";
+// The house-item fold (lower case, accents and Turkish ı folded, punctuation to
+// spaces). Fold into the shared one from #785/#829 when those merge.
+import { foldName } from "./house-item-research";
+
+export interface HouseItem {
+  id: string;
+  kind: string | null;
+  displayName: string | null;
+  masterWineId: string | null;
+  beverageId: string | null;
+}
+
+/** One group of the drawer: a failed read is `lines: null`, never [] (ADR 0067). */
+export interface Group<T> {
+  readable: boolean;
+  lines: T[] | null;
+  source: string;
+}
+
+export interface MenuLine {
+  menuItemId: string;
+  menuId: string;
+  name: string;
+  byGlassPrice: number | null;
+  bottlePrice: number | null;
+  linkedBy?: "inventory_item_id" | "wine_library_id";
+  /** The current menu the line is on, by its name, so a person linking it knows which (r109 g2). */
+  menuName?: string | null;
+}
+
+export interface CocktailLine {
+  cocktailId: string;
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+}
+
+export interface DrinkRecipeLine {
+  cocktailId: string;
+  name: string;
+  label: string;
+  qtyEntered: number;
+  unitCode: string;
+}
+
+/** One till button that draws this good on a sale (pos_item_mappings, ADR 0141). No money. */
+export interface TillButton {
+  id: string;
+  source: string;
+  itemName: string;
+  category: string | null;
+  saleUnit: string | null;
+}
+
+const PAGE = 1000;
+const CHUNK = 100;
+/** House cocktail ids per ingredient read (a URL of uuids stays short). */
+const INGREDIENT_CHUNK = 200;
+const LINE_COLS =
+  "id, menu_id, name, by_glass_price, bottle_price, inventory_item_id, wine_library_id";
+
+/**
+ * The item, read inside the caller's house. The restaurant filter IS the
+ * tenant check for `:itemId` (same filter as assertInventoryBelongsToRestaurant,
+ * without its "no stock was moved" wording, which is wrong on a read).
+ */
+export async function readHouseItem(
+  client: SupabaseClient,
+  restaurantId: string,
+  itemId: string,
+): Promise<HouseItem> {
+  const { data, error } = await client
+    .from("restaurant_inventory")
+    .select("id, kind, display_name, wine_name, master_wine_id, beverage_id")
+    .eq("id", itemId)
+    .eq("restaurant_id", restaurantId)
+    .maybeSingle();
+  if (error) {
+    throw new ServiceUnavailableException(
+      `This item could not be read (${error.message}), so nothing about it is shown. Try again.`,
+    );
+  }
+  if (!data) throw new NotFoundException(`Item ${itemId} is not in this house.`);
+  return {
+    id: data.id,
+    kind: data.kind ?? null,
+    displayName: data.display_name || data.wine_name || null,
+    masterWineId: data.master_wine_id ?? null,
+    beverageId: data.beverage_id ?? null,
+  };
+}
+
+const money = (v: unknown): number | null =>
+  v === null || v === undefined ? null : Number(v);
+
+const menuLine = (r: Record<string, any>): MenuLine => ({
+  menuItemId: r.id,
+  menuId: r.menu_id,
+  name: r.name,
+  byGlassPrice: money(r.by_glass_price),
+  bottlePrice: money(r.bottle_price),
+});
+
+/**
+ * No active menu is a named state, not an empty menu (ADR 0193,
+ * menus/current-menu-lines.ts): every menu that is read lands as a draft until
+ * it is made current, so "no line" here says nothing about this item.
+ */
+const NO_CURRENT_MENU: Group<never> = {
+  readable: true,
+  lines: [],
+  source:
+    "This house has no current menu, so no line is on it. A menu that was read but never made current is not counted.",
+};
+
+const failed = <T>(what: string, message: string): Group<T> => ({
+  readable: false,
+  lines: null,
+  source: `${what} could not be read (${message}), so this is not shown.`,
+});
+
+@Injectable()
+export class ItemUsedInService {
+  constructor(private readonly db: DatabaseService) {}
+
+  /**
+   * Where one item is used. The menu groups are one chain (the unlinked group
+   * leaves out what the linked group found); the two drink groups are each
+   * their own reads. The three run at once, so the drawer waits for the
+   * slowest chain, not for the sum of every read.
+   */
+  async usedIn(restaurantId: string, itemId: string) {
+    const client = this.db.supabase;
+    const item = await readHouseItem(client, restaurantId, itemId);
+
+    const [menu, inCocktails, inDrinkRecipes, atTill] = await Promise.all([
+      this.menuGroups(client, restaurantId, item),
+      this.inCocktails(client, restaurantId, item),
+      this.inDrinkRecipes(client, restaurantId, item),
+      this.atTill(client, restaurantId, item),
+    ]);
+
+    // A cocktail with a versioned recipe is shown once, from that recipe (the
+    // real source for cost and taste); its old lines stay only for a cocktail
+    // that has none. If the versioned read failed we cannot tell, so keep both.
+    const versioned = new Set((inDrinkRecipes.lines ?? []).map((l) => l.cocktailId));
+    const legacy: Group<CocktailLine> =
+      inCocktails.readable && inCocktails.lines && inDrinkRecipes.readable
+        ? { ...inCocktails, lines: inCocktails.lines.filter((l) => !versioned.has(l.cocktailId)) }
+        : inCocktails;
+
+    return {
+      item: { id: item.id, kind: item.kind, displayName: item.displayName },
+      soldAs: menu.soldAs,
+      inCocktails: legacy,
+      inDrinkRecipes,
+      namedNotLinked: menu.namedNotLinked,
+      atTill,
+    };
+  }
+
+  /**
+   * Link one current-menu line that carries this good's name and no link to
+   * any good (r109 g2), then answer with the fresh "Used in".
+   *
+   * Every condition is re-checked here and again in the write itself: the
+   * line is this house's, on one of its current (active) menus, not
+   * discarded, linked to nothing, and its name folds to the good's name, so a
+   * crafted id cannot link an unrelated line. Twin goods sharing a folded
+   * name (#1618) each pass the name check; the first to link takes the line
+   * and the other is answered 409 with the good that holds it.
+   *
+   * What it changes (ADR 0193): the line counts as this good on the current
+   * menu, and a later price or name correction on the line sets this good's
+   * menu price or name (menus.service correctLine, priceSync no longer
+   * 'not_linked'). Making another menu current does not carry the link: that
+   * plan matches lines to goods by wine_library_id, which this leaves alone.
+   */
+  async link(restaurantId: string, itemId: string, menuItemId: string) {
+    const client = this.db.supabase;
+    const item = await readHouseItem(client, restaurantId, itemId);
+    const unavailable = (what: string, message: string) =>
+      new ServiceUnavailableException(`${what} could not be read (${message}), so nothing was linked. Try again.`);
+
+    const menus = await client
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active");
+    if (menus.error) throw unavailable("The house's current menu", menus.error.message);
+    const menuIds = ((menus.data ?? []) as Array<{ id: string }>).map((m) => String(m.id));
+
+    const line = await client
+      .from("menu_items")
+      .select("id, menu_id, name, inventory_item_id, status")
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (line.error) throw unavailable("The menu line", line.error.message);
+    const l = line.data as Record<string, any> | null;
+    if (!l) throw new NotFoundException(`Menu line ${menuItemId} is not on this house's menu. Nothing was linked.`);
+    if (!menuIds.includes(String(l.menu_id)) || l.status === "discarded") {
+      throw new ConflictException({
+        message: `"${l.name}" is not on the house's current menu, so it is not linked. Only a line on the current menu is.`,
+        reason: "not_current",
+      });
+    }
+    const want = item.displayName ? foldName(item.displayName) : "";
+    if (!want || foldName(String(l.name ?? "")) !== want) {
+      throw new ConflictException({
+        message: `"${l.name}" does not carry this good's name, so it is not linked to it.`,
+        reason: "name_mismatch",
+      });
+    }
+    if (l.inventory_item_id) throw await this.heldBy(client, restaurantId, String(l.name), String(l.inventory_item_id));
+
+    const write = await client
+      .from("menu_items")
+      .update({ inventory_item_id: item.id })
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId)
+      .is("inventory_item_id", null)
+      .in("menu_id", menuIds)
+      .neq("status", "discarded")
+      .select("id");
+    if (write.error) {
+      throw new ServiceUnavailableException(`The link could not be saved (${write.error.message}). Nothing was linked. Try again.`);
+    }
+    if (((write.data ?? []) as unknown[]).length === 0) {
+      // Linked, moved or discarded between the read and the write.
+      const now = await client
+        .from("menu_items")
+        .select("inventory_item_id")
+        .eq("id", menuItemId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      const holder = (now.data as Record<string, any> | null)?.inventory_item_id;
+      if (holder) throw await this.heldBy(client, restaurantId, String(l.name), String(holder));
+      throw new ConflictException({
+        message: `"${l.name}" changed while it was being linked, so it is not linked. Look at it again.`,
+        reason: "changed",
+      });
+    }
+    return this.usedIn(restaurantId, itemId);
+  }
+
+  /** The 409 for a line another good already holds, naming that good. */
+  private async heldBy(client: SupabaseClient, restaurantId: string, lineName: string, holderId: string) {
+    const r = await client
+      .from("restaurant_inventory")
+      .select("id, display_name, wine_name")
+      .eq("id", holderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    const d = r.data as Record<string, any> | null;
+    const name = d ? d.display_name || d.wine_name || null : null;
+    return new ConflictException({
+      message: name
+        ? `"${lineName}" is already linked to ${name}, so it was not linked again.`
+        : `"${lineName}" is already linked to another good, so it was not linked again.`,
+      reason: "already_linked",
+      heldBy: { id: holderId, displayName: name },
+    });
+  }
+
+  /**
+   * The till buttons mapped to this good (r109 g3): a sale of one draws it
+   * down (pos-hub.service, record_pos_sale by p_restaurant_id). Both filters,
+   * the house and the good (ADR 0141), paged by id. A failed read is failed,
+   * never an empty list. A button mapped to a recipe is not here (#1914).
+   */
+  private async atTill(client: SupabaseClient, restaurantId: string, item: HouseItem): Promise<Group<TillButton>> {
+    const source = "Till buttons mapped to this good: a sale of one draws it down.";
+    const lines: TillButton[] = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("pos_item_mappings")
+        .select("id, restaurant_id, inventory_id, source, item_name, category, sale_unit")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", item.id);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The till buttons", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const r of rows) {
+        lines.push({
+          id: String(r.id),
+          source: String(r.source ?? "*"),
+          itemName: String(r.item_name ?? ""),
+          category: r.category ?? null,
+          saleUnit: r.sale_unit ?? null,
+        });
+      }
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    return { readable: true, lines, source };
+  }
+
+  /** The current menu's lines linked to the item, then the lines that only carry its name. */
+  private async menuGroups(client: SupabaseClient, restaurantId: string, item: HouseItem) {
+    // Only lines on the house's current (active) menus are "on the menu";
+    // an archived or draft menu is not (menus.service readCurrentMenus).
+    const menus = await client
+      .from("restaurant_menus")
+      .select("id, name")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active");
+    const menuIds = menus.error
+      ? null
+      : ((menus.data ?? []) as Array<{ id: string }>).map((m) => m.id);
+    const menuNames = new Map(
+      ((menus.data ?? []) as Array<{ id: string; name?: string | null }>).map((m) => [m.id, m.name ?? null]),
+    );
+    const named = (g: Group<MenuLine>): Group<MenuLine> =>
+      g.lines === null ? g : { ...g, lines: g.lines.map((l) => ({ ...l, menuName: menuNames.get(l.menuId) ?? null })) };
+
+    const soldAs = await this.soldAs(client, restaurantId, item, menuIds, menus.error?.message);
+    const namedNotLinked = await this.namedNotLinked(
+      client,
+      restaurantId,
+      item,
+      menuIds,
+      menus.error?.message,
+      soldAs.lines,
+    );
+    return { soldAs: named(soldAs), namedNotLinked: named(namedNotLinked) };
+  }
+
+  private async soldAs(
+    client: SupabaseClient,
+    restaurantId: string,
+    item: HouseItem,
+    menuIds: string[] | null,
+    menusError?: string,
+  ): Promise<Group<MenuLine>> {
+    if (menuIds === null) return failed("The house's current menu", menusError ?? "");
+    if (menuIds.length === 0) return NO_CURRENT_MENU;
+    const source = "Lines on the house's current menu linked to this item.";
+    let q = client
+      .from("menu_items")
+      .select(LINE_COLS)
+      .eq("restaurant_id", restaurantId)
+      .in("menu_id", menuIds)
+      .neq("status", "discarded");
+    q = item.masterWineId
+      ? q.or(`inventory_item_id.eq.${item.id},wine_library_id.eq.${item.masterWineId}`)
+      : q.eq("inventory_item_id", item.id);
+    const { data, error } = await q;
+    if (error) return failed("The menu", error.message);
+    const lines = ((data ?? []) as Array<Record<string, any>>)
+      // A line linked to another house item belongs to that item.
+      .filter((r) => r.inventory_item_id == null || r.inventory_item_id === item.id)
+      .map((r) => ({
+        ...menuLine(r),
+        linkedBy:
+          r.inventory_item_id === item.id
+            ? ("inventory_item_id" as const)
+            : ("wine_library_id" as const),
+      }));
+    return { readable: true, lines, source };
+  }
+
+  /**
+   * Unlinked current-menu lines whose name folds to the item's name. Compared
+   * in TS: a raw ilike pattern treats `_` and `%` as wildcards (QA M-9).
+   * Shown for a person to link; never counted.
+   */
+  private async namedNotLinked(
+    client: SupabaseClient,
+    restaurantId: string,
+    item: HouseItem,
+    menuIds: string[] | null,
+    menusError: string | undefined,
+    sold: MenuLine[] | null,
+  ): Promise<Group<MenuLine>> {
+    if (menuIds === null) return failed("The house's current menu", menusError ?? "");
+    if (menuIds.length === 0) return NO_CURRENT_MENU;
+    const source =
+      "Lines on the current menu with this item's name and no link to any item. Not counted until linked.";
+    const want = item.displayName ? foldName(item.displayName) : "";
+    if (!want) return { readable: true, lines: [], source };
+    const taken = new Set((sold ?? []).map((l) => l.menuItemId));
+    const lines: MenuLine[] = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("menu_items")
+        .select(LINE_COLS)
+        .eq("restaurant_id", restaurantId)
+        .in("menu_id", menuIds)
+        .neq("status", "discarded")
+        .is("inventory_item_id", null);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The menu", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const r of rows) {
+        if (!taken.has(r.id) && foldName(String(r.name ?? "")) === want) {
+          lines.push(menuLine(r));
+        }
+      }
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    return { readable: true, lines, source };
+  }
+
+  /** House cocktails (restaurant_id = this house) naming the item's catalogue drink. */
+  private async inCocktails(
+    client: SupabaseClient,
+    restaurantId: string,
+    item: HouseItem,
+  ): Promise<Group<CocktailLine>> {
+    const source = "The house's own cocktail recipes that use this drink.";
+    const keys = [
+      item.beverageId && `beverage_id.eq.${item.beverageId}`,
+      item.masterWineId && `wine_id.eq.${item.masterWineId}`,
+    ].filter(Boolean);
+    if (keys.length === 0) {
+      return {
+        readable: true,
+        lines: [],
+        source: "A cocktail recipe names a catalogue drink, and this item is not one.",
+      };
+    }
+    // The house's live cocktails first (a house's own few hundred), then only
+    // THEIR ingredient rows. Reading cocktail_ingredients by the drink alone
+    // scanned every house's and the whole catalogue's rows for it, unordered,
+    // and PostgREST stops at 1,000 rows: a house cocktail past the first 1,000
+    // was missing here while the list's count had it.
+    const byId = new Map<string, Record<string, any>>();
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("cocktails")
+        .select("id, name, display_name")
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const c of rows) byId.set(String(c.id), c);
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    // A cocktail with a current recipe version counts only through it (the recipe sheet hides its
+    // old rows, ADR 0366): drop those before reading ingredients. Keyset-paged like the cocktails.
+    const superseded = new Set<string>();
+    let cur: string | null = null;
+    for (;;) {
+      let q = client.from("recipe_current").select("cocktail_id").eq("restaurant_id", restaurantId);
+      if (cur) q = q.gt("cocktail_id", cur);
+      const { data, error } = await q.order("cocktail_id", { ascending: true }).limit(PAGE);
+      if (error) return failed("The cocktail recipes", error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      for (const r of rows) superseded.add(String(r.cocktail_id));
+      if (rows.length < PAGE) break;
+      cur = String(rows[rows.length - 1].cocktail_id);
+    }
+    const houseIds = [...byId.keys()].filter((id) => !superseded.has(id));
+    const lines: CocktailLine[] = [];
+    for (let i = 0; i < houseIds.length; i += INGREDIENT_CHUNK) {
+      const chunk = houseIds.slice(i, i + INGREDIENT_CHUNK);
+      let from: string | null = null;
+      for (;;) {
+        let q = client
+          .from("cocktail_ingredients")
+          .select("id, cocktail_id, quantity, unit")
+          .in("cocktail_id", chunk)
+          .or(keys.join(","));
+        if (from) q = q.gt("id", from);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+        if (error) return failed("The cocktail recipes", error.message);
+        const rows = (data ?? []) as Array<Record<string, any>>;
+        for (const r of rows) {
+          const c = byId.get(String(r.cocktail_id));
+          if (!c) continue;
+          lines.push({
+            cocktailId: c.id,
+            name: c.display_name || c.name,
+            quantity: r.quantity == null ? null : Number(r.quantity),
+            unit: r.unit ?? null,
+          });
+        }
+        if (rows.length < PAGE) break;
+        from = String(rows[rows.length - 1].id);
+      }
+    }
+    return { readable: true, lines, source };
+  }
+
+  /**
+   * House cocktails whose CURRENT recipe version has a line linked to this item
+   * (ADR 0360: recipe_lines.inventory_id). Three plain reads, each paged or
+   * chunked so no read trusts one PostgREST page. Older versions are history.
+   */
+  private async inDrinkRecipes(
+    client: SupabaseClient,
+    restaurantId: string,
+    item: HouseItem,
+  ): Promise<Group<DrinkRecipeLine>> {
+    const what = "The drink recipes";
+    const lineRows: Array<Record<string, any>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("recipe_lines")
+        .select("id, version_id, position, label, qty_entered, unit_code")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", item.id);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed(what, error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      lineRows.push(...rows);
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    const source = "Drinks whose current recipe has a line linked to this item.";
+    if (lineRows.length === 0) return { readable: true, lines: [], source };
+
+    const cocktailOfVersion = new Map<string, string>();
+    const versionIds = [...new Set(lineRows.map((r) => String(r.version_id)))];
+    for (let i = 0; i < versionIds.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_current")
+        .select("cocktail_id, version_id")
+        .eq("restaurant_id", restaurantId)
+        .in("version_id", versionIds.slice(i, i + CHUNK));
+      if (error) return failed(what, error.message);
+      for (const r of (data ?? []) as Array<Record<string, any>>) {
+        cocktailOfVersion.set(String(r.version_id), String(r.cocktail_id));
+      }
+    }
+    const current = lineRows.filter((r) => cocktailOfVersion.has(String(r.version_id)));
+
+    const names = new Map<string, string>();
+    const cocktailIds = [...new Set(current.map((r) => cocktailOfVersion.get(String(r.version_id))!))];
+    for (let i = 0; i < cocktailIds.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("cocktails")
+        .select("id, name, display_name")
+        .in("id", cocktailIds.slice(i, i + CHUNK))
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (error) return failed(what, error.message);
+      for (const c of (data ?? []) as Array<Record<string, any>>) {
+        names.set(String(c.id), c.display_name || c.name);
+      }
+    }
+    const lines = current
+      .filter((r) => names.has(cocktailOfVersion.get(String(r.version_id))!))
+      .map((r) => {
+        const cocktailId = cocktailOfVersion.get(String(r.version_id))!;
+        return {
+          cocktailId,
+          name: names.get(cocktailId)!,
+          label: r.label,
+          qtyEntered: Number(r.qty_entered),
+          unitCode: r.unit_code,
+          position: Number(r.position ?? 0),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name) || a.position - b.position)
+      .map(({ position: _p, ...l }) => l);
+    return { readable: true, lines, source };
+  }
+}

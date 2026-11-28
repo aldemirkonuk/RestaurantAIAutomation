@@ -30,7 +30,8 @@ export interface InventoryItem {
   restaurantId: string;
   wineId: string;
   providerId?: string;
-  stockLive: number;
+  /** null = the gateway did not say. Never read as 0: that is "none on hand". */
+  stockLive: number | null;
   physicalStock?: number;
   shadowStock?: number;
   thresholdMin: number;
@@ -74,6 +75,17 @@ export interface InventoryItem {
   deadStock?: boolean;
   daysSinceSale?: number;
   /**
+   * Where velocityPerDay comes from (inventory_analytics, migration
+   * days_of_stock_from_real_use): 'sales' when the till drew it in 90 days,
+   * 'counts' when two counts measured it (a food or supply the till never
+   * draws), absent when neither. usageQty was used between usageSince and
+   * usageUntil, in the good's own unit.
+   */
+  usageSource?: 'sales' | 'counts';
+  usageSince?: string;
+  usageUntil?: string;
+  usageQty?: number;
+  /**
    * False means the `inventory_analytics` join itself could not be read for
    * this batch — a failed read, told apart from a row with genuinely no
    * analytics yet (`velocityPerDay`/`daysSinceSale` both `undefined` with
@@ -82,6 +94,19 @@ export interface InventoryItem {
    * behaviour, never worse than it was).
    */
   analyticsReadable?: boolean;
+  /** The unit costs of the last two settled deliveries (a cost figure: it travels with `wac`). Absent = fewer than two settled. */
+  lastSettledCost?: number;
+  previousSettledCost?: number;
+  /** Whether both settled costs hold tax the same way (r108). Absent = mixed or not stated: not compared. */
+  settledCostTaxBasis?: 'net' | 'gross_cost';
+  /** False = the settled-price read failed, so "no price move" is unknown, not none. Absent = from before this field. */
+  settledCostsReadable?: boolean;
+  /** False: the lot-rollup read failed, so openMl is unknown, not 0 (G15). Absent = true. */
+  rollupReadable?: boolean;
+  /** False: the location-breakdown read failed, so locations is unknown, not [] (G15). Absent = true. */
+  locationsReadable?: boolean;
+  /** True = only the newest settled deliveries were read, so a good whose earlier delivery fell outside may be missing from Price signals. */
+  settledCostsCapped?: boolean;
   locations?: WineLocationBreakdown[];
 }
 

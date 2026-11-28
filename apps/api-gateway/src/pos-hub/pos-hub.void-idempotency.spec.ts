@@ -171,14 +171,12 @@ describe("PosHubService — a void moves stock under its own key (ADR 0093 D5)",
     expect(state.stockLive).toBe(12);
   });
 
-  it("a glass void reverses under its own key too (B19 unchanged, and still wrong)", async () => {
+  it("a glass void returns its ml under its own key too (D1)", async () => {
     const { db, state, calls } = makeIdempotentDb(12);
     const service = new PosHubService(db);
 
     // sale_unit 'glass' pours; the void of that sale goes through
-    // apply_stock_movement, which is decision B19 and returns WHOLE BOTTLES.
-    // OD-67 owns that; this test pins the KEY, and records the wrongness so a
-    // later reader does not mistake it for an oversight.
+    // return_glass_pour (r57 D1): ml back to the open bottle, never whole bottles.
     const glassDb: any = (db as any).getClient();
     const originalFrom = glassDb.from.bind(glassDb);
     glassDb.from = (table: string) => {
@@ -204,10 +202,13 @@ describe("PosHubService — a void moves stock under its own key (ADR 0093 D5)",
     // A pour does not move this mock's bottle count; only the void does.
     await service.ingest("r1", "generic_webhook", [check({ voided: true })]);
 
-    const movements = calls.filter((c) => c.name === "apply_stock_movement");
-    expect(movements).toHaveLength(1);
-    expect(movements[0].args.p_delta).toBe(2); // B19: 2 glasses → 2 bottles
-    expect(String(movements[0].args.p_idempotency_key)).toMatch(/:void$/);
-    expect(state.stockLive).toBe(14); // 12 + B19's over-return, recorded not fixed
+    expect(calls.filter((c) => c.name === "apply_stock_movement")).toHaveLength(
+      0,
+    );
+    const returns = calls.filter((c) => c.name === "return_glass_pour");
+    expect(returns).toHaveLength(1);
+    expect(returns[0].args.p_pours).toBe(2);
+    expect(String(returns[0].args.p_idempotency_key)).toMatch(/:void$/);
+    expect(state.stockLive).toBe(12); // no whole bottles came back
   });
 });

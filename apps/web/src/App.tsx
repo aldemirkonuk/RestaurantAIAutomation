@@ -1,47 +1,6 @@
-import { lazy, Suspense, ComponentType } from 'react'
+import { Suspense } from 'react'
+import { lazyWithRefresh } from './lib/lazyWithRefresh'
 
-/**
- * Wraps a dynamic import so that stale-chunk errors (after a new deploy)
- * trigger a one-time page reload instead of crashing the app.
- * Covers Chromium ("Failed to fetch dynamically imported module"),
- * Firefox ("error loading dynamically imported module"), and
- * Safari ("Importing a module script failed").
- */
-function isStaleChunkError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err ?? '')
-  const lower = message.toLowerCase()
-  return (
-    lower.includes('text/html') ||
-    lower.includes('failed to fetch dynamically imported module') ||
-    lower.includes('error loading dynamically imported module') ||
-    lower.includes('importing a module script failed') ||
-    lower.includes('loading chunk') ||
-    lower.includes('chunkloaderror')
-  )
-}
-
-function lazyWithRefresh<T extends ComponentType<any>>(
-  factory: () => Promise<{ default: T }>
-) {
-  return lazy(() =>
-    factory()
-      .then((mod) => {
-        // Successful load after a deploy-recovery reload — allow future recoveries.
-        sessionStorage.removeItem('chunk_reload')
-        return mod
-      })
-      .catch((err: Error) => {
-        if (isStaleChunkError(err) && !sessionStorage.getItem('chunk_reload')) {
-          sessionStorage.setItem('chunk_reload', '1')
-          window.location.reload()
-          // Return a never-resolving promise so React doesn't render anything
-          return new Promise<never>(() => {})
-        }
-
-        throw err
-      })
-  )
-}
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppToaster } from './components/mudavym/AppToaster'
@@ -102,6 +61,7 @@ const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/Setting
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
 const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
+const DishesPage = lazyWithRefresh(() => import('./pages/dishes/DishesPage'))
 // A NEW route (ADR 0160 sec110 item 7), not a redesign of a shipping page —
 // no `mudavym_design_*` flag (`LIVE_PAGES` in useMudavymDesign.ts makes
 // it on for every house with no per-house column). It still goes through
@@ -428,6 +388,7 @@ function App() {
                   <Route path="/beer" element={<PageGate page="cellar" next={<CellarNext category="beer" />} />} />
                   <Route path="/whiskey" element={<PageGate page="cellar" next={<CellarNext category="whiskey" />} />} />
                   <Route path="/cocktails" element={<PageGate page="cellar" next={<CellarNext category="cocktails" />} />} />
+                  <Route path="/dishes" element={<PageGate page="inventory" next={<DishesPage />} />} />
                   <Route path="/spirits" element={<PageGate page="cellar" next={<CellarNext category="spirits" />} />} />
                   <Route path="/non-alcoholic" element={<PageGate page="cellar" next={<CellarNext category="non_alcoholic" />} />} />
                   <Route path="/soft-drinks" element={<PageGate page="cellar" next={<CellarNext category="soft_drinks" />} />} />

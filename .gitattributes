@@ -1,0 +1,5 @@
+# The SQL-outside-migrations inventory is a set (check_migrations_single_home.py
+# reads it as one, order and repeats ignored), so two sibling PRs that each add a
+# line must never conflict: keep both sides' lines on a merge. (GitHub's own
+# merge button ignores this; a local `git merge` honours it.)
+scripts/sql_outside_migrations.txt merge=union

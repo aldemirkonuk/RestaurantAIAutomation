@@ -56,6 +56,9 @@ const CELLAR_BY_PATH: Record<string, string> = {
   '/soft-drinks': 'Soft drinks',
 };
 
+/** `/dishes` is gated as `inventory` (ADR 0366), so the route names it. */
+const NAME_BY_PATH: Record<string, string> = { '/dishes': 'Dishes' };
+
 export const PAGE_NAMES: Record<MudavymPage, string> = {
   dashboard: 'Dashboard',
   orders: 'Orders',
@@ -134,5 +137,5 @@ export function pageNameFor(page: MudavymPage, pathname?: string | null): string
     const named = CELLAR_BY_PATH[pathname];
     if (named) return named;
   }
-  return PAGE_NAMES[page];
+  return (pathname && NAME_BY_PATH[pathname]) || PAGE_NAMES[page];
 }

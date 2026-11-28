@@ -8,7 +8,9 @@ import {
   Inject,
   forwardRef,
 } from "@nestjs/common";
+import { readHouseThresholdMin } from "./house-par";
 import { DatabaseService } from "../database/database.service";
+import { readViewWhole } from "./read-view-whole";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -28,6 +30,15 @@ import {
   type HouseItemResearchView,
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
+import { seesHouseAmounts } from "../dashboard/amounts-for-role";
+import {
+  SETTLED_PRICES,
+  settledMovesFrom,
+  type SettledMove,
+  type SettledLot,
+  type SettledRow,
+} from "./settled-price-moves";
+
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -36,6 +47,10 @@ import {
   BulkCreateInventoryItemsDto,
   BulkInventoryLineDto,
 } from "./dto/inventory.dto";
+
+/** Settled-price rows read per page, and pages (newest first) read for the list. */
+const SETTLED_PAGE = 1000;
+const SETTLED_READ_PAGES = 5;
 
 const ML_PER_OZ = 29.5735;
 
@@ -49,6 +64,52 @@ function roundOz(ml: number): number {
 // a different pour answer alike, so the reply never says which.
 const POUR_KEY_ALREADY_USED =
   "This request's key was already used, so nothing new was poured. Read the item again before pouring.";
+/**
+ * One rollup row per good. A good whose lots carry two master-wine ids (the
+ * research link set one after the first lots were booked) has two rows in
+ * `inventory_lot_rollup`; quantities add, the WAC is weighted by the bottles it
+ * averages (`wac_qty`), and a good is invoiced if any group is.
+ */
+export function foldRollupByGood(
+  rows: Array<Record<string, any>>,
+): Map<string, Record<string, any>> {
+  const groups = new Map<string, Array<Record<string, any>>>();
+  for (const r of rows) {
+    const g = groups.get(r.inventory_id);
+    if (g) g.push(r);
+    else groups.set(r.inventory_id, [r]);
+  }
+  const out = new Map<string, Record<string, any>>();
+  for (const [id, g] of groups) {
+    if (g.length === 1) {
+      out.set(id, g[0]);
+      continue;
+    }
+    const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    const sum = (k: string) => g.reduce((t, r) => t + num(r[k]), 0);
+    let costed = 0;
+    let weighted = 0;
+    for (const r of g) {
+      if (r.wac == null) continue;
+      const q = r.wac_qty != null ? num(r.wac_qty) : num(r.live_qty);
+      costed += q;
+      weighted += q * num(r.wac);
+    }
+    out.set(id, {
+      ...g[0],
+      live_qty: sum("live_qty"),
+      shadow_qty: sum("shadow_qty"),
+      open_ml: sum("open_ml"),
+      wac_qty: sum("wac_qty"),
+      wac: costed > 0 ? Math.round((weighted / costed) * 100) / 100 : null,
+      has_invoice_cost: g.some((r) => r.has_invoice_cost === true),
+      // Groups can share a place; the largest count is the honest floor.
+      live_location_count: Math.max(...g.map((r) => num(r.live_location_count))),
+    });
+  }
+  return out;
+}
+
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -83,7 +144,12 @@ export class InventoryService {
     rollup?: Record<string, any>,
     locations?: any[],
     analytics?: Record<string, any>,
+    // G15: omitted = never read; false = read failed, so not 0 or [].
+    reads?: { rollup?: boolean; locations?: boolean },
+    settled?: SettledMove,
   ): Record<string, any> {
+    const rollupFailed = reads?.rollup === false;
+    const locationsFailed = reads?.locations === false;
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
     const effectiveBottleSizeMl = row.bottle_size_ml ?? wineBottleMl;
@@ -115,6 +181,13 @@ export class InventoryService {
       row.master_wine_library?.retail_price_avg ?? null;
     const markupRatio: number | null = row.markup_ratio ?? null;
 
+    // The library's wine style, grape, drink kind, producer and vintage, so the
+    // list page need not ask /wines a second time for them. A column the join did not select is
+    // left undefined (and so off the wire); null means the library has none.
+    const lib: Record<string, any> | null = row.master_wine_library ?? null;
+    const libraryField = (column: string): string | null | undefined =>
+      lib && column in lib ? (lib[column] ?? null) : undefined;
+
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
     if (row.restaurants) delete result.restaurants;
@@ -126,6 +199,14 @@ export class InventoryService {
       // The library's own name, for search only. `wineName` stays the one
       // displayed value so no surface has to choose.
       libraryName,
+      libraryType: libraryField("primary_type"),
+      libraryGrape: libraryField("grape_variety"),
+      libraryKind: libraryField("beverage_kind"),
+      // The rest of what the page took from /wines: the producer and vintage
+      // (the inventory row has neither) and the library's own display name.
+      libraryProducer: libraryField("producer"),
+      libraryVintage: libraryField("vintage"),
+      libraryDisplayName: libraryField("display_name"),
       // Whether the house has actually set an alias, told apart from the
       // fallback: `wineName` is non-null either way, so without this a caller
       // cannot see that a name is the library's rather than the house's.
@@ -160,7 +241,7 @@ export class InventoryService {
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
-      openMl: rollup?.open_ml ?? 0,
+      openMl: rollupFailed ? undefined : (rollup?.open_ml ?? 0),
       // Phase 2 (2d/2e): velocity / days-of-cover / reorder / ABC / dead-stock.
       velocityPerDay: analytics?.velocity_per_day ?? undefined,
       daysOfCover: analytics?.days_of_cover ?? undefined,
@@ -169,52 +250,218 @@ export class InventoryService {
       abcClass: analytics?.abc_class ?? undefined,
       deadStock: analytics?.dead_stock ?? false,
       daysSinceSale: analytics?.days_since_sale ?? undefined,
+      // Where velocityPerDay comes from (days_of_stock_from_real_use):
+      // "sales" (the till drew it), "counts" (two counts and what moved
+      // between them; a food or supply the till never draws), or undefined
+      // (neither, so velocity is 0 and there is no cover). usageQty is what
+      // was used between usageSince and usageUntil, in the item's own unit.
+      usageSource: analytics?.usage_source ?? undefined,
+      usageSince: analytics?.usage_since ?? undefined,
+      usageUntil: analytics?.usage_until ?? undefined,
+      usageQty:
+        analytics?.usage_qty === null || analytics?.usage_qty === undefined
+          ? undefined
+          : Number(analytics.usage_qty),
+      // r104 g3: what the last two settled deliveries cost per unit (the
+      // "Price signals" chip). Absent = fewer than two settled deliveries.
+      // Cost figures: they travel with `wac` and leave with it.
+      lastSettledCost: settled?.last ?? undefined,
+      previousSettledCost: settled?.previous ?? undefined,
+      // r108 inventory-1: whether both settled costs hold tax the same way
+      // (net | gross_cost). Absent = mixed or not stated: not compared.
+      settledCostTaxBasis: settled?.basis ?? undefined,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
-      locations: locations ?? [],
+      locations: locationsFailed ? undefined : (locations ?? []),
+      ...(reads?.rollup !== undefined ? { rollupReadable: reads.rollup } : {}),
+      ...(reads?.locations !== undefined
+        ? { locationsReadable: reads.locations }
+        : {}),
     };
   }
 
-  /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
+  /**
+   * r104 g3: each good's last two settled delivery costs, one house. Newest
+   * first, in pages, up to SETTLED_READ_PAGES of them (a house past that reads
+   * its newest rows, and the oldest goods' moves may be missing: `capped`).
+   * `ok: false` is a FAILED read, never an empty one (ADR 0020).
+   */
+  private async fetchSettledMoves(
+    restaurantId: string,
+  ): Promise<{ map: Map<string, SettledMove>; ok: boolean; capped: boolean }> {
+    try {
+      const client = this.dbService.getClient();
+      const pages = async <T,>(
+        page: (from: number, to: number) => PromiseLike<{ data: any; error: any; count?: number | null }>,
+      ) => {
+        const out: T[] = [];
+        let capped = false;
+        for (let n = 0; n < SETTLED_READ_PAGES; n += 1) {
+          const { data, error, count } = await page(out.length, out.length + SETTLED_PAGE - 1);
+          if (error) throw error;
+          const got = (data ?? []).length;
+          out.push(...((data ?? []) as T[]));
+          // The end is the exact count, not a short page: a server that caps a
+          // response below SETTLED_PAGE would otherwise stop the read at page 1.
+          if (typeof count === "number" ? out.length >= count : got < SETTLED_PAGE) break;
+          if (got === 0) break;
+          if (n === SETTLED_READ_PAGES - 1) capped = true;
+        }
+        return { rows: out, capped };
+      };
+      // Lots that settled at the door (a delivery finalised) and revaluations of
+      // lots since spent: a lot is deleted once used up, the revaluation stays.
+      const [revals, lots] = await Promise.all([
+        pages<SettledRow>((from, to) =>
+          client
+            .from("inventory_lot_revaluations")
+            .select("inventory_id, lot_id, source_order_id, new_unit_cost, new_cost_provenance, created_at, cost_tax_basis", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            .in("new_cost_provenance", [...SETTLED_PRICES])
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+        ),
+        // A cost booked final straight away (a manual receipt, a bulk receive,
+        // add-to-inventory) has no revaluation row: the lot is its only record.
+        pages<SettledLot>((from, to) =>
+          client
+            .from("inventory_lots")
+            .select("id, inventory_id, source_order_id, delivery_id, unit_cost, cost_provenance, received_at, cost_tax_basis", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            .eq("cost_state", "final")
+            .in("cost_provenance", [...SETTLED_PRICES])
+            .order("received_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+        ),
+      ]);
+      const capped = revals.capped || lots.capped;
+      return { map: settledMovesFrom(revals.rows, lots.rows), ok: true, capped };
+    } catch (err: any) {
+      this.logger.warn(`fetchSettledMoves failed: ${err?.message}`);
+      return { map: new Map(), ok: false, capped: false };
+    }
+  }
+
+  /**
+   * Keys of the MAPPED list row that are dropped from the lean reply after the
+   * derived figures are computed (glassesPerBottle reads
+   * glasses_per_bottle_override, markupRatio reads markup_ratio, so these cannot
+   * go before mapping). Two kinds, both audited against apps/web/src and
+   * apps/mobile on 2026-11-27:
+   *  - LIST_DEAD_KEYS: no reader at all, dropped always. beverage_id is not here:
+   *    LIST_UNREAD_COLUMNS (#2241) owns it, and drops it before mapping.
+   *  - LIST_NULL_OMITTED_KEYS: the raw column is only ever read through
+   *    `normalizeInventoryItem` (`?? undefined`) or not at all, so absent and
+   *    null read the same; dropped only when null, so a house that fills
+   *    sku / provider_id still receives them.
+   * `lastCountedAt` is NOT here: four web readers compare it `=== null`.
+   */
+  static readonly LIST_DEAD_KEYS = [
+    "glasses_per_bottle_override",
+    "expected_delivery_date",
+    "storage_location_id",
+    "max_price",
+  ] as const;
+
+  static readonly LIST_NULL_OMITTED_KEYS = [
+    "negotiated_price",
+    "last_alerted_at",
+    "toast_item_guid",
+    "last_counted_at",
+    "physical_stock",
+    "threshold_max",
+    "last_sold_at",
+    "menu_section",
+    "target_price",
+    "markup_ratio",
+    "provider_id",
+    "identity_id",
+    "sku",
+  ] as const;
+
+  private withoutEmptyListKeys(item: Record<string, any>): Record<string, any> {
+    for (const k of InventoryService.LIST_DEAD_KEYS) delete item[k];
+    for (const k of InventoryService.LIST_NULL_OMITTED_KEYS) {
+      if (item[k] === null) delete item[k];
+    }
+    return item;
+  }
+
+  private withoutUnreadColumns(row: Record<string, any>): Record<string, any> {
+    const kept = { ...row };
+    for (const col of InventoryService.LIST_UNREAD_COLUMNS) delete kept[col];
+    return kept;
+  }
+
+  /** Phase 2: per-inventory WAC / on-hand / location spread. `ok: false` = failed read (G15). */
   private async fetchLotRollup(
     restaurantId: string,
-  ): Promise<Map<string, any>> {
+  ): Promise<{ ok: boolean; data: Map<string, any> }> {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_lot_rollup")
-        .select(
-          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
-        )
-        .eq("restaurant_id", restaurantId);
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Paged to the end (H-1): one unranged read stopped at 1,000 goods. The
+      // order is the view's whole grouping key (inventory_id, restaurant_id,
+      // master_wine_id; the restaurant is filtered), so a tie across a page
+      // edge cannot skip or repeat a row. The view has no `id` to order by.
+      const data = await readViewWhole(
+        "The lot rollup",
+        () =>
+          client
+            .from("inventory_lot_rollup")
+            .select(
+              "inventory_id, live_qty, shadow_qty, wac, wac_qty, has_invoice_cost, live_location_count, open_ml",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        ["inventory_id", "master_wine_id"],
+      );
+      // The view has one row per (good, master wine): a good linked to the
+      // library after it already held lots has two. Fold them to one row per
+      // good, or the last one read stands for all of them.
+      for (const [id, r] of foldRollupByGood(data)) map.set(id, r);
+      return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
+      return { ok: false, data: new Map() };
     }
-    return map;
   }
 
   /** Phase 2 multi-location: per-inventory live lot quantities by location. */
   private async fetchLocationBreakdown(
     restaurantId: string,
-  ): Promise<Map<string, any[]>> {
+  ): Promise<{ ok: boolean; data: Map<string, any[]> }> {
     const map = new Map<string, any[]>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_location_breakdown")
-        .select("inventory_id, location_id, qty, wac")
-        .eq("restaurant_id", restaurantId)
-        .eq("stock_state", "live");
-      for (const r of data || []) {
+      // Paged to the end (H-1): one row per good per place, so one unranged
+      // read stopped at about 333 goods held in three places. The order is
+      // the view's whole grouping key, so every offset lands on the same row.
+      const data = await readViewWhole(
+        "The stock-by-place breakdown",
+        () =>
+          client
+            .from("inventory_location_breakdown")
+            .select("inventory_id, location_id, qty, wac", { count: "exact" })
+            .eq("restaurant_id", restaurantId)
+            .eq("stock_state", "live"),
+        ["inventory_id", "location_id", "master_wine_id"],
+      );
+      for (const r of data) {
         const arr = map.get(r.inventory_id) ?? [];
         arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
         map.set(r.inventory_id, arr);
       }
+      return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLocationBreakdown failed: ${err?.message}`);
+      return { ok: false, data: new Map() };
     }
-    return map;
   }
 
   /**
@@ -236,14 +483,21 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
-        .from("inventory_analytics")
-        .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
-        )
-        .eq("restaurant_id", restaurantId);
-      if (error) throw error;
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Paged to the end (H-1); a read that cannot be made whole throws into
+      // the catch below and says `ok: false`, never a part read as the whole.
+      const data = await readViewWhole(
+        "The sales pace read",
+        () =>
+          client
+            .from("inventory_analytics")
+            .select(
+              "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale, usage_source, usage_since, usage_until, usage_qty",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        ["inventory_id"],
+      );
+      for (const r of data) map.set(r.inventory_id, r);
       return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
@@ -251,26 +505,101 @@ export class InventoryService {
     }
   }
 
-  async getRestaurantInventory(restaurantId: string) {
+  /**
+   * Columns of `restaurant_inventory` that no web or mobile surface reads
+   * (re-checked by grep over apps/web/src and apps/mobile on 2026-11-25: zero
+   * references to either spelling). The agents read these straight from the
+   * database, never through this list. The house list leaves them out because
+   * most are null on every row and together they were about half of the
+   * 745 KB the page waits on. The MCP reader keeps the whole row.
+   */
+  static readonly LIST_UNREAD_COLUMNS = [
+    "expected_stock",
+    "in_transit_quantity",
+    "validation_max",
+    "buffer_window_minutes",
+    "inventory_state",
+    "last_alert_level",
+    "alert_count",
+    "last_manual_edit_at",
+    "last_manual_edit_by",
+    "manual_edit_reason",
+    "custom_price",
+    "last_purchase_price",
+    "margin_percentage",
+    "sales_velocity_30d",
+    "sales_velocity_7d",
+    "last_delivery_date",
+    "menu_position",
+    "deleted_at",
+    "is_optional_tracking",
+    "current_volume_ml",
+    "is_generic_bucket",
+    "velocity_weight",
+    "toast_menu_item_id",
+    "square_item_id",
+    "clover_item_id",
+    "internal_sku",
+    "pos_sku",
+    "sku_aliases",
+    "markup_classification",
+    "pour_size_confirmed_at",
+    "pour_size_confirmed_by",
+    "shelf_life_basis",
+    "shelf_life_days",
+    "shelf_life_days_set_at",
+    "shelf_life_days_set_by",
+    // r108-8: carried from #2193's audit (grep over apps/web/src, apps/mobile,
+    // packages/ui/src, 2026-11-27: no reader of either spelling).
+    "beverage_id",
+    "identity_provenance",
+  ] as const;
+
+  /**
+   * `viewer` is the caller's role when a person asked (the controller always
+   * passes it). A role whose policy does not see `money` gets no settled-cost
+   * figures and the gateway does not read them (ADR 0360 d9). A caller with no
+   * `viewer` is the gateway itself.
+   * `opts.lean` (the house list) leaves out LIST_UNREAD_COLUMNS.
+   */
+  async getRestaurantInventory(
+    restaurantId: string,
+    viewer?: { role?: string | null },
+    opts: { lean?: boolean } = {},
+  ) {
     this.logger.log(`Fetching inventory for restaurant: ${restaurantId}`);
-    const [data, rollup, locations, analytics] = await Promise.all([
+    const money = viewer === undefined || seesHouseAmounts(viewer.role);
+    const [data, rollup, locations, analytics, settled] = await Promise.all([
       this.dbService.getRestaurantInventory(restaurantId),
       this.fetchLotRollup(restaurantId),
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),
+      money
+        ? this.fetchSettledMoves(restaurantId)
+        : { map: new Map<string, SettledMove>(), ok: true, capped: false },
     ]);
-    return (data || []).map((row) => ({
-      ...this.mapInventoryItem(
-        row,
-        rollup.get(row.id),
-        locations.get(row.id),
+    return (data || []).map((row): Record<string, any> => {
+      const mapped = this.mapInventoryItem(
+        opts.lean ? this.withoutUnreadColumns(row) : row,
+        rollup.data.get(row.id),
+        locations.data.get(row.id),
         analytics.map.get(row.id),
-      ),
-      // Additive: every existing reader that does not know this field simply
-      // ignores it. `false` means the analytics join itself could not be
-      // read for this batch — not that this row has no analytics row.
-      analyticsReadable: analytics.ok,
-    }));
+        { rollup: rollup.ok, locations: locations.ok },
+        settled.map.get(row.id),
+      );
+      return {
+        ...(opts.lean ? this.withoutEmptyListKeys(mapped) : mapped),
+        // Additive: every existing reader that does not know this field simply
+        // ignores it. `false` means the analytics join itself could not be
+        // read for this batch — not that this row has no analytics row.
+        analyticsReadable: analytics.ok,
+        // r104 g3: false = the settled-price read failed, so "no price move" is
+        // unknown, not "none"; `settledCostsCapped` = only the newest rows were read.
+        ...(money
+          ? { settledCostsReadable: settled.ok, settledCostsCapped: settled.capped }
+          : {}),
+      };
+    });
   }
 
   /**
@@ -334,8 +663,10 @@ export class InventoryService {
     return row.data
       ? this.mapInventoryItem(
           row.data,
-          rollup.get(inventoryId),
-          locations.get(inventoryId),
+          rollup.data.get(inventoryId),
+          locations.data.get(inventoryId),
+          undefined,
+          { rollup: rollup.ok, locations: locations.ok },
         )
       : null;
   }
@@ -436,8 +767,10 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
-            locations.get(inventoryId),
+            rollup.data.get(inventoryId),
+            locations.data.get(inventoryId),
+            undefined,
+            { rollup: rollup.ok, locations: locations.ok },
           )
         : null,
     };
@@ -615,8 +948,10 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
-            locations.get(inventoryId),
+            rollup.data.get(inventoryId),
+            locations.data.get(inventoryId),
+            undefined,
+            { rollup: rollup.ok, locations: locations.ok },
           )
         : null,
       // ADR 0078: the count itself, including the case that used to be invisible
@@ -798,22 +1133,40 @@ export class InventoryService {
     const since = new Date();
     since.setDate(since.getDate() - 28);
 
-    const { data, error } = await client
-      .from("inventory_transactions")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .eq("inventory_id", itemId)
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: true })
-      .limit(2000);
+    // Newest first, in pages, until the 28-day window is spent. One read capped
+    // at 2000 ascending rows silently dropped the NEWEST days of a pour-heavy
+    // good from the 14-day chart. Only the three columns the sums use travel.
+    const PAGE = 1000;
+    const MAX_PAGES = 50; // 50,000 movements in 28 days; past it the door says so.
+    const data: any[] = [];
+    let truncated = false;
+    for (let page = 0; ; page++) {
+      const { data: rows, error } = await client
+        .from("inventory_transactions")
+        .select("quantity_change, transaction_type, created_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", itemId)
+        .gte("created_at", since.toISOString())
+        .order("created_at", { ascending: false })
+        .range(page * PAGE, page * PAGE + PAGE - 1);
 
-    // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
-    // made an outage indistinguishable from a shelf nothing had moved on.
-    if (error) {
-      this.logger.error(`getItemActivity ledger query failed: ${error.message}`);
-      throw new Error(
-        `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
-      );
+      // A FAILED READ IS NOT AN EMPTY LEDGER (ADR 0067). Returning zeroes here
+      // made an outage indistinguishable from a shelf nothing had moved on.
+      if (error) {
+        this.logger.error(
+          `getItemActivity ledger query failed: ${error.message}`,
+        );
+        throw new Error(
+          `the movement history of item ${itemId} could not be read (${error.message}). Nothing is claimed about this shelf — an empty chart here would mean "nothing moved", which is not what we know.`,
+        );
+      }
+      const got = (rows as any[]) || [];
+      data.push(...got);
+      if (got.length < PAGE) break;
+      if (page + 1 >= MAX_PAGES) {
+        truncated = true;
+        break;
+      }
     }
 
     const dayKey = (d: Date) => d.toISOString().slice(0, 10);
@@ -829,8 +1182,8 @@ export class InventoryService {
     const fourteenDaysAgo = new Date();
     fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-    for (const row of (data as any[]) || []) {
-      const qty = Number(row.quantity_change ?? row.quantity ?? 0);
+    for (const row of data) {
+      const qty = Number(row.quantity_change ?? 0);
       if (!Number.isFinite(qty) || qty === 0) continue;
       const type = String(row.transaction_type || "").toLowerCase();
       // Sign is the classifier. The type list stays only because some depletion
@@ -873,6 +1226,9 @@ export class InventoryService {
       heat,
       totalOut28d: totalOut,
       totalIn28d: totalIn,
+      // True only past 50,000 movements in 28 days: the oldest ones are then
+      // missing from the totals, and the door says so rather than staying quiet.
+      truncated,
       // The door SAYS what it counted. A zeroed series means "these movements
       // did not happen", never "this kind of movement is not looked at".
       includes: {
@@ -1030,7 +1386,10 @@ export class InventoryService {
         const reactRollup = await this.fetchLotRollup(restaurantId);
         const reactMapped = this.mapInventoryItem(
           freshReact ?? reactivated,
-          reactRollup.get(existing.id),
+          reactRollup.data.get(existing.id),
+          undefined,
+          undefined,
+          { rollup: reactRollup.ok },
         );
         return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
       }
@@ -1051,8 +1410,13 @@ export class InventoryService {
       master_wine_id: dto.wineId,
       provider_id: dto.providerId || null,
       stock_live: 0, // initial stock applied as a lot via apply_stock_movement below (lots = source of truth)
-      threshold_min: dto.thresholdMin || 6,
-      threshold_max: dto.thresholdMax || 24,
+      // `??`, not `||`: a par of 0 is the house saying "do not stock this"
+      // (a garnish, a wine being run down), and `|| 6` turned it into 6 (QA
+      // round 2, U-3). Only a par the caller left out gets the default.
+      threshold_min:
+        dto.thresholdMin ??
+        (await readHouseThresholdMin(this.dbService.getClient(), restaurantId)),
+      threshold_max: dto.thresholdMax ?? 24,
       toast_item_guid: dto.toastItemGuid || null,
       is_active: true,
       wine_name: masterWineName,
@@ -1131,7 +1495,13 @@ export class InventoryService {
       .eq("id", data.id)
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    const mapped = this.mapInventoryItem(
+      fresh ?? data,
+      rollup.data.get(data.id),
+      undefined,
+      undefined,
+      { rollup: rollup.ok },
+    );
     return price ? { ...mapped, priceChange: price } : mapped;
   }
 
@@ -1197,6 +1567,15 @@ export class InventoryService {
     const source = dto.source || "bulk_receive";
     const results: Array<Record<string, any>> = [];
 
+    // The house's par is read ONCE, before any line resolves, and only if some
+    // line states none of its own. Read per line and after resolveBulkLineWine
+    // had upserted a library row, a failed read orphaned that row under a
+    // message saying nothing was added, and cost one pooler round trip per
+    // line. A failed read refuses the whole request here (r102 review).
+    const housePar = dto.items.some((l) => l.thresholdMin == null)
+      ? await readHouseThresholdMin(this.dbService.getClient(), restaurantId)
+      : undefined;
+
     for (let index = 0; index < dto.items.length; index++) {
       const line = dto.items[index];
       const wineName =
@@ -1211,6 +1590,7 @@ export class InventoryService {
           resolved.masterWineId,
           source,
           dto.reason,
+          housePar,
         );
         // A NEW row's price goes through the one writer, by the person
         // (receiveBulkLine no longer puts it in the insert). An existing
@@ -1363,6 +1743,7 @@ export class InventoryService {
     masterWineId: string,
     source: string,
     reason?: string,
+    housePar?: number,
   ): Promise<{ status: string; inventoryId: string }> {
     const client = this.dbService.getClient();
     const qty = line.stockLive ?? 0;
@@ -1406,7 +1787,10 @@ export class InventoryService {
         master_wine_id: masterWineId,
         provider_id: line.providerId || null,
         stock_live: 0, // lots are the source of truth; booked via the RPC below
-        threshold_min: line.thresholdMin ?? 6,
+        threshold_min:
+          line.thresholdMin ??
+          housePar ??
+          (await readHouseThresholdMin(client, restaurantId)),
         threshold_max: line.thresholdMax ?? 24,
         is_active: true,
       };
@@ -1838,7 +2222,13 @@ export class InventoryService {
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(data, rollup.get(itemId));
+    const mapped = this.mapInventoryItem(
+      data,
+      rollup.data.get(itemId),
+      undefined,
+      undefined,
+      { rollup: rollup.ok },
+    );
     // Said, not implied: "unchanged" and "stale" are different answers from
     // "changed", and the page tells the manager which one happened.
     return priceChange ? { ...mapped, priceChange } : mapped;

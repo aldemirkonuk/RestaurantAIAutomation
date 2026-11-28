@@ -18,7 +18,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, addMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, addMenuItem, listMenuVersions, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 vi.mock('../../../contexts/AuthContext', () => ({
@@ -73,6 +73,7 @@ vi.mock('../../../services/api/settings', async () => {
 });
 
 const mockGetMenu = vi.mocked(getMenu);
+const mockVersions = vi.mocked(listMenuVersions);
 const mockDiscard = vi.mocked(discardMenuItem);
 const mockAdd = vi.mocked(addMenuItem);
 const mockCurrency = vi.mocked(settingsApi.houseCurrency);
@@ -141,12 +142,51 @@ describe('MenuNext — reading', () => {
     expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
   });
 
+  it('an unreachable gateway is said in words, never the transport\'s "Network Error", on the menu and on the kept menus', async () => {
+    mockGetMenu.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mockVersions.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    const err = await screen.findByTestId('menu-error');
+    expect(err).toHaveTextContent('The menu could not be read (Mudavym could not be reached just now.).');
+    const kept = await screen.findByTestId('menu-versions-error');
+    expect(kept).toHaveTextContent('could not be read (Mudavym could not be reached just now.)');
+    expect(err.textContent).not.toContain('Network Error');
+    expect(kept.textContent).not.toContain('Network Error');
+  });
+
   it('says a failed read plainly, never as an empty menu', async () => {
     mockGetMenu.mockRejectedValue(new Error('ECONNREFUSED'));
     mount();
     const err = await screen.findByTestId('menu-error');
     expect(err).toHaveTextContent('ECONNREFUSED');
     expect(screen.queryByTestId('menu-row')).not.toBeInTheDocument();
+  });
+
+  it("says the gateway's own sentence for a failed read, with Retry, and Retry reads again", async () => {
+    const said = "The current menu could not be read just now. Try again (statement timeout).";
+    mockGetMenu.mockRejectedValueOnce({ response: { status: 500, data: { statusCode: 500, message: said } } });
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ name: 'Raki' })] }));
+    mount();
+    const err = await screen.findByTestId('menu-error');
+    expect(err).toHaveTextContent(said);
+    expect(err).not.toHaveTextContent('Internal server error');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
+    expect(screen.queryByTestId('menu-error')).not.toBeInTheDocument();
+  });
+
+  it('Retry reads the kept menus again too, so their could-not-be-read sentence clears with the menu', async () => {
+    mockGetMenu.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    mockGetMenu.mockResolvedValue(menu());
+    mockVersions.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    mockVersions.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount();
+    await screen.findByTestId('menu-error');
+    expect(await screen.findByTestId('menu-versions-error')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findAllByTestId('menu-row')).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByTestId('menu-versions-error')).not.toBeInTheDocument());
+    expect(await screen.findByTestId('menu-versions-standing')).toBeInTheDocument();
   });
 
   it('says plainly when the house has no active menu, rather than an empty add form', async () => {
@@ -200,6 +240,16 @@ describe('MenuNext — add', () => {
     expect(nameField).toHaveValue('American black coffee');
   });
 
+  it('a failed add on an unreachable gateway says so in words', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockRejectedValue(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+    mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Tea' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Mudavym could not be reached just now.'));
+    expect(screen.getByRole('alert').textContent).not.toContain('Network Error');
+  });
+
   // ADR 0193: a priced line also sets the linked wine's own price, and the
   // gateway says per line whether it did. A failed price write must not read
   // as a price that moved.
@@ -243,5 +293,21 @@ describe('MenuNext — discard', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
     await waitFor(() => expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9'));
     expect(await screen.findByRole('alert')).toHaveTextContent('not discarded');
+  });
+
+  it("says the gateway's sentence for a failed discard and offers Retry, which discards the same line again", async () => {
+    const said = 'The menu line could not be discarded just now. It is still on the menu and nothing was changed. Try again (connection reset).';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockRejectedValueOnce({ response: { status: 500, data: { statusCode: 500, message: said } } });
+    mockDiscard.mockResolvedValue({ menuItemId: 'l9', status: 'discarded' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    const err = await screen.findByTestId('menu-discard-error');
+    expect(err).toHaveTextContent(said);
+    expect(err).not.toHaveTextContent('Internal server error');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(mockDiscard).toHaveBeenCalledTimes(2));
+    expect(mockDiscard).toHaveBeenLastCalledWith('r1', 'l9');
+    await waitFor(() => expect(screen.queryByTestId('menu-discard-error')).not.toBeInTheDocument());
   });
 });

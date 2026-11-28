@@ -6,20 +6,27 @@
  * real ones. Heavy panels reused from the legacy page are stubbed: they own
  * their own tests, and none of them is under test here.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { useLayoutEffect, type ReactNode } from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
 
-const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
+const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null, priceRenders: new Map<string, number>() }));
+const terms = vi.hoisted(() => ({ busy: false }));
 const exportSpy = vi.hoisted(() => vi.fn(async (_opts: unknown) => undefined));
+vi.mock('../../../hooks/queries/useDataTerms', () => ({ useDataTermsSignInBusy: () => terms.busy }));
 vi.mock('../../../lib/tableExport', () => ({ exportTable: exportSpy }));
 
 vi.mock('./useInventoryNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useInventoryNextData: () => mock.data,
+  // The table warms a row on intent (perf p8-3); this suite has no auth or client to warm against.
+  useWarmRow: () => () => undefined,
 }));
 vi.mock('../command/CellarMapView', () => ({
   CellarMapView: (p: Record<string, unknown>) => {
@@ -28,8 +35,14 @@ vi.mock('../command/CellarMapView', () => ({
   },
 }));
 vi.mock('../command/HousePriceCell', () => ({
-  HousePriceCell: ({ bottle, money }: { bottle: number | null; money?: (n: number | null) => string }) => (
-    <span data-testid="house-price">{money ? money(bottle) : String(bottle)}</span>
+  HousePriceCell: ({ bottle, money, inventoryId }: { bottle: number | null; money?: (n: number | null) => string; inventoryId?: string }) => (
+    <span
+      data-testid="house-price"
+      ref={() => {
+        /* counted per render below */
+      }}
+      data-count={(mock.priceRenders.set(String(inventoryId), (mock.priceRenders.get(String(inventoryId)) ?? 0) + 1), '')}
+    >{money ? money(bottle) : String(bottle)}</span>
   ),
 }));
 vi.mock('../../../components/inventory/PosMappingPanel', () => ({ PosMappingPanel: () => null, default: () => null }));
@@ -68,6 +81,8 @@ vi.mock('../../../components/inventory/AutoLocatePreviewModal', () => ({
 }));
 // The ADR 0192 research list (NameThisWine.tsx) and the insights rail.
 const research = vi.hoisted(() => ({ fetch: vi.fn(async (): Promise<unknown[]> => []) }));
+// DD-r108-36: the nutrition coverage read; pending unless a test answers it.
+const nutCov = vi.hoisted(() => ({ read: vi.fn((): Promise<unknown> => new Promise(() => undefined)) }));
 const insights = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
 const pos = vi.hoisted(() => ({ lines: vi.fn(async (): Promise<unknown> => ({ summary: { open_lines: 0 } })) }));
 vi.mock('../../../services/api/posHub', async (orig) => ({
@@ -84,6 +99,15 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   createInventoryItem: ported.create,
   fetchHouseItemResearch: research.fetch,
+  getItemFigures: vi.fn(() => new Promise(() => undefined)),
+  getItemUsedIn: vi.fn(() => new Promise(() => undefined)),
+  getItemNutrition: vi.fn(() => new Promise(() => undefined)),
+  getNutritionCoverage: nutCov.read,
+}));
+vi.mock('../../../services/api/itemDishes', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getItemDishes: vi.fn(() => new Promise(() => undefined)),
+  getItemDrinks: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -129,6 +153,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: 12,
     daysSinceSale: 1,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: 92,
     glass: 18,
     pourMl: 150,
@@ -136,7 +164,9 @@ function row(over: Partial<InvRow> = {}): InvRow {
     costProvenance: 'invoice',
     value: 480,
     lastCountedAt: '2026-09-30T10:00:00Z',
+    rollupReadable: true,
     openMl: null,
+    locationsReadable: true,
     zones: [{ locationId: 'z1', qty: 12 }],
     providerId: null,
     providerName: null,
@@ -264,18 +294,35 @@ describe('search ignores accents and folds the Turkish i', () => {
 });
 
 describe('unknown is never zero', () => {
-  it('shows nothing for 400ms, then "Reading the cellar…", and never a 0', () => {
+  it('shows nothing for 400ms, then "Reading the stock…" over the shape of the list, and never a 0', () => {
     vi.useFakeTimers();
     mock.data = data({ state: 'reading', rows: null });
     const { container } = renderPage();
     expect(screen.getByTestId('inventory-reading').textContent).toBe('');
+    expect(screen.queryByTestId('inventory-reading-shape')).toBeNull();
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(screen.getByText('Reading the cellar…')).toBeTruthy();
+    expect(screen.getByText('Reading the stock…')).toBeTruthy();
+    // Rows are drawn as empty bars, hidden from a screen reader, so the page
+    // does not jump when the real list arrives. They carry no words or figures.
+    const shape = screen.getByTestId('inventory-reading-shape');
+    expect(shape.getAttribute('aria-hidden')).toBe('true');
+    expect(shape.querySelectorAll('.iv-skel-row').length).toBeGreaterThanOrEqual(6);
+    expect(shape.textContent).toBe('');
     expect(container.textContent).not.toMatch(BARE_ZERO);
     expect(screen.queryByTestId('inventory-chips')).toBeNull();
     expect(screen.queryByTestId('inventory-table')).toBeNull();
+  });
+
+  it('does not say "cellar" before it knows the house holds drinks', () => {
+    vi.useFakeTimers();
+    mock.data = data({ state: 'reading', rows: null });
+    renderPage();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.body.textContent).not.toMatch(/cellar/i);
   });
 
   it('says the stock could not be read when the read fails, and claims nothing else', () => {
@@ -403,6 +450,160 @@ describe('chips', () => {
     expect(screen.getByTestId('inv-row-b')).toBeTruthy();
   });
 
+  it('Price signals lists the goods whose last settled delivery moved past the house default, and only those (r104 g3)', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: 'net' }),
+        row({ id: 'flat', lastSettledCost: 10.5, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: 'net' }),
+        row({ id: 'one', lastSettledCost: null, previousSettledCost: null, settledCostsReadable: true }),
+      ],
+    });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const price = within(chips).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
+    expect(price.disabled).toBe(false);
+    expect(price.title).toMatch(/more than 10 percent/);
+    expect(price.title).toMatch(/Compared here: both before tax\./);
+    fireEvent.click(price);
+    expect(screen.getByTestId('inv-row-up')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-flat')).toBeNull();
+    expect(screen.queryByTestId('inv-row-one')).toBeNull();
+  });
+
+  it('Price signals compares two costs only when both carry the same tax basis (r108/r109 inventory-1)', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'gross', lastSettledCost: 13, previousSettledCost: 11.8, settledCostsReadable: true, settledCostTaxBasis: 'gross_cost' }),
+        row({ id: 'mixed', lastSettledCost: 11.8, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: null }),
+      ],
+    });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
+    expect(price.title).toMatch(/Compared here: both with tax\./);
+    fireEvent.click(price);
+    expect(screen.getByTestId('inv-row-gross')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-mixed')).toBeNull();
+  });
+
+  it('two settled costs with no common tax basis say "basis not stated", never a move', () => {
+    mock.data = data({
+      rows: [row({ id: 'mixed', lastSettledCost: 11.8, previousSettledCost: 10, settledCostsReadable: true, settledCostTaxBasis: null })],
+    });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /Price signals/ }) as HTMLButtonElement;
+    expect(price.disabled).toBe(true);
+    expect(price.textContent).toContain('—');
+    expect(price.title).toMatch(/^Basis not stated/);
+  });
+
+  it('Price signals says its count is partial when only the newest settled deliveries were read', () => {
+    mock.data = data({
+      rows: [
+        row({
+          id: 'up',
+          lastSettledCost: 11.2,
+          previousSettledCost: 10,
+          settledCostsReadable: true,
+          settledCostsCapped: true,
+          // A move counts only when both points name the same tax basis (#2325),
+          // so the row states one. Not in this branch's InvRow yet, hence the cast.
+          ...({ settledCostTaxBasis: 'net' } as unknown as Partial<InvRow>),
+        }),
+      ],
+    });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Price signals 1$/ }) as HTMLButtonElement;
+    expect(price.title).toMatch(/newest settled deliveries were read/);
+  });
+
+  it('Price signals says it could not be read, never zero, when the settled prices did not answer', () => {
+    mock.data = data({ rows: [row({ id: 'a', settledCostsReadable: false })] });
+    renderPage();
+    const price = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /Price signals/ }) as HTMLButtonElement;
+    expect(price.disabled).toBe(true);
+    expect(price.textContent).toContain('—');
+    expect(price.title).toMatch(/could not be read/);
+  });
+
+  it('Nutrition not recorded counts and lists the goods the coverage read does not name (DD-r108-36)', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 3 });
+    mock.data = data({ rows: [row({ id: 'has' }), row({ id: 'none1' }), row({ id: 'none2' })] });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const nut = (await within(chips).findByRole('button', { name: /^Nutrition not recorded 2$/ })) as HTMLButtonElement;
+    expect(nut.disabled).toBe(false);
+    fireEvent.click(nut);
+    expect(screen.getByTestId('inv-row-none1')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-none2')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-has')).toBeNull();
+  });
+
+  it("Fill what's in it opens from the Nutrition not recorded chip for a manager, never for staff (r108 g14)", async () => {
+    for (const canManage of [true, false]) {
+      nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 2 });
+      mock.data = data({ canManage, rows: [row({ id: 'has' }), row({ id: 'none1' })] });
+      renderPage();
+      fireEvent.click(await within(screen.getByTestId('inventory-chips')).findByRole('button', { name: /^Nutrition not recorded 1$/ }));
+      if (canManage) expect(screen.getByRole('button', { name: 'Fill what’s in it (1)' })).toBeTruthy();
+      else expect(screen.queryByTestId('ivn-lane-open')).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('Nutrition not recorded never counts or lists a supply: it holds nothing to state', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 3 });
+    mock.data = data({
+      rows: [row({ id: 'has' }), row({ id: 'none1' }), row({ id: 'sup', wineId: null, name: 'Napkins', type: null, kind: null })],
+      rawItems: [{ id: 'sup', kind: 'supply', uom: 'each', display_name: 'Napkins' }],
+    });
+    renderPage();
+    const chips = screen.getByTestId('inventory-chips');
+    const nut = (await within(chips).findByRole('button', { name: /^Nutrition not recorded 1$/ })) as HTMLButtonElement;
+    fireEvent.click(nut);
+    expect(screen.getByTestId('inv-row-none1')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-sup')).toBeNull();
+  });
+
+  it('Nutrition not recorded is held, not shown at its old count, when a later re-read fails', async () => {
+    nutCov.read.mockResolvedValueOnce({ recordedItemIds: ['has'], houseItems: 2 });
+    mock.data = data({ rows: [row({ id: 'has' }), row({ id: 'none1' })] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await within(screen.getByTestId('inventory-chips')).findByRole('button', { name: /^Nutrition not recorded 1$/ });
+    nutCov.read.mockRejectedValueOnce(Object.assign(new Error('status 503'), { response: { status: 503, data: {} } }));
+    await qc.invalidateQueries({ queryKey: ['inventory', 'r1', 'nutrition', 'coverage'] });
+    await waitFor(() => expect(screen.getByTestId('iv-chip-nutrition-unread')).toBeTruthy());
+    expect((screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('Nutrition not recorded says it could not be read, never 0 and never every good, when the read fails', async () => {
+    nutCov.read.mockRejectedValueOnce(Object.assign(new Error('status 503'), { response: { status: 503, data: {} } }));
+    mock.data = data({ rows: [row({ id: 'a' }), row({ id: 'b' })] });
+    renderPage();
+    await waitFor(() =>
+      expect((screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement).title).toMatch(/could not be read/),
+    );
+    const nut = screen.getByTestId('iv-chip-nutrition-unread') as HTMLButtonElement;
+    expect(nut.disabled).toBe(true);
+    expect(nut.textContent).toContain('—');
+    expect(nut.textContent).not.toMatch(/\b[02]\b/);
+  });
+
+  it('Price signals is a cost figure: staff are not shown the chip', () => {
+    mock.data = data({
+      canManage: false,
+      rows: [row({ id: 'up', lastSettledCost: 11.2, previousSettledCost: 10, settledCostsReadable: true })],
+    });
+    renderPage();
+    expect(within(screen.getByTestId('inventory-chips')).queryByRole('button', { name: /Price signals/ })).toBeNull();
+  });
+
   it('shows the house price editor only to owners and managers', () => {
     mock.data = data({ rows: [row()], canManage: true });
     const { unmount } = renderPage();
@@ -475,12 +676,12 @@ describe('The Tools row offers only what this session can do (INV-W18)', () => {
 });
 
 describe('The Cellar map speaks the page\'s words (INV-W19)', () => {
-  it('hands the map the table\'s tint rule and the chips\' words', () => {
+  it('hands the map the table\'s tint rule and the chips\' words', async () => {
     mock.mapProps = null;
     mock.data = data({ rows: [row({ id: 'a', name: 'Barolo' })] });
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Cellar map' }));
-    expect(screen.getByTestId('cellar-map')).toBeTruthy();
+    expect(await screen.findByTestId('cellar-map')).toBeTruthy();
     // Re-read through the declared type: the `= null` above narrows it for tsc.
     const props = mock.mapProps as Record<string, unknown> | null;
     expect(props?.toneOf).toBe(mapTone);
@@ -567,6 +768,43 @@ describe('every drink, not only wine (INV-W30)', () => {
     expect([spirit.type, spirit.kind]).toEqual(['spirit', 'spirit']);
     const bare = toRow({ id: 'i2', wineId: null, stockLive: 1 } as never, null);
     expect([bare.type, bare.kind]).toEqual([null, null]);
+  });
+
+  it('names a food or supply by the house\'s own name, not the empty library', () => {
+    const snake = toRow({ id: 'f1', wineId: null, display_name: 'Arborio rice', stockLive: 3 } as never, null);
+    expect(snake.name).toBe('Arborio rice');
+    const camel = toRow({ id: 'f2', wineId: null, displayName: 'Olive oil', stockLive: 3 } as never, null);
+    expect(camel.name).toBe('Olive oil');
+    // The house's alias still wins, and a library good is still named by the library.
+    expect(toRow({ id: 'f3', wineName: 'Alias', display_name: 'Own' } as never, null).name).toBe('Alias');
+    expect(toRow({ id: 'w', wineId: 'w1' } as never, { id: 'w1', name: 'Lagavulin 16' } as never).name).toBe('Lagavulin 16');
+    expect(toRow({ id: 'x', wineId: null } as never, null).name).toBeNull();
+  });
+
+  it('carries where the pace comes from, and drops it when the pace was not read', () => {
+    const api = {
+      id: 'f1',
+      wineId: null,
+      stockLive: 8200,
+      velocityPerDay: 290,
+      daysOfCover: 28,
+      usageSource: 'counts',
+      usageSince: '2026-10-22T09:00:00Z',
+      usageUntil: '2026-11-11T09:00:00Z',
+      usageQty: 5800,
+    };
+    const r = toRow(api as never, null);
+    expect([r.usageSource, r.usageSince, r.usageUntil, r.usageQty, r.velocity, r.runway]).toEqual([
+      'counts',
+      '2026-10-22T09:00:00Z',
+      '2026-11-11T09:00:00Z',
+      5800,
+      290,
+      28,
+    ]);
+    const unread = toRow({ ...api, analyticsReadable: false } as never, null);
+    expect([unread.usageSource, unread.usageQty, unread.velocity]).toEqual([null, null, null]);
+    expect(toRow({ id: 'x', stockLive: 1, usageSource: 'guess' } as never, null).usageSource).toBeNull();
   });
 
   it('says each kind in the house words, never the key', () => {
@@ -818,6 +1056,8 @@ describe('a side read that did not answer is named, never read as health (INV-W2
   it('still says "not recorded" when the library answered and the title has no type', () => {
     mock.data = data({ rows: [row({ type: null })] });
     renderPage();
+    // Nothing has a type, so the column rests behind the Columns control (N-18).
+    fireEvent.click(screen.getByTestId('inv-columns'));
     const tr = screen.getByTestId('inventory-table').querySelector('tbody tr:not(.iv-group)') as HTMLElement;
     expect(tr.querySelector('td[data-label="Type"]')!.textContent).toBe('not recorded');
   });
@@ -826,6 +1066,17 @@ describe('a side read that did not answer is named, never read as health (INV-W2
     const s = readSentence([row()], { state: 'recorded', code: 'EUR' }, true);
     expect(s).toContain('This page does not read a market price yet, so the market reads unknown, not zero.');
     expect(s).not.toContain('No title has a market price');
+  });
+
+  // QA round 10b: a failed rollup read is not "no cost on the books".
+  it('says the value at cost could not be read when the costs were not read', () => {
+    mock.data = data({ rows: [row({ rollupReadable: false, wac: null, value: null })] });
+    renderPage();
+    const tr = screen.getByTestId('inventory-table').querySelector('tbody tr:not(.iv-group)') as HTMLElement;
+    expect(tr.querySelector('td[data-label="Value at cost"]')!.textContent).toBe('could not be read');
+    const s = readSentence([row({ rollupReadable: false, wac: null, value: null })], { state: 'recorded', code: 'EUR' }, true);
+    expect(s).toContain('The costs could not be read');
+    expect(s).not.toContain('No title has a cost');
   });
 });
 
@@ -960,23 +1211,28 @@ describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)',
 });
 
 describe('INV-W38 — the view is the URL', () => {
-  function renderAt(url: string) {
-    const seen: { path: string; search: string } = { path: '', search: '' };
+  function renderAt(url: string, before: string[] = [], extra: ReactNode = null) {
+    const seen = { path: '', search: '', back: () => undefined as void, replace: (_to: string) => undefined as void };
     function Probe() {
       const loc = useLocation();
+      const nav = useNavigate();
       seen.path = loc.pathname;
       seen.search = loc.search;
+      seen.back = () => nav(-1);
+      seen.replace = (to: string) => nav(to, { replace: true });
       return null;
     }
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[url]}>
+        <MemoryRouter initialEntries={[...before, url]} initialIndex={before.length}>
           <Routes>
             <Route path="/inventory" element={<InventoryNext />} />
             <Route path="/receiving" element={<div data-testid="receiving" />} />
+            <Route path="/home" element={<div data-testid="home" />} />
           </Routes>
           <Probe />
+          {extra}
         </MemoryRouter>
       </QueryClientProvider>,
     );
@@ -1004,11 +1260,245 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).get('open')).toBe('b');
   });
 
+  it('(e) a row click opens the item drawer, not a row in place; Back closes it', async () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+    expect(screen.getByTestId('ivd-cards')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+    // Not a row in place: the one opened block is the drawer's acts, with no evidence panel until a card asks.
+    expect(screen.getByTestId('inv-row-b').querySelector('[data-testid="row-dropdown"]')).toBeNull();
+    expect(screen.getAllByTestId('row-dropdown')).toHaveLength(1);
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+    act(() => seen.back());
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(new URLSearchParams(seen.search).has('open')).toBe(false);
+  });
+
+  it('(e2) Previous and Next good replace ?open= in place, so one Back still closes the drawer (r108 g12)', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory', ['/home']);
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+    const prev = screen.getByRole('button', { name: 'Previous good' }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: 'Next good' }) as HTMLButtonElement;
+    // The list shows a above b, so b is the last: nothing below it.
+    expect(next.disabled).toBe(true);
+    fireEvent.click(prev);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('a');
+    expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
+    act(() => seen.back());
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(seen.path).toBe('/inventory');
+  });
+
+  it('(g) a carried food lists under Food, and the kind is kept in the URL', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    const seen = renderAt('/inventory');
+    fireEvent.click(within(screen.getByTestId('inventory-kinds')).getByRole('button', { name: 'Food' }));
+    expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+    expect(new URLSearchParams(seen.search).get('kind')).toBe('food');
+  });
+
+  it('draws no kind chips for a house that carries only drinks', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    expect(screen.queryByTestId('inventory-kinds')).toBeNull();
+  });
+
+  it('lists a supply under Supplies, never under Drinks', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 's', wineId: null, name: 'Napkins', type: null, kind: null })],
+      rawItems: [{ id: 's', kind: 'supply', uom: 'each', display_name: 'Napkins' }],
+    });
+    renderAt('/inventory');
+    const kinds = screen.getByTestId('inventory-kinds');
+    fireEvent.click(within(kinds).getByRole('button', { name: 'Drinks' }));
+    expect(screen.queryByTestId('inv-row-s')).toBeNull();
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    fireEvent.click(within(kinds).getByRole('button', { name: 'Supplies' }));
+    expect(screen.getByTestId('inv-row-s')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+  });
+
+  it('ignores a ?kind= the page does not know, and lists every good', () => {
+    expect(readView(new URLSearchParams('kind=bogus')).kind).toBe('');
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory?kind=bogus');
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+  });
+
+  it('offers Carry to an owner or manager', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    expect(screen.getByRole('button', { name: 'Carry a food or supply' })).toBeTruthy();
+  });
+
+  it('offers no Carry to staff', () => {
+    mock.data = data({ rows: two(), canManage: false });
+    renderAt('/inventory');
+    expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
+  // Inventory r28, gap 6: a mapping decides what a sale takes off the shelf.
+  it('offers Map POS buttons to an owner or manager, and not to staff', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    const { unmount } = renderPage();
+    expect(screen.getByRole('button', { name: 'Map POS buttons' })).toBeTruthy();
+    unmount();
+    mock.data = data({ rows: two(), canManage: false });
+    renderPage();
+    expect(screen.queryByRole('button', { name: 'Map POS buttons' })).toBeNull();
+  });
+
+  it('tells staff who maps the POS lines that moved no stock, with no button to map them', async () => {
+    pos.lines.mockImplementation(async () => ({ summary: { open_lines: 4 } }));
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' }), row({ id: 'b', name: 'Beta' })], canManage: false });
+    renderPage();
+    const said = await screen.findByTestId('inv-pos-queue');
+    expect(said.textContent).toContain('An owner or a manager maps them.');
+    expect(within(said).queryByRole('button', { name: 'Map them' })).toBeNull();
+  });
+
+  // Inventory r28, gap 2: removing many goods at once is a manager's too.
+  it('offers staff no Remove selected', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' }), row({ id: 'b', name: 'Beta' })], canManage: false });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha' }));
+    expect(screen.getByRole('button', { name: 'Export selected' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Remove selected' })).toBeNull();
+  });
+
+  const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
+
+  it('(f) Close on a row opened here steps back, so the next Back leaves the page', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory', ['/home']);
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(screen.getByTestId('ivd-cards')).toBeTruthy();
+    closeDrawer();
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(seen.path).toBe('/inventory');
+    expect(new URLSearchParams(seen.search).has('open')).toBe(false);
+    // Close popped the entry the row pushed: one Back now leaves /inventory.
+    act(() => seen.back());
+    expect(seen.path).toBe('/home');
+  });
+
+  it('(g1) after Back closes a drawer opened by its Used in count, the next good does not open scrolled to Used in', async () => {
+    mock.data = data({ rows: [row({ id: 'a', wineId: 'wa', name: 'Ankara Red', producer: 'A', usedIn: 3 }), row({ id: 'b', wineId: 'wb', name: 'Istanbul White', producer: 'B', usedIn: 2 })] });
+    const spy = vi.fn();
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      const seen = renderAt('/inventory', ['/home']);
+      const toUsed = () => spy.mock.contexts.filter((el) => (el as Element).id === 'ivd-used').length;
+      fireEvent.click(screen.getByLabelText(/Used in 3 recipes/));
+      await waitFor(() => expect(toUsed()).toBe(1));
+      // Browser Back is a history step: it drops ?open= without Close ever running.
+      act(() => seen.back());
+      expect(screen.queryByTestId('ivd-cards')).toBeNull();
+      spy.mockClear();
+      fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+      expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+      await new Promise((r) => setTimeout(r, 400));
+      expect(toUsed()).toBe(0);
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
+  });
+
+  it('(g) Close on a drawer a link opened closes in place and never leaves the page', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory?open=b', ['/home']);
+    expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+    closeDrawer();
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(seen.path).toBe('/inventory');
+    expect(new URLSearchParams(seen.search).has('open')).toBe(false);
+  });
+
+  it('(g2) after Back closes a row, a drawer a link then opens still closes in place', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory', ['/home']);
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    act(() => seen.back());
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    act(() => seen.replace('/inventory?open=a'));
+    expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
+    closeDrawer();
+    expect(seen.path).toBe('/inventory');
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+  });
+
+  it('(h) a drawer opened on another item starts fresh, with no detail card left open', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    fireEvent.click(screen.getByTestId('ivd-card-gap'));
+    expect(screen.getByTestId('ivd-evidence')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('inv-row-a').querySelector('button[aria-expanded]')!);
+    expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it("an owner who has not accepted the terms meets the sheet alone: a link's drawer waits, then opens on acceptance", () => {
+    terms.busy = true;
+    try {
+      mock.data = data({ rows: two() });
+      const seen = renderAt('/inventory?open=b');
+      expect(screen.queryByRole('heading', { name: 'Istanbul White' })).toBeNull();
+      expect(screen.queryByTestId('ivd-cards')).toBeNull();
+      // The link survives, so the drawer opens once the terms are accepted.
+      expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+      cleanup();
+      terms.busy = false;
+      renderAt('/inventory?open=b');
+      expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+    } finally {
+      terms.busy = false;
+    }
+  });
+
   it('opens the title a ?highlight= link names, by row id or by wine id', () => {
     mock.data = data({ rows: two() });
     renderAt('/inventory?highlight=wb');
     expect(screen.getByTestId('inv-row-b').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByTestId('inv-row-a').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it("a link's good is scrolled to before the layout phase ends, and at once (a passive effect fails this)", () => {
+    mock.data = data({ rows: two() });
+    const log: string[] = [];
+    const was = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) {
+      log.push(`scroll:${this.id}:${JSON.stringify(o)}`);
+    };
+    function EndProbe() {
+      useLayoutEffect(() => {
+        log.push('layout-end');
+      }, []);
+      return null;
+    }
+    try {
+      renderAt('/inventory?open=b', [], <EndProbe />);
+      const mine = log.filter((l) => l.startsWith('scroll:iv-row-b'));
+      // The table (first paint) and this page both put the page on the row; each is at once and in the layout phase.
+      expect(mine.length).toBeGreaterThan(0);
+      expect(new Set(mine)).toEqual(new Set(['scroll:iv-row-b:{"block":"center","behavior":"instant"}']));
+      expect(log.lastIndexOf(mine[0])).toBeLessThan(log.indexOf('layout-end'));
+    } finally {
+      Element.prototype.scrollIntoView = was;
+    }
   });
 
   it('keeps what a person narrowed to in the URL, and drops it again at the default', () => {
@@ -1048,17 +1538,18 @@ describe('INV-W39 — the book has a name', () => {
 describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, then flip)', () => {
   const cave = { id: 'z1', name: 'Cave', type: 'cellar', capacity: 100, currentCount: 0, temperature: '55°F', color: '#000' };
 
-  it('A delivery without an order opens the shared workspace from the empty house and from Tools, and refreshes the book when saved', () => {
+  it('A delivery without an order opens the shared workspace from the empty house and from Tools, and refreshes the book when saved', async () => {
     mock.data = data({ rows: [] });
     const first = renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'A delivery without an order' }));
-    expect(screen.getByTestId('manual-receipt')).toBeTruthy();
+    expect(await screen.findByTestId('manual-receipt')).toBeTruthy();
     first.unmount();
 
     ported.receipt = null;
     mock.data = data({ rows: [row()] });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'A delivery without an order' }));
+    await screen.findByTestId('manual-receipt');
     expect(ported.receipt).not.toBeNull();
     expect(ported.receipt!.isOpen).toBe(true);
     expect(typeof ported.receipt!.onSaved).toBe('function');
@@ -1069,7 +1560,7 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     mock.data = data({ rows: [row()] });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Start an auction lot' }));
-    expect(screen.getByTestId('auction-start')).toBeTruthy();
+    expect(await screen.findByTestId('auction-start')).toBeTruthy();
     const onCarry = ported.auction!.onCarry as (i: unknown) => Promise<{ inventoryId: string }>;
     const out = await onCarry({ wine: { id: 'w9' }, quantity: 6, costPerBottle: 42 });
     expect(ported.create).toHaveBeenCalledWith(
@@ -1079,11 +1570,11 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     expect(out).toEqual({ inventoryId: 'inv-new' });
   });
 
-  it('the auction start is reachable from the empty house too', () => {
+  it('the auction start is reachable from the empty house too', async () => {
     mock.data = data({ rows: [] });
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: 'Start an auction lot' }));
-    expect(screen.getByTestId('auction-start')).toBeTruthy();
+    expect(await screen.findByTestId('auction-start')).toBeTruthy();
   });
 
   it('Auto-Locate is handed to Storage locations, plans by wine id, and assigns what the manager confirms', async () => {
@@ -1095,9 +1586,10 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    await screen.findByTestId('storage-manager');
     expect(typeof ported.slm!.onAutoLocate).toBe('function');
     act(() => (ported.slm!.onAutoLocate as () => void)());
-    expect(screen.getByTestId('auto-locate-preview')).toBeTruthy();
+    expect(await screen.findByTestId('auto-locate-preview')).toBeTruthy();
     const plan = ported.preview!.result as { assignments: { wineId: string; locationId: string; quantity: number }[] };
     expect(plan.assignments).toEqual([expect.objectContaining({ wineId: 'w1', locationId: 'z1', quantity: 3 })]);
     await act(async () => {
@@ -1108,7 +1600,7 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     ok.mockRestore();
   });
 
-  it('Auto-Locate waits, and says so, when what is already placed could not be read', () => {
+  it('Auto-Locate waits, and says so, when what is already placed could not be read', async () => {
     const said = vi.spyOn(toast, 'error').mockImplementation(() => '' as never);
     ported.preview = null;
     mock.data = data({
@@ -1117,13 +1609,14 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    await screen.findByTestId('storage-manager');
     act(() => (ported.slm!.onAutoLocate as () => void)());
     expect(screen.queryByTestId('auto-locate-preview')).toBeNull();
     expect(said.mock.calls[0][0]).toMatch(/^Auto-Locate waits/);
     said.mockRestore();
   });
 
-  it('Auto-Locate leaves out a title whose count was not read rather than planning it as one bottle', () => {
+  it('Auto-Locate leaves out a title whose count was not read rather than planning it as one bottle', async () => {
     const note = vi.spyOn(toast, 'message').mockImplementation(() => '' as never);
     mock.data = data({
       rows: [row({ id: 'a', wineId: 'w1', type: 'red', stock: 3, shadow: 0 }), row({ id: 'b', wineId: 'w2', stock: null })],
@@ -1131,7 +1624,9 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     });
     renderPage();
     fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    await screen.findByTestId('storage-manager');
     act(() => (ported.slm!.onAutoLocate as () => void)());
+    await screen.findByTestId('auto-locate-preview');
     const plan = ported.preview!.result as { assignments: { wineId: string }[] };
     expect(plan.assignments.map((x) => x.wineId)).toEqual(['w1']);
     expect(note.mock.calls[0][0]).toMatch(/^1 title is left out of the plan/);
@@ -1197,6 +1692,21 @@ describe('row selection, ported from the legacy table (re-gate 2026-10-31)', () 
     expect(opts.title).toBe('Inventory selection');
     expect(opts.rows.map((r) => r.id).sort()).toEqual(['a', 'c']);
     expect(opts.columns.map((c) => c.header)).toContain('Value at cost');
+  });
+
+  it('Export selected hands staff the counts and prices without the cost columns (inventory r28 gap 9)', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: three(), canManage: false });
+    renderPage();
+    tick('Alpha');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export selected' }));
+    });
+    const opts = exportSpy.mock.calls[0][0] as { columns: { header: string }[] };
+    const headers = opts.columns.map((c) => c.header);
+    expect(headers).not.toContain('WAC');
+    expect(headers).not.toContain('Value at cost');
+    expect(headers).toContain('Live');
   });
 
   it('Copy names puts one name per line on the clipboard and says how many', async () => {
@@ -1365,6 +1875,14 @@ describe('the rest of the census: keys, realtime, POS queue, count-sheet notes (
     expect(screen.queryByTestId('inventory-selbar')).toBeNull();
   });
 
+  it('Cmd/Ctrl+A over 1,200 goods selects all 1,200 while the table draws a few dozen (r104 g2)', () => {
+    mock.data = data({ rows: Array.from({ length: 1200 }, (_, i) => row({ id: `bulk${i}`, wineId: `bw${i}`, name: `Good ${i}` })) });
+    renderPage();
+    expect(document.querySelectorAll('tr.iv-row').length).toBeLessThanOrEqual(80);
+    fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
+    expect(screen.getByTestId('inventory-selbar').textContent).toMatch(/1,?200 selected/);
+  });
+
   it('the arrows step between titles and Space on a title ticks it', () => {
     mock.data = data({ rows: three() });
     renderPage();
@@ -1484,5 +2002,267 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Name');
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
+  });
+
+  it('the Used in header says ascending, because the list leads with the fewest recipes (r106 walk)', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Beta', usedIn: 4 }), row({ id: 'b', name: 'Alpha', usedIn: 0 })] });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Used in' }));
+    expect(screen.getByRole('columnheader', { name: 'Used in' }).getAttribute('aria-sort')).toBe('ascending');
+  });
+});
+
+// r43 w2 F2 residual: a house whose book holds only food and supplies has no
+// cellar and no bottles. It hears "stock room" and "goods", and the opening
+// sentence does not sum kilograms and litres into "bottles".
+describe('a house of goods is not a cellar', () => {
+  const flour = () => row({ id: 'f', wineId: null, name: 'Bread Flour', type: null, kind: null, stock: 5, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const sugar = () => row({ id: 's', wineId: null, name: 'Caster Sugar', type: null, kind: null, stock: 3, par: null, standing: 'above', runway: null, value: null, zones: [] });
+  const goods = [
+    { id: 'f', kind: 'food', uom: 'g', display_name: 'Bread Flour' },
+    { id: 's', kind: 'supply', uom: 'each', display_name: 'Caster Sugar' },
+  ];
+
+  it('says stock room, goods and no bottles when no row is a drink', () => {
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('The stock room · Inventory');
+    expect(screen.getByTestId('inventory-read-sentence').textContent).toMatch(/^2 goods\./);
+    expect(screen.getByTestId('inventory-read-sentence').textContent).not.toMatch(/bottle|title/);
+    expect(screen.getByPlaceholderText('Search goods')).toBeTruthy();
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('All 2 of 2 goods are listed');
+    expect(text).not.toMatch(/cellar|titles|every title/i);
+    expect(screen.getByRole('table', { name: 'The book: every good on hand' })).toBeTruthy();
+  });
+
+  it('says the no-match line in goods', () => {
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('Search goods'), { target: { value: 'zzzz' } });
+    expect(document.body.textContent).toContain('No good matches this search and these filters; 2 goods are on the books.');
+  });
+
+  it('heads the name column "Good" and says "Unnamed good" in a house of goods', () => {
+    mock.data = data({ rows: [flour(), { ...sugar(), name: null }], rawItems: goods });
+    renderPage();
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toContain('Good');
+    expect(heads).not.toContain('Title');
+    expect(document.body.textContent).toContain('Unnamed good');
+    expect(document.body.textContent).not.toMatch(/Unnamed title/);
+  });
+
+  it('heads the exported files "Good" in a house of goods, "Title" with one drink', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    expect(exportSpy).toHaveBeenCalledTimes(2);
+    for (const [opts] of exportSpy.mock.calls) {
+      const cols = (opts as { columns: { header: string }[] }).columns.map((c) => c.header);
+      expect(cols).toContain('Good');
+      expect(cols).not.toContain('Title');
+    }
+  });
+
+  it('leaves the drink-only columns out of a house of goods\' files, keeps them with one drink', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    const view = renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    for (const [opts] of exportSpy.mock.calls) {
+      const cols = (opts as { columns: { header: string }[] }).columns.map((c) => c.header);
+      for (const h of ['Producer', 'Vintage', 'Bottle size (ml)', 'Your bottle price', 'Your glass price']) expect(cols).not.toContain(h);
+    }
+    view.unmount();
+    exportSpy.mockClear();
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const cols = (exportSpy.mock.calls[0][0] as { columns: { header: string }[] }).columns.map((c) => c.header);
+    expect(cols).toEqual(expect.arrayContaining(['Producer', 'Vintage', 'Bottle size (ml)']));
+  });
+
+  it('copies a nameless good as "Unnamed good"', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const ok = vi.spyOn(toast, 'success').mockImplementation(() => '' as never);
+    mock.data = data({ rows: [flour(), { ...sugar(), name: null }], rawItems: goods });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select this good' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy names' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('Unnamed good');
+    ok.mockRestore();
+  });
+
+  it('keeps the cellar words for a house with even one drink', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    expect(document.body.textContent).toContain('The cellar · Inventory');
+    expect(screen.getByPlaceholderText('Search titles, producers, grapes')).toBeTruthy();
+    expect(screen.getByTestId('inventory-read-sentence').textContent).toMatch(/^2 titles, .*bottle/);
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Title');
+  });
+});
+
+describe('readSentence in a house of goods', () => {
+  const cur = { state: 'recorded', code: 'EUR' } as const;
+  const food = (id: string, over: Partial<InvRow> = {}) => row({ id, wineId: null, type: null, kind: null, par: null, standing: 'above', runway: null, zones: [], ...over });
+
+  it('counts goods and names the unread ones, with no bottle sum', async () => {
+    const { GOODS_WORDS } = await import('./iv-house-words');
+    const s = readSentence([food('a', { stock: 5000, value: null }), food('b', { stock: null, value: null })], cur, true, GOODS_WORDS);
+    expect(s).toContain('2 goods, 1 with stock read (1 could not be read).');
+    expect(s).toContain('Of the goods read, nothing is out or below par.');
+    expect(s).toContain('No good has a cost on the books yet');
+    expect(s).not.toMatch(/bottle|title/);
+  });
+
+  it('says the money in goods, at the stock room', async () => {
+    const { GOODS_WORDS } = await import('./iv-house-words');
+    const s = readSentence([food('a', { stock: 5, value: 12 })], cur, true, GOODS_WORDS);
+    expect(s).toContain('At cost the stock room holds');
+    expect(s).toContain('1 of 1 goods priced');
+  });
+
+  it('sortWords says good for a house of goods and title otherwise', async () => {
+    const { GOODS_WORDS } = await import('./iv-house-words');
+    const rows = [food('a', { value: null })];
+    expect(sortWords('value', rows, GOODS_WORDS)).toContain('no good listed has a cost');
+    expect(sortWords('value', rows)).toContain('no title listed has a cost');
+  });
+});
+
+/* ── the phone: one Filter button, and a count mode for staff (critic c3 round 3) ── */
+describe('/inventory on a phone', () => {
+  const original = window.matchMedia;
+  const phone = (on: boolean) => {
+    window.matchMedia = ((q: string) => ({
+      matches: on && q.includes('767'),
+      media: q,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    window.matchMedia = original;
+  });
+  const rowsOf = () => [
+    row({ id: 'a', name: 'Counted last week', lastCountedAt: '2026-11-12T10:00:00Z' }),
+    row({ id: 'b', name: 'Never counted', lastCountedAt: null, standing: 'below', stock: 1 }),
+  ];
+
+  it('an owner gets the search and one 48 px Filter button; the filters wait in the sheet', () => {
+    phone(true);
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(screen.getByTestId('inventory-filter-button')).toBeTruthy();
+    expect(screen.queryByTestId('inventory-chips')).toBeNull();
+    expect(screen.queryByTestId('inventory-kinds')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'View' })).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('inventory-filter-button'));
+    const sheet = screen.getByTestId('inventory-filter-sheet');
+    expect(within(sheet).getByTestId('inventory-chips')).toBeTruthy();
+    expect(within(sheet).getByRole('group', { name: 'View' })).toBeTruthy();
+    expect(within(sheet).getByRole('button', { name: 'Tools' })).toBeTruthy();
+  });
+
+  it('the Filter button says how many controls are set, and Clear puts them back', () => {
+    phone(true);
+    mock.data = data({ rows: rowsOf() });
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/inventory?chip=below&sort=name']}>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const btn = screen.getByTestId('inventory-filter-button');
+    expect(within(btn).getByLabelText('2 set')).toBeTruthy();
+    fireEvent.click(btn);
+    fireEvent.click(within(screen.getByTestId('inventory-filter-sheet')).getByRole('button', { name: 'Clear' }));
+    expect(within(screen.getByTestId('inventory-filter-button')).queryByLabelText(/set$/)).toBeNull();
+    expect(container).toBeTruthy();
+  });
+
+  it('a desktop window keeps the chips and the toolbar on the page, with no Filter button', () => {
+    phone(false);
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(screen.queryByTestId('inventory-filter-button')).toBeNull();
+    expect(screen.getByTestId('inventory-chips')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tools' })).toBeTruthy();
+  });
+
+  it('staff get a count mode: search, the rows and a Count bar, and nothing else', () => {
+    phone(true);
+    insights.props.length = 0;
+    mock.data = data({ canManage: false, rows: rowsOf() });
+    renderPage();
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.queryByTestId('inventory-filter-button')).toBeNull();
+    expect(screen.queryByTestId('inventory-chips')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Tools' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Add a bottle' })).toBeNull();
+    expect(screen.queryByTestId('contextual-insights')).toBeNull();
+    expect(screen.queryByTestId('inventory-read-sentence')).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(insights.props).toHaveLength(0);
+    const bar = screen.getByTestId('inventory-count-bar');
+    expect(bar.textContent).toContain('Count');
+    // The next good is the one nobody has counted.
+    expect(bar.textContent).toContain('Never counted');
+  });
+
+  it('the Count bar opens that good, and an owner on a phone has no Count bar', () => {
+    phone(true);
+    mock.data = data({ canManage: false, rows: rowsOf() });
+    renderPage();
+    fireEvent.click(within(screen.getByTestId('inventory-count-bar')).getByRole('button'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    cleanup();
+    mock.data = data({ rows: rowsOf() });
+    renderPage();
+    expect(screen.queryByTestId('inventory-count-bar')).toBeNull();
+    expect(screen.getByTestId('contextual-insights')).toBeTruthy();
+  });
+});
+
+describe('the table css', () => {
+  it('lets rows off the screen skip layout, on the phone width only', () => {
+    const css = readFileSync(join(__dirname, 'inventory-next.css'), 'utf8');
+    const head = css.indexOf('@media (max-width: 640px) {');
+    expect(head).toBeGreaterThan(-1);
+    // the media block ends where its braces balance
+    let depth = 0;
+    let end = head;
+    for (let i = css.indexOf('{', head); i < css.length; i++) {
+      if (css[i] === '{') depth++;
+      if (css[i] === '}' && --depth === 0) {
+        end = i;
+        break;
+      }
+    }
+    const phone = css.slice(head, end);
+    expect(phone).toMatch(/\.iv-table tbody tr\s*\{[^}]*content-visibility:\s*auto;[^}]*contain-intrinsic-size:\s*auto 56px/);
+    // and nowhere outside it
+    expect(css.slice(0, head) + css.slice(end)).not.toMatch(/content-visibility/);
   });
 });

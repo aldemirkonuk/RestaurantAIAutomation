@@ -238,14 +238,22 @@ export class CatalogMatcherService {
     source: string,
   ): Promise<Set<string>> {
     const db = this.dbService.getClient();
-    const { data, error } = await db
-      .from("pos_item_mappings")
-      .select("external_item_id")
-      .eq("restaurant_id", restaurantId)
-      .in("source", [source, "*"])
-      .not("inventory_id", "is", null);
-    if (error) throw new Error(error.message);
-    return new Set((data || []).map((r: any) => r.external_item_id));
+    // A button mapped to a drink recipe (cocktail_id, inventory r28 gap 1
+    // slice 2) is mapped too: auto-map must never overwrite it with a shelf
+    // item it happens to match by name. Two reads, one per link, so each keeps
+    // its own server-side filter.
+    const mapped = new Set<string>();
+    for (const col of ["inventory_id", "cocktail_id"] as const) {
+      const { data, error } = await db
+        .from("pos_item_mappings")
+        .select("external_item_id")
+        .eq("restaurant_id", restaurantId)
+        .in("source", [source, "*"])
+        .not(col, "is", null);
+      if (error) throw new Error(error.message);
+      for (const r of data || []) mapped.add((r as any).external_item_id);
+    }
+    return mapped;
   }
 
   // ===========================================================================

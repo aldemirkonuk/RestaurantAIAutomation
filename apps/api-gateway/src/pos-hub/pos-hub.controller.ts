@@ -42,6 +42,7 @@ import {
  *   POST /pos-hub/mappings/:restaurantId/sale-unit          batch: the human's answers
  *   POST /pos-hub/mappings/:restaurantId/:mappingId/sale-unit   one answer
  *   GET  /pos-hub/unresolved/:restaurantId       the open queue of lines that moved no stock
+ *   GET  /pos-hub/check-margin/:restaurantId/:checkId   a check's cost and margin, from the cost kept at sale
  *   POST /pos-hub/catalog-match/:restaurantId/proposals/approve   confirm many, with their units
  */
 @ApiTags("pos-hub")
@@ -385,6 +386,28 @@ export class PosHubController {
       throw new HttpException(
         error.message || "Unresolved-line read failed",
         HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get("check-margin/:restaurantId/:checkId")
+  @ApiOperation({
+    summary: "A check's wine cost and margin, from the cost kept when each line sold",
+    description:
+      "Reads wine_consumption_log.cost_at_sale, written at sale time, never a lot. A later invoice does not move it. Lines booked before costs were kept, or with no recorded cost, say 'cost not kept' and stay out of the totals.",
+  })
+  @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
+  @ApiParam({ name: "checkId", description: "The till's check id" })
+  async checkMargin(
+    @Param("restaurantId") restaurantId: string,
+    @Param("checkId") checkId: string,
+  ) {
+    try {
+      return await this.posHub.getCheckMargin(restaurantId, checkId);
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Check margin read failed",
+        HttpStatus.BAD_GATEWAY,
       );
     }
   }
