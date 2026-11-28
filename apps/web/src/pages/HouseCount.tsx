@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Link } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { getInventory } from '../services/api/inventory'
-import { apiClient, getActiveRestaurantId } from '../services/api/client'
+import { apiClient } from '../services/api/client'
+import { useAuth } from '../contexts/AuthContext'
 import { newClientCountId, submitSpotCount } from '../lib/spotCountOutbox'
 import { prefersReducedMotion } from '../lib/mudavym/motion'
 import { notCounted, readTypedCount, shelfOrder, toCountGood, unitWord, type CountGood } from '../lib/firstCount'
@@ -10,15 +11,14 @@ import { notCounted, readTypedCount, shelfOrder, toCountGood, unitWord, type Cou
 /** The incoming card (onboarding-r110-g2): 24 px and a fade, 200 ms. */
 export const CARD_ENTER = { px: 24, ms: 200, easing: 'cubic-bezier(0.16,1,0.3,1)' } as const
 
-type Load = { kind: 'reading' } | { kind: 'failed' } | { kind: 'read'; goods: CountGood[] }
+/** `total` is every live good the house holds; `goods` is what is left to count. */
+type Load = { kind: 'reading' } | { kind: 'failed' } | { kind: 'read'; goods: CountGood[]; total: number }
 type Mark = 'counted' | 'skipped'
 
-async function readLocationNames(): Promise<Map<string, string>> {
+async function readLocationNames(houseId: string): Promise<Map<string, string>> {
   const names = new Map<string, string>()
   try {
-    const rid = getActiveRestaurantId()
-    if (!rid) return names
-    const { data } = await apiClient.get(`/storage-locations/${rid}`)
+    const { data } = await apiClient.get(`/storage-locations/${houseId}`)
     for (const l of Array.isArray(data) ? data : []) {
       if (typeof l?.id === 'string' && typeof l?.name === 'string' && l.name.trim()) names.set(l.id, l.name.trim())
     }
@@ -36,6 +36,11 @@ async function readLocationNames(): Promise<Map<string, string>> {
  * resumes at what is left.
  */
 export default function HouseCount() {
+  // The house comes from the session, never from localStorage: the stored id is
+  // written by AuthContext's own effect, which runs after this page's, and on a
+  // new phone it is absent (or another of the user's houses).
+  const { user } = useAuth()
+  const houseId = user ? user.restaurantId || '' : null
   const [load, setLoad] = useState<Load>({ kind: 'reading' })
   const [asked, setAsked] = useState(0)
   const [index, setIndex] = useState(0)
@@ -55,11 +60,16 @@ export default function HouseCount() {
   useEffect(() => {
     let live = true
     setLoad({ kind: 'reading' })
+    if (houseId === null) return // the session has not answered yet: wait for the id
+    if (houseId === '') {
+      setLoad({ kind: 'failed' })
+      return
+    }
     ;(async () => {
       try {
-        const [rows, names] = await Promise.all([getInventory(), readLocationNames()])
+        const [rows, names] = await Promise.all([getInventory(houseId), readLocationNames(houseId)])
         const goods = (Array.isArray(rows) ? rows : []).map(toCountGood).filter((g): g is CountGood => g !== null)
-        if (live) setLoad({ kind: 'read', goods: shelfOrder(notCounted(goods), names) })
+        if (live) setLoad({ kind: 'read', goods: shelfOrder(notCounted(goods), names), total: goods.length })
       } catch {
         if (live) setLoad({ kind: 'failed' })
       }
@@ -67,7 +77,7 @@ export default function HouseCount() {
     return () => {
       live = false
     }
-  }, [asked])
+  }, [asked, houseId])
 
   const goods = load.kind === 'read' ? load.goods : []
   const good = goods[index] ?? null
@@ -120,6 +130,10 @@ export default function HouseCount() {
       setRefusal('That is not a number we can write. Type whole numbers only.')
       return
     }
+    if (!houseId) {
+      setRefusal('This count was not written. Try Next again.')
+      return
+    }
     const held = keys.current[good.id]
     const clientCountId = held && held.qty === read.qty ? held.id : newClientCountId()
     keys.current[good.id] = { qty: read.qty, id: clientCountId }
@@ -128,6 +142,7 @@ export default function HouseCount() {
       await submitSpotCount({
         itemId: good.id,
         itemLabel: good.name,
+        restaurantId: houseId,
         body: { countedQty: read.qty, clientCountId, reason: 'First count' },
       })
       setMarks((m) => ({ ...m, [good.id]: 'counted' }))
@@ -175,7 +190,7 @@ export default function HouseCount() {
           </p>
         ) : goods.length === 0 ? (
           <p className="font-serif text-2xl">
-            Every good from your menu is counted.{' '}
+            {load.total === 0 ? 'There are no goods on your shelf to count yet.' : 'Every good is counted.'}{' '}
             <Link to="/house" className="font-sans text-sm underline underline-offset-4">
               Back to your house
             </Link>
