@@ -138,6 +138,10 @@ export interface DoorReceivedSoFar {
 export interface UnverifiedDelivery {
   orderId: string
   orderNumber: string | null
+  /** The order's vendor, read for this house; null when the order names none. */
+  providerId?: string | null
+  /** Null when the vendor could not be read; the row then says so. */
+  providerName?: string | null
   countedQtyBottles: number
   countedAt: string
   ageHours: number

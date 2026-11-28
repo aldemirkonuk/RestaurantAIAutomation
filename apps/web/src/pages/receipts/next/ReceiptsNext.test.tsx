@@ -317,11 +317,11 @@ describe('ReceiptsNext', () => {
 
   it('deliveries without paperwork share the surface', async () => {
     api.unverified = {
-      items: [{ orderId: 'o9', orderNumber: 'PO-9', countedQtyBottles: 24, countedAt: '', ageHours: 5, severity: 'fresh' }],
+      items: [{ orderId: 'o9', orderNumber: 'PO-9', providerId: 'p1', providerName: 'Acme Wines', countedQtyBottles: 24, countedAt: '', ageHours: 5, severity: 'fresh' }],
     };
     render(<ReceiptsNext />, { wrapper });
     expect(await screen.findByText(/Counted at the door, no paperwork yet/)).toBeInTheDocument();
-    expect(screen.getByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
+    expect(screen.getByText('Acme Wines · PO-9 · 24 counted · today')).toBeInTheDocument();
   });
 
   it('the door strip says neither "btl" nor a slice of the order id (W38)', async () => {
@@ -329,7 +329,7 @@ describe('ReceiptsNext', () => {
       items: [{ orderId: 'o9abcdef-1234', orderNumber: null, countedQtyBottles: 6, countedAt: '', ageHours: 2, severity: 'fresh' }],
     };
     const { container } = render(<ReceiptsNext />, { wrapper });
-    expect(await screen.findByText(/an order with no number · 6 counted · 2h ago/)).toBeInTheDocument();
+    expect(await screen.findByText(/an order with no number · 6 counted · today/)).toBeInTheDocument();
     expect(container.textContent).not.toContain('btl');
     expect(container.textContent).not.toContain('o9abcdef');
   });
@@ -499,6 +499,8 @@ describe('ReceiptsNext', () => {
     await waitFor(() =>
       expect(container.textContent).toContain('the deliveries counted at the door'),
     );
+    // only a failure says unknown (r110 g2)
+    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
   });
 
   /* ─── R4 — the confidence the screen asks trust in ────────────────────── */
@@ -848,10 +850,10 @@ describe('ReceiptsNext — papers that read cleanly reach a swipe (W44)', () => 
     api.clean = [];
     api.doorPending = true;
     const { container } = render(<ReceiptsNext />, { wrapper });
-    expect(await screen.findByText(/Deliveries counted at the door: unknown/)).toBeTruthy();
     expect(await screen.findByText('Reading…')).toBeTruthy();
-    // The door's own line says "not claiming the door is caught up"; the
-    // queue's sentence must not claim the paper trail is.
+    // A read still in flight is not a failure: it draws nothing (r110 g2),
+    // and the queue's sentence must not claim the paper trail is caught up.
+    expect(screen.queryByText(/Deliveries counted at the door: unknown/)).toBeNull();
     expect(container.textContent).not.toMatch(/paper trail is caught up/);
   });
 

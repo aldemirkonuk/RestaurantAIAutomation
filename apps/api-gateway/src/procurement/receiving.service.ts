@@ -223,6 +223,10 @@ export interface UnverifiedDelivery {
   ageHours: number;
   /** Escalation tier — drives how loudly this is surfaced, not whether it is. */
   severity: "fresh" | "stale" | "overdue";
+  /** The vendor the order was placed with (r110 g2); null when it names none. */
+  providerId: string | null;
+  /** That vendor's name, read for this house; null when it could not be read. */
+  providerName: string | null;
 }
 
 /** Past this, an uncounted delivery stops being normal and starts being a risk. */
@@ -1066,7 +1070,10 @@ export class ReceivingService {
     const { data: orders, error: ordersError } = await this.db
       .getClient()
       .from("procurement_orders")
-      .select("id, order_number, status")
+      .select("id, order_number, status, provider_id")
+      // every hop names the house: an event row pointing at another house's
+      // order is not this house's delivery
+      .eq("restaurant_id", restaurantId)
       .in(
         "id",
         open.map(([id]) => id),
@@ -1078,11 +1085,32 @@ export class ReceivingService {
     // (sketch 119 D) reads this register, so the failure must reach it.
     if (ordersError) throw new Error(ordersError.message);
     const numbers = new Map(
-      (orders ?? []).map((o) => [
+      (orders ?? []).map((o: any) => [
         o.id,
-        { number: o.order_number, status: o.status },
+        { number: o.order_number, status: o.status, providerId: (o.provider_id as string | null) ?? null },
       ]),
     );
+    // The vendor's name (r110 g2), from this house's vendors or the shared
+    // ones (restaurant_id null). A failed read names no vendor; it never
+    // hides the delivery.
+    const providerIds = [
+      ...new Set([...numbers.values()].map((o) => o.providerId).filter((v): v is string => !!v)),
+    ];
+    const vendorNames = new Map<string, string | null>();
+    if (providerIds.length) {
+      const { data: providers, error: providersError } = await this.db
+        .getClient()
+        .from("providers")
+        .select("id, name, company_name")
+        .or(`restaurant_id.eq.${restaurantId},restaurant_id.is.null`)
+        .in("id", providerIds);
+      if (providersError)
+        this.logger.warn(
+          `Unverified deliveries: vendors could not be read (${providersError.message}); rows name no vendor.`,
+        );
+      for (const p of (providers ?? []) as { id: string; name: string | null; company_name: string | null }[])
+        vendorNames.set(p.id, p.company_name || p.name || null);
+    }
 
     const now = Date.now();
     const rows = open
@@ -1100,6 +1128,11 @@ export class ReceivingService {
         return {
           orderId,
           orderNumber: numbers.get(orderId)?.number ?? null,
+          providerId: numbers.get(orderId)?.providerId ?? null,
+          providerName: (() => {
+            const id = numbers.get(orderId)?.providerId;
+            return id ? (vendorNames.get(id) ?? null) : null;
+          })(),
           countedQtyBottles: v.counted,
           countedAt: v.at,
           ageHours: Math.round(ageHours),
