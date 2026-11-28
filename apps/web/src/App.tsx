@@ -109,6 +109,8 @@ const DishesPage = lazyWithRefresh(() => import('./pages/dishes/DishesPage'))
 // `PageGate` below, same as every other Mudavym page, so it gets the real
 // house header — bell, search, house switcher — rather than none at all.
 const MenuNext = lazyWithRefresh(() => import('./pages/menu/next/MenuNext'))
+// r110 menu-g3: the current menu laid out for the guests, to print.
+const MenuPrint = lazyWithRefresh(() => import('./pages/menu/next/MenuPrint'))
 const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const HouseContents = lazyWithRefresh(() => import('./pages/HouseContents'))
@@ -439,6 +441,7 @@ function App() {
                       linked from) rather than a real fallback — see the
                       `MenuNext` import above for why the flag is always on. */}
                   <Route path="/menu" element={<PageGate page="menu" next={<MenuNext />} />} />
+                  <Route path="/menu/print" element={<PageGate page="menu" next={<MenuPrint />} />} />
                   <Route path="/reports" element={<PageGate page="reports" next={<ReportsNext />} />} />
                   <Route path="/recommendations" element={<PageGate page="recommendations" next={<RecommendationsNext />} />} />
                   <Route

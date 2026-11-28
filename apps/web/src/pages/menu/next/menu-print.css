@@ -1,0 +1,33 @@
+/* r110 menu-g3: the current menu, laid out for guests. Static: no motion. */
+.mdv-menu-print-page { max-width: 720px; margin: 0 auto; padding: 16px; }
+.mdv-menu-print-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.mdv-menu-print-bar .cl-btn { min-height: 44px; display: inline-flex; align-items: center; }
+.mdv-menu-print { color: #111; }
+.mdv-menu-print__section { margin: 0 0 18px; }
+.mdv-menu-print__heading {
+  font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 8px;
+  border-bottom: 1px solid currentColor; padding-bottom: 4px;
+  break-after: avoid; page-break-after: avoid;
+}
+.mdv-menu-print__lines { list-style: none; margin: 0; padding: 0; }
+.mdv-menu-print__line { margin: 0 0 8px; break-inside: avoid; page-break-inside: avoid; }
+.mdv-menu-print__row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.mdv-menu-print__name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.mdv-menu-print__marks { font-weight: 400; font-size: 0.85em; }
+.mdv-menu-print__price { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mdv-menu-print__desc { margin: 2px 0 0; font-size: 0.9em; }
+.mdv-menu-print__foot { margin-top: 24px; font-size: 12px; }
+
+/*
+ * No fixed paper size: the margins fit both A4 (210 x 297 mm) and Letter (8.5 x 11 in), and the
+ * printer's own paper is used. Only the menu prints; the app's chrome around it is hidden.
+ */
+@page { size: auto; margin: 16mm 14mm; }
+@media print {
+  body.mdv-print-menu { background: #fff !important; }
+  body.mdv-print-menu * { visibility: hidden; }
+  body.mdv-print-menu .mdv-menu-print,
+  body.mdv-print-menu .mdv-menu-print * { visibility: visible; }
+  body.mdv-print-menu .mdv-menu-print { position: absolute; left: 0; top: 0; width: 100%; }
+  .mdv-menu-print-bar { display: none; }
+}
