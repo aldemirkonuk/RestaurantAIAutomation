@@ -272,7 +272,7 @@ export default function Registers({ data }: { data: CellarData }) {
 
         {/* The founder's one line: how this was decided, and where to change it. */}
         {data.registersLoading ? (
-          <p className="cl-said" role="status">
+          <p className="cl-said cl-said-hold" role="status">
             Working out which registers this house carries…
           </p>
         ) : unread ? (
@@ -284,7 +284,7 @@ export default function Registers({ data }: { data: CellarData }) {
             that answer — the rest are unread, not absent.
           </p>
         ) : (
-          <p className="cl-said" data-testid="registers-decided">
+          <p className="cl-said cl-said-hold" data-testid="registers-decided">
             {decidedLine(registers?.decidedBy ?? 'unknown')}
           </p>
         )}

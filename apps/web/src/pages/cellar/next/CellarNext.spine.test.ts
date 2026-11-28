@@ -30,6 +30,8 @@ describe('the register nav holds its two-row room from first paint', () => {
     expect(css).toMatch(/@media \(min-width: 641px\) and \(max-width: 1000px\) \{ \.cl-notes-hold \{ min-height: 114px; \} \}/);
     expect(css).toMatch(/@media \(max-width: 481px\) \{ \.cl-standing-hold \{ min-height: 50px; \} \}/);
     expect(tsx).toMatch(/className="cl-standing cl-standing-hold"/);
+    expect(css).toMatch(/@media \(max-width: 481px\) \{ \.cl-said-hold \{ min-height: 3lh; \} \}/);
+    expect(readFileSync(resolve(__dirname, 'Registers.tsx'), 'utf8').match(/cl-said cl-said-hold/g)).toHaveLength(2);
     const rule = css.slice(css.indexOf('.cl-notes-hold {'), css.indexOf('.cl-notes-hold {') + 400);
     expect(rule).not.toMatch(/transition|animation|opacity/);
   });

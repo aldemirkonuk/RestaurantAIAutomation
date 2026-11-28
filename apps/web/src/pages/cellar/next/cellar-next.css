@@ -390,6 +390,10 @@
    raise contrast, never lower it, wherever `.cl-note` already appears. */
 .cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+/* The registers' "how this was decided" line reads one line while the read is in flight and three
+   at a phone once it settles (19px -> 58px, walk p12), which pushed the cards below it 39px. Its
+   settled room is held at a phone: no motion (ADR 0112). */
+@media (max-width: 481px) { .cl-said-hold { min-height: 3lh; } }
 /* The menu offers hold their line before the menu read lands: one line, and two at a phone where the
    "no menu is current" sentence wraps. Not an inline height: that would beat this rule. */
 .cl-offer-room { min-height: 1lh; }
