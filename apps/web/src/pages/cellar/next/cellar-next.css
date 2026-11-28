@@ -462,6 +462,15 @@
   padding: 16px 18px;
 }
 .cl-row-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* /wines before its book lands (walk p12): the control rail is 147px at a phone with only "Any" in each
+   select and 185px once the style options arrive, and the table frame is its 19px "Opening the book"
+   line until the rows land (then 249px at a phone, 484px at a desk). Both hold their settled room
+   while the read is in flight; the signature already waits on [data-settling]. No motion (ADR 0112). */
+@media (max-width: 481px) {
+  .cl-row-controls[data-hold='true'] { min-height: 185px; align-content: flex-start; }
+  .cl-book-hold { min-height: 249px; }
+}
+@media (min-width: 1001px) { .cl-book-hold { min-height: 484px; } }
 .cl-sr {
   position: absolute;
   width: 1px;
