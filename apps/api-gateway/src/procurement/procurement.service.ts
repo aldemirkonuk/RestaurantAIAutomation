@@ -5761,7 +5761,11 @@ export class ProcurementService {
     orderId: string,
     userId: string,
     match: MatchResult,
-    order?: { provider_id?: string | null; currency?: string | null } | null,
+    order?: {
+      provider_id?: string | null;
+      currency?: string | null;
+      inventory_id?: string | null;
+    } | null,
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
@@ -5785,6 +5789,21 @@ export class ProcurementService {
       };
       if (order?.currency) insertRow.currency = order.currency;
 
+      // A price claim names the invoice line it is about. The credit re-cost
+      // (DD-r109-29) acts only on a claim that carries document_id and
+      // document_line_id; without them a credited price claim changes no cost.
+      if (claim.reason === "price_variance" && order?.inventory_id) {
+        const at = await this.invoiceLineOfOrder(
+          restaurantId,
+          orderId,
+          order.inventory_id,
+        );
+        if (at) {
+          insertRow.document_id = at.documentId;
+          insertRow.document_line_id = at.lineId;
+        }
+      }
+
       const { error } = await this.databaseService.supabase
         .from("procurement_credits")
         .insert(insertRow);
@@ -5798,6 +5817,55 @@ export class ProcurementService {
         );
     } catch (err: any) {
       this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * The one invoice line this order's item was billed on: order -> its
+   * deliveries -> the papers attached as invoice -> the lines of this item.
+   * Exactly one line or nothing: two lines for the item are not a guess to
+   * make, and a failed read is logged and leaves the claim unlinked (the
+   * credit re-cost then says "the claim names no invoice line", ADR 0020).
+   */
+  private async invoiceLineOfOrder(
+    restaurantId: string,
+    orderId: string,
+    inventoryId: string,
+  ): Promise<{ documentId: string; lineId: string } | null> {
+    try {
+      const db = this.databaseService.supabase;
+      const deliveries = await db
+        .from("deliveries")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId);
+      if (deliveries.error) throw new Error(deliveries.error.message);
+      const deliveryIds = ((deliveries.data ?? []) as { id: string }[]).map((d) => d.id);
+      if (!deliveryIds.length) return null;
+      const attached = await db
+        .from("document_deliveries")
+        .select("document_id")
+        .in("delivery_id", deliveryIds)
+        .eq("role", "invoice");
+      if (attached.error) throw new Error(attached.error.message);
+      const docIds = [
+        ...new Set(((attached.data ?? []) as { document_id: string }[]).map((r) => r.document_id)),
+      ];
+      if (!docIds.length) return null;
+      const lines = await db
+        .from("procurement_document_lines")
+        .select("id, document_id")
+        .eq("restaurant_id", restaurantId)
+        .in("document_id", docIds)
+        .eq("inventory_id", inventoryId);
+      if (lines.error) throw new Error(lines.error.message);
+      const rows = (lines.data ?? []) as { id: string; document_id: string }[];
+      return rows.length === 1 ? { documentId: rows[0].document_id, lineId: rows[0].id } : null;
+    } catch (err: any) {
+      this.logger.warn(
+        `invoiceLineOfOrder failed for order ${orderId}; the claim opens without a line: ${err?.message}`,
+      );
+      return null;
     }
   }
 
@@ -6853,7 +6921,11 @@ export class ProcurementService {
         orderId,
         userId,
         match,
-        orderRow as { provider_id?: string | null; currency?: string | null },
+        orderRow as {
+          provider_id?: string | null;
+          currency?: string | null;
+          inventory_id?: string | null;
+        },
       );
 
     const { data, error } = await this.databaseService.supabase
