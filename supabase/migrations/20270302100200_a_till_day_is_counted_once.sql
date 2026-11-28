@@ -4,11 +4,16 @@
 -- pos_sales_history holds a till's past item sales per house-local day. A day
 -- the till itself reported (any pos_checks row, voided or not) is the house's
 -- own record of that day, and history for it would be a second count of the
--- same takings. So, on both sides:
+-- same takings. A check counts toward a day when it is CLOSED: an open check
+-- has not been counted yet and may close on a later day, so it holds nothing.
+-- So, on both sides:
 --
 --   * import_pos_sales_history refuses a house-day that already holds a
---     check, and saves the others. It answers which days it refused.
---   * a check that lands on (or is moved onto) a house-day holding history
+--     closed check, and saves the others. It answers which days it refused.
+--     A day it saves is REPLACED whole (that day's earlier history rows are
+--     deleted first), so a corrected or renamed re-upload never adds a second
+--     figure; the caller sends a day's rows in one call.
+--   * a check that closes on (or is moved onto) a house-day holding history
 --     rows deletes those rows in the check's own transaction (trigger
 --     pos_checks_replace_history_day). The ingest reads the per-day counts
 --     around its writes (pos_sales_history_day_counts) and says so.
@@ -18,8 +23,8 @@
 -- a check landing together cannot both pass: whichever commits second sees
 -- the other.
 --
--- A check's house-day is COALESCE(closed_at, opened_at) in the house's zone,
--- the history's own day. A zone that is unset or unknown to PostgreSQL reads
+-- A check's house-day is its closed_at in the house's zone, the history's own
+-- day. A zone that is unset or unknown to PostgreSQL reads
 -- as UTC; the import itself refuses a house with no zone, so history exists
 -- only for houses whose zone was set.
 --
@@ -99,12 +104,14 @@ BEGIN
     IF EXISTS (
       SELECT 1 FROM public.pos_checks c
        WHERE c.restaurant_id = p_restaurant_id
-         AND ((c.closed_at >= lo AND c.closed_at < hi)
-           OR (c.closed_at IS NULL AND c.opened_at >= lo AND c.opened_at < hi))
+         AND c.closed_at >= lo AND c.closed_at < hi
     ) THEN
       refused := refused || d;
       CONTINUE;
     END IF;
+    DELETE FROM public.pos_sales_history h
+     WHERE h.restaurant_id = p_restaurant_id
+       AND h.sale_date = d;
     INSERT INTO public.pos_sales_history
       (restaurant_id, sale_date, item_key, item_name, qty, net, currency, imported_by, imported_at)
     SELECT p_restaurant_id, d, e->>'item_key', e->>'item_name',
@@ -155,7 +162,7 @@ AS $$
 DECLARE
   d date;
 BEGIN
-  d := (COALESCE(NEW.closed_at, NEW.opened_at) AT TIME ZONE public.pos_house_zone(NEW.restaurant_id))::date;
+  d := (NEW.closed_at AT TIME ZONE public.pos_house_zone(NEW.restaurant_id))::date;
   IF d IS NULL THEN
     RETURN NULL;
   END IF;
@@ -168,12 +175,12 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.pos_checks_replace_history_day() IS
-  'AFTER trigger on pos_checks: a check on a house-day deletes that day''s till history in its own transaction (DD-r110-19).';
+  'AFTER trigger on pos_checks: a check closed on a house-day deletes that day''s till history in its own transaction (DD-r110-19).';
 
 DROP TRIGGER IF EXISTS pos_checks_replace_history_day ON public.pos_checks;
 CREATE TRIGGER pos_checks_replace_history_day
-  AFTER INSERT OR UPDATE OF restaurant_id, opened_at, closed_at ON public.pos_checks
-  FOR EACH ROW EXECUTE FUNCTION public.pos_checks_replace_history_day();
+  AFTER INSERT OR UPDATE OF restaurant_id, closed_at ON public.pos_checks
+  FOR EACH ROW WHEN (NEW.closed_at IS NOT NULL) EXECUTE FUNCTION public.pos_checks_replace_history_day();
 
 REVOKE ALL ON FUNCTION public.pos_house_zone(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.pos_history_day_lock(uuid, date) FROM PUBLIC, anon, authenticated;
