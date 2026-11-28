@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { DoorWorklist } from './DoorWorklist';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -1864,36 +1865,17 @@ export default function ReceiptsNext() {
         {/*
             An unanswered uncounted-deliveries query used to render exactly like
             a caught-up door: `[]`. It is now `null` until it answers, and the
-            unknown says so instead of hiding behind the absent strip.
+            unknown says so instead of hiding behind the absent strip. Since
+            r110 a read still in flight draws nothing (its last height kept);
+            only a failed read says unknown.
         */}
-        {data.deliveriesWithoutPaper === null && !data.noRestaurant && (
-          <p
-            className="mb-4"
-            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)' }}
-          >
-            Deliveries counted at the door: unknown — that list has not answered, so this page is
-            not claiming the door is caught up.
-          </p>
-        )}
-        {data.deliveriesWithoutPaper !== null && data.deliveriesWithoutPaper.length > 0 && (
-          <div
-            className="mb-4 rounded-xl px-4 py-3"
-            style={{ fontFamily: SANS, border: '1px dashed var(--ink-3, #7C7365)', background: 'var(--paper-1, #F3EFE6)' }}
-          >
-            <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)' }}>
-              Counted at the door, no paperwork yet
-            </span>
-            <div style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 4 }}>
-              {(data.deliveriesWithoutPaper ?? []).map((d) => (
-                <span key={d.orderId} style={{ marginRight: 16 }}>
-                  {/* "btl" was a wine word; the count is of whatever came in (W38). */}
-                  {d.orderNumber ?? 'an order with no number'} · {d.countedQtyBottles} counted ·{' '}
-                  {Math.round(d.ageHours)}h ago
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        <DoorWorklist
+          items={data.deliveriesWithoutPaper}
+          failed={data.deliveriesError}
+          noRestaurant={data.noRestaurant}
+          sans={SANS}
+          mono={MONO}
+        />
 
         {/*
           AN OPEN DOCUMENT TAKES THE WIDTH (walk-through W3, 2026-10-01). Beside

@@ -97,6 +97,8 @@ export interface ReceiptsNextData {
   /** null until the uncounted list answers — `[]` would read as "all clear". */
   deliveriesWithoutPaper: UnverifiedDelivery[] | null;
   deliveriesKnown: boolean;
+  /** The list failed. Only a failure says "unknown"; a pending read says nothing. */
+  deliveriesError: boolean;
   isError: boolean;
   /** One sentence per query that failed, so a dead endpoint is never silent. */
   failures: string[];
@@ -233,6 +235,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
     deliveriesKnown: unverifiedQ.data !== undefined,
+    deliveriesError: unverifiedQ.isError,
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',
