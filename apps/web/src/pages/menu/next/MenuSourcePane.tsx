@@ -10,6 +10,10 @@
  *
  * The link is signed and short-lived (`getMenuSourceUrl`); it is asked for only once the pane
  * is opened. A link that could not be had says why and offers to ask again (ADR 0020).
+ *
+ * r110 menu-g4: `page` opens a PDF at that page (`#page=N`). A new page is an instant swap
+ * of the frame in the same box (no animation, no change of size). A photo is one page, so it
+ * is always shown whole; several photos are kept as one PDF, so they take the PDF path.
  */
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -18,6 +22,12 @@ import { reasonOf } from './MenuVersions';
 
 export const SOURCE_PANE_HEIGHT = 420;
 
+/** The kept file's link opened at `page`, or as it is when no page is known. */
+export function atPage(url: string, page: number | null | undefined): string {
+  if (!page || !Number.isInteger(page) || page < 1) return url;
+  return `${url.split('#')[0]}#page=${page}`;
+}
+
 export function MenuSourcePane({
   menuId,
   mime,
@@ -25,6 +35,7 @@ export function MenuSourcePane({
   onToggle,
   canManage,
   fold = false,
+  page = null,
 }: {
   menuId: string;
   mime: string | null;
@@ -33,6 +44,8 @@ export function MenuSourcePane({
   canManage: boolean;
   /** Fold the room open and shut with the house fold (the review's narrow layout) instead of mounting it. */
   fold?: boolean;
+  /** The page to open a PDF at (r110 menu-g4); null opens it as it is. */
+  page?: number | null;
 }) {
   // A folded pane stays mounted once opened, so closing folds the page away rather than blanking it.
   const [shown, setShown] = useState(open);
@@ -46,8 +59,25 @@ export function MenuSourcePane({
     staleTime: 60_000,
     retry: false,
   });
-  if (!canManage) return null;
   const kind = mime === 'application/pdf' ? 'pdf' : mime?.startsWith('image/') ? 'image' : 'other';
+  // The frame is keyed by its address, so a jump to another page loads the file again. By then the signed
+  // link may have run out (it lasts `expiresInSeconds`, 300 at the gateway), and a dead link shows the
+  // storage's JSON error in the frame, not words (ADR 0020, r110 review R6). So a link nearing its end is
+  // asked for again first, and the frame moves to the new page only once it has the fresh one.
+  const [framePage, setFramePage] = useState(page);
+  useEffect(() => {
+    if (page === framePage) return;
+    let live = true;
+    const ttl = Math.max(0, (link.data?.expiresInSeconds ?? 300) - 60) * 1000;
+    if (kind === 'pdf' && link.data && Date.now() - link.dataUpdatedAt > ttl) {
+      void link.refetch().then(() => live && setFramePage(page));
+    } else setFramePage(page);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, framePage, link.dataUpdatedAt]);
+  if (!canManage) return null;
   const region = (
         <div
           id="menu-source-view"
@@ -69,7 +99,8 @@ export function MenuSourcePane({
           ) : kind === 'image' ? (
             <img src={link.data.url} alt="The kept menu, as it was read" style={{ display: 'block', width: '100%', maxHeight: SOURCE_PANE_HEIGHT * 2, objectFit: 'contain' }} />
           ) : kind === 'pdf' ? (
-            <iframe title="The kept menu, as it was read" src={link.data.url} style={{ display: 'block', width: '100%', height: SOURCE_PANE_HEIGHT, border: 0 }} />
+            // Keyed by its address: a fragment change alone does not move every PDF viewer.
+            <iframe key={atPage(link.data.url, framePage)} title="The kept menu, as it was read" src={atPage(link.data.url, framePage)} style={{ display: 'block', width: '100%', height: SOURCE_PANE_HEIGHT, border: 0 }} />
           ) : (
             <p className="cl-said" style={{ padding: 14 }} data-testid="menu-source-unshown">
               This file is a sheet, and a sheet cannot be shown here. Open it from Menus kept below.

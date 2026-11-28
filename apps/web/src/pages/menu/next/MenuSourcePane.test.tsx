@@ -82,3 +82,49 @@ describe('MenuSourcePane -- the kept menu beside the lines (r107 menu-8)', () =>
     expect(mockUrl).not.toHaveBeenCalled();
   });
 });
+
+// r110 review R6: a page jump reloads the frame on the cached signed link, which lasts 300 s.
+describe('MenuSourcePane -- a page jump on an old link (r110 review R6)', () => {
+  function Paged() {
+    const [page, setPage] = useState<number | null>(1);
+    return (
+      <>
+        <button type="button" onClick={() => setPage(3)}>go to 3</button>
+        <MenuSourcePane menuId="m-1" mime="application/pdf" open onToggle={() => {}} canManage page={page} />
+      </>
+    );
+  }
+  const mountPaged = () =>
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <Paged />
+      </QueryClientProvider>,
+    );
+
+  it('asks for a fresh link before a jump once the old one is past 240 s, and the frame uses the fresh one', async () => {
+    mockUrl.mockResolvedValueOnce({ url: 'https://files.example/m-1.pdf?sig=old', expiresInSeconds: 300, mime: 'application/pdf' });
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.pdf?sig=new', expiresInSeconds: 300, mime: 'application/pdf' });
+    const realNow = Date.now.bind(Date);
+    mountPaged();
+    expect(await screen.findByTitle('The kept menu, as it was read')).toHaveAttribute('src', 'https://files.example/m-1.pdf?sig=old#page=1');
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 301_000);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'go to 3' }));
+      await waitFor(() =>
+        expect(screen.getByTitle('The kept menu, as it was read')).toHaveAttribute('src', 'https://files.example/m-1.pdf?sig=new#page=3'),
+      );
+      expect(mockUrl).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('jumps at once, with no second link, while the link is young', async () => {
+    mockUrl.mockResolvedValue({ url: 'https://files.example/m-1.pdf?sig=old', expiresInSeconds: 300, mime: 'application/pdf' });
+    mountPaged();
+    await screen.findByTitle('The kept menu, as it was read');
+    fireEvent.click(screen.getByRole('button', { name: 'go to 3' }));
+    await waitFor(() => expect(screen.getByTitle('The kept menu, as it was read')).toHaveAttribute('src', 'https://files.example/m-1.pdf?sig=old#page=3'));
+    expect(mockUrl).toHaveBeenCalledTimes(1);
+  });
+});

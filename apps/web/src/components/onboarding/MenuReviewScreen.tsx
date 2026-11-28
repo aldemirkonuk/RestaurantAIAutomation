@@ -167,6 +167,12 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
   // A photo or a PDF opens beside the lines; a sheet cannot be shown, so it waits to be asked.
   const showSource = embedded && canChoose && source !== null
   const [sourceOpen, setSourceOpen] = useState(source?.mime === 'application/pdf' || source?.mime?.startsWith('image/') === true)
+  // r110 menu-g4: the page of the kept file the pane is opened at.
+  const [sourcePage, setSourcePage] = useState<number | null>(null)
+  const openAtPage = (page: number) => {
+    setSourceOpen(true)
+    setSourcePage(page)
+  }
   const [showClean, setShowClean] = useState(false)
   const [addingRow, setAddingRow] = useState(false)
   const [newWineName, setNewWineName] = useState('')
@@ -199,6 +205,9 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
         ? `Line ${at + 1} of ${flagged.length} to look at`
         : `Line ${clean.findIndex((i) => i.menuItemId === id) + 1} of ${clean.length} that read cleanly`,
     )
+    // The pane follows the walked line only when it is already open, and only to a known page.
+    const page = items.find((i) => i.menuItemId === id)?.printedPage
+    if (showSource && sourceOpen && page) setSourcePage(page)
     const el = document.getElementById(`review-line-${id}`)
     el?.focus({ preventScroll: true })
     el?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
@@ -351,6 +360,19 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
         <p className="px-2 text-xs text-inkm-4 mt-1" data-testid="review-line-meta">
           {section ? `${section}. ` : ''}
           {prices.length > 0 ? prices.join(', ') : 'No price was read.'}
+          {showSource && item.printedPage ? (
+            <>
+              {' '}
+              <button
+                type="button"
+                className="mdv-rpage cl-focus underline underline-offset-2 max-sm:min-h-[44px] max-sm:min-w-[44px]"
+                aria-label={`Show page ${item.printedPage} of the kept menu`}
+                onClick={() => openAtPage(item.printedPage as number)}
+              >
+                p. {item.printedPage}
+              </button>
+            </>
+          ) : null}
         </p>
         {item.rawText ? (
           <p className="px-2 text-xs text-inkm-4 mt-0.5" data-testid="review-line-raw">
@@ -370,7 +392,7 @@ export function MenuReviewScreen({ result, onConfirm, onSkip, embedded = false, 
       <div className={showSource ? 'mdv-rsrc' : 'contents'}>
       {showSource && source ? (
         <aside className="mdv-rsrc__pane" aria-label="The menu it was read from">
-          <MenuSourcePane fold menuId={source.menuId} mime={source.mime} open={sourceOpen} onToggle={() => setSourceOpen((o) => !o)} canManage />
+          <MenuSourcePane fold menuId={source.menuId} mime={source.mime} open={sourceOpen} onToggle={() => setSourceOpen((o) => !o)} canManage page={sourcePage} />
         </aside>
       ) : null}
       <div className="w-full max-w-2xl mdv-rsrc__lines">

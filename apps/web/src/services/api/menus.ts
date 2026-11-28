@@ -31,6 +31,8 @@ export interface MenuImportReviewItem {
   byGlassPrice: number | null
   bottlePrice: number | null
   rawText: string | null
+  /** r110 menu-g4: the line's page in the kept file; absent or null when not known. */
+  printedPage?: number | null
   matched: boolean
   needsReview: boolean
   /** Present only when the extractor already returned a box. Never invented. */

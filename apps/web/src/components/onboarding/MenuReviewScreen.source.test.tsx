@@ -26,7 +26,7 @@ const line: MenuImportReviewItem = {
   region: null, grapeVariety: null, byGlassPrice: null, bottlePrice: 450, rawText: null, matched: true, needsReview: false,
 }
 
-function mount(canChoose: boolean, source: { menuId: string; mime: string | null } | null) {
+function mount(canChoose: boolean, source: { menuId: string; mime: string | null } | null, items: MenuImportReviewItem[] = [line]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const ui: ReactElement = (
     <QueryClientProvider client={client}>
@@ -34,7 +34,7 @@ function mount(canChoose: boolean, source: { menuId: string; mime: string | null
         embedded
         canChoose={canChoose}
         source={source}
-        result={{ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [line] }}
+        result={{ menuId: 'm9', itemsExtracted: items.length, submissionsCreated: 0, items }}
         onConfirm={vi.fn()}
         onSkip={vi.fn()}
       />
@@ -90,5 +90,52 @@ describe('the layout and its motion', () => {
   it('under reduced motion the fold and the chevron are instant', () => {
     const block = css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
     expect(block).toMatch(/\.mdv-rsrc__fold,\s*\.mdv-rsrc__chev\s*\{\s*transition: none/)
+  })
+})
+
+describe('a review line opens the kept menu at its own page (r110 menu-g4)', () => {
+  const pdf = { menuId: 'm9', mime: 'application/pdf' }
+  const frame = () => screen.getByTitle('The kept menu, as it was read') as HTMLIFrameElement
+  beforeEach(() => {
+    vi.mocked(getMenuSourceUrl).mockResolvedValue({ url: 'https://files.example/menu.pdf?sig=1' } as never)
+  })
+
+  it("'p. 9' opens a shut pane and jumps it to page 9", async () => {
+    mount(true, pdf, [{ ...line, needsReview: true, printedPage: 9 }])
+    await screen.findByTitle('The kept menu, as it was read')
+    expect(frame().getAttribute('src')).toBe('https://files.example/menu.pdf?sig=1')
+    fireEvent.click(screen.getByRole('button', { name: /Hide the kept menu/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show page 9 of the kept menu' }))
+    expect(screen.getByRole('button', { name: /Hide the kept menu/ })).toHaveAttribute('aria-expanded', 'true')
+    await waitFor(() => expect(frame().getAttribute('src')).toBe('https://files.example/menu.pdf?sig=1#page=9'))
+    // The room stays the same size across the swap.
+    expect(screen.getByRole('region', { name: 'The kept menu' }).style.minHeight).toBe('420px')
+  })
+
+  it('a line with no page has no page link, and the pane is as before', async () => {
+    mount(true, pdf, [{ ...line, needsReview: true, printedPage: null }])
+    await screen.findByTitle('The kept menu, as it was read')
+    expect(screen.queryByRole('button', { name: /Show page/ })).toBeNull()
+    expect(frame().getAttribute('src')).toBe('https://files.example/menu.pdf?sig=1')
+  })
+
+  it('staff see no page link', () => {
+    mount(false, pdf, [{ ...line, needsReview: true, printedPage: 9 }])
+    expect(screen.queryByRole('button', { name: /Show page/ })).toBeNull()
+  })
+
+  it('j / k move an open pane with the focused line, and leave a shut pane where it was', async () => {
+    const a = { ...line, menuItemId: 'a', name: 'Rakı', needsReview: true, printedPage: 3 }
+    const b = { ...line, menuItemId: 'b', name: 'Ayran', needsReview: true, printedPage: 7 }
+    mount(true, pdf, [a, b])
+    await screen.findByTitle('The kept menu, as it was read')
+    fireEvent.keyDown(document.body, { key: 'j' })
+    await waitFor(() => expect(frame().getAttribute('src')).toMatch(/#page=3$/))
+    fireEvent.keyDown(document.body, { key: 'j' })
+    await waitFor(() => expect(frame().getAttribute('src')).toMatch(/#page=7$/))
+    fireEvent.click(screen.getByRole('button', { name: /Hide the kept menu/ }))
+    fireEvent.keyDown(document.body, { key: 'k' })
+    fireEvent.click(screen.getByRole('button', { name: /Show the kept menu/ }))
+    expect(frame().getAttribute('src')).toMatch(/#page=7$/)
   })
 })
