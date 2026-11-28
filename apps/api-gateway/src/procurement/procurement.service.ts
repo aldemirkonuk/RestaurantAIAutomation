@@ -6216,7 +6216,71 @@ export class ProcurementService {
           salesRestated,
         });
       }
+
+      // r110 g3: the sales of this good that sold with NO cost are costed by
+      // the first checked paper for it, under their own basis word.
+      await this.costUnpricedSales(restaurantId, inventoryId, orderId, unitCost, userId);
     }
+  }
+
+  /**
+   * Cost the sales of one good that sold with no cost (r110 g3), from this
+   * checked paper's per-bottle landed cost. Only in the house's own currency:
+   * a paper in another currency, or one whose currency or the house's is not
+   * stated, costs nothing here and says why (DD-r105-19). Never converted.
+   * First seal wins in cost_unpriced_sales; a failure throws like the restate.
+   */
+  async costUnpricedSales(
+    restaurantId: string,
+    inventoryId: string,
+    orderId: string,
+    unitCost: number,
+    userId?: string | null,
+  ): Promise<{ rowsCosted: number; refused: string | null }> {
+    const db = this.databaseService.supabase;
+    const [order, house] = await Promise.all([
+      db
+        .from("procurement_orders")
+        .select("currency")
+        .eq("id", orderId)
+        .eq("restaurant_id", restaurantId),
+      db.from("restaurants").select("currency").eq("id", restaurantId),
+    ]);
+    if (order.error || house.error)
+      throw new UnprocessableEntityException(
+        `The paper's currency could not be read, so the sales of item ${inventoryId} that sold with no cost were not costed: ${(order.error ?? house.error)?.message}`,
+      );
+    const paper = String((order.data ?? [])[0]?.currency ?? "").trim().toUpperCase();
+    const home = String((house.data ?? [])[0]?.currency ?? "").trim().toUpperCase();
+    if (!paper || !home || paper !== home) {
+      const refused =
+        !paper || !home
+          ? "the paper's or the house's currency is not stated, so the sales that sold with no cost were not costed from it"
+          : `a paper in ${paper} costs nothing in a ${home} house, so the sales that sold with no cost were not costed from it`;
+      this.logger.warn(`verifyReceipt order ${orderId}, item ${inventoryId}: ${refused}`);
+      return { rowsCosted: 0, refused };
+    }
+    const { data, error } = await db.rpc("cost_unpriced_sales", {
+      p_restaurant_id: restaurantId,
+      p_inventory_id: inventoryId,
+      p_order_id: orderId,
+      p_unit_cost: unitCost,
+      p_performed_by: userId ?? null,
+    });
+    if (error)
+      throw new UnprocessableEntityException(
+        `The price was corrected but the sales of item ${inventoryId} that sold with no cost were not costed: ${error.message}`,
+      );
+    const rowsCosted = (data as any)?.rows_costed ?? 0;
+    if (rowsCosted > 0)
+      this.logger.log({
+        message: "Receipt verification costed sales that sold with no cost",
+        orderId,
+        inventoryId,
+        unitCost,
+        rowsCosted,
+      });
+    return { rowsCosted, refused: null };
   }
 
   /**

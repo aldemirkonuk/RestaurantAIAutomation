@@ -19,6 +19,15 @@ export type SaleCostBasis =
 /** Written only by restate_sale_cost, when a verified invoice moves a sale's cost. */
 export const RESTATED_BASIS = "invoice_restated";
 
+/**
+ * Written only by cost_unpriced_sales (r110 g3): a sale that sold with no cost,
+ * costed by the first paper for its good checked after it. An estimate, never
+ * 'checked': the paper is real, but it is not the delivery the sale came from.
+ */
+export const COSTED_AFTER_SALE_BASIS = "costed_after_sale";
+export const COSTED_AFTER_SALE_WORDS =
+  "costed from the first paper checked after the sale";
+
 /** The unit (one bottle) cost a sale was costed at, and where it came from. */
 export interface SaleCostSource {
   unitCost: number;
@@ -61,6 +70,12 @@ export interface CostSnapshot {
   /** r109 g1: the shelf the unit cost was read over (restate_sale_cost v2). */
   cost_parts: CostPart[] | null;
   cost_parts_capped: boolean;
+  /**
+   * r110 g3: the row's share of one bottle, kept on EVERY row, costed or not,
+   * so a paper checked later can cost a sale that sold with no cost. Null when
+   * the bottle size is not known.
+   */
+  cost_share: number | null;
 }
 
 export const NO_COST_SNAPSHOT: CostSnapshot = {
@@ -71,7 +86,28 @@ export const NO_COST_SNAPSHOT: CostSnapshot = {
   cost_source_order_id: null,
   cost_parts: null,
   cost_parts_capped: false,
+  cost_share: null,
 };
+
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+/**
+ * A line's share of one bottle: the quantity for whole bottles, ml over bottle
+ * ml for a pour, to 6 places (cost_share numeric(14,6)). Null when it cannot
+ * be told: a pour from a bottle of unknown size, or an unreadable quantity.
+ */
+export function costShareOf(
+  mode: "whole_bottle" | "volume",
+  volumeMl: number,
+  bottleMl: number | null,
+  qty: number,
+): number | null {
+  if (mode === "whole_bottle")
+    return Number.isFinite(qty) && qty >= 0 ? round6(qty) : null;
+  if (bottleMl == null || !(bottleMl > 0)) return null;
+  if (!Number.isFinite(volumeMl) || volumeMl < 0) return null;
+  return round6(volumeMl / bottleMl);
+}
 
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
@@ -159,14 +195,16 @@ export function snapshotLineCost(
   bottleMl: number | null,
   qty: number,
 ): CostSnapshot {
-  if (!source) return NO_COST_SNAPSHOT;
+  const cost_share = costShareOf(mode, volumeMl, bottleMl, qty);
+  if (!source) return { ...NO_COST_SNAPSHOT, cost_share };
   const cost =
     mode === "whole_bottle"
       ? Number.isFinite(qty) && qty >= 0
         ? source.unitCost * qty
         : null
       : glassCostFrom(source.unitCost, volumeMl, bottleMl);
-  if (cost === null || !Number.isFinite(cost)) return NO_COST_SNAPSHOT;
+  if (cost === null || !Number.isFinite(cost))
+    return { ...NO_COST_SNAPSHOT, cost_share };
   return {
     cost_at_sale: round4(cost),
     cost_basis: source.basis,
@@ -175,6 +213,7 @@ export function snapshotLineCost(
     cost_source_order_id: source.orderId,
     cost_parts: source.parts ?? null,
     cost_parts_capped: source.partsCapped ?? false,
+    cost_share,
   };
 }
 
@@ -258,6 +297,8 @@ export function checkMarginFromRows(rows: ConsumptionCostRow[]): CheckMargin {
       costNote = "price not kept";
     } else if (restated) {
       costNote = "cost restated to the invoice";
+    } else if (r.cost_basis === COSTED_AFTER_SALE_BASIS) {
+      costNote = COSTED_AFTER_SALE_WORDS;
     }
     if (costKept && rev !== null) {
       revenue += rev;
