@@ -898,7 +898,14 @@ export class HouseLettersService {
     // Two managers never send two blind replies: a warning with a way past
     // it, never a lock. Before the seal, so a 409 spends nothing.
     if (answered?.threadKey && dto.seenThrough) {
-      await this.assertNothingNewer(restaurantId, userId, answered.threadKey, dto.seenThrough, dto.acknowledged ?? []);
+      await this.assertNothingNewer(
+        restaurantId,
+        userId,
+        answered.threadKey,
+        { providerId: person ? null : (dto.providerId as string), address: answered.address },
+        dto.seenThrough,
+        dto.acknowledged ?? [],
+      );
     }
     const { match, hits, priorOutbound } = checked;
 
@@ -1402,19 +1409,26 @@ export class HouseLettersService {
    * that is queued, leaving or left, or an inbound letter a person wrote.
    * A letter the writer was shown and sent past (`acknowledged`) is not asked
    * about again. Names come from this house's members only.
+   *
+   * A thread is (vendor, key), as everywhere in Mail: one group price request
+   * to two vendors shares one mid:/gm: key, so another vendor's letters, and a
+   * team member's or a guest's filed under the key, are not on this thread. A
+   * reply to a team member or a guest is asked about that address only.
    */
   private async assertNothingNewer(
     restaurantId: string,
     userId: string,
     threadKey: string,
+    scope: { providerId: string | null; address: string | null },
     seen: { id: string; createdAt: string },
     acknowledged: readonly string[],
   ): Promise<void> {
-    const { data, error } = await this.db.client
+    const base = this.db.client
       .from("procurement_conversations")
-      .select("id, restaurant_id, direction, status, created_at, received_at, sent_at, message_text, from_address, sent_by_user_id, email_headers")
+      .select("id, restaurant_id, provider_id, direction, status, created_at, received_at, sent_at, message_text, from_address, sent_by_user_id, email_headers")
       .eq("restaurant_id", restaurantId)
-      .eq("thread_key", threadKey)
+      .eq("thread_key", threadKey);
+    const { data, error } = await (scope.providerId ? base.eq("provider_id", scope.providerId) : base.is("provider_id", null))
       .gt("created_at", seen.createdAt)
       .order("created_at", { ascending: true })
       .limit(20);
@@ -1429,9 +1443,13 @@ export class HouseLettersService {
       (typeof r.email_headers?.written_by === "string" && r.email_headers.written_by) || r.sent_by_user_id || null;
     const newer = ((data as Record<string, any>[] | null) ?? []).filter((r) => {
       if (r.restaurant_id !== restaurantId || skip.has(String(r.id))) return false;
+      if ((r.provider_id ?? null) !== scope.providerId) return false;
       if (!(Date.parse(String(r.created_at)) > seenAt)) return false;
       const direction = String(r.direction).toLowerCase();
-      if (direction === "inbound") return !isAutomaticLetter(r);
+      if (direction === "inbound") {
+        if (scope.providerId === null && scope.address && !sameAddress(String(r.from_address ?? ""), scope.address)) return false;
+        return !isAutomaticLetter(r);
+      }
       return direction === "outbound" && NEWER_OUTBOUND.has(String(r.status)) && writerOf(r) !== userId;
     });
     if (newer.length === 0) return;

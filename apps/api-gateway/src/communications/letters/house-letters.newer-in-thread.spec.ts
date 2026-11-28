@@ -14,6 +14,7 @@ import { HouseSenderService, GMAIL_SEND_SCOPE } from "./house-sender.service";
 const HOUSE = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
 const PROVIDER = "cccccccc-0000-4000-8000-cccccccccccc";
+const VENDOR_B = "cccccccc-0000-4000-8000-00000000000b";
 const ME = "dddddddd-0000-4000-8000-dddddddddddd";
 const AYSE = "dddddddd-0000-4000-8000-00000000a1se";
 const STRANGER = "dddddddd-0000-4000-8000-0000000000ff";
@@ -36,6 +37,7 @@ const answered = {
 
 const row = (o: Record<string, any>) => ({
   restaurant_id: HOUSE,
+  provider_id: PROVIDER,
   thread_key: THREAD,
   created_at: "2026-11-27T14:05:00.000Z",
   email_headers: {},
@@ -214,6 +216,19 @@ describe("what is not newer, and is queued as before", () => {
       theyWroteAgain({ id: "f0000000-0000-4000-8000-000000000009", from_address: "MAILER-DAEMON@x.example" }),
     ]));
   it("another house's letter on a thread of the same key", () => queues([ayseReply({ restaurant_id: OTHER })]));
+  // One group price request to vendors A and B shares one mid:/gm: key; a thread is (vendor, key).
+  it("another vendor's reply, and the house's letter to that vendor, on the same key", () =>
+    queues([
+      theyWroteAgain({ provider_id: VENDOR_B }),
+      ayseReply({ provider_id: VENDOR_B, id: "f0000000-0000-4000-8000-0000000000b2" }),
+    ]));
+  it("a team member's or a guest's letter filed under the same key (no vendor)", () =>
+    queues([theyWroteAgain({ provider_id: null, kind: "team", id: "f0000000-0000-4000-8000-0000000000b3" })]));
+  it("asks only this vendor's letters in the database too", async () => {
+    const { queue, threadQuery } = build([]);
+    await queue();
+    expect(threadQuery()!.calls).toEqual(expect.arrayContaining([["eq", "provider_id", PROVIDER]]));
+  });
   it("a letter at or before the one seen, and the one seen itself", () =>
     queues([ayseReply({ created_at: SEEN.createdAt }), ayseReply({ created_at: "2026-11-27T13:00:00.000Z" })]));
 
