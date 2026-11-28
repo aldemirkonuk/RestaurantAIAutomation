@@ -170,3 +170,66 @@ describe('the spec book', () => {
     expect(block).not.toMatch(/animation|transition/);
   });
 });
+
+describe('the spec book prints in the bar measures (r110 drinks-g2)', () => {
+  beforeEach(() => {
+    try {
+      window.localStorage.clear();
+    } catch {
+      /* none */
+    }
+  });
+
+  const negroni = card('c9', 'Negroni', 'Aperitivo', {
+    lines: [
+      { label: 'gin', qty: 30, unit: 'ml', name: 'Gin' },
+      { label: 'campari', qty: 20, unit: 'ml', name: 'Campari' },
+      { label: 'bitters', qty: 2, unit: 'dash', name: 'Orange bitters' },
+    ],
+  });
+
+  const printOne = async () => {
+    h.get.mockImplementation(async (url: string) => {
+      if (url === `/recipes/${RID}/drinks/cards`) return { data: { drinks: [negroni] } };
+      return { data: { restaurantId: RID, code: 'USD', country: 'US', readable: true, reason: null, statedAt: null } };
+    });
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    return waitFor(() => screen.getByTestId('book-card'));
+  };
+
+  it('opens on As written and prints the saved spec unchanged, with no foot', async () => {
+    mount();
+    expect(screen.getByTestId('book-measures-as_written').getAttribute('aria-pressed')).toBe('true');
+    const page = await printOne();
+    expect([...page.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['30 ml Gin', '20 ml Campari', '2 dashes Orange bitters']);
+    expect(within(page).queryByTestId('book-measure-foot')).toBeNull();
+  });
+
+  it('honours US oz: rounded figures are marked, a dash stays, and the foot says so; the choice is kept per house', async () => {
+    mount();
+    fireEvent.click(screen.getByTestId('book-measures-oz'));
+    expect(screen.getByTestId('book-measures-oz').getAttribute('aria-pressed')).toBe('true');
+    expect(window.localStorage.getItem(`mudavym.measure.v1:${RID}`)).toBe('oz');
+    const page = await printOne();
+    expect([...page.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['1 oz Gin', '≈ ⅝ oz Campari', '2 dashes Orange bitters']);
+    expect(within(page).getByTestId('book-measure-foot').textContent).toMatch(/^Converted from the saved spec .*≈ means rounded\.$/);
+  });
+
+  it('a multi-serve line is a batch: it is read at the true US ounce, not the jigger 30 ml', async () => {
+    mount();
+    fireEvent.click(screen.getByTestId('book-measures-oz'));
+    const punch = card('p1', 'Punch', null, { yieldServes: 4, lines: [{ label: 'rum', qty: 180, unit: 'ml', name: 'Rum' }] });
+    h.get.mockImplementation(async (url: string) => {
+      if (url === `/recipes/${RID}/drinks/cards`) return { data: { drinks: [punch] } };
+      return { data: { restaurantId: RID, code: 'USD', country: 'US', readable: true, reason: null, statedAt: null } };
+    });
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    const page = await waitFor(() => screen.getByTestId('book-card'));
+    expect([...page.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['≈ 6⅛ oz Rum']);
+  });
+
+  it('chips are 44 px on a phone or a coarse pointer', () => {
+    const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8').replace(/\s+/g, ' ');
+    expect(css).toContain('@media (max-width: 719px), (pointer: coarse) { .cl-measure-chip { min-height: 44px;');
+  });
+});

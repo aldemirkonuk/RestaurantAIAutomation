@@ -22,7 +22,9 @@ import type { SayPercent } from './useHousePercent';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { useHouseDate } from './useHouseDate';
 import type { RecipeWords } from './recipeWords';
-import { MAKE_SAID, readMake, scaledAmount, scaledCost } from './recipeScale';
+import { MAKE_SAID, readMake, scaledCost } from './recipeScale';
+import { MEASURE_FOOT, converts, inMeasure } from './measureDialect';
+import MeasureChips, { useMeasure } from './MeasureChips';
 
 const FLAG = 'data-print-card';
 
@@ -113,6 +115,8 @@ export default function RecipeCard({
   const makeRead = readMake(makeText);
   // A count that cannot be read is said, and the card is drawn for 1, never for a guess.
   const n = makeRead ?? 1;
+  // The bar's measures (r110 drinks-g2): display only, the saved spec is never changed.
+  const [measure, setMeasure] = useMeasure();
 
   // The flag is only ever on while this card is the thing being printed.
   useEffect(() => () => document.documentElement.removeAttribute(FLAG), []);
@@ -134,6 +138,10 @@ export default function RecipeCard({
   const glass = v.glass ?? data.cocktail.glass;
   const garnish = v.garnish ?? data.cocktail.garnish;
   const method = v.method ?? data.cocktail.method;
+  // More than one serve (a multi-serve spec, or Make N) is read at the true US ounce, not the jigger's 30 ml.
+  const batch = n !== 1 || v.yieldServes > 1;
+  const amount = (l: (typeof v.lines)[number]) => inMeasure(l.qtyEntered * n, l.unitCode, measure, batch);
+  const converted = converts(v.lines.map((l) => ({ qty: l.qtyEntered * n, unit: l.unitCode })), measure, batch);
 
   return (
     <>
@@ -167,12 +175,13 @@ export default function RecipeCard({
             Include cost
           </label>
         ) : null}
+        <MeasureChips value={measure} onChange={setMeasure} testId="recipe-measures" />
       </div>
 
       <div className="cl-make-room" data-testid="recipe-make-room">
         {n > 1 ? (
           <p className="cl-note" data-testid="recipe-make-preview">
-            {`Make ${n}: ${v.lines.map((l) => `${scaledAmount(l.qtyEntered, n, l.unitCode)} ${l.itemName ?? l.label}`).join(', ')}`}
+            {`Make ${n}: ${v.lines.map((l) => `${amount(l)} ${l.itemName ?? l.label}`).join(', ')}`}
           </p>
         ) : null}
       </div>
@@ -190,13 +199,14 @@ export default function RecipeCard({
           <ol>
             {v.lines.map((l) => (
               <li key={l.id}>
-                <b>{scaledAmount(l.qtyEntered, n, l.unitCode)}</b> {l.itemName ?? l.label}
+                <b>{amount(l)}</b> {l.itemName ?? l.label}
               </li>
             ))}
           </ol>
           {method ? <p className="cl-print-method">{method}</p> : null}
           {garnish ? <p>Garnish: {garnish}</p> : null}
           <p>{cardAllergens(data.whatIsIn)}</p>
+          {converted ? <p data-testid="recipe-card-measure-foot">{MEASURE_FOOT}</p> : null}
           {showCost ? (
             <p data-testid="recipe-card-cost">
               {n > 1 ? `Cost to make ${n} ${data.cost?.complete && exact != null ? sayMoney(scaledCost(exact, n)) : 'not known'} · ` : ''}
