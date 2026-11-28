@@ -34,6 +34,32 @@ export interface PrintSection {
 }
 
 /**
+ * The words a scanned line's `category` may hold (the gateway's MENU_CATEGORY_VOCABULARY, which the prompt
+ * asks for instead of the printed heading) and the heading each prints under. A heading the house typed or
+ * its sheet named ("Çorbalar", "Tatlılar") is not in this list and prints as it is.
+ */
+const VOCABULARY_HEADINGS: Record<string, string> = {
+  red: 'Red', white: 'White', rose: 'Rosé', sparkling: 'Sparkling', orange: 'Orange', dessert: 'Dessert',
+  fortified: 'Fortified', beer: 'Beer', cider: 'Cider', sake: 'Sake', cocktail: 'Cocktails', spirit: 'Spirits',
+  whiskey: 'Whiskey', 'soft drink': 'Soft drinks', 'non-alcoholic': 'Non-alcoholic',
+};
+
+/**
+ * The heading a line prints under, or null for none. `category` is a vocabulary word for a scanned line and
+ * "food" for a read dish whose section did not read as kitchen: those printed as `red`, `rose`, `food` (r110
+ * review R7). A vocabulary word is shown as a heading, "food" prints no heading rather than the word, and the
+ * printed section itself is not kept on a line (it would need a column), so a dish prints in the untitled group.
+ */
+export function printedHeading(category: string | null | undefined): string | null {
+  const raw = (category ?? '').trim();
+  if (!raw) return null;
+  const key = raw.toLocaleLowerCase('en');
+  if (key === 'food') return null;
+  if (raw === key && key in VOCABULARY_HEADINGS) return VOCABULARY_HEADINGS[key];
+  return raw;
+}
+
+/**
  * The lines in printed order, grouped under their sections in the order each section is
  * first printed. A line with no section joins an untitled one. Exported for the spec.
  */
@@ -51,7 +77,7 @@ export function printedSections(lines: PrintLine[]): PrintSection[] {
   const out: PrintSection[] = [];
   const index = new Map<string, PrintSection>();
   for (const { line } of placed) {
-    const heading = (line.category ?? '').trim() || null;
+    const heading = printedHeading(line.category);
     const key = heading?.toLocaleLowerCase('tr') ?? '';
     let section = index.get(key);
     if (!section) {
