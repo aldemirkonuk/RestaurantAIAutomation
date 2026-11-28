@@ -439,6 +439,19 @@ export async function discardMenuItem(
 }
 
 /**
+ * The lines taken off the current menu (owner or manager), names only, so the way back
+ * survives a reload. A failed read throws; it is never an empty list (r110 menu-4).
+ */
+export async function listDiscardedMenuLines(
+  restaurantId: string
+): Promise<{ lines: Array<{ id: string; name: string }>; truncated: boolean }> {
+  const response = await apiClient.get<{ lines: Array<{ id: string; name: string }>; truncated: boolean }>(
+    `/menus/${restaurantId}/discarded`
+  )
+  return response.data
+}
+
+/**
  * Puts a discarded line back on the current menu (owner or manager). Writes only the
  * line's status: the house's sale state is not touched. A failed call throws with the
  * gateway's words (409 when the menu is no longer current).

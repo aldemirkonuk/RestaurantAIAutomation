@@ -19,7 +19,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MenuNext from './MenuNext';
 import { housePriceNote } from './menu-price-note';
-import { getMenu, discardMenuItem, restoreMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
+import { getMenu, discardMenuItem, listDiscardedMenuLines, restoreMenuItem, addMenuItem, getMenuSheet, listMenuVersions, reviewMenuItem, type ActiveMenu, type MenuLine } from '../../../services/api/menus';
 import { settingsApi, type HouseCurrency } from '../../../services/api/settings';
 
 // ADR 0358 D2: discarding a line is an owner's or a manager's, so the page
@@ -38,6 +38,7 @@ vi.mock('../../../services/api/menus', async () => {
     getMenu: vi.fn(),
     discardMenuItem: vi.fn(),
     restoreMenuItem: vi.fn(),
+    listDiscardedMenuLines: vi.fn().mockResolvedValue({ lines: [], truncated: false }),
     addMenuItem: vi.fn(),
     getMenuSheet: vi.fn(),
     reviewMenuItem: vi.fn(),
@@ -471,12 +472,14 @@ describe('MenuNext — discard', () => {
 describe('MenuNext — rows move, they do not jump (r102 menu-motion-4)', () => {
   const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
 
-  it('a pending discard dims the row and takes its pointer', async () => {
-    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' })] }));
+  it('a pending discard takes the row off at once: it does not wait for the gateway (r110 menu-4)', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'a', name: 'Raki' }), line({ id: 'b', name: 'Tea' })] }));
     mockDiscard.mockReturnValue(new Promise(() => {}));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
-    await waitFor(() => expect(rowOf('Raki')).toHaveAttribute('data-state', 'pending'));
+    await waitFor(() => expect(screen.queryByText('Raki')).not.toBeInTheDocument());
+    expect(screen.getByText('Tea')).toBeInTheDocument();
+    expect(document.querySelector('[data-state="leaving"]')).toBeNull();
   });
 
   it('a discarded row goes at once, with no fade state and no wait on the refetch', async () => {
@@ -937,5 +940,100 @@ describe('MenuNext — a narrow screen gets cards, not a table to scroll (r106 m
     expect(narrow).toContain('min-height: 44px');
     expect(narrow).toContain('.mdv-cards .mdv-acts');
     expect(narrow).not.toMatch(/animation|transition/);
+  });
+});
+
+// r110 menu-4: the sentence and the row go at click, a failure restores both, and a line taken
+// off has a way back after a reload (the fold reads the gateway's list, not this page's memory).
+describe('MenuNext — a discard is said at once, rolls back on failure, and can be put back after a reload (r110 menu-4)', () => {
+  const listDiscarded = vi.mocked(listDiscardedMenuLines);
+  beforeEach(() => {
+    listDiscarded.mockReset();
+    listDiscarded.mockResolvedValue({ lines: [], truncated: false });
+  });
+
+  it('says "Taken off the list." before the gateway answers', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' })] }));
+    mockDiscard.mockReturnValue(new Promise(() => {}));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    expect(await screen.findByTestId('menu-off-list-said')).toHaveTextContent('Taken off the list.');
+    expect(mockDiscard).toHaveBeenCalledWith('r1', 'l9');
+  });
+
+  it('a failed discard brings the row back and says so (with Retry); the sentence of taking off is withdrawn', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l9', name: 'Raki' }), line({ id: 'l8', name: 'Efes' })] }));
+    mockDiscard.mockRejectedValue(new Error('boom'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Raki' }));
+    expect(await screen.findByTestId('menu-discard-error')).toHaveTextContent('not discarded');
+    expect(screen.getByRole('button', { name: 'Discard Raki' })).toBeInTheDocument();
+    expect(screen.queryByText('Taken off the list.', { exact: false })).not.toBeInTheDocument();
+  });
+
+  // r110 review R5: the snapshot was the whole menu, so an earlier failure brought back a later discard.
+  it('two discards in flight: the first fails after the second succeeded, and only the first comes back, said by name', async () => {
+    const server = new Set(['a', 'b', 'c']);
+    const names: Record<string, string> = { a: 'Aaa', b: 'Bbb', c: 'Ccc' };
+    mockGetMenu.mockImplementation(async () =>
+      menu({ items: ['a', 'b', 'c'].filter((id) => server.has(id)).map((id) => line({ id, name: names[id] })) }),
+    );
+    let failA: (e: unknown) => void = () => {};
+    let okB: () => void = () => {};
+    mockDiscard.mockImplementation((_r: string, id: string) =>
+      id === 'a'
+        ? new Promise((_ok, no) => { failA = no; })
+        : new Promise((ok) => { okB = () => { server.delete('b'); ok({ menuItemId: 'b', status: 'discarded' }); }; }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Aaa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Bbb' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Discard Bbb' })).not.toBeInTheDocument());
+    okB();
+    await waitFor(() => expect(mockGetMenu.mock.calls.length).toBeGreaterThan(1)).catch(() => {});
+    failA({ response: { status: 500, data: { message: 'Aaa could not be discarded just now.' } } });
+    const err = await screen.findByTestId('menu-discard-error');
+    expect(err).toHaveTextContent('Aaa could not be discarded just now.');
+    expect(screen.getByRole('button', { name: 'Discard Aaa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard Ccc' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard Bbb' })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('menu-discard-error')).toHaveLength(1);
+  });
+
+  it('after a reload the fold lists the discarded lines, and Put back restores one', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    listDiscarded.mockResolvedValueOnce({ lines: [{ id: 'l9', name: 'Rose' }], truncated: false });
+    listDiscarded.mockResolvedValue({ lines: [], truncated: false });
+    mockRestoreLine.mockResolvedValue({ menuItemId: 'l9', status: 'approved' });
+    mount();
+    const fold = await screen.findByTestId('menu-discarded-fold');
+    expect(fold).toHaveTextContent('Lines taken off the menu (1)');
+    expect(within(fold).getByText('Rose: taken off the menu.')).toBeInTheDocument();
+    fireEvent.click(within(fold).getByRole('button', { name: 'Put Rose back' }));
+    await waitFor(() => expect(mockRestoreLine).toHaveBeenCalledWith('r1', 'l9'));
+    expect(await screen.findByTestId('menu-off-list-said')).toHaveTextContent('Rose is back on the menu.');
+    await waitFor(() => expect(screen.queryByTestId('menu-discarded-fold')).not.toBeInTheDocument());
+  });
+
+  it('a failed read of the list is said, not an empty fold', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    listDiscarded.mockRejectedValue(new Error('boom'));
+    mount();
+    expect(await screen.findByTestId('menu-discarded-error')).toHaveTextContent('could not be read just now');
+  });
+
+  it('staff are not offered the fold, and it is not read for them', async () => {
+    role = 'staff';
+    mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
+    mount();
+    await screen.findByText('Efes');
+    expect(listDiscarded).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('menu-discarded-fold')).not.toBeInTheDocument();
+  });
+
+  it('the new sentence and fold carry no animation (reduced motion needs nothing to switch off)', () => {
+    const src = readFileSync('src/pages/menu/next/MenuNext.tsx', 'utf8');
+    const at = src.indexOf('menu-discarded-fold');
+    expect(src.slice(at, at + 2500)).not.toMatch(/transition|animation|@keyframes/);
   });
 });

@@ -208,6 +208,20 @@ export class MenusController {
     return this.menusService.discardMenuItem(restaurantId, id);
   }
 
+  @Get(":restaurantId/discarded")
+  @ApiOperation({
+    summary:
+      "The lines taken off the current menu, names only - owner or manager only, like putting one back (r110 menu-4). The fold on /menu reads this, so the way back survives a reload",
+  })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  async listDiscardedLines(@Param("restaurantId") restaurantId: string, @CurrentUser() user: { userId?: string }) {
+    if (!user?.userId) {
+      throw new ForbiddenException("Reading the lines taken off the menu names the person, and this session names nobody.");
+    }
+    await this.organizations.assertCanManageRestaurant(user.userId, restaurantId, "see the lines taken off the menu");
+    return this.menusService.listDiscardedLines(restaurantId);
+  }
+
   @Patch(":restaurantId/items/:id/restore")
   @ApiOperation({
     summary:
