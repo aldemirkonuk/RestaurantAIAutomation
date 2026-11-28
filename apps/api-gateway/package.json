@@ -58,6 +58,7 @@
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "5.4.624",
     "plivo": "^4.70.0",
     "redis": "^4.6.12",
     "reflect-metadata": "^0.1.14",
