@@ -145,6 +145,23 @@ export const LETTER_STATUS = {
 
 const OWNER_MANAGER_ROLES = new Set(["owner", "manager"]);
 
+/** An outbound letter that counts as the house having answered (r110 g2). */
+const NEWER_OUTBOUND = new Set<string>([LETTER_STATUS.QUEUED, "SENDING", LETTER_STATUS.SENT, "SEND_UNCONFIRMED"]);
+
+/**
+ * Automatic mail (auto-submitted, or from a mailer-daemon or postmaster), in
+ * the same sense the Mail list's SQL flags it (ADR 0396). Nobody to answer.
+ */
+function isAutomaticLetter(r: Record<string, any>): boolean {
+  const fromHeader = String(r.email_headers?.from ?? "");
+  return (
+    r.email_headers?.transport?.autoSubmitted === true ||
+    r.email_headers?.transport?.autoSubmitted === "true" ||
+    /(^|[<\s"'])(mailer-daemon|postmaster)@/i.test(fromHeader) ||
+    /^(mailer-daemon|postmaster)@/i.test(String(r.from_address ?? ""))
+  );
+}
+
 /** The role ADR 0167 already admits to a credit claim's own figures. */
 function isOwnerOrManager(role: string | null | undefined): boolean {
   return (
@@ -877,6 +894,19 @@ export class HouseLettersService {
         ? await this.readAnswered(restaurantId, dto.providerId as string, dto.answers)
         : null;
     }
+    // ── 2c. nothing newer in the thread than the writer saw (r110 g2) ───────
+    // Two managers never send two blind replies: a warning with a way past
+    // it, never a lock. Before the seal, so a 409 spends nothing.
+    if (answered?.threadKey && dto.seenThrough) {
+      await this.assertNothingNewer(
+        restaurantId,
+        userId,
+        answered.threadKey,
+        { providerId: person ? null : (dto.providerId as string), address: answered.address },
+        dto.seenThrough,
+        dto.acknowledged ?? [],
+      );
+    }
     const { match, hits, priorOutbound } = checked;
 
     // ── 3. the house must have a sending identity ───────────────────────────
@@ -1374,6 +1404,107 @@ export class HouseLettersService {
   }
 
   /**
+   * 409 NEWER_IN_THREAD when the thread, in this house, holds a letter newer
+   * than the one the writer saw (r110 g2): another member's outbound letter
+   * that is queued, leaving or left, or an inbound letter a person wrote.
+   * A letter the writer was shown and sent past (`acknowledged`) is not asked
+   * about again. Names come from this house's members only.
+   *
+   * A thread is (vendor, key), as everywhere in Mail: one group price request
+   * to two vendors shares one mid:/gm: key, so another vendor's letters, and a
+   * team member's or a guest's filed under the key, are not on this thread. A
+   * reply to a team member or a guest is asked about that address only.
+   */
+  private async assertNothingNewer(
+    restaurantId: string,
+    userId: string,
+    threadKey: string,
+    scope: { providerId: string | null; address: string | null },
+    seen: { id: string; createdAt: string },
+    acknowledged: readonly string[],
+  ): Promise<void> {
+    const base = this.db.client
+      .from("procurement_conversations")
+      .select("id, restaurant_id, provider_id, direction, status, created_at, received_at, sent_at, message_text, from_address, sent_by_user_id, email_headers")
+      .eq("restaurant_id", restaurantId)
+      .eq("thread_key", threadKey);
+    const { data, error } = await (scope.providerId ? base.eq("provider_id", scope.providerId) : base.is("provider_id", null))
+      .gt("created_at", seen.createdAt)
+      .order("created_at", { ascending: true })
+      .limit(20);
+    if (error) {
+      throw new BadRequestException(
+        `Whether someone wrote on this thread since it was opened could not be read (${error.message}). Nothing was queued and nothing was sent.`,
+      );
+    }
+    const skip = new Set([seen.id, ...acknowledged]);
+    const seenAt = Date.parse(seen.createdAt);
+    const writerOf = (r: Record<string, any>): string | null =>
+      (typeof r.email_headers?.written_by === "string" && r.email_headers.written_by) || r.sent_by_user_id || null;
+    const newer = ((data as Record<string, any>[] | null) ?? []).filter((r) => {
+      if (r.restaurant_id !== restaurantId || skip.has(String(r.id))) return false;
+      if ((r.provider_id ?? null) !== scope.providerId) return false;
+      if (!(Date.parse(String(r.created_at)) > seenAt)) return false;
+      const direction = String(r.direction).toLowerCase();
+      if (direction === "inbound") {
+        if (scope.providerId === null && scope.address && !sameAddress(String(r.from_address ?? ""), scope.address)) return false;
+        return !isAutomaticLetter(r);
+      }
+      return direction === "outbound" && NEWER_OUTBOUND.has(String(r.status)) && writerOf(r) !== userId;
+    });
+    if (newer.length === 0) return;
+    const names = await this.houseMemberNames(restaurantId, newer.map(writerOf));
+    const firstLine = (t: unknown) =>
+      (String(t ?? "").split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "").slice(0, 120);
+    const items = newer.map((r) => {
+      const inbound = String(r.direction).toLowerCase() === "inbound";
+      const writer = writerOf(r);
+      return {
+        id: String(r.id),
+        who: inbound ? null : (writer && names.get(writer)) || null,
+        at: String((inbound ? r.received_at : r.sent_at) ?? r.created_at),
+        direction: inbound ? "inbound" : "outbound",
+        status: String(r.status ?? ""),
+        firstLine: firstLine(r.message_text),
+      };
+    });
+    throw new ConflictException({
+      code: "NEWER_IN_THREAD",
+      message:
+        "Someone wrote on this thread after you opened it. Read it first, or send yours as well. Nothing was queued and nothing was sent.",
+      items,
+    });
+  }
+
+  /** Names of these people who are this house's members; anyone else is left out. */
+  private async houseMemberNames(restaurantId: string, ids: Array<string | null>): Promise<Map<string, string>> {
+    const want = [...new Set(ids.filter((i): i is string => !!i))];
+    const out = new Map<string, string>();
+    if (want.length === 0) return out;
+    const [access, users] = await Promise.all([
+      this.db.client.from("user_restaurant_access").select("user_id, restaurant_id").eq("restaurant_id", restaurantId).in("user_id", want),
+      this.db.client.from("users").select("user_id, name, restaurant_id").in("user_id", want),
+    ]);
+    if (access.error || users.error) {
+      // The warning still stands; the sheet says "someone in the house" instead.
+      this.logger.warn(`Who answered could not be named (${(access.error ?? users.error)?.message}).`);
+      return out;
+    }
+    const members = new Set<string>(
+      ((access.data ?? []) as Record<string, any>[])
+        .filter((a) => a.restaurant_id === restaurantId)
+        .map((a) => String(a.user_id)),
+    );
+    for (const u of (users.data ?? []) as Record<string, any>[]) {
+      if (u.restaurant_id === restaurantId) members.add(String(u.user_id));
+    }
+    for (const u of (users.data ?? []) as Record<string, any>[]) {
+      if (members.has(String(u.user_id)) && typeof u.name === "string" && u.name.trim()) out.set(String(u.user_id), u.name.trim());
+    }
+    return out;
+  }
+
+  /**
    * The stored sender of the newest inbound letter on a team or guest thread
    * that a person wrote (ADR 0396): automatic mail (auto-submitted, or from a
    * mailer-daemon or postmaster) never counts, in the same sense the Mail
@@ -1403,14 +1534,8 @@ export class HouseLettersService {
         (r) => r.restaurant_id === restaurantId,
       );
     }
-    const fromHeader = (r: Record<string, any>) => String(r.email_headers?.from ?? "");
-    const automatic = (r: Record<string, any>) =>
-      r.email_headers?.transport?.autoSubmitted === true ||
-      r.email_headers?.transport?.autoSubmitted === "true" ||
-      /(^|[<\s"'])(mailer-daemon|postmaster)@/i.test(fromHeader(r)) ||
-      /^(mailer-daemon|postmaster)@/i.test(String(r.from_address ?? ""));
     const newest = rows.find(
-      (r) => String(r.direction).toLowerCase() === "inbound" && !automatic(r),
+      (r) => String(r.direction).toLowerCase() === "inbound" && !isAutomaticLetter(r),
     );
     if (
       !newest ||

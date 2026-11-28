@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEmail,
+  IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
@@ -38,6 +39,17 @@ export class InsertedInsightDto {
   @IsString()
   @MaxLength(2000)
   sentence: string;
+}
+
+/** The newest letter the composer showed when the reply was opened (r110 g2). */
+export class SeenThroughDto {
+  @ApiProperty({ description: "procurement_conversations id" })
+  @IsUUID()
+  id: string;
+
+  @ApiProperty({ description: "That letter's createdAt, as the thread page gave it." })
+  @IsISO8601()
+  createdAt: string;
 }
 
 export class QueueLetterDto {
@@ -122,6 +134,26 @@ export class QueueLetterDto {
   @ArrayMaxSize(3)
   @IsUUID("4", { each: true })
   fileIds?: string[];
+
+  @ApiPropertyOptional({
+    type: SeenThroughDto,
+    description:
+      "A reply's view of its thread when it was opened (r110 g2). A newer letter from another member, or a newer letter a person wrote in, answers 409 NEWER_IN_THREAD. Not part of the seal.",
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SeenThroughDto)
+  seenThrough?: SeenThroughDto;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: "The newer letters the writer was shown and chose to send past (\"Send mine as well\").",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID("all", { each: true })
+  acknowledged?: string[];
 }
 
 /** One file for a letter, as bytes (base64). No URL and no path field exists. */
