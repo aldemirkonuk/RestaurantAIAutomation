@@ -275,3 +275,39 @@ export async function upsertMapping(
   );
   return data;
 }
+
+/** What `POST /pos-hub/import/:restaurantId/history` answers (r109 onboarding g3). */
+export interface TillHistoryAnswer {
+  daysRead: number;
+  salesSaved: number;
+  rowsRead: number;
+  refused: string[];
+  refusedCount: number;
+  netDropped: boolean;
+  /** Rows whose net was written in another currency than the house's (left out, quantity kept). Absent on an older gateway. */
+  netForeign?: string[];
+  netForeignCount?: number;
+  /** Days the till's own checks already hold: their history was not brought in. Absent on an older gateway. */
+  daysHeldByChecks?: string[];
+  daysHeldByChecksCount?: number;
+  /** The gateway's own sentence for those days, or null when there are none. */
+  daysHeldByChecksSaid?: string | null;
+  stockMoved: false;
+  fileRefused: string | null;
+  errors: string[];
+}
+
+/**
+ * The till's item-sales export, sent as text. Saved as past sales per day and
+ * item, never as checks, and it moves no stock. Owner or manager only.
+ */
+export async function importTillHistory(
+  restaurantId: string,
+  csv: string,
+): Promise<TillHistoryAnswer> {
+  const { data } = await apiClient.post<TillHistoryAnswer>(
+    `/pos-hub/import/${encodeURIComponent(restaurantId)}/history`,
+    { csv },
+  );
+  return data;
+}
