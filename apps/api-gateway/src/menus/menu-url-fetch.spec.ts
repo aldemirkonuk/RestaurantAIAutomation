@@ -180,4 +180,26 @@ describe("htmlToMenuText -- the visible text only", () => {
     expect(htmlToMenuText(html)).toBe("Rakı\nYeni Rakı 70 cl &mdash; 1 250 ₺\nEfe Gold & buz 1 300");
   });
   it("numeric entities are decoded", () => expect(htmlToMenuText("<p>Ros&#233; &#x2014; 45</p>")).toBe("Rosé — 45"));
+
+  // r110 review R1: a lazy back-reference rescanned to the end of the page for every opening tag with no close.
+  // Measured before the fix: 16k unclosed <nav> 213 ms, 64k 3.5 s; a 5 MB page would block the gateway for minutes.
+  const quick = (html: string, ms: number) => {
+    const t0 = Date.now();
+    htmlToMenuText(html);
+    expect(Date.now() - t0).toBeLessThan(ms);
+  };
+  it("200 KB of unclosed <nav> reads in well under 100 ms", () => quick("<nav>".repeat(40_000), 100));
+  it("200 KB of unclosed comments, bare '<' and unfinished tags read in well under 100 ms", () => {
+    quick("<!--".repeat(20_000), 100);
+    quick("<nav ".repeat(20_000), 100);
+    quick("<b".repeat(50_000), 100);
+    quick("</nav".repeat(20_000) + "<nav>".repeat(20_000), 100);
+  });
+  it("a 5 MB page of unclosed <nav> reads in under a second", () => quick("<nav>".repeat(1_000_000), 1000));
+  it("the menu text after an unclosed <nav> is still kept", () => {
+    expect(htmlToMenuText("<nav><p>Rosé 45</p><nav><p>Rakı 90</p>")).toBe("Rosé 45\nRakı 90");
+  });
+  it("a closed nav drops what it holds, whatever the case of its tag", () => {
+    expect(htmlToMenuText("<NAV>Home</Nav ><p>Rosé 45</p><svg/><p>Rakı 90</p>")).toBe("Rosé 45\nRakı 90");
+  });
 });

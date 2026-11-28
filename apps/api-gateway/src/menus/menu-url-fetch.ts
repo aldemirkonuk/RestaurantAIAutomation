@@ -307,6 +307,88 @@ export async function fetchMenuLink(
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
+const DROP_TAGS = new Set(["script", "style", "nav", "noscript", "svg", "template", "iframe", "head", "header", "footer"]);
+const LINE_TAGS = new Set(["p", "div", "li", "ul", "ol", "tr", "table", "section", "article", "dt", "dd", "dl", "figcaption", "caption", "main", "aside", "blockquote", "pre"]);
+
+/**
+ * One left-to-right pass over the tags. The old chain of lazy regexes rescanned
+ * to the end of the page for every opening tag with no close, so a page of
+ * unclosed <nav> cost quadratic time on the request thread (r110 review R1).
+ * Here every search moves forward only: the next ">" is remembered, and a drop
+ * tag with no close is remembered as having none, so it is looked for once.
+ */
+function stripTags(html: string): string {
+  const low = html.replace(/[A-Z]/g, (c) => c.toLowerCase()); // same length as html, unlike toLowerCase()
+  const out: string[] = [];
+  const noClose = new Set<string>();
+  const nameAt = /<(\/?)([a-z][a-z0-9_]*)/iy;
+  let i = 0;
+  let gt = -2; // index of the next ">" at or after the cursor; -1 = none left
+  let noCommentClose = false;
+  const nextGt = (from: number): number => {
+    if (gt === -1 || (gt >= from)) return gt;
+    gt = low.indexOf(">", from);
+    return gt;
+  };
+  while (i < low.length) {
+    const lt = low.indexOf("<", i);
+    if (lt === -1) break;
+    out.push(html.slice(i, lt));
+    i = lt;
+    if (low.startsWith("<!--", lt) && !noCommentClose) {
+      const end = low.indexOf("-->", lt + 4);
+      if (end !== -1) {
+        out.push(" ");
+        i = end + 3;
+        continue;
+      }
+      noCommentClose = true;
+    }
+    const close = nextGt(lt + 1);
+    if (close === -1) break; // no ">" left: nothing after this can be a tag
+    const tagEnd = close + 1;
+    nameAt.lastIndex = lt;
+    const m = nameAt.exec(low);
+    if (!m || m.index !== lt) {
+      out.push(" ");
+      i = tagEnd;
+      continue;
+    }
+    const name = m[2];
+    const closing = m[1] === "/";
+    if (!closing && DROP_TAGS.has(name)) {
+      if (low[close - 1] === "/" || noClose.has(name)) {
+        out.push(" ");
+        i = tagEnd;
+        continue;
+      }
+      const wsGt = /\s*>/y;
+      let at = low.indexOf("</" + name, tagEnd);
+      let end = -1;
+      while (at !== -1) {
+        wsGt.lastIndex = at + 2 + name.length;
+        const g = wsGt.exec(low);
+        if (g) {
+          end = wsGt.lastIndex;
+          break;
+        }
+        at = low.indexOf("</" + name, at + 1);
+      }
+      if (end === -1) noClose.add(name);
+      out.push(" ");
+      i = end === -1 ? tagEnd : end;
+      continue;
+    }
+    if (!closing && (name === "br" || name === "hr")) out.push("\n");
+    else if (LINE_TAGS.has(name) || /^h[1-6]$/.test(name)) out.push("\n");
+    else if (name === "td" || name === "th") out.push(" \t ");
+    else out.push(" ");
+    i = tagEnd;
+  }
+  out.push(html.slice(i));
+  return out.join("");
+}
+
 /**
  * The visible text of a menu page: script, style, nav, header, footer,
  * noscript, svg, template, iframe and the head are dropped with what they
@@ -314,14 +396,7 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"'
  * fold. What is left is what a guest reads on the page.
  */
 export function htmlToMenuText(html: string): string {
-  let s = String(html ?? "");
-  s = s.replace(/<!--[\s\S]*?-->/g, " ");
-  s = s.replace(/<(script|style|nav|noscript|svg|template|iframe|head|header|footer)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ");
-  s = s.replace(/<(script|style|nav|noscript|svg|template|iframe|head|header|footer)\b[^>]*\/?>/gi, " ");
-  s = s.replace(/<(br|hr)\b[^>]*>/gi, "\n");
-  s = s.replace(/<\/?(p|div|li|ul|ol|tr|table|section|article|h[1-6]|dt|dd|dl|figcaption|caption|main|aside|blockquote|pre)\b[^>]*>/gi, "\n");
-  s = s.replace(/<\/?(td|th)\b[^>]*>/gi, " \t ");
-  s = s.replace(/<[^>]+>/g, " ");
+  let s = stripTags(String(html ?? ""));
   s = s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
     if (e[0] === "#") {
       const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
