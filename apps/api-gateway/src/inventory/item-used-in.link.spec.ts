@@ -86,6 +86,48 @@ describe("ItemUsedInService.link (r109 g2)", () => {
     expect(await body(svc.link(H, I, "l-1"))).toMatchObject({ reason: "already_linked", heldBy: { id: TWIN } });
   });
 
+  it("a line another good sells through its master wine is its own: 409 naming that good, not linked, not offered", async () => {
+    const { db, svc } = seed();
+    db.tables.restaurant_inventory!.push({
+      id: "item-A", restaurant_id: H, kind: "wine", display_name: "Raki yeni", wine_name: null, master_wine_id: "w-A", beverage_id: null,
+    });
+    db.tables.menu_items!.push({
+      id: "l-m", menu_id: "menu-now", restaurant_id: H, name: "Rakı Yeni", by_glass_price: 90, bottle_price: null,
+      inventory_item_id: null, wine_library_id: "w-A", status: "approved",
+    });
+    // Good A holds it through its master wine, so the twin does not see it as named-not-linked.
+    expect((await svc.usedIn(H, "item-A")).soldAs.lines!.map((l) => l.menuItemId)).toContain("l-m");
+    expect((await svc.usedIn(H, I)).namedNotLinked.lines!.map((l) => l.menuItemId)).not.toContain("l-m");
+    expect(await body(svc.link(H, I, "l-m"))).toMatchObject({ reason: "already_linked", heldBy: { id: "item-A" } });
+    expect(db.tables.menu_items!.find((l) => l.id === "l-m")!.inventory_item_id).toBeNull();
+    // A line carrying THIS good's master wine links as usual.
+    db.tables.menu_items!.find((l) => l.id === "l-m")!.wine_library_id = null;
+    expect(await status(svc.link(H, I, "l-m"))).toBe(200);
+  });
+
+  it("the write itself refuses a line another good's master wine took between the read and the write", async () => {
+    const { db, svc } = seed();
+    db.tables.restaurant_inventory!.push({
+      id: "item-A", restaurant_id: H, kind: "wine", display_name: "Raki yeni", wine_name: null, master_wine_id: "w-A", beverage_id: null,
+    });
+    const realFrom = db.from.bind(db);
+    let reads = 0;
+    (db as any).from = (t: string) => {
+      const q = realFrom(t);
+      if (t === "menu_items" && ++reads === 1) {
+        const ms = q.maybeSingle.bind(q);
+        (q as any).maybeSingle = async () => {
+          const r = await ms();
+          db.tables.menu_items!.find((l) => l.id === "l-1")!.wine_library_id = "w-A";
+          return { ...r, data: { ...r.data, wine_library_id: null } };
+        };
+      }
+      return q;
+    };
+    expect(await body(svc.link(H, I, "l-1"))).toMatchObject({ reason: "already_linked", heldBy: { id: "item-A" } });
+    expect(db.tables.menu_items!.find((l) => l.id === "l-1")!.inventory_item_id).toBeNull();
+  });
+
   it("refuses a line on an archived menu, or a discarded line, with 409", async () => {
     const { db, svc } = seed();
     expect(await body(svc.link(H, I, "l-old"))).toMatchObject({ reason: "not_current" });
