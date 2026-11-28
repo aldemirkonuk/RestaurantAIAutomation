@@ -13,13 +13,14 @@ const h = vi.hoisted(() => ({
   detail: vi.fn(),
   list: vi.fn(),
   skipFolio: vi.fn(),
+  readEvidenceRecorded: vi.fn(),
   getOnboardingProgress: vi.fn(),
   role: 'owner' as string,
 }))
 vi.mock('../../services/api/documents', () => ({
   documentsApi: { upload: h.upload, detail: h.detail, list: h.list },
 }))
-vi.mock('../../services/api/arrival', () => ({ skipFolio: h.skipFolio }))
+vi.mock('../../services/api/arrival', () => ({ skipFolio: h.skipFolio, readEvidenceRecorded: h.readEvidenceRecorded }))
 vi.mock('../../services/api/vendors', () => ({ addCustomProvider: vi.fn() }))
 vi.mock('../../services/api/menus', () => ({ getOnboardingProgress: h.getOnboardingProgress }))
 vi.mock('../../services/api/settings', () => ({ settingsApi: { houseCurrency: vi.fn().mockResolvedValue(null) } }))
@@ -37,6 +38,8 @@ beforeEach(() => {
   h.getOnboardingProgress.mockResolvedValue({ vendor_added: true, next_steps: { money_set: true } })
   h.upload.mockResolvedValue({ documentId: 'doc-1' })
   h.skipFolio.mockResolvedValue(undefined)
+  h.readEvidenceRecorded.mockResolvedValue(false)
+  h.list.mockResolvedValue([])
   h.role = 'owner'
 })
 
@@ -55,7 +58,8 @@ describe('folio 0 on /house', () => {
     })
     expect(sent).not.toHaveProperty('restaurantId')
     expect(h.detail).not.toHaveBeenCalled()
-    expect(h.list).not.toHaveBeenCalled()
+    // The one list is the standing's own read at mount (limit 1), not a read-back of the send.
+    expect(h.list).toHaveBeenCalledTimes(1)
     expect(h.getOnboardingProgress).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('link', { name: 'See it on Receipts' })).toHaveAttribute('href', '/receipts')
     expect(screen.getByText(/not read into the house's registers yet/)).toBeInTheDocument()

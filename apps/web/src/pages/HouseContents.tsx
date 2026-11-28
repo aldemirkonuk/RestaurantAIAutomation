@@ -15,7 +15,7 @@ import { menuKept, moneySetIn, type MenuStandingRead } from '../lib/menuKept'
 import { HOUSE_ROWS, houseStanding } from '../lib/houseStanding'
 import { settingsApi } from '../services/api/settings'
 import { documentsApi } from '../services/api/documents'
-import { skipFolio } from '../services/api/arrival'
+import { readEvidenceRecorded, skipFolio } from '../services/api/arrival'
 import { useAuth } from '../contexts/AuthContext'
 
 /** The web's per-file limit for a paper (main.ts body limit carries 10 MB). */
@@ -156,16 +156,26 @@ export default function HouseContents() {
   // null = not read (or the read failed): never counted as unset (ADR 0020).
   const [moneySet, setMoneySet] = useState<boolean | null>(null)
   const moneyUnset = moneySet === false
+  // A read that FAILED is its own state, never a read still in progress and
+  // never "not set" (ADR 0020): the standing line says so and offers a retry.
+  const [moneyFailed, setMoneyFailed] = useState(false)
+  const [progressFailed, setProgressFailed] = useState(false)
   const [readCount, setReadCount] = useState(0)
   useEffect(() => {
     let live = true
+    setMoneyFailed(false)
+    setProgressFailed(false)
     const askMoney = () =>
       settingsApi
         .houseCurrency()
         .then((money) => {
-          if (live && money?.readable === true) setMoneySet(money.code != null)
+          if (!live) return
+          if (money?.readable === true) setMoneySet(money.code != null)
+          else setMoneyFailed(true)
         })
-        .catch(() => {})
+        .catch(() => {
+          if (live) setMoneyFailed(true)
+        })
     getOnboardingProgress()
       .then((progress) => {
         if (!live) return
@@ -177,10 +187,35 @@ export default function HouseContents() {
       })
       .catch(() => {
         if (!live) return
+        setProgressFailed(true)
         setVendorRead((now) => (now === 'on-book' ? now : 'ask'))
         setMenuStanding('unread')
         void askMoney()
       })
+    return () => {
+      live = false
+    }
+  }, [readCount])
+  // The invoice row's own read: the opening book's recorded skip or post, or
+  // any document the house holds. Both answering "none" is "not yet"; either
+  // failing without the other proving it is a failed read.
+  const [invoiceRead, setInvoiceRead] = useState<'reading' | 'set' | 'unset' | 'failed'>('reading')
+  useEffect(() => {
+    let live = true
+    setInvoiceRead('reading')
+    const book = readEvidenceRecorded().then(
+      (recorded) => recorded,
+      () => null,
+    )
+    const held = documentsApi.list({ limit: 1 }).then(
+      (documents) => (Array.isArray(documents) ? documents.length > 0 : null),
+      () => null,
+    )
+    void Promise.all([book, held]).then(([recorded, hasDocument]) => {
+      if (!live) return
+      if (recorded === true || hasDocument === true) setInvoiceRead('set')
+      else setInvoiceRead(recorded === false && hasDocument === false ? 'unset' : 'failed')
+    })
     return () => {
       live = false
     }
@@ -223,12 +258,34 @@ export default function HouseContents() {
     }
   }
 
-  // The four the house counts. The invoice is this visit's own fact (the page
-  // holds no read of an earlier send), so an unanswered ask is "not yet".
-  const vendorSet = saved || vendorRead === 'on-book' ? true : vendorRead === 'reading' ? null : false
+  // The four the house counts. The invoice is set by this visit's send or skip,
+  // or by what the house's book and documents say.
+  const vendorSet =
+    saved || vendorRead === 'on-book'
+      ? true
+      : progressFailed
+        ? 'failed'
+        : vendorRead === 'reading'
+          ? null
+          : false
   const menuSet =
-    menuStanding === 'current' ? true : menuStanding === 'draft' || menuStanding === 'none' ? false : null
-  const standingNow = houseStanding([menuSet, vendorSet, paper === 'sent' || paper === 'skipped', moneySet])
+    menuStanding === 'current'
+      ? true
+      : menuStanding === 'draft' || menuStanding === 'none'
+        ? false
+        : menuStanding === 'unread'
+          ? 'failed'
+          : null
+  const invoiceSet =
+    paper === 'sent' || paper === 'skipped' || invoiceRead === 'set'
+      ? true
+      : invoiceRead === 'unset'
+        ? false
+        : invoiceRead === 'failed'
+          ? 'failed'
+          : null
+  const moneyRead = moneySet !== null ? moneySet : moneyFailed ? 'failed' : null
+  const standingNow = houseStanding([menuSet, vendorSet, invoiceSet, moneyRead])
   const houseIsSet = standingNow.kind === 'counted' && standingNow.set === HOUSE_ROWS
 
   const saveSupplier = async () => {
@@ -276,7 +333,18 @@ export default function HouseContents() {
         <h1 className="mt-3 font-serif text-5xl">Your house.</h1>
         <p className="mt-4 text-[#6d685f]">One thing at a time. The rest can wait.</p>
 
-        {standingNow.kind === 'reading' ? (
+        {standingNow.kind === 'failed' ? (
+          <p className="mt-8 font-serif text-xl text-[#6d685f]" role="status" data-testid="house-standing">
+            We could not read all of your house just now.{' '}
+            <button
+              type="button"
+              onClick={lookAgain}
+              className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4"
+            >
+              Look again
+            </button>
+          </p>
+        ) : standingNow.kind === 'reading' ? (
           <p className="mt-8 font-serif text-xl text-[#b7b2a8]" role="status" data-testid="house-standing">
             Looking at your house…
           </p>
