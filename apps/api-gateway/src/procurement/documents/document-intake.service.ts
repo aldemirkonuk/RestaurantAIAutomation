@@ -1,3 +1,4 @@
+import { lineGeometryForPdf } from "../canonical/pdf-line-geometry";
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { createHash } from "crypto";
@@ -982,6 +983,45 @@ export class DocumentIntakeService {
    * used to argue with a distributor. `verified` is never set here; only a human
    * sets that.
    */
+  /**
+   * Where each read line sits on a PDF original, kept in the intake snapshot so
+   * a rebuild-from-columns can still draw the box. PDFs only; a photo, a scan
+   * with no text layer, an ambiguous row or any failure leaves the line with no
+   * geometry, which the pane says in words. It never fails the intake and never
+   * changes a value — it only adds `geometry` to the snapshot's lines.
+   */
+  private async withLineGeometry(
+    input: IntakeInput,
+    bytes: Buffer,
+    parsed: ParsedDocument,
+  ): Promise<ParsedDocument> {
+    const isPdf =
+      (input.mimeType || "").toLowerCase() === "application/pdf" ||
+      (input.filename || "").toLowerCase().endsWith(".pdf");
+    if (!isPdf || !parsed.lines.length) return parsed;
+    try {
+      const found = await lineGeometryForPdf(
+        bytes,
+        parsed.lines.map((l) => ({
+          lineNo: l.lineNo,
+          description: l.description,
+          lineTotal: l.lineTotal,
+          printed: l.printed,
+        })),
+      );
+      if (!found) return parsed;
+      return {
+        ...parsed,
+        lines: parsed.lines.map((l) => {
+          const g = found.get(l.lineNo);
+          return g ? { ...l, geometry: g } : l;
+        }),
+      };
+    } catch {
+      return parsed;
+    }
+  }
+
   private async persist(
     input: IntakeInput,
     sha256: string,
@@ -1013,7 +1053,11 @@ export class DocumentIntakeService {
      * without CI noticing. Hoisting the cast is what makes the payload
      * checkable; it changes nothing at runtime.
      */
-    const extractedSnapshot = parsed as unknown as Record<string, unknown>;
+    const extractedSnapshot = (await this.withLineGeometry(
+      input,
+      bytes,
+      parsed,
+    )) as unknown as Record<string, unknown>;
 
     let { data, error } = await this.db
       .getClient()
