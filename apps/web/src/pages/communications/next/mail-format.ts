@@ -391,6 +391,16 @@ export interface MailAttachment {
   removedAt: string | null;
 }
 
+/** The house's own note on a thread (r110 mail-gap g5): never sent, never part of a letter. */
+export interface MailThreadNote {
+  id: string;
+  body: string;
+  createdAt: string;
+  writtenBy: { id: string; name: string | null };
+  /** The reader wrote it: only then may they delete it. */
+  mine: boolean;
+}
+
 export interface MailThreadPage {
   key: string;
   subject: string | null;
@@ -407,6 +417,10 @@ export interface MailThreadPage {
   attachmentsRead?: boolean;
   /** False when whether a person filed these letters from Who is writing could not be read (M-F2). */
   heldMarksRead?: boolean;
+  /** The house's notes written between this page's letters (r110 g5). Absent from an older gateway. */
+  notes?: MailThreadNote[];
+  /** False when the notes could not be read: never "no notes". */
+  notesRead?: boolean;
 }
 
 export interface MailSummary {
