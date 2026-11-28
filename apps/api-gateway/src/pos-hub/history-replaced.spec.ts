@@ -46,6 +46,14 @@ const CHECK = {
 };
 
 describe("an ingest says which days of imported history its checks replaced", () => {
+  // The window is clamped to today, so the 11-20 check must sit inside it.
+  beforeAll(() => {
+    jest.useFakeTimers({
+      now: new Date("2026-11-27T12:00:00Z"),
+      doNotFake: ["hrtime", "nextTick", "performance", "queueMicrotask", "setImmediate", "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout"],
+    });
+  });
+  afterAll(() => jest.useRealTimers());
   function hub(before: Map<string, number> | null, after: Map<string, number> | null) {
     const { client, upserts } = makeClient();
     const reads: { restaurantId: string; window: { from: string; to: string } }[] = [];
@@ -114,6 +122,25 @@ describe("historyWindow", () => {
       ]),
     ).toEqual({ from: "2026-11-01", to: "2026-11-21" });
     expect(historyWindow([{ openedAt: "not a date", closedAt: "sometime on Tuesday" }])).toBeNull();
+  });
+
+  const now = new Date("2026-11-27T12:00:00Z");
+  it("is clamped to the days history can exist on: a null-default stamp costs one read, not hundreds", () => {
+    for (const stamp of ["1970-01-01T00:00:00Z", "0001-01-01T00:00:00Z"]) {
+      const w = historyWindow([{ openedAt: stamp }, { openedAt: "2026-11-20T10:00:00Z" }], now);
+      expect(w).toEqual({ from: "2026-08-27", to: "2026-11-21" });
+      const spans = Math.ceil((Date.parse(`${w!.to}T00:00:00Z`) - Date.parse(`${w!.from}T00:00:00Z`)) / 86_400_000 / HISTORY_WINDOW_DAYS);
+      expect(spans).toBeLessThanOrEqual(1);
+    }
+    expect(historyWindow([{ openedAt: "9999-12-31T00:00:00Z" }, { openedAt: "2026-11-20T10:00:00Z" }], now)).toEqual({
+      from: "2026-11-19",
+      to: "2026-11-29",
+    });
+  });
+
+  it("is null when every stamp is outside the days history can exist on", () => {
+    expect(historyWindow([{ openedAt: "1970-01-01T00:00:00Z" }], now)).toBeNull();
+    expect(historyWindow([{ openedAt: "9999-12-31T00:00:00Z" }], now)).toBeNull();
   });
 });
 

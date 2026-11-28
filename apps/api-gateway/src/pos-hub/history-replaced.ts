@@ -7,12 +7,16 @@
  * lost theirs.
  *
  * The window is every UTC date a check names, one day either side, which holds
- * every house-day of those checks in any zone. It is read in spans of at most
- * HISTORY_WINDOW_DAYS so no read meets the 1000-row cap.
+ * every house-day of those checks in any zone, clamped to the days history can
+ * exist on (today back HISTORY_MAX_DAYS_BACK, a day of zone slack either way):
+ * a till that stamps 1970-01-01 as a null default must not cost hundreds of
+ * reads per webhook. It is read in spans of at most HISTORY_WINDOW_DAYS so no
+ * read meets the 1000-row cap.
  */
 
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { HISTORY_MAX_DAYS_BACK } from "./history-import";
 
 export const HISTORY_WINDOW_DAYS = 900;
 
@@ -35,6 +39,7 @@ function utcDay(ms: number): string {
 /** The dates to read, or null when no check names a readable instant. */
 export function historyWindow(
   checks: { openedAt?: string | null; closedAt?: string | null }[],
+  now: Date = new Date(),
 ): { from: string; to: string } | null {
   let lo = Infinity;
   let hi = -Infinity;
@@ -48,7 +53,11 @@ export function historyWindow(
     }
   }
   if (!Number.isFinite(lo)) return null;
-  return { from: utcDay(lo - DAY_MS), to: utcDay(hi + DAY_MS) };
+  const today = Date.parse(utcDay(now.getTime()));
+  const from = Math.max(Date.parse(utcDay(lo - DAY_MS)), today - (HISTORY_MAX_DAYS_BACK + 2) * DAY_MS);
+  const to = Math.min(Date.parse(utcDay(hi + DAY_MS)), today + 2 * DAY_MS);
+  if (from > to) return null;
+  return { from: utcDay(from), to: utcDay(to) };
 }
 
 /** Item-days of history per house-day in the window, or null when it could not be read. */
