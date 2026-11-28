@@ -44,9 +44,10 @@ export function lockBodyScroll(): () => void {
 export const openStack: string[] = [];
 
 /* ── who is listening to the stack ────────────────────────────────────────
-   r109 inventory-5: a first-run sheet (the data terms, the first ground
-   choice) waits its turn while another overlay is open, so a deep-linked
-   drawer and a focus-trapping sheet are never on screen together. The stack
+   r109 inventory-5: the first ground choice (last in the first-run queue:
+   terms, the drawer the person opened, then theme) waits its turn while
+   another overlay is open, so a deep-linked drawer and a focus-trapping sheet
+   are never on screen together. The stack
    says when it changes; `useOwnTurn` reads it. */
 const stackListeners = new Set<() => void>();
 

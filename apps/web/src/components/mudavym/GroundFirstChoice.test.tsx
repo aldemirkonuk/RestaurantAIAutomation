@@ -18,7 +18,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { GroundFirstChoice } from './GroundFirstChoice';
 import { Sheet } from './Sheet';
+import { DEEP_LINK_GIVES_UP_MS, resetDeepLinkAtLoad } from './useOwnTurn';
 import { DataTermsSignInGate } from '../settings/DataTermsSignInGate';
+import { useDataTermsSignInBusy } from '../../hooks/queries/useDataTerms';
 import {
   GROUND_CHOICE_ATTR,
   applyAccountGround,
@@ -279,7 +281,7 @@ describe('never on top of the data terms', () => {
     expect(ask()).toBeInTheDocument();
   });
 
-  it('waits while a deep-linked drawer is open, and asks once it closes (r109 inventory-5)', () => {
+  it('waits while a good\'s drawer is open, and asks once it closes (r109 inventory-5)', () => {
     setGroundOwner(ALICE);
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const page = (drawer: boolean) => (
@@ -300,6 +302,130 @@ describe('never on top of the data terms', () => {
     expect(screen.getByText('the drawer')).toBeInTheDocument();
     expect(ask()).toBeNull();
     rerender(page(false));
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('one queue for an owner who owes the terms: terms alone, then the drawer she opened, then theme', async () => {
+    roleMock.current = 'owner';
+    termsMock.getDataTerms.mockResolvedValue(readout({ current: false }));
+    neverChose();
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // The drawer is held while the terms are owed: the rule InventoryNext
+    // applies (`!useDataTermsSignInBusy()`), with the real hook and a real Sheet.
+    const Drawer = ({ shown }: { shown: boolean }) => {
+      const termsBusy = useDataTermsSignInBusy();
+      return shown && !termsBusy ? (
+        <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+          <p>the drawer</p>
+        </Sheet>
+      ) : null;
+    };
+    const page = (shown: boolean) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Drawer shown={shown} />
+          <DataTermsSignInGate />
+          <GroundFirstChoice />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(page(true));
+    // 1. Terms first, over no drawer and no theme sheet: one overlay.
+    expect(await screen.findByRole('dialog', { name: TERMS })).toBeInTheDocument();
+    expect(screen.queryByText('the drawer')).toBeNull();
+    expect(ask()).toBeNull();
+    // 2. Accepted: the drawer she opened comes next; theme still waits.
+    termsMock.getDataTerms.mockResolvedValue(readout({ current: true, yours: { current: true } }));
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await waitFor(() => expect(screen.getByText('the drawer')).toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: TERMS })).toBeNull();
+    expect(ask()).toBeNull();
+    // 3. The drawer closes: theme asks last.
+    rerender(page(false));
+    await waitFor(() => expect(ask()).toBeInTheDocument());
+  });
+});
+
+describe('a deep link whose drawer has not mounted yet (r109 inventory-5)', () => {
+  const link = (search: string) => {
+    window.history.replaceState(null, '', `/inventory${search}`);
+    resetDeepLinkAtLoad();
+  };
+  afterEach(() => {
+    vi.useRealTimers();
+    link('');
+  });
+  const page = (drawer: boolean) => {
+    const c = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={c}>
+        <MemoryRouter>
+          {drawer ? (
+            <Sheet open onClose={() => {}} title="Gin" label="This shows one good. Nothing here writes.">
+              <p>the drawer</p>
+            </Sheet>
+          ) : null}
+          <DataTermsSignInGate />
+          <GroundFirstChoice />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  };
+
+  it('the choice waits for the drawer a ?open= on first paint is bringing, and is asked once it closes', () => {
+    link('?open=item-1');
+    setGroundOwner(ALICE);
+    const { rerender } = render(page(false));
+    act(() => applyAccountGround(undefined));
+    // The account answered first and no drawer is up yet: it is not asked on top of one that is coming.
+    expect(ask()).toBeNull();
+    rerender(page(true));
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(ask()).toBeNull();
+    window.history.replaceState(null, '', '/inventory');
+    rerender(page(false));
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it.each([
+    ['staff', '?open=item-1'],
+    ['manager', '?highlight=wine-1'],
+    ['staff', '?highlight=wine-1'],
+  ])('[REVERT-FAILS] a %s on %s is not asked before the drawer, nor under it, and is asked once it closes (r110 inventory-1)', (role, search) => {
+    roleMock.current = role;
+    link(search);
+    setGroundOwner(ALICE);
+    const { rerender } = render(page(false));
+    act(() => applyAccountGround(undefined));
+    expect(ask()).toBeNull();
+    rerender(page(true));
+    expect(screen.getByText('the drawer')).toBeInTheDocument();
+    expect(ask()).toBeNull();
+    window.history.replaceState(null, '', '/inventory');
+    rerender(page(false));
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('gives up waiting when the link opens nothing, so a sheet that is owed still shows', () => {
+    vi.useFakeTimers();
+    link('?open=item-1');
+    setGroundOwner(ALICE);
+    render(page(false));
+    act(() => applyAccountGround(undefined));
+    expect(ask()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(DEEP_LINK_GIVES_UP_MS + 1);
+    });
+    expect(ask()).toBeInTheDocument();
+  });
+
+  it('a page loaded without ?open= is asked at once, as before', () => {
+    link('');
+    setGroundOwner(ALICE);
+    render(page(false));
+    act(() => applyAccountGround(undefined));
     expect(ask()).toBeInTheDocument();
   });
 });
