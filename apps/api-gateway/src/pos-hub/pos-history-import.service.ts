@@ -8,8 +8,34 @@ import { DatabaseService } from "../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { readHistoryCsv } from "./history-import";
 
-/** Upserts go in chunks, so no request carries more than this many rows. */
+/** Writes go in chunks of whole days, so no request carries more than this many rows (a day over it goes alone). */
 export const HISTORY_CHUNK = 500;
+
+/**
+ * Cuts the sales into chunks that never split a day: the import replaces a
+ * day whole, so a day sent in two calls would have its first part deleted by
+ * the second.
+ */
+export function chunksByDay<T extends { saleDate: string }>(sales: T[], size: number): T[][] {
+  const byDay = new Map<string, T[]>();
+  for (const s of sales) {
+    const day = byDay.get(s.saleDate);
+    if (day) day.push(s);
+    else byDay.set(s.saleDate, [s]);
+  }
+  const chunks: T[][] = [];
+  let cur: T[] = [];
+  for (const day of [...byDay.keys()].sort()) {
+    const rows = byDay.get(day) as T[];
+    if (cur.length > 0 && cur.length + rows.length > size) {
+      chunks.push(cur);
+      cur = [];
+    }
+    cur = cur.concat(rows);
+  }
+  if (cur.length > 0) chunks.push(cur);
+  return chunks;
+}
 
 export interface HistoryImportAnswer {
   /** Days of sales the file carried that were saved. */
@@ -137,8 +163,7 @@ export class PosHistoryImportService {
     const savedDays = new Set<string>();
     const failedDays = new Set<string>();
     const heldDays = new Set<string>();
-    for (let i = 0; i < reading.sales.length; i += HISTORY_CHUNK) {
-      const chunk = reading.sales.slice(i, i + HISTORY_CHUNK);
+    for (const chunk of chunksByDay(reading.sales, HISTORY_CHUNK)) {
       const rows = chunk.map((s) => ({
         sale_date: s.saleDate,
         item_key: s.itemKey,

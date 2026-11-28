@@ -98,29 +98,40 @@ describe("PosHistoryImportService", () => {
     expect(upserts).toHaveLength(0);
   });
 
-  it("upserts in chunks of 500", async () => {
+  it("sends a whole day in one call, even past 500 rows", async () => {
     const { svc, upserts } = build();
     const rows = ["Date,Item,Qty", ...Array.from({ length: 1201 }, (_, i) => `2026-11-20,I${i},1`)];
     const out = await svc.importHistory("u1", "h1", rows.join("\n"), NOW);
-    expect(upserts.map((u) => u.rows.length)).toEqual([HISTORY_CHUNK, HISTORY_CHUNK, 201]);
+    expect(upserts.map((u) => u.rows.length)).toEqual([1201]);
     expect(upserts.every((u) => u.fn === "import_pos_sales_history")).toBe(true);
     expect(out.salesSaved).toBe(1201);
   });
 
-  it("a day split across a failed chunk is not counted as read, and is named", async () => {
+  it("packs whole days into chunks of at most 500 and never splits one", async () => {
+    const { svc, upserts } = build();
+    const day = (d: string, n: number) => Array.from({ length: n }, (_, i) => `${d},I${i},1`);
+    const csv = ["Date,Item,Qty", ...day("2026-11-20", 300), ...day("2026-11-21", 300), ...day("2026-11-22", 150)].join("\n");
+    await svc.importHistory("u1", "h1", csv, NOW);
+    expect(upserts.map((u) => u.rows.length)).toEqual([300, 450]);
+    for (const u of upserts) {
+      const days = new Set(u.rows.map((r: any) => r.sale_date));
+      for (const other of upserts) if (other !== u) for (const d of days) expect(other.rows.some((r: any) => r.sale_date === d)).toBe(false);
+    }
+  });
+
+  it("a day in a failed chunk is not counted as read, and is named", async () => {
     const { client, svc } = build({ timezone: "UTC", currency: "TRY" });
     let call = 0;
     (client.rpc as jest.Mock).mockImplementation(async (_fn: string, args: any) =>
       ++call === 2 ? { data: null, error: { message: "boom" } } : { data: { saved: args.p_rows.length, refused_days: [] }, error: null },
     );
-    // 600 items on 2026-11-20 (chunk 1 holds 500, chunk 2 holds 100 and fails) plus one on 2026-11-21.
+    // 600 items on the 20th go alone (over a chunk); the 21st is chunk 2 and fails.
     const rows = ["Date,Item,Qty", ...Array.from({ length: 600 }, (_, i) => `2026-11-20,I${i},1`), "2026-11-21,Z,1"];
-    // Chunk 2 = I500..I599 + Z: 101 rows. Chunk 1 = 500 rows of the 20th only.
     const out = await svc.importHistory("u1", "h1", rows.join("\n"), NOW);
-    expect(out.salesSaved).toBe(500);
-    expect(out.daysRead).toBe(0);
-    expect(out.errors.join(" ")).toContain("2026-11-20");
+    expect(out.salesSaved).toBe(600);
+    expect(out.daysRead).toBe(1);
     expect(out.errors.join(" ")).toContain("2026-11-21");
+    expect(out.errors.join(" ")).not.toContain("2026-11-20");
   });
 
   it("passes the house's currency to the reader and reports money written in another one", async () => {
@@ -150,14 +161,14 @@ describe("PosHistoryImportService", () => {
     expect(out.errors).toEqual([]);
   });
 
-  it("a day held by checks in one chunk is not counted read, even if another chunk of it saved", async () => {
+  it("a day held by checks is named and not counted read; the other day still saves", async () => {
     const { client, svc } = build({ timezone: "UTC", currency: "TRY" });
     let call = 0;
-    // Chunk 1 saves 500 items of the 20th; a check lands; chunk 2 finds the 20th held.
+    // A check holds the 20th (its whole day goes in chunk 1); the 21st is chunk 2.
     (client.rpc as jest.Mock).mockImplementation(async (_fn: string, args: any) =>
       ++call === 1
-        ? { data: { saved: args.p_rows.length, refused_days: [] }, error: null }
-        : { data: { saved: 1, refused_days: ["2026-11-20"] }, error: null },
+        ? { data: { saved: 0, refused_days: ["2026-11-20"] }, error: null }
+        : { data: { saved: args.p_rows.length, refused_days: [] }, error: null },
     );
     const rows = ["Date,Item,Qty", ...Array.from({ length: 600 }, (_, i) => `2026-11-20,I${i},1`), "2026-11-21,Z,1"];
     const out = await svc.importHistory("u1", "h1", rows.join("\n"), NOW);
