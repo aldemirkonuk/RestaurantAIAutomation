@@ -14,6 +14,8 @@ function seed(uom: string | null = null) {
   db.tables.stock_counts = [];
   db.tables.procurement_orders = [];
   db.tables.procurement_order_items = [];
+  db.tables.procurement_receipt_events = [];
+  db.tables.procurement_conversations = [];
   return { db, svc: new ItemFiguresService({ supabase: db } as any) };
 }
 
@@ -47,15 +49,57 @@ describe("ItemFiguresService on order (r109 g1)", () => {
     expect(onOrder.arrivingInBookUnit).toBe(0);
   });
 
-  it("a part delivery leaves only its remainder open, accepted first, else received", async () => {
-    const { db, svc } = seed();
+  const ledger = (id: string, order_id: string, quantity_change: number, extra: Record<string, any> = {}) => ({
+    id, restaurant_id: H, order_id, inventory_id: I, quantity_change, stock_type: "live", idempotency_key: null, ...extra,
+  });
+
+  it("a part delivery leaves its ordered bottles less what the ledger booked, retired columns ignored", async () => {
+    const { db, svc } = seed("bottle");
     db.tables.procurement_orders = [
-      head("o1", "PARTIALLY_RECEIVED", 10, { accepted_quantity: 4, quantity_received: 9 }),
-      head("o2", "PARTIALLY_RECEIVED", 5, { quantity_received: 2 }),
+      head("o1", "PARTIALLY_RECEIVED", 10, { accepted_quantity: 99, quantity_received: 99 }),
+      head("o2", "PARTIALLY_RECEIVED", 5),
     ];
+    db.tables.inventory_transactions = [ledger("t1", "o1", 4), ledger("t2", "o2", 2)];
     const { onOrder } = await svc.figures(H, I, "shown");
     expect(onOrder.sent!.map((o) => o.openQty)).toEqual([6, 3]);
     expect(onOrder.arrivingInBookUnit).toBe(9);
+  });
+
+  it("a part delivery with NULL in the retired columns does not count the shelf bottles again", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "PARTIALLY_RECEIVED", 12)];
+    db.tables.inventory_transactions = [ledger("t1", "o1", 5), ledger("t2", "o1", 3)];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => o.openQty)).toEqual([4]);
+    expect(onOrder.arrivingInBookUnit).toBe(4);
+  });
+
+  it("a part-delivered case order is taken off its bottle total, never below zero", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [
+      head("o1", "PARTIALLY_RECEIVED", 5, { unit_type: "case", bottles_total: 60, quantity_received: 60 }),
+      head("o2", "PARTIALLY_RECEIVED", 2, { unit_type: "case", bottles_total: 24 }),
+    ];
+    db.tables.inventory_transactions = [ledger("t1", "o1", 12), ledger("t2", "o2", 30)];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => [o.id, o.openQty, o.unit])).toEqual([["o1", 48, "bottle"]]);
+  });
+
+  it("a part-delivered case order with no bottle total keeps the order, its figure unknown", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "PARTIALLY_RECEIVED", 3, { unit_type: "case", bottles_total: null })];
+    db.tables.inventory_transactions = [ledger("t1", "o1", 6)];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => [o.openQty, o.unit, o.inBookUnit])).toEqual([[3, "case", null]]);
+    expect(onOrder.arrivingInBookUnit).toBeNull();
+  });
+
+  it("a ledger that cannot be read fails the card closed, never the whole order as open", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "PARTIALLY_RECEIVED", 6)];
+    db.failures.inventory_transactions = "timeout";
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder).toMatchObject({ readable: false, sent: null, arrivingInBookUnit: null });
   });
 
   it("reads a lower-case status as its upper-case one, and splits sent from not yet sent", async () => {
@@ -72,6 +116,41 @@ describe("ItemFiguresService on order (r109 g1)", () => {
     expect(onOrder.unsent!.map((o) => o.id)).toEqual(["o2", "o3"]);
     // Only what the supplier has is arriving: the unsent orders are not added.
     expect(onOrder.arrivingInBookUnit).toBe(2);
+  });
+
+  it("an APPROVED order whose letter went out is sent and arriving; one with no letter stays not yet sent", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "APPROVED", 6), head("o2", "APPROVED", 4), head("o3", "APPROVED", 2)];
+    db.tables.procurement_conversations = [
+      { id: "c1", restaurant_id: H, order_id: "o1", direction: "outbound", status: "SENT" },
+      { id: "c2", restaurant_id: H, order_id: "o2", direction: "outbound", status: "PENDING_APPROVAL" },
+      { id: "c3", restaurant_id: OTHER, order_id: "o3", direction: "outbound", status: "SENT" },
+    ];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => [o.id, o.letterSent])).toEqual([["o1", true]]);
+    expect(onOrder.unsent!.map((o) => o.id)).toEqual(["o2", "o3"]);
+    expect(onOrder.arrivingInBookUnit).toBe(6);
+  });
+
+  it("a letter read that fails is unread, not a guess that nothing was sent", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [head("o1", "APPROVED", 6)];
+    db.failures.procurement_conversations = "timeout";
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.readable).toBe(false);
+  });
+
+  it("each open order says which vendor it is with, a line-bearing order by its header", async () => {
+    const { db, svc } = seed("bottle");
+    db.tables.procurement_orders = [
+      head("o1", "IN_TRANSIT", 2, { provider_id: "v-1" }),
+      head("o2", "PENDING", 3, { provider_id: "v-2", inventory_id: "item-9" }),
+      head("o3", "PENDING", 1),
+    ];
+    db.tables.procurement_order_items = [line("l2", "o2", 3)];
+    const { onOrder } = await svc.figures(H, I, "shown");
+    expect(onOrder.sent!.map((o) => o.providerId)).toEqual(["v-1"]);
+    expect(Object.fromEntries(onOrder.unsent!.map((o) => [o.id, o.providerId]))).toEqual({ o2: "v-2", o3: null });
   });
 
   it("a line naming another house fails the whole read closed, never a figure", async () => {
