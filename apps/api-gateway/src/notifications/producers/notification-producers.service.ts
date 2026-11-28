@@ -28,6 +28,7 @@ import { GrantSuspendedProducer } from "./grant-suspended.producer";
 import { AddedToolProducer } from "./added-tool.producer";
 import { ExperimentEndedProducer } from "./experiment-ended.producer";
 import { MailGrantAbsentProducer } from "./mail-grant-absent.producer";
+import { MailWaitingProducer } from "./mail-waiting.producer";
 
 /**
  * The ten notification producers, and the two crons that run them.
@@ -176,6 +177,8 @@ export class NotificationProducersService {
     // The tenth (0160 §111) — the house's own mail-reading declaration with
     // no live grant behind it. Narrows itself to owners/managers; see its header.
     private readonly mailGrantAbsent: MailGrantAbsentProducer,
+    // The eleventh (r110 mail-gap g4): a letter waiting 24 h brings an owner or a manager to it.
+    private readonly mailWaiting: MailWaitingProducer,
     // Optional for the same reason the ledger's is: the spec constructs this
     // service positionally, and production keeps the wall clock.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
@@ -307,6 +310,13 @@ export class NotificationProducersService {
         now,
         () =>
           this.mailGrantAbsent.sweepTenant(tenant.id, timeZone, audience, now),
+      ),
+      // Owners and managers only, and quiet 23:00-07:00 house time; see its header.
+      [MailWaitingProducer.PRODUCER]: await this.runOne(
+        tenant.id,
+        MailWaitingProducer.PRODUCER,
+        now,
+        () => this.mailWaiting.sweepTenant(tenant.id, timeZone, audience, now),
       ),
     };
   }
@@ -511,6 +521,7 @@ export class NotificationProducersService {
       [GrantSuspendedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [AddedToolProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [MailGrantAbsentProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
+      [MailWaitingProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [ExperimentEndedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],

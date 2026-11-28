@@ -104,6 +104,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     addedTool as any,
     experimentEnded as any,
     mailGrantAbsent as any,
+    (overrides.mailWaiting ?? stub("mail_waiting")) as any,
   );
   return {
     service,
@@ -153,6 +154,7 @@ describe("arming", () => {
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
+      "mail_waiting",
       // LAST, and outside the per-tenant loop. It reports cross-house figures to
       // one reader; running it inside would put them in every house's inbox.
       "experiment_ended_unnamed",
@@ -243,8 +245,9 @@ describe("the two cadences", () => {
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
+      "mail_waiting",
     ]);
-    expect(ledger.closeRun.calls).toHaveLength(7);
+    expect(ledger.closeRun.calls).toHaveLength(8);
   });
 
   it("[REVERT-FAILS] one producer throwing does not cost the others their run", async () => {
@@ -266,6 +269,7 @@ describe("the two cadences", () => {
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
+      "mail_waiting",
     ]);
     // The failure is recorded on the run row rather than swallowed.
     const closed = ledger.closeRun.calls[0];
@@ -298,7 +302,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all ten producers, their schedule and their next tick", async () => {
+  it("names all eleven producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -312,6 +316,7 @@ describe("statusFor — what the page is allowed to say", () => {
       "grant_suspended",
       "added_tool",
       "mail_grant_absent",
+      "mail_waiting",
       "experiment_ended_unnamed",
       "sale_record",
       "market_price",
@@ -320,19 +325,19 @@ describe("statusFor — what the page is allowed to say", () => {
     expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[6].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[7].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
-    expect(status.producers[9].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[10].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all ten, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all eleven, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 10 producers/);
-    expect(status.producers).toHaveLength(10);
+    expect(status.armingNote).toMatch(/arms all 11 producers/);
+    expect(status.producers).toHaveLength(11);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 10 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 11 producers at once/s,
       );
     }
   });
