@@ -211,6 +211,9 @@ export function Drawing({
       // cap, or every row (up to MAX_DRAWN) in full screen (rp-rank.ts).
       const cats = view.cats!;
       const r = ranked(cats, end, flat ? MAX_DRAWN : (cats.rank?.cap ?? MAX_DRAWN), MAX_DRAWN);
+      // A re-read that leaves no row out hides the caption and the pill, so a
+      // Lowest chosen earlier would have no words and no way back: go back to Highest.
+      if (cats.rank && !r.cut && end === 'low') setRankEnd({ graph, end: 'high' });
       const line = cats.rank ? (
         <RankLine
           caption={r.caption}

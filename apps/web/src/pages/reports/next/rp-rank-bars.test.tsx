@@ -56,6 +56,23 @@ describe('ranked bars', () => {
     expect(screen.queryByText(/of 37 wines/)).toBeNull();
   });
 
+  it('[REVERT-FAILS] Lowest then a re-read that leaves no row out goes back to Highest, not lowest-first with no words', () => {
+    const spec = CATALOGUE.service;
+    const make = (n: number) => {
+      const waiters = Array.from({ length: n }, (_, i) => ({
+        name: `Server ${String(i).padStart(2, '0')}`, checks: 100 + i, revenue: 5000 - i * 100, avgCheck: 50, wineAttachRate: null, tipPct: null, revenuePerCover: null,
+      }));
+      return spec.view(spec.select({ dataStatus: 'ok', adjusted: null, waiters, checksInWindow: 2000, sinceDays: 30 }), { days: 30, currency: 'USD' });
+    };
+    const { container, rerender } = render(<Drawing view={make(20)} graph="bars" windowLine="" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Lowest' }));
+    rerender(<Drawing view={make(10)} graph="bars" windowLine="" />);
+    fireEvent.focus(surface(container));
+    // Every row is drawn, so there is no pill; the first bar is the highest takings (Server 00), not the lowest.
+    expect(screen.queryByRole('button', { name: 'Lowest' })).toBeNull();
+    expect(live()).toMatch(/^Server 00 · /);
+  });
+
   it('a Draw as goes back to Highest', () => {
     const view = wineView();
     const { rerender } = render(<Drawing view={view} graph="bars" windowLine="" />);
