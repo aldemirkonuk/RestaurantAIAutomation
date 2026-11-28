@@ -13,9 +13,11 @@
  * canonical document is meant to be enough on its own.
  *
  * A LINE CLICK MOVES THE BOX ONLY WHEN THERE IS A BOX. The envelope carries
- * `bbox` when the extractor kept one. When it did not, the pane says "no
- * position kept" — it never highlights an approximate rectangle, which would be
- * a fabricated citation of the paper.
+ * `page` + `bbox` when the gateway found the one text row of a PDF that prints
+ * the line's amount (`pdf-line-geometry`). Then, and only then, the pane draws
+ * that page itself with one outline on it. Otherwise (a photo, an ambiguous
+ * row) it says "no position kept" — it never highlights an approximate
+ * rectangle, which would be a fabricated citation of the paper.
  */
 
 import { useState, type ReactNode } from 'react'
@@ -23,6 +25,7 @@ import { PaperPane } from '../../pages/receipts/next/ReceiptsNext'
 import type { ProcurementDocument } from '../../services/api/documents'
 import type { FieldEnvelope } from '../../services/api/canonical'
 import { MONO } from './canonical-format'
+import { OriginalBoxedPage } from './OriginalBoxedPage'
 
 /**
  * The stored file in words, not as a MIME type (walk-through W22,
@@ -103,6 +106,12 @@ export function OriginalPane({
   selectedLabel,
 }: OriginalPaneProps) {
   const [open, setOpen] = useState(false)
+
+  const isPdf = contentType === 'application/pdf' || /\.pdf$/i.test(filename ?? '')
+  const boxed =
+    isPdf && imageUrl && selectedEnvelope?.bbox && selectedEnvelope.page
+      ? { page: selectedEnvelope.page, bbox: selectedEnvelope.bbox }
+      : null
 
   // PaperPane reads a `ProcurementDocument`; this is the same document, shaped
   // for it. Only the fields it actually reads are supplied.
@@ -203,18 +212,22 @@ export function OriginalPane({
         </button>
       </div>
 
-      <PaperPane
-        doc={asDocument}
-        detailKnown
-        fetchedAt={fetchedAt}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
-      />
+      {boxed && imageUrl ? (
+        <OriginalBoxedPage url={imageUrl} box={boxed} onRefresh={onRefresh} refreshing={refreshing} />
+      ) : (
+        <PaperPane
+          doc={asDocument}
+          detailKnown
+          fetchedAt={fetchedAt}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+        />
+      )}
 
       {selectedLabel && (
         <p style={{ margin: '5px 0 0', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
-          {selectedEnvelope?.bbox
-            ? `${selectedLabel} — page ${selectedEnvelope.page ?? '?'}, boxed on the scan.`
+          {boxed
+            ? `${selectedLabel} — page ${boxed.page}, outlined on the original.`
             : `${selectedLabel} — no position kept on the original, so nothing is boxed. The value is still traceable through its provenance.`}
         </p>
       )}
