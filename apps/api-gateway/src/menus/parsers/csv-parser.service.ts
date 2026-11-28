@@ -1,18 +1,21 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
 import { MenuPriceReason, readMenuPrice } from "./menu-price";
+import { isKitchenLine } from "../menu-line-view";
 
 // Aliases by field, against `headerKey`: "Şişe Fiyatı (TL)" is `sise_fiyati`.
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
   [
     "name",
-    "name wine wine_name item ad adi isim urun urun_adi sarap sarap_adi",
+    // r110 menu-r110-5: a kitchen sheet heads its names Dish / Yemek.
+    "name wine wine_name item dish dish_name ad adi isim urun urun_adi sarap sarap_adi yemek yemek_adi",
   ],
   ["producer", "producer winery vineyard chateau brand uretici"],
   ["vintage", "vintage year yil rekolte"],
   ["region", "region appellation bolge"],
   ["grape_variety", "grape variety grape_variety uzum uzum_cesidi"],
-  ["category", "category type kategori tur"],
+  // r110 menu-r110-5: a menu's Section / Bölüm is its category, as the sheet export writes it.
+  ["category", "category type section kategori tur bolum kisim"],
   [
     "by_glass_price",
     "by_glass glass glass_price by_glass_price kadeh kadeh_fiyati",
@@ -25,6 +28,12 @@ const HEADER_MAP = new Map(
     keys.split(" ").map((k) => [k, field] as const),
   ),
 );
+
+/** A name header that says the sheet is a kitchen's (r110 review R2): the lines under it are dishes, not bottles. */
+const DISH_NAME_KEYS = new Set(["dish", "dish_name", "yemek", "yemek_adi"]);
+
+/** A line read from a kitchen sheet says so; the import honours it before its own test. */
+type SheetItem = WineExtractItem & { kitchen_line?: boolean };
 
 const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "by_glass_price",
@@ -42,6 +51,8 @@ export interface CsvRowIssue {
     | "no_name_column"
     /** A bare `Price` / `Fiyat` header: bottle or glass is not decided, so it is not read. */
     | "price_column_not_read"
+    /** A named column no field takes (`Notes`, `Allergens`): it was not read, and that is said (r110 menu-r110-5). */
+    | "column_not_read"
     /** A spreadsheet error value (`#N/A`, `#REF!`) where a value was expected. */
     | "cell_error"
     /** The row has more cells than the header (an unquoted decimal comma): its prices are left blank. */
@@ -248,6 +259,7 @@ export class CsvParserService {
     const headerWidth = width(records[0].cells);
 
     const items: WineExtractItem[] = [];
+    const dishSheet = this.isDishSheet(records[0].cells);
     for (const record of records.slice(1)) {
       const shifted = width(record.cells) > headerWidth;
       const item = this.buildItem(
@@ -256,6 +268,7 @@ export class CsvParserService {
         record.row,
         issues,
         shifted,
+        dishSheet,
       );
       if (item && shifted)
         issues.push({
@@ -316,6 +329,7 @@ export class CsvParserService {
       };
 
     const items: WineExtractItem[] = [];
+    const dishSheet = this.isDishSheet(headers);
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // header row
       const cols: Cell[] = [];
@@ -333,7 +347,7 @@ export class CsvParserService {
             raw: v.error,
           });
       });
-      const item = this.buildItem(fieldMap, cols, rowNumber, issues);
+      const item = this.buildItem(fieldMap, cols, rowNumber, issues, false, dishSheet);
       if (item) {
         item.raw_text = cols.join(",");
         items.push(item);
@@ -343,19 +357,29 @@ export class CsvParserService {
     return { items, issues };
   }
 
+  /** Whether the column that gives the name is headed Dish or Yemek (the first name column is the one read). */
+  private isDishSheet(headers: string[]): boolean {
+    const at = headers.findIndex((h) => readHeader(h ?? "").field === "name");
+    return at >= 0 && DISH_NAME_KEYS.has(headerKey(headers[at] ?? ""));
+  }
+
   private fieldMap(headers: string[]): Array<keyof WineExtractItem | null> {
     return Array.from(headers, (h) => readHeader(h ?? "").field);
   }
 
-  /** A price header that names no field (bare `Price`, `Bottle Size`) is said, not read. */
+  /**
+   * A price header that names no field (bare `Price`, `Bottle Size`) is said,
+   * not read; so is any other named column no field takes (r110 menu-r110-5:
+   * a column was dropped in silence). A blank header is no column.
+   */
   private headerIssues(headers: string[], row: number): CsvRowIssue[] {
-    return headers
-      .filter((h) => readHeader(h ?? "").note)
-      .map((h) => ({
-        row,
-        reason: "price_column_not_read" as const,
-        raw: h.trim(),
-      }));
+    return Array.from(headers, (h) => (h ?? "").trim()).flatMap((h): CsvRowIssue[] => {
+      if (!h) return [];
+      const read = readHeader(h);
+      if (read.note) return [{ row, reason: "price_column_not_read" as const, raw: h }];
+      if (!read.field) return [{ row, reason: "column_not_read" as const, raw: h }];
+      return [];
+    });
   }
 
   /**
@@ -393,8 +417,9 @@ export class CsvParserService {
     row: number,
     issues: CsvRowIssue[],
     skipPrices = false,
+    dishSheet = false,
   ): WineExtractItem | null {
-    const item: Partial<WineExtractItem> = {};
+    const item: Partial<SheetItem> = {};
     const found: CsvRowIssue[] = [];
 
     fieldMap.forEach((field, colIdx) => {
@@ -428,6 +453,13 @@ export class CsvParserService {
       return null;
     }
     issues.push(...found);
-    return item as WineExtractItem;
+    if (dishSheet) {
+      // A kitchen sheet's line is a kitchen line, whatever its section is called: "Çorbalar" and "Main" read as
+      // no hint, and a dish sent as a drink makes a library row and, once the menu is current, a bottle. menu_items
+      // keeps no kitchen flag, so the category says it too: the section when it reads as kitchen, else "food".
+      item.kitchen_line = true;
+      item.category = item.category && isKitchenLine(item.category, "") ? item.category : "food";
+    }
+    return item as SheetItem;
   }
 }
