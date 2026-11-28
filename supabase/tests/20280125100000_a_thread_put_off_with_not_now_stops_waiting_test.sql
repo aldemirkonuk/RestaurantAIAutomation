@@ -82,6 +82,41 @@ SELECT pg_temp.ok(pg_temp.waits(5) IS FALSE AND pg_temp.waits(6), 'one-key-two-v
 -- The badge (and the tab title, which reads it) dropped by exactly the two still put off: 1 and 5.
 SELECT pg_temp.ok(pg_temp.badge() = (SELECT n FROM before) - 2, 'the-badge-drops-by-exactly-the-put-off');
 
+-- 7 and 8: the HOUSE answering ends a put-off too. Vendor 7 has two threads: gm:7a waits and was
+-- never put off; gm:7b was put off, and an older house reply (before the put-off) must not end it.
+-- Vendor 8's one thread is put off and then answered.
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, kind, from_address, direction, channel, message_text, status, thread_key,
+   received_at, sent_at, created_at)
+SELECT gen_random_uuid(), '72000000-0000-4000-8000-000000000001', pg_temp.v(l.n), 'vendor', 'v' || l.n || '@v.example',
+       l.dir, 'email', 'Words', CASE WHEN l.dir = 'inbound' THEN 'RECEIVED' ELSE 'SENT' END, l.k,
+       CASE WHEN l.dir = 'inbound' THEN now() - l.ago END, CASE WHEN l.dir = 'outbound' THEN now() - l.ago END, now() - l.ago
+FROM (VALUES (7, 'gm:7a', 'inbound', interval '2 hours'),
+             (7, 'gm:7b', 'inbound', interval '3 hours'), (7, 'gm:7b', 'outbound', interval '2 hours'),
+             (7, 'gm:7b', 'inbound', interval '1 hour'),
+             (8, 'gm:8', 'inbound', interval '2 hours')) l(n, k, dir, ago);
+SELECT public.set_mail_thread_snooze('72000000-0000-4000-8000-000000000001', pg_temp.v(k.n), k.key,
+                                     now() + interval '1 day', NULL)
+FROM (VALUES (7, 'gm:7b'), (8, 'gm:8')) k(n, key);
+SELECT pg_temp.ok(pg_temp.state(7, 'gm:7b') = 'on', 'a-house-reply-from-before-the-put-off-does-not-end-it');
+-- The house answers both after putting them off.
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, kind, from_address, direction, channel, message_text, status, thread_key,
+   received_at, sent_at, created_at)
+VALUES (gen_random_uuid(), '72000000-0000-4000-8000-000000000001', pg_temp.v(7), 'vendor', 'v7@v.example',
+        'outbound', 'email', 'Answer', 'SENT', 'gm:7b', NULL, now() + interval '1 minute', now() + interval '1 minute'),
+       (gen_random_uuid(), '72000000-0000-4000-8000-000000000001', pg_temp.v(8), 'vendor', 'v8@v.example',
+        'outbound', 'email', 'Answer', 'SENT', 'gm:8', NULL, now() + interval '1 minute', now() + interval '1 minute');
+SELECT pg_temp.ok(pg_temp.state(8, 'gm:8') = 'ended', 'the-house-answering-ends-it-while-it-is-still-on');
+-- Its time passes: an answered thread is not "back", so 7's other waiting thread cannot make 7 read back.
+UPDATE public.mail_thread_snoozes SET until = now() - interval '1 minute'
+WHERE restaurant_id = '72000000-0000-4000-8000-000000000001' AND provider_id IN (pg_temp.v(7), pg_temp.v(8));
+SELECT pg_temp.ok(pg_temp.state(7, 'gm:7b') = 'ended' AND pg_temp.state(8, 'gm:8') = 'ended',
+  'an-answered-thread-never-reads-back');
+SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.mail_thread_snooze_rows('72000000-0000-4000-8000-000000000001',
+  ARRAY[pg_temp.v(7), pg_temp.v(8)]) WHERE state = 'back'), 'no-back-row-for-an-answered-thread');
+SELECT pg_temp.ok(pg_temp.waits(7), 'the-other-thread-still-waits');
+
 -- Another house's thread, a key nobody holds, a vendor of the key's other thread: refused.
 CREATE FUNCTION pg_temp.raises(p_sql text, p_code text) RETURNS boolean LANGUAGE plpgsql AS $$
 BEGIN EXECUTE p_sql; RETURN false; EXCEPTION WHEN OTHERS THEN RETURN SQLSTATE = p_code; END $$;
@@ -109,7 +144,7 @@ SELECT pg_temp.ok(public.clear_mail_thread_snooze('72000000-0000-4000-8000-00000
 SELECT pg_temp.ok(NOT has_table_privilege('authenticated', 'public.mail_thread_snoozes', 'SELECT')
   AND NOT has_table_privilege('anon', 'public.mail_thread_snoozes', 'SELECT')
   AND NOT has_function_privilege('authenticated', 'public.set_mail_thread_snooze(uuid, uuid, text, timestamptz, uuid)', 'EXECUTE')
-  AND NOT has_function_privilege('authenticated', 'public.mail_thread_snoozed(timestamptz, timestamptz, timestamptz)', 'EXECUTE')
+  AND NOT has_function_privilege('authenticated', 'public.mail_thread_snoozed(timestamptz, timestamptz, timestamptz, timestamptz, timestamptz)', 'EXECUTE')
   AND NOT has_function_privilege('authenticated', 'public.mail_thread_snooze_rows(uuid, uuid[])', 'EXECUTE')
   AND has_function_privilege('service_role', 'public.set_mail_thread_snooze(uuid, uuid, text, timestamptz, uuid)', 'EXECUTE')
   AND has_function_privilege('service_role', 'public.mail_thread_states(uuid, boolean, uuid)', 'EXECUTE'),

@@ -1,7 +1,8 @@
 -- "Not now" (r110 mail, DD-r109-13): an owner or manager puts a waiting thread off until a time.
 -- Until then it is not waiting anywhere: the list, the person's threads, the rail badge and the
 -- tab title all read mail_thread_states, and mail_thread_states now asks mail_thread_snoozed.
--- A newer letter from the vendor ends it at once; so does the time passing. Nothing else does.
+-- A newer letter from the vendor ends it at once; so does the time passing; so does the house
+-- answering the thread (an answered thread is not 'back', it was answered). Nothing else does.
 --
 -- The thread is the pair (provider_id, thread_key), as everywhere in Mail: one Gmail thread to
 -- two vendors is two threads, so putting one off never puts off the other.
@@ -30,9 +31,11 @@ REVOKE ALL ON TABLE public.mail_thread_snoozes FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.mail_thread_snoozes TO service_role;
 
 -- The one rule. 'on': put off and its time has not come. 'back': its time came and the vendor
--- has not written since. 'ended': the vendor wrote again. NULL: never put off.
+-- has not written since. 'ended': the vendor wrote again, or the house sent a letter on the thread
+-- after it was put off. NULL: never put off.
 CREATE FUNCTION public.mail_thread_snooze_state(
-  p_until timestamptz, p_known_in_at timestamptz, p_last_in_at timestamptz
+  p_until timestamptz, p_known_in_at timestamptz, p_last_in_at timestamptz,
+  p_set_at timestamptz, p_last_out_at timestamptz
 ) RETURNS text
     LANGUAGE sql STABLE
     SET search_path = ''
@@ -41,6 +44,7 @@ SELECT CASE
          WHEN p_until IS NULL THEN NULL
          WHEN p_last_in_at IS NOT NULL
               AND (p_known_in_at IS NULL OR p_last_in_at > p_known_in_at) THEN 'ended'
+         WHEN p_last_out_at IS NOT NULL AND p_last_out_at > p_set_at THEN 'ended'
          WHEN p_until > now() THEN 'on'
          ELSE 'back'
        END;
@@ -48,12 +52,13 @@ $$;
 
 -- Whether a thread is put off right now. Every waiting count asks this, through mail_thread_states.
 CREATE FUNCTION public.mail_thread_snoozed(
-  p_until timestamptz, p_known_in_at timestamptz, p_last_in_at timestamptz
+  p_until timestamptz, p_known_in_at timestamptz, p_last_in_at timestamptz,
+  p_set_at timestamptz, p_last_out_at timestamptz
 ) RETURNS boolean
     LANGUAGE sql STABLE
     SET search_path = ''
     AS $$
-SELECT COALESCE(public.mail_thread_snooze_state(p_until, p_known_in_at, p_last_in_at) = 'on', false);
+SELECT COALESCE(public.mail_thread_snooze_state(p_until, p_known_in_at, p_last_in_at, p_set_at, p_last_out_at) = 'on', false);
 $$;
 
 -- Same signature and columns as 20270421143700, so CREATE OR REPLACE keeps its grants; the body
@@ -156,7 +161,9 @@ per_thread AS (
               FILTER (WHERE r.subject IS NOT NULL))[1] AS subject,
            -- The newest letter the vendor wrote: one newer than the house knew
            -- of when it said "Not now" ends that (mail_thread_snooze_state).
-           max(r.at) FILTER (WHERE r.dir = 'inbound' AND r.visible AND NOT r.automatic) AS last_in_at
+           max(r.at) FILTER (WHERE r.dir = 'inbound' AND r.visible AND NOT r.automatic) AS last_in_at,
+           -- The newest letter the house sent: answering a put-off thread ends the put-off too.
+           max(r.at) FILTER (WHERE r.dir = 'outbound' AND r.visible) AS last_out_at
     FROM ranked r
     GROUP BY r.provider_id, r.thread_key
 )
@@ -187,7 +194,7 @@ LEFT JOIN public.mail_thread_snoozes sz
  AND sz.thread_key = t.thread_key
 CROSS JOIN LATERAL (
     SELECT COALESCE(t.last_owes, false)
-           AND NOT public.mail_thread_snoozed(sz.until, sz.known_in_at, t.last_in_at) AS waiting
+           AND NOT public.mail_thread_snoozed(sz.until, sz.known_in_at, t.last_in_at, sz.set_at, t.last_out_at) AS waiting
 ) w
 LEFT JOIN public.procurement_orders po
   ON po.id = t.order_id AND po.restaurant_id = p_restaurant_id;
@@ -255,10 +262,11 @@ CREATE FUNCTION public.mail_thread_snooze_rows(
     SET search_path = ''
     AS $$
 SELECT s.provider_id, s.thread_key, s.until,
-       public.mail_thread_snooze_state(s.until, s.known_in_at, li.last_in_at)
+       public.mail_thread_snooze_state(s.until, s.known_in_at, li.last_in_at, s.set_at, li.last_out_at)
 FROM public.mail_thread_snoozes s
 CROSS JOIN LATERAL (
-    SELECT max(l.at) FILTER (WHERE l.dir = 'inbound' AND l.visible AND NOT l.automatic) AS last_in_at
+    SELECT max(l.at) FILTER (WHERE l.dir = 'inbound' AND l.visible AND NOT l.automatic) AS last_in_at,
+           max(l.at) FILTER (WHERE l.dir = 'outbound' AND l.visible) AS last_out_at
     FROM public.mail_letter_rows(p_restaurant_id, false, s.provider_id) l
     WHERE l.thread_key = s.thread_key
       AND NOT l.duplicate
@@ -267,14 +275,14 @@ WHERE s.restaurant_id = p_restaurant_id
   AND s.provider_id = ANY (p_provider_ids);
 $$;
 
-REVOKE ALL ON FUNCTION public.mail_thread_snooze_state(timestamptz, timestamptz, timestamptz),
-  public.mail_thread_snoozed(timestamptz, timestamptz, timestamptz),
+REVOKE ALL ON FUNCTION public.mail_thread_snooze_state(timestamptz, timestamptz, timestamptz, timestamptz, timestamptz),
+  public.mail_thread_snoozed(timestamptz, timestamptz, timestamptz, timestamptz, timestamptz),
   public.set_mail_thread_snooze(uuid, uuid, text, timestamptz, uuid),
   public.clear_mail_thread_snooze(uuid, uuid, text),
   public.mail_thread_snooze_rows(uuid, uuid[])
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.mail_thread_snooze_state(timestamptz, timestamptz, timestamptz),
-  public.mail_thread_snoozed(timestamptz, timestamptz, timestamptz),
+GRANT EXECUTE ON FUNCTION public.mail_thread_snooze_state(timestamptz, timestamptz, timestamptz, timestamptz, timestamptz),
+  public.mail_thread_snoozed(timestamptz, timestamptz, timestamptz, timestamptz, timestamptz),
   public.set_mail_thread_snooze(uuid, uuid, text, timestamptz, uuid),
   public.clear_mail_thread_snooze(uuid, uuid, text),
   public.mail_thread_snooze_rows(uuid, uuid[])
