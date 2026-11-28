@@ -248,6 +248,21 @@ export interface MailOrderRef {
   status: string | null;
 }
 
+/**
+ * The house's own note on a thread (r110 mail-gap g5): read by the house,
+ * never sent, never part of a letter.
+ */
+export interface MailThreadNote {
+  id: string;
+  /** At most 1000 characters, trimmed. */
+  body: string;
+  createdAt: string;
+  /** public.users.user_id; name null when it could not be read. */
+  writtenBy: { id: string; name: string | null };
+  /** True when the caller wrote it: only then may they delete it. */
+  mine: boolean;
+}
+
 export interface MailThreadPage {
   key: string;
   subject: string | null;

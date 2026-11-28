@@ -25,6 +25,7 @@ import type {
   MailPersonRow,
   MailSeenAnswer,
   MailSummary,
+  MailThreadNote,
   MailThreadPage,
   MailThreadRow,
   MailThreadsPage,
@@ -72,6 +73,11 @@ import {
   stripSubjectLine,
   withholdsHouseLetters,
 } from "./mail.read-rules";
+import {
+  NOTE_NOT_YOURS_TO_WRITE,
+  deleteThreadNote,
+  writeThreadNote,
+} from "./mail.thread-notes";
 
 function emptyThread(key: string): MailThreadPage {
   return {
@@ -831,6 +837,28 @@ export class MailService {
       attachmentsRead: files !== null,
       heldMarksRead: vouched !== null,
     };
+  }
+
+  /** A note on a thread (r110 mail-gap g5): owners and managers only. */
+  async addNote(
+    houseId: string,
+    callerRole: string | null | undefined,
+    userId: string | null | undefined,
+    opts: { key?: unknown; with?: unknown; body?: unknown },
+  ): Promise<MailThreadNote> {
+    if (withholdsHouseLetters(callerRole)) {
+      throw new ForbiddenException(NOTE_NOT_YOURS_TO_WRITE);
+    }
+    return writeThreadNote(this.db, houseId, userId, opts);
+  }
+
+  /** Delete a note: the writer's own only, whatever their role now. */
+  deleteNote(
+    houseId: string,
+    userId: string | null | undefined,
+    noteId: unknown,
+  ): Promise<{ id: string; deleted: true }> {
+    return deleteThreadNote(this.db, houseId, userId, noteId);
   }
 
   /** Each letter's kind, sender and recipients. A failed read fails the page, never "no sender". */
