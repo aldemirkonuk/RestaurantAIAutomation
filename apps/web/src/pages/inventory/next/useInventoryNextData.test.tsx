@@ -431,6 +431,15 @@ describe('suggestedToPar takes off what is already on its way (r110 g5)', () => 
     expect(suggestedToPar(gin, { readable: false, source: 'x', sent: null, unsent: null, arrivingInBookUnit: null })).toBe(6);
   });
 
+  it('a part delivery is not taken off: what was received is already in the stock (r110 fix)', () => {
+    // par 10, stock 4, a 6-bottle order with 3 counted in at the door: the gateway reads 6 open.
+    expect(suggestedToPar(gin, ready([o('a', 'PARTIALLY_RECEIVED', 6, 'bottle', 6)], [], 6))).toBe(6);
+    // a part delivery beside an order on its way: only the latter is taken off.
+    expect(
+      suggestedToPar(gin, ready([o('a', 'PARTIALLY_RECEIVED', 6, 'bottle', 6), o('b', 'IN_TRANSIT', 2, 'bottle', 2)], [], 8)),
+    ).toBe(4);
+  });
+
   it('takes nothing off for an order in another unit (arrivingInBookUnit null)', () => {
     expect(suggestedToPar(gin, ready([o('a', 'IN_TRANSIT', 2, 'case', null)], [], null))).toBe(6);
   });
