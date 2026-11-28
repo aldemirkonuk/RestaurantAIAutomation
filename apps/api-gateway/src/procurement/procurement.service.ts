@@ -1115,6 +1115,9 @@ export class ProcurementService {
       ProcurementOrderStatus.CONFIRMED,
       ProcurementOrderStatus.IN_TRANSIT,
       ProcurementOrderStatus.DELIVERED,
+      // A part delivery's remainder is a backorder the supplier owes: a hold
+      // to the same vendor must not rewrite its quantity (r110 inventory fix).
+      ProcurementOrderStatus.PARTIALLY_RECEIVED,
       ProcurementOrderStatus.COMPLETED,
       ProcurementOrderStatus.CANCELLED,
       ProcurementOrderStatus.REJECTED,
