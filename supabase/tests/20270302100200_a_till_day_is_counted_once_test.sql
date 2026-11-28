@@ -21,7 +21,7 @@ values
 create function pg_temp.takings(p_house uuid, p_day date) returns numeric language sql as $$
   select coalesce((select sum(c.total) from public.pos_checks c
                     where c.restaurant_id = p_house
-                      and (coalesce(c.closed_at, c.opened_at) at time zone 'Europe/Istanbul')::date = p_day), 0)
+                      and (c.closed_at at time zone 'Europe/Istanbul')::date = p_day), 0)
        + coalesce((select sum(h.net) from public.pos_sales_history h
                     where h.restaurant_id = p_house and h.sale_date = p_day), 0)
 $$;
@@ -65,12 +65,12 @@ begin
   assert not exists (select 1 from public.pos_sales_history where restaurant_id = 'a1100000-0000-4000-8000-000000000001'
                       and sale_date in ('2026-11-19', '2026-11-22')), 'T2 FAIL a refused day kept history';
   assert pg_temp.takings('a1100000-0000-4000-8000-000000000001', '2026-11-19') = 100.00, 'T2 FAIL the 19th counted twice';
-  -- An open check (no closed_at) holds its opened day too.
+  -- An open check (no closed_at) holds nothing: it may close on another day.
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, total)
   values ('a1100000-0000-4000-8000-000000000001', 'toast', 'OPEN-24', '2026-11-24 20:00+03', 12.00);
   out := public.import_pos_sales_history('a1100000-0000-4000-8000-000000000001', jsonb_build_array(
     jsonb_build_object('sale_date', '2026-11-24', 'item_key', 'meze', 'item_name', 'Meze', 'qty', 1, 'net', 10, 'currency', 'TRY')));
-  assert out->'refused_days' = '["2026-11-24"]'::jsonb, format('T2 FAIL open check day not refused: %s', out);
+  assert out->'refused_days' = '[]'::jsonb and (out->>'saved')::int = 1, format('T2 FAIL an open check held its day: %s', out);
   raise notice 'PASS T2 the import refuses a day the till already holds';
 end $$;
 
@@ -109,6 +109,33 @@ begin
   raise notice 'PASS T4 a check closed onto a history day replaces it, by the house''s day';
 end $$;
 
+-- T4b history on the day a check OPENS survives that check closing after
+-- midnight: only the close day is replaced (the late close moves to the 21st).
+do $$
+begin
+  perform public.import_pos_sales_history('a1100000-0000-4000-8000-000000000002', jsonb_build_array(
+    jsonb_build_object('sale_date', '2026-11-26', 'item_key', 'meze', 'item_name', 'Meze', 'qty', 9, 'net', 90, 'currency', 'TRY')));
+  insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, total)
+  values ('a1100000-0000-4000-8000-000000000002', 'toast', 'LATE', '2026-11-26 23:30+03', 50.00);
+  update public.pos_checks set closed_at = '2026-11-27 00:30+03'
+   where restaurant_id = 'a1100000-0000-4000-8000-000000000002' and external_check_id = 'LATE';
+  assert pg_temp.takings('a1100000-0000-4000-8000-000000000002', '2026-11-26') = 90, 'T4b FAIL the 26th lost its history to a check that opened on it';
+  assert pg_temp.takings('a1100000-0000-4000-8000-000000000002', '2026-11-27') = 50, 'T4b FAIL the 27th is not the check''s alone';
+  raise notice 'PASS T4b a check opened on a day and closed after midnight leaves the opened day alone';
+end $$;
+
+-- T4c a corrected re-upload that renames an item replaces the day, never adds.
+do $$
+begin
+  perform public.import_pos_sales_history('a1100000-0000-4000-8000-000000000002', jsonb_build_array(
+    jsonb_build_object('sale_date', '2026-11-18', 'item_key', 'hist:mezze', 'item_name', 'Mezze', 'qty', 3, 'net', 30, 'currency', 'TRY')));
+  perform public.import_pos_sales_history('a1100000-0000-4000-8000-000000000002', jsonb_build_array(
+    jsonb_build_object('sale_date', '2026-11-18', 'item_key', 'hist:meze', 'item_name', 'Meze', 'qty', 3, 'net', 30, 'currency', 'TRY')));
+  assert (select sum(net) from public.pos_sales_history where restaurant_id = 'a1100000-0000-4000-8000-000000000002' and sale_date = '2026-11-18') = 30,
+    'T4c FAIL the day''s takings doubled on a renamed re-upload';
+  raise notice 'PASS T4c a re-upload replaces the day';
+end $$;
+
 -- T5 the day counts the ingest reads to say what was replaced.
 do $$
 declare
@@ -117,7 +144,7 @@ begin
   select item_days into n from public.pos_sales_history_day_counts('a1100000-0000-4000-8000-000000000001', '2026-11-01', '2026-11-30')
    where sale_date = '2026-11-21';
   assert n = 1, format('T5 FAIL day count %s, expected 1', n);
-  assert (select count(*) from public.pos_sales_history_day_counts('a1100000-0000-4000-8000-000000000001', '2026-11-01', '2026-11-30')) = 1,
+  assert (select count(*) from public.pos_sales_history_day_counts('a1100000-0000-4000-8000-000000000001', '2026-11-01', '2026-11-30')) = 2,
     'T5 FAIL a replaced day still counted';
   raise notice 'PASS T5 day counts';
 end $$;
