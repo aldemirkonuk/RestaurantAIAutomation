@@ -971,6 +971,35 @@ describe('MenuNext — a discard is said at once, rolls back on failure, and can
     expect(screen.queryByText('Taken off the list.', { exact: false })).not.toBeInTheDocument();
   });
 
+  // r110 review R5: the snapshot was the whole menu, so an earlier failure brought back a later discard.
+  it('two discards in flight: the first fails after the second succeeded, and only the first comes back, said by name', async () => {
+    const server = new Set(['a', 'b', 'c']);
+    const names: Record<string, string> = { a: 'Aaa', b: 'Bbb', c: 'Ccc' };
+    mockGetMenu.mockImplementation(async () =>
+      menu({ items: ['a', 'b', 'c'].filter((id) => server.has(id)).map((id) => line({ id, name: names[id] })) }),
+    );
+    let failA: (e: unknown) => void = () => {};
+    let okB: () => void = () => {};
+    mockDiscard.mockImplementation((_r: string, id: string) =>
+      id === 'a'
+        ? new Promise((_ok, no) => { failA = no; })
+        : new Promise((ok) => { okB = () => { server.delete('b'); ok({ menuItemId: 'b', status: 'discarded' }); }; }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Aaa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard Bbb' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Discard Bbb' })).not.toBeInTheDocument());
+    okB();
+    await waitFor(() => expect(mockGetMenu.mock.calls.length).toBeGreaterThan(1)).catch(() => {});
+    failA({ response: { status: 500, data: { message: 'Aaa could not be discarded just now.' } } });
+    const err = await screen.findByTestId('menu-discard-error');
+    expect(err).toHaveTextContent('Aaa could not be discarded just now.');
+    expect(screen.getByRole('button', { name: 'Discard Aaa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard Ccc' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard Bbb' })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('menu-discard-error')).toHaveLength(1);
+  });
+
   it('after a reload the fold lists the discarded lines, and Put back restores one', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ id: 'l8', name: 'Efes' })] }));
     listDiscarded.mockResolvedValueOnce({ lines: [{ id: 'l9', name: 'Rose' }], truncated: false });

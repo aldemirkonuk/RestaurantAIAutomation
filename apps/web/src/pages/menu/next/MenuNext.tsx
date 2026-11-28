@@ -163,24 +163,60 @@ function useActiveMenu(restaurantId: string | null) {
   // A discarded line leaves at once, before the gateway answers (no exit hold, no wait):
   // the page's own copy drops it on click, the read confirms after, and a failure puts
   // the row back where it was (DD-r103-7, r110 menu-4).
+  //
+  // Two discards can be in flight at once (the row leaves at click, so the next is easy), and
+  // react-query's per-call callbacks and `isError` follow only the latest `mutate`. So a failure
+  // puts back only ITS line, at its old place in the current copy (never a whole earlier snapshot,
+  // which would bring back a line another discard already took off), and is kept per line here
+  // (r110 review R5).
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const [failedDiscards, setFailedDiscards] = useState<ReadonlyMap<string, { name: string; error: unknown }>>(new Map());
+  const discardKey = ['menu', 'discard', restaurantId] as const;
   const discard = useMutation({
+    mutationKey: discardKey,
     mutationFn: (itemId: string) => discardMenuItem(restaurantId as string, itemId),
     onMutate: async (itemId: string) => {
       await queryClient.cancelQueries({ queryKey: key });
-      const before = queryClient.getQueryData<ActiveMenu>(key);
+      const items = queryClient.getQueryData<ActiveMenu>(key)?.items ?? [];
+      const at = items.findIndex((l) => l.id === itemId);
+      const taken = at >= 0 ? items[at] : null;
       queryClient.setQueryData(key, (old: ActiveMenu | undefined) =>
         old ? { ...old, items: old.items.filter((l) => l.id !== itemId) } : old,
       );
-      return { before };
+      setPendingIds((p) => new Set(p).add(itemId));
+      setFailedDiscards((f) => {
+        const next = new Map(f);
+        next.delete(itemId);
+        return next;
+      });
+      return { taken, at };
     },
-    onError: (_err, _itemId, ctx) => {
-      if (ctx?.before) queryClient.setQueryData(key, ctx.before);
+    onError: (err, itemId, ctx) => {
+      const taken = ctx?.taken;
+      if (taken) {
+        queryClient.setQueryData(key, (old: ActiveMenu | undefined) => {
+          if (!old || old.items.some((l) => l.id === itemId)) return old;
+          const items = [...old.items];
+          items.splice(Math.min(Math.max(ctx.at, 0), items.length), 0, taken);
+          return { ...old, items };
+        });
+      }
+      setFailedDiscards((f) => new Map(f).set(itemId, { name: taken?.name ?? 'That line', error: err }));
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['menu', 'discarded', restaurantId] });
       // The kept list counts this menu's lines too: it reads again, or it keeps saying the old count (r104 walk).
       void queryClient.invalidateQueries({ queryKey: ['menu', 'versions'] });
-      await queryClient.invalidateQueries({ queryKey: key });
+    },
+    onSettled: async (_data, _err, itemId) => {
+      setPendingIds((p) => {
+        const next = new Set(p);
+        next.delete(itemId);
+        return next;
+      });
+      // The read confirms once, when the last discard has answered: an earlier read would bring back a
+      // line whose own discard is still on its way. This one is still counted as in flight here.
+      if (queryClient.isMutating({ mutationKey: discardKey }) <= 1) await queryClient.invalidateQueries({ queryKey: key });
     },
   });
 
@@ -201,7 +237,7 @@ function useActiveMenu(restaurantId: string | null) {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: key }),
   });
 
-  return { q, discard, add };
+  return { q, discard, add, pendingIds, failedDiscards };
 }
 
 function AddItemForm({ onAdd, adding, error, canPrice }: {
@@ -521,7 +557,7 @@ export default function MenuNext() {
   // gateway refuses anyone else regardless of what this page offers.
   const role = (activeRole ?? user?.role ?? null) as string | null;
   const canManage = role === 'owner' || role === 'manager';
-  const { q, discard, add } = useActiveMenu(activeRestaurantId);
+  const { q, discard, add, pendingIds, failedDiscards } = useActiveMenu(activeRestaurantId);
   // Read once for the house: the count this page stores below must not take the room away at the next render.
   const lastCount = useMemo(() => lastLineCount(activeRestaurantId), [activeRestaurantId]);
   // Remember how many lines the current menu had, to hold their room next time.
@@ -555,7 +591,6 @@ export default function MenuNext() {
   const currency = useHouseCurrency(activeRestaurantId);
   // The menu is named the way the kept list names it, not by the name the gateway stored (r104 menu-7, F4).
   const kept = useKeptMenuName(q.data?.menuId ?? null);
-  const [discardingId, setDiscardingId] = useState<string | null>(null);
   // The line just taken off, until the next discard or a restore: its way back (r107 menu-4).
   const [offList, setOffList] = useState<{ id: string; name: string } | null>(null);
   const [backSaid, setBackSaid] = useState<{ tone: 'alert' | 'said'; text: string } | null>(null);
@@ -625,17 +660,15 @@ export default function MenuNext() {
       line={line}
       currency={currency}
       testId={testId}
-      discarding={discard.isPending && discardingId === line.id}
+      discarding={pendingIds.has(line.id)}
       isNew={fresh?.has(line.id) ?? false}
       onDiscard={!canManage ? undefined : () => {
-        setDiscardingId(line.id);
         // The sentence is said at once, with the row's going; a failure takes it back.
         setBackSaid(null);
         setOffList({ id: line.id, name: line.name });
         discard.mutate(line.id, {
           // The failure is said by the alert below, with Retry; the row is already back.
-          onError: () => setOffList(null),
-          onSettled: () => setDiscardingId(null),
+          onError: () => setOffList((o) => (o?.id === line.id ? null : o)),
         });
       }}
       edit={
@@ -858,35 +891,28 @@ export default function MenuNext() {
                 </div>
               </section>
             ) : null}
-            {discard.isError ? (
-              <div role="alert" data-testid="menu-discard-error" style={{ marginTop: 8, display: 'grid', gap: 8, justifyItems: 'start' }}>
+            {[...failedDiscards].map(([id, failed]) => (
+              <div key={id} role="alert" data-testid="menu-discard-error" style={{ marginTop: 8, display: 'grid', gap: 8, justifyItems: 'start' }}>
                 <p className="cl-said">
-                  {gatewaySaid(discard.error) ??
-                    `That line was not discarded (${failWords(discard.error, 'no reason given')}).`}
+                  {gatewaySaid(failed.error) ??
+                    `${failed.name} was not discarded (${failWords(failed.error, 'no reason given')}).`}
                 </p>
                 <button
                   type="button"
                   className="cl-btn cl-focus"
-                  disabled={discard.isPending}
+                  disabled={pendingIds.has(id)}
                   onClick={() => {
-                    const id = discard.variables;
-                    if (!id) return;
-                    setDiscardingId(id);
-                    const again = lines.find((l) => l.id === id);
-                    if (again) {
-                      setBackSaid(null);
-                      setOffList({ id, name: again.name });
-                    }
+                    setBackSaid(null);
+                    setOffList({ id, name: failed.name });
                     discard.mutate(id, {
-                      onError: () => setOffList(null),
-                      onSettled: () => setDiscardingId(null),
+                      onError: () => setOffList((o) => (o?.id === id ? null : o)),
                     });
                   }}
                 >
                   Retry
                 </button>
               </div>
-            ) : null}
+            ))}
           </>
         )}
 
