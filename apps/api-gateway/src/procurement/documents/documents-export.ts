@@ -191,10 +191,12 @@ export function verifiedLinesCsv(papers: LineExportPaper[]): string {
     const sign = p.doc_type === "credit_memo" ? -1 : 1;
     const nets = p.lines.map((l) => toCents(l.line_total));
     const taxCents = toCents(p.tax);
-    const shares =
-      taxCents === null
-        ? nets.map(() => null)
-        : allocateSigned(nets.map((n) => Math.max(0, n ?? 0)), taxCents);
+    // A line whose net was not read has no tax share: its share is unknown, not
+    // 0.00. When no line has a net, none has a share and the paper's tax stays
+    // in the paper's own row below.
+    const weights = nets.map((n) => Math.max(0, n ?? 0));
+    const spread = taxCents !== null && weights.some((w) => w > 0) ? allocateSigned(weights, taxCents) : null;
+    const shares = nets.map((n, i) => (spread === null || n === null ? null : spread[i]));
     if (!cur) unstated += 1;
     const s = sums.get(cur) ?? { net: 0, tax: 0, dep: 0 };
     p.lines.forEach((l, i) => {
@@ -229,6 +231,44 @@ export function verifiedLinesCsv(papers: LineExportPaper[]): string {
         ].join(","),
       );
     });
+    // What the lines do not explain: the paper's charges, discounts, rounding,
+    // and any tax or line money that was not read. Without this row the lines'
+    // Total would disagree with the papers file for the same papers (r110 F11).
+    // A paper with no lines is one row saying so, with its total.
+    const total = toCents(p.total);
+    const knownDeposits = p.lines.reduce((a, l) => a + (toCents(l.deposit) ?? 0), 0);
+    const knownNet = nets.reduce<number>((a, n) => a + (n ?? 0), 0);
+    const knownTax = shares.reduce<number>((a, t) => a + (t ?? 0), 0);
+    const rest =
+      p.lines.length === 0
+        ? total
+        : total === null
+          ? null
+          : total - knownNet - knownTax - knownDeposits;
+    if (p.lines.length === 0 || (rest !== null && rest !== 0)) {
+      const net = rest === null ? null : sign * rest || 0;
+      if (cur) s.net += net ?? 0;
+      out.push(
+        [
+          cell(p.doc_number),
+          cell(p.doc_date),
+          cell(p.doc_type),
+          cell(p.vendor),
+          cell(cur || null),
+          "",
+          cell(
+            p.lines.length === 0
+              ? `no lines read; paper total ${total === null ? "not read" : formatCents(total)}`
+              : "charges; discounts; rounding; money not read on a line",
+          ),
+          "",
+          "",
+          formatCents(net),
+          "",
+          "",
+        ].join(","),
+      );
+    }
     if (cur) sums.set(cur, s);
   }
   for (const [cur, s] of sums)

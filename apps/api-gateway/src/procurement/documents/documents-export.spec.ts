@@ -1,6 +1,7 @@
 import { HttpException } from "@nestjs/common";
 import { DocumentsController } from "./documents.controller";
 import { formatCents, toCents, verifiedCsv, verifiedLinesCsv, type ExportRow } from "./documents-export";
+import { purchasesByCategory } from "./purchases-by-category";
 
 const row = (o: Partial<ExportRow> = {}): ExportRow => ({
   doc_number: "A-1", doc_date: "2026-11-01", doc_type: "invoice", vendor: "Acme",
@@ -107,5 +108,41 @@ describe("the verified papers, one row per line (r110 g4, ?lines=1)", () => {
       ["", ""],
     ]);
     expect(csv).toContain("1 paper states no currency; not added up");
+  });
+});
+
+describe("the lines file says what the lines do not, and agrees with the papers file (r110 F11)", () => {
+  const base = { doc_date: "2026-11-02", doc_type: "invoice", vendor: "Acme", currency: "USD", subtotal: null };
+  // C-1: charges, tax and a total, no line total read. C-2: a header-only invoice.
+  const c1 = { ...base, doc_number: "C-1", freight: "15.00", tax: "20.00", total: "135.00", lines: [{ line_no: 1, description: "Rioja", line_total: null, cls: "Wine" }] };
+  const c2 = { ...base, doc_number: "C-2", freight: null, tax: null, total: "80.00", lines: [] as never[] };
+  const rowsOf = (csv: string) => csv.trim().split("\r\n").map((l) => l.split(","));
+  const totalRow = (csv: string) => rowsOf(csv).filter((r) => r[0] === "Total");
+
+  it("an unknown tax share is empty, never 0.00", () => {
+    const [, line] = rowsOf(verifiedLinesCsv([c1]));
+    expect(line.slice(5)).toEqual(["1", "Rioja", "Wine", "rate not printed", "", "", ""]);
+  });
+
+  it("a paper's charges get a row and a header-only paper says it has no lines", () => {
+    const rows = rowsOf(verifiedLinesCsv([c1, c2]));
+    expect(rows.find((r) => r[0] === "C-1" && r[5] === "")?.[9]).toBe("135.00");
+    const header = rows.find((r) => r[0] === "C-2");
+    expect(header?.[6]).toBe("no lines read; paper total 80.00");
+    expect(header?.[9]).toBe("80.00");
+  });
+
+  it("the lines, papers and category files give one total per currency", () => {
+    const papers = [c1, c2];
+    const [lines] = totalRow(verifiedLinesCsv(papers));
+    const linesTotal = Number(lines[9]) + Number(lines[10] || 0) + Number(lines[11] || 0);
+    const [paperTot] = totalRow(verifiedCsv(papers));
+    expect(paperTot[8]).toBe("215.00");
+    expect(linesTotal.toFixed(2)).toBe("215.00");
+    const cat = purchasesByCategory(
+      papers.map((p) => ({ id: p.doc_number, doc_type: p.doc_type, currency: p.currency, total: p.total, tax: p.tax })),
+      new Map([["C-1", [{ document_id: "C-1", line_total: null, cls: "Wine" as const }]]]),
+    );
+    expect((cat.currencies[0].total / 100).toFixed(2)).toBe("215.00");
   });
 });
