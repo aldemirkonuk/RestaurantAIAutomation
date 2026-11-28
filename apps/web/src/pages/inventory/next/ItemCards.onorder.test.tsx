@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ItemCards from './ItemCards';
-import { OnOrderEvidence, openOrderCount } from './OnOrder';
+import { OnOrderEvidence, holdEffect, openOrdersOf } from './OnOrder';
 import type { InvRow } from './useInventoryNextData';
 import type { ItemOnOrder, ItemOpenOrder } from '../../../services/api/inventory';
 
@@ -75,7 +75,30 @@ describe('On order card (r109 g1)', () => {
     expect(card('cover')).toContain('With what is on its way: 9 days.');
   });
 
-  it('no cover line when the pace was not read', () => {
+  it('a counted good adds arriving to the cards own cover, not to stock: 3 days + 6 / 2 = 6, never 9', () => {
+    // 12 counted three days ago, 2 a day, nothing booked since: the card shows 3 days of cover.
+    draw(ready(open([order({})], [], 6)), { stock: 12, velocity: 2, runway: 3 });
+    expect(card('cover')).toContain('With what is on its way: 6 days.');
+    expect(card('cover')).not.toContain('9 days');
+  });
+
+  it('no arriving cover line when the card has no cover figure of its own', () => {
+    draw(ready(open([order({})], [], 6)), { runway: null });
+    expect(card('cover')).not.toContain('With what is on its way');
+  });
+
+  it('an approved order whose letter went out is said as waiting for the vendor, not as unsent', () => {
+    const sent = order({ id: 'o2', orderNumber: 'PO-2', status: 'APPROVED', letterSent: true, providerId: 'p1' });
+    const unsent = order({ id: 'o3', orderNumber: 'PO-3', status: 'APPROVED' });
+    draw(ready(open([sent], [unsent], 6)));
+    cleanup();
+    render(<MemoryRouter><OnOrderEvidence load={open([sent], [unsent], 6)} /></MemoryRouter>);
+    const text = screen.getByTestId('ivd-orders').textContent ?? '';
+    expect(text).toContain("PO-2 · approved, waiting for the vendor's answer");
+    expect(text).toContain('PO-3 · approved, not yet sent');
+  });
+
+  it('no arriving cover line when the pace was not read', () => {
     draw(ready(open([order({})], [], 6)), { analyticsReadable: false });
     expect(card('cover')).not.toContain('With what is on its way');
   });
@@ -108,9 +131,21 @@ describe('On order evidence', () => {
     expect(screen.getByTestId('ivd-on-order').textContent).toContain('could not be read');
   });
 
-  it('counts open orders for the sheet, null while unread', () => {
-    expect(openOrderCount(open([order({}), order({ unit: 'case' })], [order({ id: 'o2' })], null))).toBe(2);
-    expect(openOrderCount('reading')).toBeNull();
-    expect(openOrderCount(undefined)).toBeNull();
+  it('lists open orders for the sheet, null while unread', () => {
+    expect(openOrdersOf(open([order({}), order({ unit: 'case' })], [order({ id: 'o2' })], null))).toHaveLength(3);
+    expect(openOrdersOf('reading')).toBeNull();
+    expect(openOrdersOf(undefined)).toBeNull();
+  });
+
+  it('a hold changes only an open order of the same vendor that is not confirmed or on its way', () => {
+    const orders = [
+      order({ id: 'a', status: 'IN_TRANSIT', providerId: 'X' }),
+      order({ id: 'b', status: 'PENDING', providerId: 'X' }),
+      order({ id: 'c', status: 'PENDING', providerId: 'Y' }),
+      order({ id: 'd', status: 'CONFIRMED', providerId: 'X' }),
+    ];
+    expect(holdEffect(orders, 'X')).toEqual({ total: 4, changed: 1 });
+    expect(holdEffect(orders.slice(0, 1), 'X')).toEqual({ total: 1, changed: 0 });
+    expect(holdEffect(orders, '')).toEqual({ total: 4, changed: 0 });
   });
 });
