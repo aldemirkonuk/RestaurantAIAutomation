@@ -55,3 +55,32 @@ describe('a read that has not answered holds its height and moves nothing', () =
     expect(read('NutritionCard.tsx')).toContain('<HeldReading');
   });
 });
+
+describe('hover rules do not stick on touch', () => {
+  // A tap leaves :hover behind on a phone, so a tapped KPI card kept its ink-4 border beside the data-on card.
+  const outsideHover = (css: string): string[] => {
+    const out: string[] = [];
+    const gate = '@media (hover: hover) and (pointer: fine) {';
+    let depth = 0;
+    let gateDepth = -1;
+    css.split('\n').forEach((line, n) => {
+      if (line.includes(gate)) gateDepth = depth;
+      if (line.includes(':hover') && gateDepth < 0) out.push(`${n + 1}: ${line.trim()}`);
+      depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+      if (gateDepth >= 0 && depth <= gateDepth) gateDepth = -1;
+    });
+    return out;
+  };
+  it('every :hover in the drawer and list stylesheets sits inside the hover-capable media block', () => {
+    expect(outsideHover(drawer)).toEqual([]);
+    expect(outsideHover(list)).toEqual([]);
+  });
+  it('the pin sees an ungated :hover (it is not vacuous)', () => {
+    expect(outsideHover('.a:hover {\n  color: red;\n}\n')).toHaveLength(1);
+  });
+  it('keeps the card press and its reduced-motion rule', () => {
+    expect(rule(drawer, 'button.ivd-card:active')).toContain('transform: scale(0.985)');
+    expect(rule(drawer, 'button.ivd-card')).toContain('transform 120ms cubic-bezier(0.16, 1, 0.3, 1)');
+    expect(drawer.slice(drawer.indexOf('@media (prefers-reduced-motion: reduce)'))).toMatch(/button\.ivd-card:active \{\s*transform: none;/);
+  });
+});

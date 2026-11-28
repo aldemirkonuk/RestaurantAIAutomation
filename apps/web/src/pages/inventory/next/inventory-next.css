@@ -146,8 +146,10 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.iv-chip:hover:not(:disabled) {
-  border-color: var(--seal-ring);
+@media (hover: hover) and (pointer: fine) {
+  .iv-chip:hover:not(:disabled) {
+    border-color: var(--seal-ring);
+  }
 }
 .iv-chip[data-on='true'] {
   border-color: var(--seal-ring);
@@ -197,8 +199,10 @@
   font-size: 12.5px;
   font-family: inherit;
 }
-.iv-field:hover {
-  border-color: var(--seal-ring);
+@media (hover: hover) and (pointer: fine) {
+  .iv-field:hover {
+    border-color: var(--seal-ring);
+  }
 }
 /* The shared sheet stylesheet styles a bare `.mdv-select` as a full-width
    input box (mudavym/sheet.css), and <Select> puts the same class on its
@@ -239,10 +243,12 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.iv-btn:hover:not(:disabled),
-.iv-sheet-body .cl-btn:hover:not(:disabled) {
-  border-color: var(--seal-ring);
-  color: var(--seal-deep);
+@media (hover: hover) and (pointer: fine) {
+  .iv-btn:hover:not(:disabled),
+  .iv-sheet-body .cl-btn:hover:not(:disabled) {
+    border-color: var(--seal-ring);
+    color: var(--seal-deep);
+  }
 }
 .iv-btn[data-on='true'] {
   border-color: var(--seal-ring);
@@ -255,11 +261,13 @@
   background: var(--seal);
   color: var(--paper-0);
 }
-.iv-btn[data-seal='true']:hover:not(:disabled),
-.iv-sheet-body .cl-btn[data-seal='true']:hover:not(:disabled) {
-  background: var(--seal-deep);
-  border-color: var(--seal-deep);
-  color: var(--paper-0);
+@media (hover: hover) and (pointer: fine) {
+  .iv-btn[data-seal='true']:hover:not(:disabled),
+  .iv-sheet-body .cl-btn[data-seal='true']:hover:not(:disabled) {
+    background: var(--seal-deep);
+    border-color: var(--seal-deep);
+    color: var(--paper-0);
+  }
 }
 .iv-btn:disabled,
 .iv-sheet-body .cl-btn:disabled {
@@ -341,8 +349,10 @@
   height: 56px;
   cursor: pointer;
 }
-.iv-row:hover td {
-  background: var(--paper-1);
+@media (hover: hover) and (pointer: fine) {
+  .iv-row:hover td {
+    background: var(--paper-1);
+  }
 }
 .iv-row[aria-selected='true'] td {
   background: var(--seal-tint);
@@ -474,8 +484,10 @@
   color: var(--ink-3, var(--ink-4));
   cursor: pointer;
 }
-.iv-colsbtn:hover {
-  background: var(--paper-2);
+@media (hover: hover) and (pointer: fine) {
+  .iv-colsbtn:hover {
+    background: var(--paper-2);
+  }
 }
 .iv-openrow > td {
   padding: 0;
@@ -636,15 +648,19 @@
   text-align: left;
   cursor: pointer;
 }
-.iv-menu-item:hover {
-  background: var(--paper-1);
+@media (hover: hover) and (pointer: fine) {
+  .iv-menu-item:hover {
+    background: var(--paper-1);
+  }
 }
 .iv-menu-item:disabled {
   color: var(--ink-4);
   cursor: not-allowed;
 }
-.iv-menu-item:disabled:hover {
-  background: none;
+@media (hover: hover) and (pointer: fine) {
+  .iv-menu-item:disabled:hover {
+    background: none;
+  }
 }
 .iv-sel {
   width: 32px;
@@ -1045,11 +1061,17 @@ html .mdv-ovl .iv-sheet-body .mdv-select__control {
   color: inherit;
   border-radius: 3px;
 }
-.iv-thsort:hover,
 .iv-thsort[data-on='true'] {
   color: var(--ink-1);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .iv-thsort:hover {
+    color: var(--ink-1);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 
 /* ── touch: 44 px targets, 16 px fields (N-11, critic c2 P0-2) ───────────── */
