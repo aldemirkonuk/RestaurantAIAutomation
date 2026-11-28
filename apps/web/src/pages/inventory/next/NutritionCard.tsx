@@ -38,7 +38,7 @@ function PackLine({ f, sizeMl, container }: { f: StoredNutrition; sizeMl: number
   if (pack.kind === 'needs_weight') {
     return (
       <p className="iv-note" data-testid="ivn-pack">
-        {head}: these figures are per 100 g, so it needs a stated weight of one ml.
+        {head}: these figures are per 100 g, and what one ml of it weighs is not known here, so the whole {container} is not worked out.
       </p>
     );
   }

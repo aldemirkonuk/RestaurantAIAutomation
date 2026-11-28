@@ -199,11 +199,11 @@ describe('what is in it', () => {
     expect(line).not.toContain('%');
   });
 
-  it('a bottle whose figures are per 100 g says it needs a stated weight', async () => {
+  it('a bottle whose figures are per 100 g says one ml\'s weight is not known here, and claims no stated weight', async () => {
     api.read.mockResolvedValue(answer(stored({ basis: '100g' })));
     show(true, 700, { kind: 'spirit', uom: 'bottle' });
     expect((await screen.findByTestId('ivn-pack')).textContent).toBe(
-      'A 700 ml bottle: these figures are per 100 g, so it needs a stated weight of one ml.',
+      'A 700 ml bottle: these figures are per 100 g, and what one ml of it weighs is not known here, so the whole bottle is not worked out.',
     );
   });
 });

@@ -7,7 +7,9 @@
  *   card's own precision); a figure nobody stated stays null ("not known");
  * - figures per 100 g on a good kept by volume count only through a STATED
  *   weight of one ml for that good (#1463's rule); without it the line says
- *   it needs one, and nothing is guessed from water;
+ *   the weight is not known and nothing is guessed from water. (The drawer's
+ *   card does not carry the house's ml_grams yet, so it passes none and always
+ *   says so; it never claims a stated weight would be used.)
  * - the strength (ABV) is a share of the volume, the same for the whole
  *   bottle, so it is not scaled; energy worked out from it keeps its note.
  */
