@@ -44,6 +44,8 @@ const onStep = vi.fn();
 function Harness({ ids = ['a', 'b', 'c'], start = 'a' }: { ids?: string[]; start?: string }) {
   const [open, setOpen] = useState(start);
   return (
+    <>
+      <button type="button" data-testid="jump-c" onClick={() => setOpen('c')}>jump</button>
     <ItemDrawer
       row={ROWS.find((r) => r.id === open) ?? null}
       house={NO_HOUSE}
@@ -58,6 +60,7 @@ function Harness({ ids = ['a', 'b', 'c'], start = 'a' }: { ids?: string[]; start
       onClose={vi.fn()}
       steps={{ ids, onStep: (id) => { onStep(id); setOpen(id); } }}
     />
+    </>
   );
 }
 const mount = (props: { ids?: string[]; start?: string } = {}) =>
@@ -190,6 +193,20 @@ describe('an open card across a step (r109 g6)', () => {
     expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
     fireEvent.click(screen.getByTestId('ivd-card-onhand'));
     expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('a drawer opened on another good (Cmd-K, a ?open= link) starts fresh, not on the card left open', () => {
+    mount();
+    fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
+    fireEvent.click(screen.getByTestId('jump-c'));
+    expect(title()).toContain('Cappadocia Rose');
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+    // and a step after it keeps what is pressed from there
+    fireEvent.click(screen.getByTestId('ivd-card-onhand'));
+    key('K');
+    expect(title()).toContain('Bodrum White');
+    expect(screen.getByTestId('ivd-evidence').getAttribute('data-card')).toBe('onhand');
   });
 
   it('a closed drawer stays closed across a step', () => {
