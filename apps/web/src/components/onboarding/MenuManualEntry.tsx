@@ -244,7 +244,8 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                   <button
                     onClick={() => removeRow(row._id)}
                     disabled={rows.length === 1}
-                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label={`Remove line ${idx + 1}`}
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -258,7 +259,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
       <div className="flex items-center justify-between gap-3">
         <button
           onClick={addRow}
-          className="flex items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium transition-colors"
+          className="flex min-h-11 items-center gap-1.5 text-sm text-[#1A5E6B] hover:text-[#14515C] font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
           Add another line
@@ -267,7 +268,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
         <Button
           onClick={handleImport}
           disabled={loading || validRows.length === 0}
-          className="bg-[#1A5E6B] hover:bg-[#14515C] text-white"
+          className="min-h-11 bg-[#1A5E6B] hover:bg-[#14515C] text-white"
         >
           {loading ? (
             <Pending className="text-white" label="Importing…" />
