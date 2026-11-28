@@ -359,6 +359,22 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
 }
 
 /**
+ * What is taken off for what is on its way: the sent orders in the book's own
+ * unit, less any part delivery. A part delivery's open quantity is the whole
+ * order (the app no longer writes the received count, ADR 0192), and what was
+ * received is already in the stock, so taking it off counts that part twice;
+ * a part delivery is named, not counted (r110 inventory fix).
+ */
+export function countedArriving(onOrder?: ItemOnOrder | 'reading' | 'failed'): number {
+  if (onOrder === undefined || typeof onOrder !== 'object' || !onOrder.readable) return 0;
+  if (onOrder.arrivingInBookUnit === null) return 0;
+  const part = onOrder.sent
+    .filter((x) => x.status === 'PARTIALLY_RECEIVED')
+    .reduce((a, x) => a + (x.inBookUnit ?? 0), 0);
+  return Math.max(0, onOrder.arrivingInBookUnit - part);
+}
+
+/**
  * What to order to bring a title back to par, when both figures are read and it
  * is short. Given what is on order and read, what the supplier already has on
  * its way (sent orders, in the book's own unit) is taken off first (r110 g5).
@@ -368,8 +384,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
  */
 export function suggestedToPar(row: InvRow, onOrder?: ItemOnOrder | 'reading' | 'failed'): number | null {
   if (row.stock === null || row.par === null || row.par <= 0) return null;
-  const arriving =
-    onOrder !== undefined && typeof onOrder === 'object' && onOrder.readable ? (onOrder.arrivingInBookUnit ?? 0) : 0;
+  const arriving = countedArriving(onOrder);
   const short = row.par - row.stock - arriving;
   return short > 0 ? short : null;
 }

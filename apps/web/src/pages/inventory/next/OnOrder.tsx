@@ -8,7 +8,7 @@
  */
 import { Link } from 'react-router-dom';
 import type { ItemOnOrder, ItemOpenOrder } from '../../../services/api/inventory';
-import { EM, fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
+import { EM, countedArriving, fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
 import { fmtQty } from './ItemCards';
 
 /** The figures read as it reaches the card: reading, failed as a whole, or answered (absent from an older gateway). */
@@ -94,8 +94,9 @@ export function onOrderCard(load: OnOrderLoad, uom: string | null): { figure: st
  */
 export function coverWithArriving(row: InvRow, load: OnOrderLoad): string | null {
   if (load === 'reading' || load === 'failed' || load === undefined || !load.readable) return null;
-  const arriving = load.arrivingInBookUnit;
-  if (arriving === null || arriving <= 0) return null;
+  // Part deliveries are not counted as arriving (#2687); the cover is the days the stock covers, plus the days the rest covers (#2578).
+  const arriving = countedArriving(load);
+  if (arriving <= 0) return null;
   if (!row.analyticsReadable || row.runway === null || row.velocity === null || row.velocity <= 0) return null;
   const days = Math.round(row.runway + arriving / row.velocity);
   return `With what is on its way: ${plural(days, 'day', 'days')}.`;
@@ -133,6 +134,11 @@ function notCounted(o: Extract<ItemOnOrder, { readable: true }>): string[] {
     const words = [...byUnit].map(([u, q]) => orderQty(q, u)).join(' + ');
     out.push(`${words} on ${total === 1 ? 'its' : 'their'} way ${isAre(total)} not counted, as ${total === 1 ? 'it' : 'they'} could not be put in the book\u2019s unit`);
   }
+  const part = o.sent.filter((x) => x.status === 'PARTIALLY_RECEIVED');
+  if (o.arrivingInBookUnit !== null && part.length > 0) {
+    const k = distinct(part);
+    out.push(`${plural(k, 'order', 'orders')} part delivered, not counted: what is still to come is not known from the book`);
+  }
   const k = distinct(o.unsent);
   if (k > 0) {
     const inBook = o.unsent.every((x) => x.inBookUnit !== null);
@@ -162,8 +168,8 @@ export function toParSentence(row: InvRow, load: OnOrderLoad): string {
   if (load === 'failed' || !load.readable) {
     return `${fmtCount(plain)} bring it to par (${par}): what is on order could not be read, so nothing on its way is taken off.`;
   }
-  const arriving = load.arrivingInBookUnit ?? 0;
-  const k = distinct(load.sent);
+  const arriving = countedArriving(load);
+  const k = distinct(load.sent.filter((x) => x.status !== 'PARTIALLY_RECEIVED'));
   const rest = notCounted(load);
   const toPar = suggestedToPar(row, load);
   const onWay = `${fmtCount(arriving)} more ${isAre(arriving)} on ${arriving === 1 ? 'its' : 'their'} way on ${plural(k, 'order', 'orders')}`;
@@ -181,7 +187,8 @@ export function toParNote(load: OnOrderLoad): string | null {
   if (load === undefined || load === 'reading') return null;
   if (load === 'failed' || !load.readable) return 'what is on order could not be read';
   if (load.arrivingInBookUnit === null) return 'an order in another unit is not counted';
-  if (load.arrivingInBookUnit > 0) return `less ${fmtCount(load.arrivingInBookUnit)} on its way`;
+  const counted = countedArriving(load);
+  if (counted > 0) return `less ${fmtCount(counted)} on its way`;
   return null;
 }
 

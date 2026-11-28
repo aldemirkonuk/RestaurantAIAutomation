@@ -315,6 +315,12 @@ describe('Order more suggests par less what is already on its way (r110 g5)', ()
     expect(said()).toBe('3 bring it to par (10): 3 more are on their way on 1 order; 6 not yet sent are not counted.');
   });
 
+  it('a part delivery is named, not taken off: 6 ordered, 3 counted in, still suggests par - stock', () => {
+    mount(sheet(ready([o('a', 'PARTIALLY_RECEIVED', 6, 'bottle', 6)], [], 6)));
+    expect(field()).toBe('6');
+    expect(said()).toBe('6 bring it to par (10): 1 order part delivered, not counted: what is still to come is not known from the book.');
+  });
+
   it('an order in another unit leaves par - stock and says that order is not counted', () => {
     mount(sheet(ready([o('a', 'IN_TRANSIT', 2, 'case', null)], [], null)));
     expect(field()).toBe('6');
