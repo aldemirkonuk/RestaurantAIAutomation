@@ -23,8 +23,15 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
-import { verifiedCsv, type ExportRow } from "./documents-export";
-import { readPurchasesByCategory } from "./purchases-by-category";
+import {
+  verifiedCsv,
+  verifiedLinesCsv,
+  type ExportRow,
+} from "./documents-export";
+import {
+  readClassedLines,
+  readPurchasesByCategory,
+} from "./purchases-by-category";
 import {
   ApplyExtractionDto,
   CorrectFieldDto,
@@ -1384,7 +1391,16 @@ export class DocumentsController {
     summary:
       "Every verified paper of this house as one CSV (managers: money roles only)",
   })
-  async exportVerified(@CurrentUser() user: AuthedUser): Promise<string> {
+  @ApiQuery({
+    name: "lines",
+    required: false,
+    description:
+      "1 = one row per line, with its category, VAT rate, net, tax share and deposit (r110 g4)",
+  })
+  async exportVerified(
+    @CurrentUser() user: AuthedUser,
+    @Query("lines") lines?: string,
+  ): Promise<string> {
     // The role before any read: a person who may not see house money gets a
     // refusal in words, not an empty file.
     if (!holdsHouseMoney(user.role ?? null))
@@ -1424,7 +1440,28 @@ export class DocumentsController {
       tax: (r.tax as number | null) ?? null,
       total: (r.total as number | null) ?? null,
     }));
-    return verifiedCsv(out);
+    if (lines !== "1") return verifiedCsv(out);
+    let classed: Awaited<ReturnType<typeof readClassedLines>>;
+    try {
+      classed = await readClassedLines(
+        this.db.getClient(),
+        user.restaurantId,
+        rows.map((r) => r.id as string),
+      );
+    } catch (e) {
+      throw new HttpException(
+        `${(e as Error).message}, so no file was made.`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    return verifiedLinesCsv(
+      out.map((o, i) => ({
+        ...o,
+        lines: (classed.get(rows[i].id as string) ?? [])
+          .slice()
+          .sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0)),
+      })),
+    );
   }
 
   @Get()
