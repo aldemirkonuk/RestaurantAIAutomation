@@ -232,10 +232,24 @@ export async function readPdfRows(
     return null;
   }
   const stdout = await new Promise<string | null>((resolve) => {
+    // The child parses an untrusted PDF, so it gets nothing the gateway holds:
+    // no process.env (SUPABASE_SERVICE_ROLE_KEY lives there) beyond PATH, and
+    // no eval or new Function, which closes the code-generation route a pdfjs
+    // bug would use to read the key anyway.
     const child = spawn(
       process.execPath,
-      ["--input-type=module", "-e", CHILD, entry],
-      { stdio: ["pipe", "pipe", "ignore"], timeout: PDF_READ_TIMEOUT_MS },
+      [
+        "--disallow-code-generation-from-strings",
+        "--input-type=module",
+        "-e",
+        CHILD,
+        entry,
+      ],
+      {
+        stdio: ["pipe", "pipe", "ignore"],
+        timeout: PDF_READ_TIMEOUT_MS,
+        env: { PATH: process.env.PATH ?? "" },
+      },
     );
     const out: Buffer[] = [];
     child.stdout.on("data", (d: Buffer) => out.push(d));
