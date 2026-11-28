@@ -31,6 +31,8 @@ export interface RecipeLine {
   itemGone?: 'archived' | 'deleted' | null;
   qtyEntered: number;
   unitCode: string;
+  /** The usable share as saved (percent); absent from an older gateway. */
+  usablePct?: number | null;
   qtyBase: number;
   baseUnit: string;
   status: RecipeLineStatus;

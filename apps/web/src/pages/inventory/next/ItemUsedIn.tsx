@@ -56,6 +56,8 @@ import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 import { formatHouseNumber, formatHousePercent } from '../../../lib/house-number';
 import { pourCostShare } from '../../cellar/next/recipe/DrinkCards';
 import { UNSET_TAX, shareBasis, type ListTax } from '../../cellar/next/recipe/listTax';
+import { SwapSheet } from '../../cellar/next/recipe/SwapGood';
+import type { ShelfItem } from '../../../services/api/recipes';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
@@ -551,6 +553,7 @@ export default function ItemUsedIn({
   onRetryDrinks,
   onLink,
   onMapTill,
+  good,
 }: {
   load: UsedInLoad;
   dishes: DishesLoad;
@@ -567,6 +570,8 @@ export default function ItemUsedIn({
   onLink?: (menuItemId: string) => Promise<void>;
   /** Open the house's Map POS buttons (managers only; the drawer closes first). */
   onMapTill?: () => void;
+  /** The good this drawer shows: an owner or manager can replace it in every recipe (r110 g4). */
+  good?: ShelfItem;
 }) {
   // A link moves a line from the unlinked group into Sold as. The groups hold
   // the height they had for the one frame the move is drawn in, so the dish
@@ -595,6 +600,7 @@ export default function ItemUsedIn({
         }
       : null;
 
+  const [replacing, setReplacing] = useState(false);
   // Menu prices are money: owners and managers only, as on every card above.
   const menu = (l: ItemMenuLine) => ({
     key: l.menuItemId,
@@ -715,6 +721,14 @@ export default function ItemUsedIn({
       <h3 id="ivd-used-title" className="iv-sec">
         Used in
       </h3>
+      {canManage && good ? (
+        <p className="iv-note">
+          <button type="button" className="iv-linkish iv-focus" data-testid="ivd-used-replace" onClick={() => setReplacing(true)}>
+            Replace it in recipes
+          </button>
+        </p>
+      ) : null}
+      {replacing && good ? <SwapSheet initialFrom={good} onClose={() => setReplacing(false)} /> : null}
       <div ref={holdRef} data-testid="ivd-used-hold">
         {body}
       </div>

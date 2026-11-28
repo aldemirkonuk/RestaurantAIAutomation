@@ -11,7 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
-import { recipesApi, type LooseDrink, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { recipesApi, type LooseDrink, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
 
 export const looseLinesKey = (rid: string | null | undefined) => ['recipes', rid ?? null, 'loose-lines'] as const;
 
@@ -59,14 +59,14 @@ export function linkOutcome(drink: LooseDrink, error: unknown, done = 'linked', 
 /** Sends each drink's body, one after another, and says each one's outcome; one refusal never stops the others. */
 export async function saveEach(
   restaurantId: string,
-  jobs: Array<{ drink: LooseDrink; body: SaveRecipeBody }>,
+  jobs: Array<{ drink: LooseDrink; body: SaveRecipeBody; owner?: RecipeOwner }>,
   done?: string,
   act?: string,
 ): Promise<LinkOutcome[]> {
   const out: LinkOutcome[] = [];
-  for (const { drink, body } of jobs) {
+  for (const { drink, body, owner } of jobs) {
     try {
-      await recipesApi.save(restaurantId, drink.cocktailId, body);
+      await recipesApi.save(restaurantId, owner ?? drink.cocktailId, body);
       out.push(linkOutcome(drink, null, done, act));
     } catch (e) {
       out.push(linkOutcome(drink, e, done, act));

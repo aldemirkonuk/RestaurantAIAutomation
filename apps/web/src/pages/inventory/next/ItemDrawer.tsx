@@ -442,6 +442,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
         onRetryDrinks={() => void drinksQ.refetch()}
         onLink={canManage && restaurantId ? linkLine : undefined}
         onMapTill={props.onMapTill}
+        good={{ id, name, kind: house.kind ?? row.kind, uom: house.uom ?? null, bottleSizeMl: null }}
       />
     </>
   );
