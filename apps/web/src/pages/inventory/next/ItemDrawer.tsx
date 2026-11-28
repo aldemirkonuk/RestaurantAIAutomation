@@ -49,7 +49,7 @@ export const CARD_EVIDENCE: Record<CardId | 'all', ReadonlyArray<EvidenceSection
   cover: ['pace', 'where'],
   onorder: ['orders', 'where'],
   cost: ['cost', 'paper'],
-  waste: ['where'],
+  waste: ['wasted', 'where'],
   gap: ['where'],
   inside: [],
   all: ['facts', 'where', 'pace', 'cost', 'paper'],
@@ -409,6 +409,7 @@ function DrawerBody(props: ItemDrawerProps & { row: InvRow; evidence: EvidenceId
               actions={false}
               settled={figures.status === 'ready' ? (figures.data.costTrend.points ?? null) : figures.status}
               onOrder={figures.status === 'ready' ? figures.data.onOrder : figures.status}
+              wasted={figures.status === 'ready' ? figures.data.waste : figures.status}
               sheet={sheet}
               onSheet={setSheet}
             />
