@@ -17,6 +17,23 @@ export type TableExportFormat =
   | 'print'
   | 'clipboard'
 
+let warmed = false
+
+/**
+ * Start the Excel and PDF writers downloading, result dropped, so the first
+ * Excel or PDF choice does not wait on the network. Called when a person's
+ * pointer or focus reaches an export trigger, never at mount. Runs once; a
+ * failed fetch is forgotten here and the real export's own import reports it.
+ */
+export function warmExportLibraries(): void {
+  if (warmed) return
+  warmed = true
+  const drop = () => {}
+  void import('exceljs').catch(drop)
+  void import('jspdf').catch(drop)
+  void import('jspdf-autotable').catch(drop)
+}
+
 export interface TableExportColumn<T> {
   header: string
   /** Cell value; return a primitive — objects are stringified. */
