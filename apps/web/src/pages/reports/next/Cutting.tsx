@@ -31,7 +31,7 @@
  * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
@@ -51,8 +51,10 @@ import {
   DataTable,
   FigureRow,
   HeatGrid,
+  MAX_DRAWN,
   Nothing,
   PointPlot,
+  RankLine,
   RegisterBody,
   Working,
 } from './rp-plot';
@@ -67,6 +69,7 @@ import RuledOff from './RuledOff';
 import CuttingFlat, { FLAT_PARAM, type FlatStep } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
 import type { ComboPick } from './rp-combo';
+import { ranked, type RankEnd } from './rp-rank';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
 import type { Register } from './useReportsNextData';
@@ -173,7 +176,7 @@ export function TillWindowPicker({
 
 /** The chosen drawing, or — when the register cannot honestly be drawn that
  *  way at all — a sentence saying so rather than an empty frame. */
-function Drawing({
+export function Drawing({
   view,
   graph,
   windowLine,
@@ -187,6 +190,10 @@ function Drawing({
   /** The full-screen view, where "Draw as" sits in the head, not on a sheet being arranged. */
   flat?: boolean;
 }) {
+  // Highest / Lowest (r110 g2): this drawing's own, view-only, and back to Highest on a Draw as.
+  const [rankEnd, setRankEnd] = useState<{ graph: GraphType; end: RankEnd }>({ graph, end: 'high' });
+  if (rankEnd.graph !== graph) setRankEnd({ graph, end: 'high' });
+  const end: RankEnd = rankEnd.graph === graph ? rankEnd.end : 'high';
   if (view.say)
     return (
       <>
@@ -199,9 +206,32 @@ function Drawing({
     case 'line':
     case 'area':
     case 'bars':
-      return <CatPlot series={view.cats!} kind={graph} />;
-    case 'combo':
-      return <ComboPlot series={view.cats!} pick={combo?.pick} onPick={combo?.onPick} />;
+    case 'combo': {
+      // A ranking is cut here, once, bars and measures together: the card's
+      // cap, or every row (up to MAX_DRAWN) in full screen (rp-rank.ts).
+      const cats = view.cats!;
+      const r = ranked(cats, end, flat ? MAX_DRAWN : (cats.rank?.cap ?? MAX_DRAWN), MAX_DRAWN);
+      // A re-read that leaves no row out hides the caption and the pill, so a
+      // Lowest chosen earlier would have no words and no way back: go back to Highest.
+      if (cats.rank && !r.cut && end === 'low') setRankEnd({ graph, end: 'high' });
+      const line = cats.rank ? (
+        <RankLine
+          caption={r.caption}
+          end={end}
+          onEnd={cats.rank.ends ? (e) => setRankEnd({ graph, end: e }) : undefined}
+        />
+      ) : null;
+      return (
+        <>
+          {line}
+          {graph === 'combo' ? (
+            <ComboPlot series={r.series} pick={combo?.pick} onPick={combo?.onPick} />
+          ) : (
+            <CatPlot series={r.series} kind={graph} />
+          )}
+        </>
+      );
+    }
     case 'scatter':
       return <PointPlot series={view.points!} />;
     case 'heatmap':

@@ -73,6 +73,7 @@ import { EM, MONO, failureLine, type Failure } from './rp-format';
 import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 import { NO_STRETCH, stretchSpan, stretchStep } from './rp-stretch';
+import type { RankEnd } from './rp-rank';
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
 
@@ -699,6 +700,60 @@ export function thinCats<T extends { label: string; value?: number | null; proje
     must.add(chunk.reduce((best, i) => (top(i) > top(best) ? i : best), chunk[0]));
   }
   return [...must].sort((a, b) => a - b).map((i) => data[i]);
+}
+
+/* ──────────────────────────────────────────── ranked bars (r110 g2) ───── */
+
+/**
+ * A ranking's line above its drawing: how many of how many are drawn, from
+ * which end ("12 of 37 wines, highest margin first"), and the Highest / Lowest
+ * pill when the register offers both ends. Only when some rows are left out;
+ * a drawing that holds every row says nothing here. The pill is the till
+ * window's `rp-seg` (44 px, the 260 ms thumb settle, none under reduced motion).
+ */
+export function RankLine({
+  caption,
+  end,
+  onEnd,
+}: {
+  caption: string | null;
+  end: RankEnd;
+  /** Absent: caption only (restock: the lowest stockout risk answers nothing). */
+  onEnd?: (end: RankEnd) => void;
+}) {
+  if (caption == null) return null;
+  const ends: Array<[RankEnd, string]> = [
+    ['high', 'Highest'],
+    ['low', 'Lowest'],
+  ];
+  return (
+    <div className="rp-row rp-no-drag rp-rank" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      {onEnd && (
+        <div
+          className="rp-seg"
+          role="group"
+          aria-label="Which end of the ranking"
+          style={{ '--rp-n': 2, '--rp-i': end === 'high' ? 0 : 1 } as CSSProperties}
+        >
+          <span className="rp-seg__thumb" aria-hidden="true" />
+          {ends.map(([e, word]) => (
+            <button
+              key={e}
+              type="button"
+              className="rp-seg__btn rp-focus"
+              aria-pressed={end === e}
+              onClick={() => onEnd(e)}
+            >
+              {word}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="rp-plot-cap rp-rank__say" aria-live="polite">
+        {caption}
+      </p>
+    </div>
+  );
 }
 
 /** More drawn points than this (a 365-day till: 124 bars) mount a frame after the tap, not in it. */

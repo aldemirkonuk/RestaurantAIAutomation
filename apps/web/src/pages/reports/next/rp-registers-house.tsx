@@ -91,9 +91,9 @@ const quadrants = analysis<QuadrantRegister>({
     const ranked = [...priced].sort(
       (a, b) => (b.marginPerBottle as number) - (a.marginPerBottle as number),
     );
-    const topWines = ranked.slice(0, 12);
+    // Every priced wine, highest margin first: the drawing cuts it (rp-rank.ts), ties kept at the edge.
     const wineLabels = shortLabels(
-      topWines.map((i) => i.name),
+      ranked.map((i) => i.name),
       14,
     );
     return {
@@ -111,11 +111,12 @@ const quadrants = analysis<QuadrantRegister>({
         refY: q.medians.marginPerBottle,
       },
       cats: {
-        data: topWines.map((i, k) => ({
+        data: ranked.map((i, k) => ({
           label: wineLabels[k],
           value: i.marginPerBottle,
           full: i.name,
         })),
+        rank: { cap: 12, noun: 'wines', by: 'margin', ends: true },
         xLabel: 'wine',
         yLabel: 'margin/bottle',
         unit: 'margin per bottle',
@@ -142,9 +143,14 @@ const quadrants = analysis<QuadrantRegister>({
           ],
         })),
         more:
-          unclassified > 0
-            ? `${countOf(unclassified, 'wine has', 'wines have')} no quadrant because no cost was ever recorded for them.`
-            : undefined,
+          [
+            q.items.length > 40 ? `Showing 40 of ${figure(q.items.length)}, in the register’s own order.` : null,
+            unclassified > 0
+              ? `${countOf(unclassified, 'wine has', 'wines have')} no quadrant because no cost was ever recorded for them.`
+              : null,
+          ]
+            .filter((m): m is string => m !== null)
+            .join(' ') || undefined,
       },
       figures,
       notes: [
@@ -439,7 +445,8 @@ const seats = analysis<SeatsRegister>({
       };
     }
     const withCheck = served.filter((t) => t.avgCheck != null && t.seats != null);
-    const shownTables = served.slice(0, 14);
+    // Every table that took a check: the drawing cuts it (rp-rank.ts).
+    const shownTables = served;
     return {
       cats: {
         data: shownTables.map((t) => ({
@@ -447,6 +454,7 @@ const seats = analysis<SeatsRegister>({
           value: t.revenue,
           full: `${t.label}${t.zone ? ` · ${t.zone}` : ''}`,
         })),
+        rank: { cap: 14, noun: 'tables', by: 'takings', ends: true },
         xLabel: 'table',
         yLabel: 'taken',
         unit: 'taken',
@@ -603,7 +611,8 @@ const service = analysis<ServiceRegister>({
         basis,
       };
     }
-    const shownServers = s.waiters.slice(0, 14);
+    // Every server with a check: the drawing cuts it (rp-rank.ts).
+    const shownServers = s.waiters;
     const serverLabels = shortLabels(
       shownServers.map((w) => w.name),
       12,
@@ -615,6 +624,7 @@ const service = analysis<ServiceRegister>({
           value: w.revenue,
           full: `${w.name} · ${countOf(w.checks, 'check', 'checks')}`,
         })),
+        rank: { cap: 14, noun: 'servers', by: 'takings', ends: true },
         xLabel: 'server',
         yLabel: 'taken',
         unit: 'taken',
@@ -683,35 +693,6 @@ export interface RestockRegister {
   }>;
 }
 
-/**
- * The first `n` bars, extended through every row tied with bar `n` (ADR 0272).
- *
- * The register arrives highest risk first, and a plain `slice(0, 14)` drew
- * some wines of a tie and dropped the rest by row order — a ranking the data
- * did not make. A tie is the same computed risk, to within floating-point
- * noise (one part in a billion, the gateway's own `sameValue`); two risks that
- * merely PRINT alike (26.8% and 26.9%, both "27%") are not tied.
- *
- * A tie at 0% is never extended, as on the gateway's cut: it is the wines with
- * no demand and nothing on hand, a group with no risk to rank and no height to
- * draw, and extending through it drew every one of them.
- */
-function barsKeepingTies(
-  rows: RestockRegister['reorderList'],
-  n: number,
-): RestockRegister['reorderList'] {
-  if (rows.length <= n) return rows;
-  const same = (a: number | null, b: number | null) =>
-    a == null || b == null
-      ? a == null && b == null
-      : Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
-  const edge = rows[n - 1].stockoutProbability;
-  if (edge == null || edge <= 0 || same(edge, 0)) return rows.slice(0, n);
-  let end = n;
-  while (end < rows.length && same(rows[end].stockoutProbability, edge)) end++;
-  return rows.slice(0, end);
-}
-
 const restock = analysis<RestockRegister>({
   title: 'What to buy back',
   register: 'reorder register',
@@ -766,7 +747,9 @@ const restock = analysis<RestockRegister>({
         notes: [],
         basis,
       };
-    const restock = barsKeepingTies(r.reorderList, 14);
+    // Every row below its reorder point, highest risk first: the drawing cuts
+    // it with ties kept and never extends a tie at 0% (rp-rank.ts, ADR 0272).
+    const restock = r.reorderList;
     const restockLabels = shortLabels(
       restock.map((s) => s.name),
       12,
@@ -778,6 +761,8 @@ const restock = analysis<RestockRegister>({
           value: s.stockoutProbability,
           full: `${s.name} · ${figure(s.onHand)} on hand`,
         })),
+        // Caption only: the lowest stockout risk answers nothing.
+        rank: { cap: 14, noun: 'wines', by: 'stockout risk' },
         xLabel: 'wine',
         yLabel: 'stockout risk',
         unit: 'chance of running out before the delivery',
@@ -789,8 +774,8 @@ const restock = analysis<RestockRegister>({
             label: 'Days of cover',
             unit: 'days',
             format: (v) => figure(v),
-            // Same cut as the bars (ADR 0272), so the line sits on the same wines.
-            values: barsKeepingTies(r.reorderList, 14).map((s) => s.daysOfCover),
+            // Every row, cut with the bars (rankSlice), so the line sits on the same wines.
+            values: restock.map((s) => s.daysOfCover),
           },
         ],
       },
