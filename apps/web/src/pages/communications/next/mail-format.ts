@@ -1338,6 +1338,8 @@ export interface MailAnswer {
    * address, on that thread, and nowhere else (r104 mail-gap g1, ADR 0396).
    */
   person?: { kind: 'team' | 'guest'; address: string; name: string | null };
+  /** The newest letter the thread showed, any direction (r110 g2): the queue asks about anything after it. */
+  seenThrough?: { id: string; createdAt: string };
 }
 
 export function answerFor(
@@ -1369,9 +1371,11 @@ export function answerFor(
   );
   if (!last) return null;
   const subject = (head?.subject ?? '').trim();
+  const shown = letters.reduce<MailMessage | null>((n, m) => (n === null || m.createdAt >= n.createdAt ? m : n), null);
   return {
     providerId,
     answers: last.id,
+    ...(shown ? { seenThrough: { id: shown.id, createdAt: shown.createdAt } } : {}),
     subject: subject === '' ? '' : /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`,
     context: {
       name: head?.person?.name ?? null,

@@ -288,6 +288,8 @@ describe('a thread', () => {
         subject: 'Re: Standing order',
         // The letter answered rides along from the page already read (r109 mail-gap g3).
         context: { name: 'Bodega Álvaro', at: '2026-11-07T09:00:00Z', text: 'Six cases, as every week.' },
+        // r110 g2: the newest letter shown (on a tie, the later in the page).
+        seenThrough: { id: 'm6', createdAt: '2026-11-06T08:59:00Z' },
       },
       // r109 g2: the thread and its person, so a reply held there resumes.
       { threadKey: 'gm:abc', personKey: 'vendor:p1' },

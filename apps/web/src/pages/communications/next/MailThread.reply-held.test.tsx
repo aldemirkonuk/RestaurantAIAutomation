@@ -100,7 +100,11 @@ describe('a held reply stays on its thread', () => {
     held();
     const onAnswer = mount('/communications?thread=gm%3At1');
     fireEvent.click(await screen.findByRole('button', { name: 'Resume' }));
-    expect(onAnswer).toHaveBeenLastCalledWith(ANSWER, { threadKey: 'gm:t1', personKey: 'vendor:p1' });
+    // r110 g2: the held reply, over the thread as it is shown now.
+    expect(onAnswer).toHaveBeenLastCalledWith(
+      { ...ANSWER, seenThrough: { id: 'v1', createdAt: '2026-11-06T09:00:00Z' } },
+      { threadKey: 'gm:t1', personKey: 'vendor:p1' },
+    );
     fireEvent.click(screen.getByTestId('write-thread-reply'));
     expect(onAnswer).toHaveBeenLastCalledWith(expect.objectContaining({ answers: 'v1' }), { threadKey: 'gm:t1', personKey: 'vendor:p1' });
   });
