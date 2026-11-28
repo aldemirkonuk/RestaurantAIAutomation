@@ -70,8 +70,8 @@ export function useAddNote(threadKey: string, withKey: string | null) {
   return useMutation<MailThreadNote, unknown, { person: string; body: string }>({
     mutationFn: async ({ person, body }) =>
       (
-        await apiClient.post<MailThreadNote>(`/mail/threads/${encodeURIComponent(threadKey)}/notes`, { body }, {
-          params: { with: person },
+        await apiClient.post<MailThreadNote>('/mail/thread/notes', { body }, {
+          params: { key: threadKey, with: person },
         })
       ).data,
     onSuccess: (note) => {
@@ -86,12 +86,13 @@ export function useAddNote(threadKey: string, withKey: string | null) {
 }
 
 /** DELETE the caller's own note: it leaves the screen at once, with no exit motion. */
-export function useDeleteNote(threadKey: string) {
+/** The thread key is no part of the request (the id names the note); callers may still pass it. */
+export function useDeleteNote(_threadKey?: string) {
   const house = useHouse();
   const qc = useQueryClient();
   return useMutation<unknown, unknown, string>({
     mutationFn: async (id) =>
-      (await apiClient.delete(`/mail/threads/${encodeURIComponent(threadKey)}/notes/${encodeURIComponent(id)}`)).data,
+      (await apiClient.delete(`/mail/thread/notes/${encodeURIComponent(id)}`)).data,
     onMutate: (id) => {
       qc.setQueriesData<Pages>({ queryKey: ['mail-thread', house] }, (cur) =>
         cur ? { ...cur, pages: cur.pages.map((p) => ({ ...p, notes: (p.notes ?? []).filter((n) => n.id !== id) })) } : cur,
