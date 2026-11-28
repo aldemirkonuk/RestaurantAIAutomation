@@ -201,17 +201,29 @@ describe('a change of address', () => {
     s.again();
     await new Promise((r) => setTimeout(r, 30));
     expect(bodyBox().value).toBe(`Merhaba,${BLOCK} (on leave)`);
-    fireEvent.change(bodyBox(), { target: { value: `Merhaba,\n\n-- \nThe office` } });
-    mockData.current = { ...base };
+    // Put back exactly as it was put in: still not the sheet's after the change of address.
+    fireEvent.change(bodyBox(), { target: { value: `Merhaba,${BLOCK}` } });
+    mockData.current = { ...base, sender: mailbox('bar@house.test'), signature: { address: 'bar@house.test', body: 'Bar', updatedAt: null } };
     s.again();
     await new Promise((r) => setTimeout(r, 30));
-    expect(bodyBox().value).toBe(`Merhaba,\n\n-- \nThe office`);
+    expect(bodyBox().value).toBe(`Merhaba,${BLOCK}`);
+  });
+
+  it('a block edited and put back before the change is still the sheet’s', async () => {
+    const s = sheet();
+    await waitFor(() => expect(bodyBox().value).toBe(BLOCK));
+    fireEvent.change(bodyBox(), { target: { value: `Merhaba,${BLOCK}!` } });
+    fireEvent.change(bodyBox(), { target: { value: `Merhaba,${BLOCK}` } });
+    mockData.current = { ...base, sender: mailbox('office@house.test'), signature: { address: 'office@house.test', body: 'The office', updatedAt: null } };
+    s.again();
+    await waitFor(() => expect(bodyBox().value).toBe('Merhaba,\n\n-- \nThe office'));
   });
 
   it('swapSignature: an empty block gains the next at the end; a missing one is not the sheet’s', () => {
     expect(swapSignature('Hi \n', '', BLOCK)).toEqual({ body: `Hi${BLOCK}`, block: BLOCK });
     expect(swapSignature('Hi', '', '')).toEqual({ body: 'Hi', block: '' });
     expect(swapSignature('Hi', null, BLOCK)).toBeNull();
+    expect(swapSignature('It is null', null, BLOCK)).toBeNull();
     expect(swapSignature('Hi', BLOCK, '')).toBeNull();
   });
 });
@@ -244,6 +256,21 @@ describe('who is asked for the signature', () => {
       expect(sigAsks()[0][1]).toEqual({ params: { address: 'me@house.test' } });
       await waitFor(() => expect(result.current.signature?.body).toBe(SIG));
     } else expect(result.current.signature).toBeNull();
+  });
+
+  it('an answer that names another address is not this letter’s signature', async () => {
+    const actual = await vi.importActual<typeof import('./useComposeData')>('./useComposeData');
+    api.get.mockImplementation(async (url: string) =>
+      url.endsWith('/letters/sender')
+        ? { data: mailbox('office@house.test') }
+        : url.endsWith('/letters/signature')
+          ? { data: { address: 'me@house.test', body: SIG, updatedAt: null } }
+          : { data: { entries: [], templates: [], queued: [], insights: [] } },
+    );
+    const { result } = renderHook(() => actual.useComposeData(), { wrapper: wrap() });
+    await waitFor(() => expect(sigAsks()).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(result.current.signature).toBeNull();
   });
 });
 
