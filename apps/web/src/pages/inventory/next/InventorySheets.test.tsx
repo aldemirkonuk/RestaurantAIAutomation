@@ -340,17 +340,34 @@ describe('Order more suggests par less what is already on its way (r110 g5)', ()
     expect(said()).toContain('3 bring it to par (10)');
   });
 
-  it('fills once: a reread with more on its way does not move the field under a thumb', () => {
+  it('an untouched field follows a later reread, so it never disagrees with the sentence', () => {
     const qc = new QueryClient();
     const wrap = (node: ReactNode) => (
       <QueryClientProvider client={qc}>
         <MemoryRouter>{node}</MemoryRouter>
       </QueryClientProvider>
     );
-    const { rerender } = render(wrap(sheet(walk)));
+    // opens on a failed read (field 6), then a reread finds 3 on its way
+    const { rerender } = render(wrap(sheet('failed')));
+    expect(field()).toBe('6');
+    rerender(wrap(sheet(walk)));
     expect(field()).toBe('3');
+    expect(said()).toBe('3 bring it to par (10): 3 more are on their way on 1 order; 6 not yet sent are not counted.');
     rerender(wrap(sheet(ready([o('a', 'IN_TRANSIT', 5, 'bottle', 5)], [], 5))));
-    expect(field()).toBe('3');
+    expect(field()).toBe('1');
+  });
+
+  it('a typed value is never moved by a later reread', () => {
+    const qc = new QueryClient();
+    const wrap = (node: ReactNode) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>{node}</MemoryRouter>
+      </QueryClientProvider>
+    );
+    const { rerender } = render(wrap(sheet('failed')));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles' }), { target: { value: '4' } });
+    rerender(wrap(sheet(walk)));
+    expect(field()).toBe('4');
   });
 
   it('says when what is on its way already reaches par, and suggests nothing', () => {

@@ -709,19 +709,20 @@ export function OrderSheet({
   const vendorId = providers?.some((p) => p.id === picked) ? picked : '';
   // INV-W21: the suggestion to par, or nothing. A made-up 6 was a default.
   // r110 g5: less what is on its way, so the field stays empty while the
-  // orders read and is filled once, when they answer. A typed value is the
-  // person's and is never overwritten, nor is it changed by a later reread.
+  // orders read and is pre-filled when they answer. The pre-fill follows the
+  // sentence above it: a later reread (a failed read answered, more on its way)
+  // moves a field the person has not touched, so the field and the sentence
+  // never disagree. A value the person typed is theirs and is never overwritten.
   const answered = onOrder !== 'reading';
   const toPar = suggestedToPar(row, onOrder);
   const [qty, setTyped] = useState(() => (answered && toPar !== null ? String(toPar) : ''));
-  const filled = useRef(answered);
+  const typedByPerson = useRef(false);
   const setQty = (v: string) => {
-    filled.current = true;
+    typedByPerson.current = true;
     setTyped(v);
   };
   useEffect(() => {
-    if (!answered || filled.current) return;
-    filled.current = true;
+    if (!answered || typedByPerson.current) return;
     setTyped(toPar === null ? '' : String(toPar));
   }, [answered, toPar]);
   const n = wholeNumber(qty);
