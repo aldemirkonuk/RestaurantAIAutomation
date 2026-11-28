@@ -22,14 +22,6 @@
  *  4. VAT is summed per printed rate (vat_rate_percent, #1501). A line with
  *     no rate goes to 'rate not printed'; a rate is never assumed.
  *  5. A credit memo's figures are negative within their class.
- *  6. Only invoices and credit memos are purchases. A statement, packing slip,
- *     delivery receipt, PO or price list that was checked repeats money an
- *     invoice already holds, so it is left out and counted by type
- *     (`papersLeftOut`), never added.
- *  7. A line whose total was not read is money of unknown class. When any line
- *     of a paper has no total, the paper's unexplained residual goes to 'Not
- *     classed' and the lines are counted (`linesWithoutTotal`), so the split
- *     is reported as partial, never filed under a class it may not belong to.
  */
 import { allocateSigned, toCents } from "./documents-export";
 
@@ -115,20 +107,13 @@ export interface CurrencyPurchases {
   vat: Array<{ rate: string; net: number }>;
   /** The tax the papers printed, at paper level. */
   taxPrinted: number;
-  /** Lines whose total was not read: the split is partial when above 0. */
-  linesWithoutTotal: number;
 }
 
 export interface PurchasesByCategory {
   currencies: CurrencyPurchases[];
   /** Papers that state no currency: counted, added to nothing. */
   papersWithoutCurrency: number;
-  /** Verified papers that are not purchases, by doc_type ('not read' when none). */
-  papersLeftOut: Array<{ docType: string; count: number }>;
 }
-
-/** The only paper types whose total is money the house spent. */
-export const PURCHASE_DOC_TYPES = ["invoice", "credit_memo"] as const;
 
 const c0 = (v: unknown) => toCents(v as number | string | null) ?? 0;
 const emptyClasses = () =>
@@ -138,22 +123,14 @@ const emptyClasses = () =>
 export function foldPaper(
   paper: PaperIn,
   lines: LineIn[],
-): {
-  classes: Record<PurchaseClass, number>;
-  deposits: number;
-  total: number;
-  vat: Map<string, number>;
-  linesWithoutTotal: number;
-} {
+): { classes: Record<PurchaseClass, number>; deposits: number; total: number; vat: Map<string, number> } {
   const sign = paper.doc_type === "credit_memo" ? -1 : 1;
   const classes = emptyClasses();
   const vat = new Map<string, number>();
   let lineNet = 0;
   let lineDeposits = 0;
   let anyLineDeposit = false;
-  let linesWithoutTotal = 0;
   for (const l of lines) {
-    if (toCents(l.line_total as number | string | null) === null) linesWithoutTotal++;
     const net = c0(l.line_total);
     const cls = l.cls ?? "Not classed";
     classes[cls] += net;
@@ -183,8 +160,7 @@ export function foldPaper(
         c0(paper.discount_total);
   const keys = CLASSES.filter((k) => classes[k] > 0);
   if (residual !== 0) {
-    // an unread line total hides money of unknown class: never spread it
-    if (keys.length === 0 || linesWithoutTotal > 0) classes["Not classed"] += residual;
+    if (keys.length === 0) classes["Not classed"] += residual;
     else {
       const shares = allocateSigned(
         keys.map((k) => classes[k]),
@@ -199,7 +175,7 @@ export function foldPaper(
     total += classes[k];
   }
   for (const [k, v] of vat) vat.set(k, sign * v || 0);
-  return { classes, deposits: sign * deposits || 0, total, vat, linesWithoutTotal };
+  return { classes, deposits: sign * deposits || 0, total, vat };
 }
 
 /** Every verified paper of a period, one result per currency. */
@@ -226,13 +202,11 @@ export function purchasesByCategory(
         total: 0,
         vat: [],
         taxPrinted: 0,
-        linesWithoutTotal: 0,
         vatMap: new Map(),
       } as CurrencyPurchases & { vatMap: Map<string, number> });
     acc.papers++;
     for (const k of CLASSES) acc.classes[k] += f.classes[k];
     acc.deposits += f.deposits;
-    acc.linesWithoutTotal += f.linesWithoutTotal;
     acc.total += f.total;
     acc.taxPrinted += c0(p.tax) * (p.doc_type === "credit_memo" ? -1 : 1);
     for (const [k, v] of f.vat) acc.vatMap.set(k, (acc.vatMap.get(k) ?? 0) + v);
@@ -248,7 +222,7 @@ export function purchasesByCategory(
         )
         .map(([rate, net]) => ({ rate, net })),
     }));
-  return { currencies, papersWithoutCurrency, papersLeftOut: [] };
+  return { currencies, papersWithoutCurrency };
 }
 
 // ---------------------------------------------------------------------------
@@ -302,29 +276,15 @@ export async function readPurchasesByCategory(
     "The verified papers",
   );
   const papersWithoutDate = all.filter((p) => !p.doc_date).length;
-  const inRange = all.filter((p) => inPeriod(p.doc_date as string | null, from, to));
-  const isPurchase = (p: Record<string, unknown>) =>
-    (PURCHASE_DOC_TYPES as readonly string[]).includes(String(p.doc_type ?? ""));
-  const papers = inRange.filter(isPurchase) as unknown as PaperIn[];
-  const leftOut = new Map<string, number>();
-  for (const p of inRange.filter((x) => !isPurchase(x))) {
-    const t = String(p.doc_type ?? "").trim() || "not read";
-    leftOut.set(t, (leftOut.get(t) ?? 0) + 1);
-  }
+  const papers = all.filter((p) =>
+    inPeriod(p.doc_date as string | null, from, to),
+  ) as unknown as PaperIn[];
   const linesByPaper = await readClassedLines(
     db,
     restaurantId,
     papers.map((p) => p.id),
   );
-  return {
-    ...purchasesByCategory(papers, linesByPaper),
-    papersLeftOut: [...leftOut.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([docType, count]) => ({ docType, count })),
-    from,
-    to,
-    papersWithoutDate,
-  };
+  return { ...purchasesByCategory(papers, linesByPaper), from, to, papersWithoutDate };
 }
 
 /**
