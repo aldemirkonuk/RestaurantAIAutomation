@@ -175,8 +175,7 @@ export function useComposeData(enabled = true) {
     enabled: enabled && Boolean(restaurantId),
   });
 
-  // r110 g3: the signature of the address this letter leaves from. Owner or
-  // manager only on the server, so it is not asked for anyone else.
+  // r110 g3: the signature of the address letters leave from; the server answers owners and managers only.
   const sigAddress = senderQ.data?.sendable ? (senderQ.data.address ?? '').toLowerCase() : '';
   const standingBasis = senderQ.data?.sendOrAsk?.readable ? senderQ.data.sendOrAsk.basis : null;
   const signatureQ = useQuery<SignatureRead>({

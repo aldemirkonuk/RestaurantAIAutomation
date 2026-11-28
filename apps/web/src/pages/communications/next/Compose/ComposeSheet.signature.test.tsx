@@ -93,26 +93,18 @@ describe('the composer puts the address’s signature in the body', () => {
     await waitFor(() => expect(bodyBox().value).toBe(BLOCK));
   });
 
-  it('an address with no signature opens an empty letter', () => {
-    mockData.current = { ...base, signature: { address: 'me@house.test', body: null, updatedAt: null } };
+  it.each([
+    ['no signature for the address', { address: 'me@house.test', body: null, updatedAt: null }],
+    ['no signature read', null],
+  ])('%s: an empty letter', (_w, signature) => {
+    mockData.current = { ...base, signature };
     sheet();
     expect(bodyBox().value).toBe('');
   });
 
-  it('a signature read for another address is never put in', () => {
-    mockData.current = { ...base, signature: null };
-    sheet();
-    expect(bodyBox().value).toBe('');
-  });
-
-  it('held words resume as they were held: the signature is not put in again', () => {
-    sheet({ prefill: { subject: 'Prices', body: `Hello${BLOCK}` } });
-    expect(bodyBox().value).toBe(`Hello${BLOCK}`);
-  });
-
-  it('held words with an empty body still get no signature', () => {
-    sheet({ prefill: { subject: 'Prices', body: '' } });
-    expect(bodyBox().value).toBe('');
+  it.each([`Hello${BLOCK}`, ''])('held words resume as held, never signed again (%j)', (body) => {
+    sheet({ prefill: { subject: 'Prices', body } });
+    expect(bodyBox().value).toBe(body);
   });
 
   it('a drafted letter keeps its own words', () => {
@@ -120,10 +112,8 @@ describe('the composer puts the address’s signature in the body', () => {
     expect(bodyBox().value).toBe('We ask for a credit.');
   });
 
-  it('the signature alone is not a letter: untouched, it leaves holding nothing, and Send waits for words', async () => {
-    const onHold = vi.fn();
-    const onClose = vi.fn();
-    sheet({ onHold, onClose });
+  it('the signature alone is not a letter: Send waits for words', async () => {
+    sheet();
     await waitFor(() => expect(bodyBox().value).toBe(BLOCK));
     fireEvent.click(screen.getByText('Fikri Tarım Gıda'));
     fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Prices' } });
@@ -153,7 +143,7 @@ describe('the composer puts the address’s signature in the body', () => {
 
   it('"See it as it leaves" shows the signature, because it is in the body', async () => {
     api.post.mockResolvedValue({
-      data: { from: { name: null, address: 'me@house.test' }, to: 'fikri@fikritarim.com', replyTo: null, subject: 'Prices', inReplyTo: null, answersAt: null, body: `Merhaba,${BLOCK}`, files: [] },
+      data: { from: { name: null, address: 'me@house.test' }, to: 'f@f.test', replyTo: null, subject: 'Prices', body: `Merhaba,${BLOCK}` },
     });
     sheet();
     await waitFor(() => expect(bodyBox().value).toBe(BLOCK));
@@ -229,47 +219,39 @@ describe('a change of address', () => {
 });
 
 describe('who is asked for the signature', () => {
-  const wrap = () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    return ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  };
   const sigAsks = () => api.get.mock.calls.filter((c) => String(c[0]).includes('letters/signature'));
-
-  it.each([
-    ['a manager', 'manager', 1],
-    ['an owner', 'owner', 1],
-    ['a grantee', 'grant', 0],
-  ] as const)('%s', async (_who, basis, n) => {
-    const actual = await vi.importActual<typeof import('./useComposeData')>('./useComposeData');
-    api.get.mockImplementation(async (url: string) =>
-      url.endsWith('/letters/sender')
-        ? { data: mailbox('Me@House.test', basis) }
+  async function hook(from: string, basis: 'owner' | 'manager' | 'grant', answers: string) {
+    const { useComposeData } = await vi.importActual<typeof import('./useComposeData')>('./useComposeData');
+    api.get.mockImplementation(async (url: string) => ({
+      data: url.endsWith('/letters/sender')
+        ? mailbox(from, basis)
         : url.endsWith('/letters/signature')
-          ? { data: { address: 'me@house.test', body: SIG, updatedAt: null } }
-          : { data: { entries: [], templates: [], queued: [], insights: [] } },
-    );
-    const { result } = renderHook(() => actual.useComposeData(), { wrapper: wrap() });
+          ? { address: answers, body: SIG, updatedAt: null }
+          : { entries: [], templates: [], queued: [], insights: [] },
+    }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result } = renderHook(() => useComposeData(), { wrapper });
     await waitFor(() => expect(result.current.sender).not.toBeNull());
     await new Promise((r) => setTimeout(r, 30));
-    expect(sigAsks()).toHaveLength(n);
-    if (n) {
-      expect(sigAsks()[0][1]).toEqual({ params: { address: 'me@house.test' } });
-      await waitFor(() => expect(result.current.signature?.body).toBe(SIG));
-    } else expect(result.current.signature).toBeNull();
+    return result;
+  }
+
+  it.each(['owner', 'manager'] as const)('an %s, for the address lower-cased', async (basis) => {
+    const result = await hook('Me@House.test', basis, 'me@house.test');
+    expect(sigAsks()).toEqual([['/communications/letters/signature', { params: { address: 'me@house.test' } }]]);
+    expect(result.current.signature?.body).toBe(SIG);
+  });
+
+  it('not a grantee', async () => {
+    const result = await hook('me@house.test', 'grant', 'me@house.test');
+    expect(sigAsks()).toHaveLength(0);
+    expect(result.current.signature).toBeNull();
   });
 
   it('an answer that names another address is not this letter’s signature', async () => {
-    const actual = await vi.importActual<typeof import('./useComposeData')>('./useComposeData');
-    api.get.mockImplementation(async (url: string) =>
-      url.endsWith('/letters/sender')
-        ? { data: mailbox('office@house.test') }
-        : url.endsWith('/letters/signature')
-          ? { data: { address: 'me@house.test', body: SIG, updatedAt: null } }
-          : { data: { entries: [], templates: [], queued: [], insights: [] } },
-    );
-    const { result } = renderHook(() => actual.useComposeData(), { wrapper: wrap() });
-    await waitFor(() => expect(sigAsks()).toHaveLength(1));
-    await new Promise((r) => setTimeout(r, 30));
+    const result = await hook('office@house.test', 'manager', 'me@house.test');
+    expect(sigAsks()).toHaveLength(1);
     expect(result.current.signature).toBeNull();
   });
 });

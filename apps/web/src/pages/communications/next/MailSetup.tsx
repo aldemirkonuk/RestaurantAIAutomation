@@ -360,7 +360,7 @@ export function MailSetup({
             conversationWords={conversationWords}
             sendOffered={offered.send}
           />
-          {/* r110 g3: the signature of the address letters leave from now; an owner's or a manager's. */}
+          {/* r110 g3: the signature of the address letters leave from now. */}
           {q.data.canChange && sender?.address && (sender.kind === 'house_mailbox' || sender.kind === 'mudavym_subdomain') && (
             <Part title="Signature">
               <SignatureEditor key={sender.address.toLowerCase()} address={sender.address} />

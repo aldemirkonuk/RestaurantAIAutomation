@@ -215,8 +215,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   }, [to, replyVendor, data.book]);
   const [subject, setSubject] = useState(prefill?.subject ?? '');
   const [body, setBody] = useState(prefill?.body ?? '');
-  // r110 g3: the signature block this sheet put in the body. '' = none yet; null =
-  // the sheet owns none (held words resumed, a draft, or the person edited it).
+  // r110 g3: the signature block this sheet put in. null: it owns none (held words, a draft, edited).
   const [sigBlock, setSigBlock] = useState<string | null>(() => (prefill?.body === undefined && !draftId ? '' : null));
   const sigRef = useRef(sigBlock);
   sigRef.current = sigBlock;
@@ -245,8 +244,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   // template option list downstream is a `useMemo` keyed on it.
   const templates = useMemo(() => data.templates ?? [], [data.templates]);
   const sender = data.sender;
-  // Put in when the address's signature is read, and swapped when the address
-  // changes, but only while the block is as this sheet put it.
+  // Put in once read; swapped on a change of address only while the block is as put in.
   const signature = data.signature ?? null;
   useEffect(() => {
     if (!signature || sigBlock === null) return;

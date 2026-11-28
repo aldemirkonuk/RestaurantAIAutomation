@@ -52,12 +52,11 @@ function failWords(err: unknown, address: string): string {
   const status = (err as { response?: { status?: unknown } } | null)?.response?.status;
   if (typeof status !== 'number') return 'No answer. Check the connection, then try again. Nothing was saved.';
   if (status === 404) return `This house does not send from ${address} any more. Nothing was saved.`;
-  if (status === 403) return 'Only an owner or a manager of this house can change the signature. Nothing was saved.';
   if (status === 400) return `A signature is at most ${SIGNATURE_MAX} characters. Nothing was saved.`;
   return 'The signature could not be saved; try again.';
 }
 
-/** MailSetup's "Signature for <address>". Save shows what the server stored, read back. */
+/** Save shows what the server stored, read back. */
 export function SignatureEditor({ address }: { address: string }) {
   const house = useHouse();
   const qc = useQueryClient();
@@ -104,22 +103,10 @@ export function SignatureEditor({ address }: { address: string }) {
           setSaved(false);
           setDraft(e.target.value);
         }}
-        style={{
-          width: '100%',
-          maxWidth: '68ch',
-          fontSize: 13,
-          lineHeight: 1.5,
-          padding: '8px 10px',
-          borderRadius: 8,
-          border: '1px solid var(--paper-2, #EAE4D8)',
-          background: 'var(--paper-0, #FAF7F1)',
-          color: 'var(--ink-1, #211C16)',
-          resize: 'vertical',
-        }}
+        style={{ width: '100%', maxWidth: '68ch', fontSize: 13, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-0, #FAF7F1)', color: 'var(--ink-1, #211C16)' }}
       />
       <p style={QUIET}>
-        {value.length}/{SIGNATURE_MAX}. A new letter from this address starts with it below the words; it can be changed
-        in the letter before it is sent.
+        {value.length}/{SIGNATURE_MAX}. A new letter from this address starts with it; it can be changed there.
       </p>
       <span className="flex flex-wrap items-center gap-3">
         <button type="submit" style={ACT} disabled={!q.isSuccess || save.isPending || value === stored}>
