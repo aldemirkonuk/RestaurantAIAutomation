@@ -541,3 +541,28 @@ describe('the move table matches the gateway', () => {
       expect([...tos].sort()).toEqual([...server[from]].sort());
   });
 });
+
+describe('the Credits tab starts its reads before it is pressed (walk p12-6)', () => {
+  it('a hover on the tab reads the ledger once, and the press finds it there', async () => {
+    api.claims = [claim()];
+    renderAt('/receipts');
+    const tab = await screen.findByRole('tab', { name: 'Credits' });
+    expect(api.list).not.toHaveBeenCalled();
+    fireEvent.pointerEnter(tab);
+    fireEvent.focus(tab);
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(1));
+    fireEvent.click(tab);
+    expect(await screen.findByRole('tab', { name: 'Credits', selected: true })).toBeTruthy();
+    await screen.findByText('Billed for more than arrived');
+    expect(api.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts nothing for a house with none selected, and nothing on the Receipts tab', async () => {
+    api.restaurantId = null;
+    renderAt('/receipts');
+    const tab = await screen.findByRole('tab', { name: 'Credits' });
+    fireEvent.pointerEnter(tab);
+    fireEvent.focus(tab);
+    expect(api.list).not.toHaveBeenCalled();
+  });
+});
