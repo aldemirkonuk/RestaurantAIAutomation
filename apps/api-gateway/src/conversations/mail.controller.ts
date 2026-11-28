@@ -177,17 +177,18 @@ export class MailController {
     });
   }
 
-  @Post("threads/:key/notes")
+  @Post("thread/notes")
   @HttpCode(201)
   @ApiOperation({
     summary:
       "Leave the house a note on a thread (r110 mail-gap g5): never sent, owners and managers only",
   })
+  @ApiQuery({ name: "key", required: true, description: "The thread key; a query, as a mid: key can hold a slash" })
   @ApiQuery({ name: "with", required: true, description: "The thread's person: vendor:<provider uuid>, team:<address> or guest:<address>" })
   addNote(
     @CurrentUser() user: AuthUser,
     @CurrentUser("role") role: string | null,
-    @Param("key") key: string,
+    @Query("key") key?: string,
     @Query("with") withKey?: string,
     @Body() body?: { body?: unknown },
   ): Promise<MailThreadNote> {
@@ -198,7 +199,7 @@ export class MailController {
     });
   }
 
-  @Delete("threads/:key/notes/:id")
+  @Delete("thread/notes/:id")
   @ApiOperation({ summary: "Delete a note on a thread: the writer's own only" })
   deleteNote(
     @CurrentUser() user: AuthUser,

@@ -26,9 +26,9 @@ import {
 
 useNotesApp();
 
-const POST = (key = "gm%3At1", w = `vendor%3A${VENDOR.toUpperCase()}`) => `/threads/${key}/notes?with=${w}`;
+const POST = (key = "gm%3At1", w = `vendor%3A${VENDOR.toUpperCase()}`) => `/thread/notes?key=${key}&with=${w}`;
 
-describe("POST /mail/threads/:key/notes", () => {
+describe("POST /mail/thread/notes?key=&with=", () => {
   it("keeps the note under the token's house, the person and the key, written by the caller", async () => {
     fake.answer = writing(3);
     const res = await call("POST", `${POST("gm%3At%2F1")}&restaurantId=${HOUSE_B}`, {
@@ -109,9 +109,10 @@ describe("POST /mail/threads/:key/notes", () => {
   });
 
   it.each([
-    ["no person", "/threads/gm%3At1/notes"],
-    ["a bare id", `/threads/gm%3At1/notes?with=${VENDOR}`],
-    ["a key over 500", `/threads/${"k".repeat(501)}/notes?with=vendor%3A${VENDOR}`],
+    ["no person", "/thread/notes?key=gm%3At1"],
+    ["no key", `/thread/notes?with=vendor%3A${VENDOR}`],
+    ["a bare id", `/thread/notes?key=gm%3At1&with=${VENDOR}`],
+    ["a key over 500", `/thread/notes?key=${"k".repeat(501)}&with=vendor%3A${VENDOR}`],
   ])("%s names no thread: 400, nothing written", async (_l, path) => {
     fake.answer = writing(0);
     const res = await call("POST", path, { body: { body: "x" } });
@@ -162,7 +163,7 @@ describe("POST /mail/threads/:key/notes", () => {
   });
 });
 
-describe("DELETE /mail/threads/:key/notes/:id", () => {
+describe("DELETE /mail/thread/notes/:id", () => {
   const found = (row: Record<string, unknown> | null, updateError = false) => (r: Read): Answer => {
     if (r.name !== "mail_thread_notes") return { data: [] };
     if (r.calls.some(([m]) => m === "update")) return updateError ? { error: { message: "x" } } : { data: [{ id: NOTE }] };
@@ -172,7 +173,7 @@ describe("DELETE /mail/threads/:key/notes/:id", () => {
 
   it("deletes the writer's own note in the token's house, and keeps the row", async () => {
     fake.answer = found(stored({ deleted_at: null }));
-    const res = await call("DELETE", `/threads/gm%3At1/notes/${NOTE.toUpperCase()}?restaurantId=${HOUSE_B}`);
+    const res = await call("DELETE", `/thread/notes/${NOTE.toUpperCase()}?restaurantId=${HOUSE_B}`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: NOTE, deleted: true });
     const u = updateOf()!;
@@ -187,7 +188,7 @@ describe("DELETE /mail/threads/:key/notes/:id", () => {
   it("is the writer's whatever their role is now, and never before the note was written", async () => {
     const future = new Date(Date.now() + 3_600_000).toISOString();
     fake.answer = found(stored({ created_at: future, deleted_at: null }));
-    const res = await call("DELETE", `/threads/gm%3At1/notes/${NOTE}`, { role: "staff" });
+    const res = await call("DELETE", `/thread/notes/${NOTE}`, { role: "staff" });
     expect(res.status).toBe(200);
     const set = updateOf()!.calls.find(([m]) => m === "update")![1][0] as { deleted_at: string };
     expect(Date.parse(set.deleted_at)).toBe(Date.parse(future));
@@ -195,7 +196,7 @@ describe("DELETE /mail/threads/:key/notes/:id", () => {
 
   it("someone else's note is a 403 in words, and nothing changes — owner included", async () => {
     fake.answer = found(stored({ written_by: MEHMET, deleted_at: null }));
-    const res = await call("DELETE", `/threads/gm%3At1/notes/${NOTE}`, { role: "owner" });
+    const res = await call("DELETE", `/thread/notes/${NOTE}`, { role: "owner" });
     expect(res.status).toBe(403);
     expect(res.body.message).toBe("Only the person who wrote a note can delete it.");
     expect(updateOf()).toBeUndefined();
@@ -206,7 +207,7 @@ describe("DELETE /mail/threads/:key/notes/:id", () => {
     ["an id that is not one", "nope", null],
   ])("%s is not found, never 'not yours'", async (_l, id, row) => {
     fake.answer = found(row);
-    const res = await call("DELETE", `/threads/gm%3At1/notes/${id}`);
+    const res = await call("DELETE", `/thread/notes/${id}`);
     expect(res.status).toBe(404);
     expect(res.body.message).toBe("That note is not on this house's mail.");
     expect(updateOf()).toBeUndefined();
@@ -214,14 +215,14 @@ describe("DELETE /mail/threads/:key/notes/:id", () => {
 
   it("a note already deleted by its writer is done, not an error", async () => {
     fake.answer = found(stored({ deleted_at: "2026-11-27 11:00:00+00" }));
-    const res = await call("DELETE", `/threads/gm%3At1/notes/${NOTE}`);
+    const res = await call("DELETE", `/thread/notes/${NOTE}`);
     expect(res.status).toBe(200);
     expect(updateOf()).toBeUndefined();
   });
 
   it("a delete that fails says the note is still there (503)", async () => {
     fake.answer = found(stored({ deleted_at: null }), true);
-    const res = await call("DELETE", `/threads/gm%3At1/notes/${NOTE}`);
+    const res = await call("DELETE", `/thread/notes/${NOTE}`);
     expect(res.status).toBe(503);
     expect(res.body.message).toBe("The note could not be deleted just now, so it is still there. Try again.");
   });
