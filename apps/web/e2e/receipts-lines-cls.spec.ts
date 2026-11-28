@@ -3,16 +3,16 @@ import { mockAuthState, MOCK_USER } from './auth.setup'
 
 /**
  * Opening a paper does not move the seal and the money when its lines arrive
- * (r108 walk finding 2: the Lines card grew 67 -> 165 px at 375). The reserve is
- * three lines at the real row height, so a three-line paper must not shift at
- * all; the other lengths are reported, not asserted.
+ * (r108 walk finding 2: the Lines card grew 67 -> 165 px at 375). The room is
+ * one static row per line the list says the paper has (#2452), so 1, 3 and 5
+ * lines all hold still.
  */
-const doc = (id: string, n: string) => ({
+const doc = (id: string, n: string, lineCount: number) => ({
   id, doc_type: 'invoice', source_channel: 'email', doc_number: n, doc_date: '2026-08-28',
   status: 'needs_review', currency: 'EUR', total: 220.8, freight: null, fuel_surcharge: null,
   split_case_fee: null, delivery_fee: null, tax: null, other_charges: null, ties_out: null,
   tie_out_delta: null, extraction_confidence: null, notes: null,
-  created_at: '2026-08-28T10:00:00Z', order_id: null,
+  created_at: '2026-08-28T10:00:00Z', order_id: null, line_count: lineCount,
 })
 const line = (i: number) => ({
   id: 'l' + i, line_no: i, vendor_sku: null, description: 'Albarino 2022 number ' + i, vintage: 2022,
@@ -21,7 +21,7 @@ const line = (i: number) => ({
 })
 
 async function mock(page: Page, nLines: number, role: string) {
-  const queue = [doc('d1', 'INV-88'), doc('d2', 'INV-89')]
+  const queue = [doc('d1', 'INV-88', nLines), doc('d2', 'INV-89', nLines)]
   await page.route('**/api/v1/**', async (route) => {
     const req = route.request()
     const url = new URL(req.url())
@@ -38,6 +38,9 @@ async function mock(page: Page, nLines: number, role: string) {
       await new Promise((r) => setTimeout(r, 1200))
       return json({ document: queue.find((q) => q.id === one[1]), lines: Array.from({ length: nLines }, (_, i) => line(i + 1)), links: [] })
     }
+    // The notes under the money: the shapes the page reads, answering nothing to say.
+    if (path.endsWith('/held-costs')) return json({ taxBasisKnown: true, held: [] })
+    if (path.endsWith('/price-moves')) return json({ thresholdPct: 10, paperCurrency: 'EUR', houseCurrency: 'EUR', lines: [] })
     // The formatted sheet is not under test and a refusal paints a note that moves the card:
     // leave its read pending, so the sheet holds its reading state for the whole test.
     if (path.endsWith('/canonical')) return new Promise<void>(() => {})
@@ -72,14 +75,15 @@ for (const role of ['owner', 'manager']) {
           })
           const clsNow = () => page.evaluate(() => (window as unknown as { __cls: number }).__cls)
           await row.click()
-          await page.getByText('Reading the lines').waitFor({ timeout: 10000 })
+          await page.getByTestId('lines-wait-row').first().waitFor({ timeout: 10000 })
           await page.waitForTimeout(400)
           const opening = await clsNow()
           await page.getByLabel('Quantity, line 1').waitFor({ timeout: 10000 })
           await page.waitForTimeout(500)
           const arrival = (await clsNow()) - opening
           console.log(`CLS ${role} ${reduced ? 'reduced' : 'motion'} ${width} x${n}: opening ${opening.toFixed(4)} lines-arrive ${arrival.toFixed(4)}`)
-          if (n === 3) expect(arrival).toBeLessThan(0.002)
+          // r110: the list read carries `line_count` (#2452), so every length holds its own room.
+          expect(arrival).toBeLessThan(0.002)
         })
       }
     }

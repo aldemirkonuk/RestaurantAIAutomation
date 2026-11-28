@@ -30,7 +30,7 @@
  * tuck on early release); row settle for the doc open; ink micro-states.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -982,6 +982,53 @@ export function LinesWait({ count }: { count: number | null | undefined }) {
   );
 }
 
+/**
+ * The formatted sheet's place, held while the next paper's sheet is read (r110
+ * F1). Sealing a paper opens the next one at once, but its sheet answers a
+ * moment later, and until then the sheet is a one-line "Reading the document…":
+ * the review card with its swipe handle rode up by the sheet's whole height (761
+ * px in the walk, CLS 0.86) and down again when it landed. The outgoing sheet's
+ * height stays as a floor until the next one has an answer (a figure or a
+ * failure), so the swap itself is still instant (ADR 0112) and nothing under it
+ * moves. The query is DocView's own (same key), so this is no second request.
+ */
+function HeldSheet({ docId, children }: { docId: string; children: ReactNode }) {
+  const rid = useActiveRestaurantId();
+  const q = useQuery({
+    queryKey: ['canonical-document', rid, docId],
+    queryFn: () => canonicalApi.document(docId),
+    staleTime: 30_000,
+  });
+  const box = useRef<HTMLDivElement>(null);
+  const seen = useRef(0);
+  const answered = q.data !== undefined || q.isError;
+  const answeredNow = useRef(answered);
+  answeredNow.current = answered;
+  // The sheet is a lazy chunk and grows after the query answers, so its height
+  // is followed, not read once. Only an answered sheet sets the floor.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    if (answeredNow.current) seen.current = el.offsetHeight;
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (answeredNow.current) seen.current = el.offsetHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div
+      ref={box}
+      aria-label="Formatted document"
+      className="mb-6"
+      style={answered || !seen.current ? undefined : { minHeight: seen.current }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (viaKeyboard: boolean) => void }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
@@ -1711,16 +1758,6 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
               failing on SYN-US-0112: the lines said "unknown, not empty" and
               the swipe under them still worked.
             */}
-            {lines === undefined && (
-              <p
-                data-testid="confirm-waits"
-                style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
-              >
-                {detailQ.isError
-                  ? 'Confirm waits for the lines. They could not be read, so there is nothing yet to check against the paper.'
-                  : 'Confirm opens once the lines are read.'}
-              </p>
-            )}
             <SwipeToConfirm
               key={`swipe-${verify.failureCount}`}
               label="Swipe up to confirm"
@@ -1732,6 +1769,22 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: (v
                 verify.mutate(challenge);
               }}
             />
+            {/*
+              r110: BELOW the handle, not above it. Above, the sentence left when
+              the lines landed and pulled the handle up by its own height (26 px
+              at 375, wrapped to two lines): the reader aiming at the swipe saw it
+              move. Below, the handle stays and the sentence leaves under it.
+            */}
+            {lines === undefined && (
+              <p
+                data-testid="confirm-waits"
+                style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}
+              >
+                {detailQ.isError
+                  ? 'Confirm waits for the lines. They could not be read, so there is nothing yet to check against the paper.'
+                  : 'Confirm opens once the lines are read.'}
+              </p>
+            )}
             {verify.isError && (
               <p role="alert" style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--ink-1, #211C16)', margin: '6px 0 0' }}>
                 {sentence(serverMessage(verify.error, 'The confirmation did not go through.'))}{' '}
@@ -2413,11 +2466,11 @@ export default function ReceiptsNext() {
                 >
                   Skip to the review card
                 </a>
-                <div aria-label="Formatted document" className="mb-6">
+                <HeldSheet docId={selected.id}>
                   <Suspense fallback={null}>
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
-                </div>
+                </HeldSheet>
                 <DocView key={selected.id} doc={selected} onVerified={(viaKeyboard) => {
                     const next = nextAfter(selected.id);
                     if (viaKeyboard && next) focusAfterSeal.current = next;
