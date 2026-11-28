@@ -106,6 +106,74 @@ function noteOf(row: any, names: Map<string, string>, userId: string | null): Ma
 }
 
 /**
+ * The live notes of one thread written in [from, before), oldest first, so
+ * each page of letters carries the notes that fall between its letters and
+ * none twice. `from` null = since the thread began; `before` null = up to now.
+ * Null when the notes could not be read: the page must say so, never show none.
+ */
+export async function readThreadNotes(
+  db: Db,
+  houseId: string,
+  personKey: string,
+  threadKey: string,
+  window: { from: string | null; before: string | null },
+  userId: string | null | undefined,
+): Promise<MailThreadNote[] | null> {
+  try {
+    let q = db
+      .from(NOTE_TABLE)
+      .select("id, body, written_by, created_at")
+      .eq("restaurant_id", houseId)
+      .eq("person_key", personKey)
+      .eq("thread_key", threadKey)
+      .is("deleted_at", null);
+    if (window.from) q = q.gte("created_at", window.from);
+    if (window.before) q = q.lt("created_at", window.before);
+    const { data, error } = await q
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(NOTES_READ_LIMIT);
+    if (error) return null;
+    // Only rows of the shape this table stores are notes.
+    const rows = ((data ?? []) as any[]).filter(
+      (r) =>
+        r &&
+        typeof r.id === "string" &&
+        typeof r.body === "string" &&
+        typeof r.created_at === "string" &&
+        isUser(r.written_by),
+    );
+    const names = await writerNames(db, [
+      ...new Set(rows.map((r) => String(r.written_by))),
+    ]);
+    return rows.map((r) => noteOf(r, names, isUser(userId) ? userId : null));
+  } catch {
+    return null;
+  }
+}
+
+/** A vendor's name for a notes-only page; null when it cannot be read. */
+export async function vendorName(
+  db: Db,
+  houseId: string,
+  providerId: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await db
+      .from("providers")
+      .select("name")
+      .eq("restaurant_id", houseId)
+      .eq("id", providerId)
+      .limit(1);
+    if (error) return null;
+    const name = ((data ?? []) as any[])[0]?.name;
+    return typeof name === "string" && name.trim() ? name.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Keep a note on (person, key). The caller's house and person are the
  * token's; the role was checked by the caller. A thread holding 200 live notes
  * takes no more, so the read above is never a capped part of the notes.

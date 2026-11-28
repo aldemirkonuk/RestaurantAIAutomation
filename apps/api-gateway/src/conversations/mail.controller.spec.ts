@@ -179,7 +179,11 @@ describe("the house comes from the token and nowhere else", () => {
   it("/thread?with= names that person to the read as well", async () => {
     const res = await get(`/thread?key=gm%3Ashared&with=vendor%3A${VENDOR}`);
     expect(res.status).toBe(200);
-    expect(reads).toHaveLength(1);
+    // The letters read, then (no letters in this fake) that person's notes on
+    // the thread (r110 mail-gap g5), in the token's house too.
+    expect(reads.slice(0, 2).map((r) => r.name)).toEqual(["mail_thread_letters", "mail_thread_notes"]);
+    expect(reads[1].calls).toContainEqual(["eq", ["restaurant_id", HOUSE_A]]);
+    expect(reads[1].calls).toContainEqual(["eq", ["person_key", `vendor:${VENDOR}`]]);
     expect(reads[0].payload).toMatchObject({
       p_restaurant_id: HOUSE_A,
       p_thread_key: "gm:shared",

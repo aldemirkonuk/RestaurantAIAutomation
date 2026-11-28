@@ -22,6 +22,7 @@ import type {
   MailOrderRef,
   MailPeoplePage,
   MailPersonKind,
+  MailPersonRef,
   MailPersonRow,
   MailSeenAnswer,
   MailSummary,
@@ -76,6 +77,9 @@ import {
 import {
   NOTE_NOT_YOURS_TO_WRITE,
   deleteThreadNote,
+  notePersonKeyOf,
+  readThreadNotes,
+  vendorName,
   writeThreadNote,
 } from "./mail.thread-notes";
 
@@ -90,6 +94,8 @@ function emptyThread(key: string): MailThreadPage {
     waiting: false,
     attachmentsRead: true,
     heldMarksRead: true,
+    notes: [],
+    notesRead: true,
   };
 }
 
@@ -662,7 +668,13 @@ export class MailService {
   async getThread(
     houseId: string,
     callerRole: string | null | undefined,
-    opts: { key?: unknown; with?: unknown; before?: unknown },
+    opts: {
+      key?: unknown;
+      with?: unknown;
+      before?: unknown;
+      /** The caller (public.users.user_id), to say which notes are theirs. */
+      userId?: string | null;
+    },
   ): Promise<MailThreadPage> {
     // A repeated query parameter (`?with=a&with=b`) arrives as an array; it
     // names no one thread or person, so it is read as a bad request in words.
@@ -750,8 +762,11 @@ export class MailService {
     const rows = (data ?? []) as any[];
     const head = rows[0];
     if (!head) {
+      // No letters, but the house may have notes on the thread: a note is the
+      // house's, not the letters', so retention or a revoked grant removing
+      // every letter leaves them, shown under the person (r110 mail-gap g5).
       // Another house's key, or one that names nothing: empty, never theirs (F11).
-      return emptyThread(key);
+      return this.notesOnlyThread(houseId, key, withRaw, withhold, before?.at ?? null, opts.userId);
     }
     const order: MailOrderRef | null = head.order_id
       ? {
@@ -786,17 +801,34 @@ export class MailService {
       withhold,
       [...who.values()].map((w) => w.grant),
     );
+    const person = other
+      ? otherPersonRef(other, otherName)
+      : head.provider_id
+        ? personRef(head.provider_id, head.provider_name)
+        : null;
+    // The notes between this page's letters: from its oldest letter (or the
+    // thread's start on the oldest page) up to the newer page's oldest.
+    const notePerson = notePersonKeyOf(person?.key);
+    const notes = notePerson
+      ? await readThreadNotes(
+          this.db,
+          houseId,
+          notePerson,
+          key,
+          {
+            from: rows.length > MAIL_THREAD_PAGE && oldest ? String(oldest.at) : null,
+            before: before?.at ?? null,
+          },
+          opts.userId,
+        )
+      : [];
     return {
       key,
       subject:
         typeof head.thread_subject === "string" && head.thread_subject.trim()
           ? head.thread_subject.trim()
           : null,
-      person: other
-        ? otherPersonRef(other, otherName)
-        : head.provider_id
-          ? personRef(head.provider_id, head.provider_name)
-          : null,
+      person,
       order,
       messages: kept
         .slice()
@@ -836,6 +868,55 @@ export class MailService {
       waiting: head.thread_waiting === true,
       attachmentsRead: files !== null,
       heldMarksRead: vouched !== null,
+      notes: notes ?? [],
+      notesRead: notes !== null,
+    };
+  }
+
+  /**
+   * A thread with no letters the caller may read: its notes, when the house
+   * kept any, under the person `with` names. A key alone names no person once
+   * the letters are gone, so it stays an empty page. A caller who may not read
+   * team or guest mail never reaches here for one (getThread returns first).
+   */
+  private async notesOnlyThread(
+    houseId: string,
+    key: string,
+    withRaw: string,
+    withhold: boolean,
+    before: string | null,
+    userId: string | null | undefined,
+  ): Promise<MailThreadPage> {
+    const personKey = notePersonKeyOf(withRaw);
+    if (!personKey || (withhold && !personKey.startsWith("vendor:"))) {
+      return emptyThread(key);
+    }
+    const notes = await readThreadNotes(
+      this.db,
+      houseId,
+      personKey,
+      key,
+      { from: null, before },
+      userId,
+    );
+    if (notes !== null && notes.length === 0) return emptyThread(key);
+    const other = otherPersonOf(personKey);
+    let person: MailPersonRef | null = null;
+    if (other) {
+      const name = await this.namesOf(houseId, [other]).then(
+        (n) => n.get(personKey) ?? null,
+        () => null,
+      );
+      person = otherPersonRef(other, name);
+    } else {
+      const providerId = personKey.slice("vendor:".length);
+      person = personRef(providerId, await vendorName(this.db, houseId, providerId));
+    }
+    return {
+      ...emptyThread(key),
+      person,
+      notes: notes ?? [],
+      notesRead: notes !== null,
     };
   }
 

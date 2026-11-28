@@ -153,7 +153,9 @@ describe("one team or guest person", () => {
 
 describe("a thread opened by its key alone (no `with`)", () => {
   const row = { id: "L1", provider_id: null, direction: "inbound", channel: "email", message_text: "Subject: Rota\nShift swap", ai_generated: false, status: "DELIVERED", received_at: "2027-01-05 11:00:00+00", created_at: "2027-01-05 11:00:00+00", at: "2027-01-05 11:00:00+00", thread_subject: "Rota", thread_waiting: false };
-  const isLookup = (q: Q) => q.kind === "from" && q.calls.some((c) => c[0] === "eq" && c[1] === "thread_key");
+  // The key-alone person lookup; the thread's notes read (r110 mail-gap g5) also filters on the key and is not it.
+  const isLookup = (q: Q) =>
+    q.kind === "from" && q.name !== "mail_thread_notes" && q.calls.some((c) => c[0] === "eq" && c[1] === "thread_key");
   /** A house whose only letters under the key are a guest's. */
   const guestThread = (q: Q): R => {
     if (q.kind === "rpc") return { data: q.name === "mail_thread_letters_other" ? [row] : [], error: null };

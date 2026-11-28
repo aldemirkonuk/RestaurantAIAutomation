@@ -338,6 +338,8 @@ describe("getThread", () => {
       "rpc:mail_thread_letters",
       "from:conversation_attachments",
       "from:procurement_conversations",
+      // The house's notes on the thread (r110 mail-gap g5), never letters.
+      "from:mail_thread_notes",
     ]);
     expect(queries[0].payload).toEqual({
       p_restaurant_id: HOUSE,
@@ -501,6 +503,8 @@ describe("getThread", () => {
       waiting: false,
       attachmentsRead: true,
       heldMarksRead: true,
+      notes: [],
+      notesRead: true,
     });
   });
 });
@@ -655,7 +659,8 @@ describe("getThread: one key, two vendors", () => {
     });
     expect(
       queries.filter(
-        (q) => !["conversation_attachments", "procurement_conversations"].includes(q.name),
+        (q) =>
+          !["conversation_attachments", "procurement_conversations", "mail_thread_notes"].includes(q.name),
       ),
     ).toHaveLength(1);
     expect(queries[0].payload).toMatchObject({
@@ -690,6 +695,7 @@ describe("getThread: one key, two vendors", () => {
       "mail_thread_letters",
       "conversation_attachments",
       "procurement_conversations",
+      "mail_thread_notes",
     ]);
     expect(queries[0].payload).toMatchObject({ p_provider_id: null });
     expect(page.person?.providerId).toBe(V1);

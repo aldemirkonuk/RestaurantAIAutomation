@@ -174,6 +174,7 @@ export class MailController {
       key,
       with: withKey,
       before,
+      userId: user?.userId ?? null,
     });
   }
 

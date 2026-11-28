@@ -289,6 +289,15 @@ export interface MailThreadPage {
    * could not be read: the page must say so, never show them as plain mail.
    */
   heldMarksRead: boolean;
+  /**
+   * The house's notes written between this page's letters, oldest first: the
+   * newest page holds every note since its oldest letter, an older page those
+   * from its oldest letter up to the newer page's, and the oldest page every
+   * earlier one. A thread whose letters are all gone still holds its notes.
+   */
+  notes: MailThreadNote[];
+  /** False when the notes could not be read: say so, never "no notes". */
+  notesRead: boolean;
 }
 
 /** The answer to POST /mail/thread/seen. */
