@@ -189,6 +189,40 @@ export function snapshotLineKinds(extracted: unknown): Map<number, LineKind> {
 }
 
 /**
+ * `line_no` -> where that line sits on the PDF original, from the intake
+ * snapshot (see `pdf-line-geometry`). Only a well-formed page and a box inside
+ * 0..1 survive; anything else is dropped, so the pane says "no position kept"
+ * instead of drawing a rectangle nobody measured.
+ */
+export function snapshotLineGeometry(
+  extracted: unknown,
+): Map<number, NonNullable<ParsedLine["geometry"]>> {
+  const out = new Map<number, NonNullable<ParsedLine["geometry"]>>();
+  const rows = asObject(extracted)?.lines;
+  if (!Array.isArray(rows)) return out;
+  for (const r of rows) {
+    const row = asObject(r);
+    const g = asObject(row?.geometry);
+    const lineNo = snapshotNum(row?.lineNo);
+    const page = snapshotNum(g?.page);
+    const b = g?.bbox;
+    if (lineNo === null || page === null || page < 1 || !Array.isArray(b))
+      continue;
+    if (
+      b.length !== 4 ||
+      !b.every((n) => typeof n === "number" && n >= 0 && n <= 1) ||
+      !(b[0] < b[2] && b[1] < b[3])
+    )
+      continue;
+    out.set(lineNo, {
+      page,
+      bbox: [b[0], b[1], b[2], b[3]],
+    });
+  }
+  return out;
+}
+
+/**
  * One stored document plus its line rows, as the parser would have produced it.
  *
  * `applyTieOut` recomputes computedLinesTotal / tieOutDelta / tiesOut from the
@@ -201,6 +235,7 @@ export function parsedFromDocumentRows(
 ): ParsedDocument {
   const snapshot = readSnapshot(document.extracted);
   const kinds = snapshotLineKinds(document.extracted);
+  const geometry = snapshotLineGeometry(document.extracted);
 
   const lines: ParsedLine[] = lineRows.map((l) => ({
     lineNo: rowNum(l.line_no) ?? 0,
@@ -237,6 +272,10 @@ export function parsedFromDocumentRows(
      * classified it" — never a confident claim that a CRV row is wine.
      */
     lineKind: kinds.get(rowNum(l.line_no) ?? 0) ?? null,
+    // Where the line sits on a PDF original, keyed on `line_no` like the kind.
+    ...(geometry.has(rowNum(l.line_no) ?? 0)
+      ? { geometry: geometry.get(rowNum(l.line_no) ?? 0) }
+      : {}),
     // ABSENT means we never kept the literals. It never means the paper was
     // blank — which is why this is a conditional spread and not `?? {}`.
     ...(l.printed ? { printed: l.printed as Record<string, string> } : {}),

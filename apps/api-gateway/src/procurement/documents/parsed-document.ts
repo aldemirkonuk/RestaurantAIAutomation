@@ -130,6 +130,15 @@ export interface ParsedLine {
 
   /** Purchase order this line cites, when the document says so. */
   poNumber?: string | null;
+
+  /**
+   * Where this line sits on a PDF original: the page and a [x0, y0, x1, y1] box
+   * in 0..1 of that page, y from the top. Set ONLY by `pdf-line-geometry`, only
+   * when exactly one text row holds the line's printed amount and a word of its
+   * description — a citation, never an estimate (ADR 0104). Absent means no
+   * position was kept (a photo, a scan, an ambiguous row).
+   */
+  geometry?: { page: number; bbox: [number, number, number, number] } | null;
 }
 
 export interface ParsedDocument {

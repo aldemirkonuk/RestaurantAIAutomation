@@ -60,7 +60,11 @@ import {
  *     reformatted — `1.704,00` reaches the envelope as `1.704,00`. A null
  *     `as_printed` still means "we did not keep it", never "the paper was
  *     blank"; the `as_printed_not_mutated` invariant reports exactly that.
- *   * `page` and `bbox` are NULL throughout: the extractor returns no geometry.
+ *   * `page` and `bbox` are NULL except on a PDF line's row fields (description,
+ *     quantity, unit, price, amount): `pdf-line-geometry` sets them only when
+ *     exactly one text row holds the line's printed amount and a word of its
+ *     description, so a drawn box always encloses that printed amount. Photos
+ *     and ambiguous rows stay NULL.
  *
  * Layer 2 is filled only from what the caller already resolved (match rows);
  * this function does not go looking. Layer 3 is computed: the invariants plus
@@ -125,12 +129,13 @@ const env = <T>(
   revision: number,
   confidence: number | null,
   asPrinted?: string | null,
+  geometry?: ParsedLine["geometry"],
 ): FieldEnvelope<T> =>
   envelope(value, source, {
     confidence,
     revision,
-    page: null,
-    bbox: null,
+    page: geometry?.page ?? null,
+    bbox: geometry?.bbox ?? null,
     as_printed: asPrinted ?? null,
   });
 
@@ -498,6 +503,7 @@ function mapLine(
       revision,
       confidence,
       l.description ?? null,
+      l.geometry,
     ),
     sellerItemId: env(
       l.vendorSku ?? null,
@@ -506,14 +512,22 @@ function mapLine(
       confidence,
       l.vendorSku ?? null,
     ),
-    quantity: env(l.qty, source, revision, confidence, l.printed?.qty ?? null),
-    unit: env(l.uom, source, revision, confidence, l.uom),
+    quantity: env(
+      l.qty,
+      source,
+      revision,
+      confidence,
+      l.printed?.qty ?? null,
+      l.geometry,
+    ),
+    unit: env(l.uom, source, revision, confidence, l.uom, l.geometry),
     netPrice: env(
       l.unitPrice ?? null,
       source,
       revision,
       confidence,
       l.printed?.unitPrice ?? null,
+      l.geometry,
     ),
     // BT-149/BT-150 — WHAT THE PAPER PRINTED, or one invoiced unit when it
     // printed nothing.
@@ -544,6 +558,7 @@ function mapLine(
       revision,
       confidence,
       l.printed?.lineTotal ?? null,
+      l.geometry,
     ),
     lineKind: env(l.lineKind ?? "goods", source, revision, confidence),
     allowancesCharges: lineAllowances,
