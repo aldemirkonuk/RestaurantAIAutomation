@@ -74,6 +74,7 @@ import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
   useReceiptsNextData,
+  useWarmReceiptsCredits,
 } from './useReceiptsNextData';
 
 // The credit ledger is this page's second lane (ADR 0149 row 22). `/credits`
@@ -85,6 +86,8 @@ import {
 const ReceiptsCredits = lazy(() =>
   import('./ReceiptsCredits').then((m) => ({ default: m.ReceiptsCredits })),
 );
+// The chunk is fetched with the reads when the Credits tab is hovered, focused or touched.
+const warmCreditsChunk = () => void import('./ReceiptsCredits');
 
 /**
  * Whether this person is offered the credit ledger. ADR 0167 (founder
@@ -1583,6 +1586,11 @@ export default function ReceiptsNext() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
+  const warmCreditsReads = useWarmReceiptsCredits();
+  const warmCredits = () => {
+    warmCreditsChunk();
+    warmCreditsReads();
+  };
   const askedForCredits = searchParams.get('tab') === 'credits';
   // A staff member who follows `/credits` lands on Receipts, as ADR 0167 has
   // it, and is told why rather than shown a ledger that can only refuse.
@@ -1731,6 +1739,9 @@ export default function ReceiptsNext() {
                     role="tab"
                     aria-selected={tab === key}
                     onClick={() => setTab(key)}
+                    {...(key === 'credits'
+                      ? { onPointerEnter: warmCredits, onFocus: warmCredits, onTouchStart: warmCredits }
+                      : {})}
                     className="rc-ink"
                     style={{
                       fontFamily: MONO,

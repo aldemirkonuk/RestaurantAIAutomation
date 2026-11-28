@@ -296,6 +296,41 @@ function httpStatus(e: unknown): number | null {
   return typeof s === 'number' ? s : null;
 }
 
+// The three reads the Credits tab draws from, defined once so the tab's own read and the read the
+// tab's hover or focus starts are the same key, the same function and the same fresh window: the
+// press then finds the answer already in the cache (walk p12-6). House-scoped by the key.
+const creditClaimsQuery = (rid: string | null) => ({
+  queryKey: ['receipts-next', 'credits', rid] as const,
+  queryFn: () => creditsApi.list(),
+  staleTime: 30_000,
+});
+const creditStatsQuery = (rid: string | null) => ({
+  queryKey: ['receipts-next', 'credit-stats', rid] as const,
+  queryFn: () => creditsApi.stats(),
+  staleTime: 30_000,
+});
+const creditMemosQuery = (rid: string | null) => ({
+  queryKey: ['receipts-next', 'credit-memos', rid] as const,
+  queryFn: () =>
+    documentsApi.list({ docType: 'credit_memo', limit: RECEIPTS_SERVER_WINDOWS.CREDIT_MEMOS }),
+  staleTime: 60_000,
+});
+
+/**
+ * Start the Credits tab's three reads before it is pressed (hover, focus or touch on the tab).
+ * Nothing is shown from it; a failed warm is swallowed here and the tab's own read says it failed.
+ */
+export function useWarmReceiptsCredits(): () => void {
+  const rid = useActiveRestaurantId();
+  const qc = useQueryClient();
+  return () => {
+    if (rid === null) return;
+    void qc.prefetchQuery(creditClaimsQuery(rid));
+    void qc.prefetchQuery(creditStatsQuery(rid));
+    void qc.prefetchQuery(creditMemosQuery(rid));
+  };
+}
+
 /**
  * The ledger's three reads. `enabled` is false for anyone the tab is not
  * offered to, so a staff session never spends a request the gateway refuses.
@@ -304,25 +339,9 @@ export function useReceiptsCreditsData(enabled: boolean): ReceiptsCreditsData {
   const rid = useActiveRestaurantId();
   const on = enabled && rid !== null;
 
-  const claimsQ = useQuery<ProcurementCredit[]>({
-    queryKey: ['receipts-next', 'credits', rid],
-    queryFn: () => creditsApi.list(),
-    enabled: on,
-    staleTime: 30_000,
-  });
-  const statsQ = useQuery<CreditStats>({
-    queryKey: ['receipts-next', 'credit-stats', rid],
-    queryFn: () => creditsApi.stats(),
-    enabled: on,
-    staleTime: 30_000,
-  });
-  const memosQ = useQuery<ProcurementDocument[]>({
-    queryKey: ['receipts-next', 'credit-memos', rid],
-    queryFn: () =>
-      documentsApi.list({ docType: 'credit_memo', limit: RECEIPTS_SERVER_WINDOWS.CREDIT_MEMOS }),
-    enabled: on,
-    staleTime: 60_000,
-  });
+  const claimsQ = useQuery<ProcurementCredit[]>({ ...creditClaimsQuery(rid), enabled: on });
+  const statsQ = useQuery<CreditStats>({ ...creditStatsQuery(rid), enabled: on });
+  const memosQ = useQuery<ProcurementDocument[]>({ ...creditMemosQuery(rid), enabled: on });
 
   const refused = [claimsQ.error, statsQ.error].some((e) => httpStatus(e) === 403);
 
