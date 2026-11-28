@@ -134,6 +134,67 @@ function paceAwaitsZone(g: GoalRow): boolean {
   return g.onTrack === null && Boolean(g.deadline) && g.paceUnread !== null;
 }
 
+/* ─────────────────────────────────────────── bullet bars (r110 g3) ───── */
+
+/** A goal the bars can score: read, its share stated, and a target above zero (the server's 0 for a 0 target is not a share). */
+export function scoredGoal(g: GoalRow): boolean {
+  return !g.unreadable && g.progressPct !== null && g.target !== null && g.target > 0;
+}
+
+/** A goal that answered with a target of zero or less: not scored, counted under "Could not be scored". */
+function unscorableTarget(g: GoalRow): boolean {
+  return !g.unreadable && g.target !== null && g.target <= 0;
+}
+
+/**
+ * Metrics that are a reading taken at an instant, not a running total
+ * (goals.service.ts): a straight-line schedule of target × elapsed/total says
+ * nothing about them, so no tick is drawn and no schedule figure is spoken.
+ */
+const LEVEL_METRICS = new Set(['avg_check', 'wine_attach_rate', 'days_of_inventory']);
+
+/**
+ * Where the schedule says the bar should be by now, as a per cent of the
+ * goal's own target: `expectedByNow / target × 100`. None without a target
+ * above zero, without a schedule (no deadline, or the pace not read), or on a
+ * reading kept from this account (`current` withheld).
+ */
+export function scheduleMark(g: GoalRow): number | null {
+  if (!scoredGoal(g) || g.current === null || g.expectedByNow === null) return null;
+  if (LEVEL_METRICS.has(g.metricKey)) return null;
+  return Math.round(((g.expectedByNow / (g.target as number)) * 100) * 10) / 10;
+}
+
+/**
+ * The bullet bar's tooltip sentence: the figures behind it, where the
+ * schedule says it should be, and the pace and projection (`paceCaption`).
+ * A ceiling (at_most) goal says "used" and "allows", and says in words when
+ * it is over what the schedule allows; never by colour alone.
+ */
+export function bulletWords(g: GoalRow, currency?: string | null): string {
+  const pace = paceCaption(g, currency);
+  if (g.current === null || g.target === null) return pace;
+  const now = inUnit(g.current, g.unit, currency);
+  const target = inUnit(g.target, g.unit, currency);
+  if (LEVEL_METRICS.has(g.metricKey)) {
+    const ceiling = g.direction === 'at_most';
+    const met = ceiling ? g.current <= g.target : g.current >= g.target;
+    const verdict = ceiling
+      ? met ? 'Inside the limit.' : 'Over the limit.'
+      : met ? 'At or above the target.' : 'Short of the target.';
+    return `${now} of ${ceiling ? 'a limit' : 'a target'} of ${target}${ceiling ? ' used' : ''}. This is a reading, not a running total, so it is read against its ${ceiling ? 'limit' : 'target'}, not a schedule. ${verdict}`;
+  }
+  const due = scheduleMark(g) !== null ? inUnit(g.expectedByNow, g.unit, currency) : null;
+  if (g.direction === 'at_most') {
+    const over =
+      due !== null && g.onTrack === false
+        ? ' That is more than the schedule allows by now.'
+        : '';
+    return `${now} of a limit of ${target} used${due !== null ? `; the schedule allows ${due} by now` : ''}.${over} ${pace}`;
+  }
+  return `${now} of a target of ${target}${due !== null ? `; the schedule says ${due} by now` : ''}. ${pace}`;
+}
+
 /* ──────────────────────────────────────────────────────────── the desk ── */
 
 const PERIODS = ['day', 'week', 'month', 'quarter', 'custom'];
@@ -856,7 +917,7 @@ export const goals = analysis<GoalsRegister>({
     };
   },
   view: (reg, ctx: ViewCtx) => {
-    const scored = reg.goals.filter((g) => !g.unreadable && g.progressPct !== null);
+    const scored = reg.goals.filter(scoredGoal);
     const goalLabels = shortLabels(
       scored.map((g) => g.name),
       16,
@@ -883,7 +944,8 @@ export const goals = analysis<GoalsRegister>({
       },
       {
         label: 'Could not be scored',
-        value: figure(reg.goals.filter((g) => g.unreadable).length),
+        // A target of zero or less is not a share (goals.service.ts sends 0%): not scored either.
+        value: figure(reg.goals.filter((g) => g.unreadable || unscorableTarget(g)).length),
       },
     ];
 
@@ -898,7 +960,12 @@ export const goals = analysis<GoalsRegister>({
                 label: goalLabels[k],
                 value: Math.round((g.progressPct as number) * 1000) / 10,
                 full: g.name,
+                mark: scheduleMark(g),
+                note: bulletWords(g, ctx.currency),
               })),
+              // A bullet bar: the tick per goal, and the goal's own target as the 100% rule.
+              markLabel: 'where the schedule says it should be by now',
+              refs: [{ y: 100, label: 'the target' }],
               xLabel: 'goal',
               yLabel: '% of target',
               unit: 'per cent of its own target',
