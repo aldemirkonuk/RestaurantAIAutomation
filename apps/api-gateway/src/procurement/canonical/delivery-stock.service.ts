@@ -89,11 +89,17 @@ export interface FinalisedItem {
   lotsFinalised: number;
   bottlesFinalised: number;
   source: "accepted_proposal" | "invoice_line";
+  /** Earlier sales of this good that sold with no cost, now costed from this paper (r110 g3). */
+  salesCosted: number;
+  /** Why none were costed when none could be, or why the costing failed; null otherwise. */
+  salesNote: string | null;
 }
 
 export interface CostReceipt {
   deliveryId: string;
   finalised: FinalisedItem[];
+  /** Sum of `salesCosted` over the items. */
+  salesCosted: number;
   /** Items whose cost could not be settled, each with the reason. */
   stillProvisional: { inventoryId: string; reason: string }[];
 }
@@ -386,7 +392,7 @@ export class DeliveryStockService {
     if (!items.length)
       return {
         ok: true,
-        value: { deliveryId, finalised: [], stillProvisional: [] },
+        value: { deliveryId, finalised: [], salesCosted: 0, stillProvisional: [] },
       };
 
     const priced = await this.agreedPrices(restaurantId, deliveryId);
@@ -427,6 +433,13 @@ export class DeliveryStockService {
           error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${rpc.error.message}. The stock is correct and the lot stays provisional; this is safe to retry.`,
         };
       const receipt = (rpc.data ?? {}) as Record<string, unknown>;
+      const sales = await this.costUnpricedSales(
+        restaurantId,
+        delivery.value.orderId,
+        inventoryId,
+        price.unitCost,
+        userId,
+      );
       finalised.push({
         inventoryId,
         unitCost: price.unitCost,
@@ -435,10 +448,65 @@ export class DeliveryStockService {
         lotsFinalised: Number(receipt.lots_finalised ?? 0),
         bottlesFinalised: Number(receipt.bottles_finalised ?? 0),
         source: price.source,
+        salesCosted: sales.rowsCosted,
+        salesNote: sales.note,
       });
     }
 
-    return { ok: true, value: { deliveryId, finalised, stillProvisional } };
+    return {
+      ok: true,
+      value: {
+        deliveryId,
+        finalised,
+        salesCosted: finalised.reduce((n, f) => n + f.salesCosted, 0),
+        stillProvisional,
+      },
+    };
+  }
+
+  /**
+   * The sales of one good that sold with no cost are costed by the first
+   * checked paper for it (r110 g3): the same step and the same guard as the
+   * order door's verifyReceipt (ProcurementService.costUnpricedSales), for the
+   * receipts page's path. House money only: a paper in another currency, or one
+   * whose currency or the house's is not stated, costs nothing and says why.
+   * It never un-verifies and never throws: a failure is a sentence on the item,
+   * and the next checked paper for this good costs those sales (first seal wins).
+   */
+  private async costUnpricedSales(
+    restaurantId: string,
+    orderId: string | null,
+    inventoryId: string,
+    unitCost: number,
+    userId: string | null,
+  ): Promise<{ rowsCosted: number; note: string | null }> {
+    if (!orderId) return { rowsCosted: 0, note: null };
+    const client = this.db.getClient();
+    const failed = (why: string) => ({
+      rowsCosted: 0,
+      note: `The sales of this good that sold with no cost were not costed: ${why}. The next checked paper for it costs them.`,
+    });
+    const [order, house] = await Promise.all([
+      client.from("procurement_orders").select("currency").eq("id", orderId).eq("restaurant_id", restaurantId).maybeSingle(),
+      client.from("restaurants").select("currency").eq("id", restaurantId).maybeSingle(),
+    ]);
+    if (order.error || house.error)
+      return failed(`the paper's currency could not be read (${(order.error ?? house.error)?.message})`);
+    const paper = String((order.data as { currency?: string | null } | null)?.currency ?? "").trim().toUpperCase();
+    const home = String((house.data as { currency?: string | null } | null)?.currency ?? "").trim().toUpperCase();
+    if (!paper || !home)
+      return { rowsCosted: 0, note: "The paper's or the house's currency is not stated, so the sales that sold with no cost were not costed from it." };
+    if (paper !== home)
+      return { rowsCosted: 0, note: `A paper in ${paper} costs nothing in a ${home} house, so the sales that sold with no cost were not costed from it.` };
+    const rpc = await client.rpc("cost_unpriced_sales", {
+      p_restaurant_id: restaurantId,
+      p_inventory_id: inventoryId,
+      p_order_id: orderId,
+      p_unit_cost: unitCost,
+      p_performed_by: userId,
+    });
+    if (rpc.error) return failed(rpc.error.message);
+    return { rowsCosted: Number((rpc.data as { rows_costed?: number } | null)?.rows_costed ?? 0), note: null };
   }
 
   // -------------------------------------------------------------------------

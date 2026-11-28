@@ -290,6 +290,65 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     );
   });
 
+  describe("a checked paper costs the sales that sold with no cost (r110 g3, on the receipts page's path)", () => {
+    const invoiceLine = () => ({
+      data: [
+        { document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, unit_price: 7.77, description: "Öküzgözü", vendor_sku: null },
+      ],
+      error: null,
+    });
+    const onOrder = (paper: string | null, house: string | null) => {
+      db.answers.deliveries = { data: { id: DEL, state: "VERIFIED", order_id: "ord-1" }, error: null };
+      db.answers.procurement_orders = { data: { inventory_id: ITEM, currency: paper }, error: null };
+      db.answers.restaurants = { data: { currency: house }, error: null };
+      db.answers.procurement_document_lines = invoiceLine();
+      db.rpcAnswers.cost_unpriced_sales = { data: { rows_costed: 2 }, error: null };
+    };
+    const rpcOrder = () => db.rpcCalls.map((c) => c.fn);
+
+    it("calls cost_unpriced_sales after the cost posts, with that cost and the delivery's order", async () => {
+      onOrder("usd", "USD");
+      const res = await service.finaliseAtVerified(REST, DEL, USER);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(rpcOrder()).toEqual(["finalise_delivery_cost", "cost_unpriced_sales"]);
+      expect(db.rpcCalls[1].args).toEqual({
+        p_restaurant_id: REST,
+        p_inventory_id: ITEM,
+        p_order_id: "ord-1",
+        p_unit_cost: 7.77,
+        p_performed_by: USER,
+      });
+      expect(res.value.finalised[0]).toMatchObject({ salesCosted: 2, salesNote: null });
+      expect(res.value.salesCosted).toBe(2);
+    });
+
+    it("a paper in another currency costs nothing and says why", async () => {
+      onOrder("TRY", "USD");
+      const res = await service.finaliseAtVerified(REST, DEL, USER);
+      if (!res.ok) throw new Error("expected ok");
+      expect(rpcOrder()).toEqual(["finalise_delivery_cost"]);
+      expect(res.value.finalised[0].salesNote).toMatch(/A paper in TRY costs nothing in a USD house/);
+      expect(res.value.salesCosted).toBe(0);
+    });
+
+    it("a failed costing does not un-verify, and says it failed", async () => {
+      onOrder("USD", "USD");
+      db.rpcAnswers.cost_unpriced_sales = { data: null, error: { message: "boom" } };
+      const res = await service.finaliseAtVerified(REST, DEL, USER);
+      if (!res.ok) throw new Error("expected ok");
+      expect(res.value.finalised).toHaveLength(1);
+      expect(res.value.finalised[0].salesNote).toMatch(/were not costed: boom/);
+    });
+
+    it("a delivery with no order costs nothing: the sales are costed from an order's paper", async () => {
+      onOrder("USD", "USD");
+      db.answers.deliveries = { data: { id: DEL, state: "VERIFIED", order_id: null }, error: null };
+      await service.finaliseAtVerified(REST, DEL, USER);
+      expect(rpcOrder()).toEqual(["finalise_delivery_cost"]);
+    });
+  });
+
   it("an ACCEPTED proposal beats the invoice line it is about", async () => {
     db.answers.procurement_document_lines = {
       data: [
