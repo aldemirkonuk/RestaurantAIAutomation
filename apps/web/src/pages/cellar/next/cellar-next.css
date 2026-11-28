@@ -1198,6 +1198,14 @@ textarea.cl-field {
    while the button has set html[data-print-card]. No animation, no overlay. */
 .cl-rcp-print { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 8px; }
 .cl-print-card { display: none; }
+/* A drink's photo (r110 drinks-g3): a 4/3 frame held from first paint (CLS 0). The image fades in once decoded,
+   150 ms on the house curve; reduced motion has no fade at all, and nothing animates out (ADR 0112). */
+.cl-photo { aspect-ratio: 4 / 3; width: 100%; max-width: 320px; border-radius: 8px; background: var(--paper-1); overflow: hidden; }
+.cl-photo img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.cl-photo img[data-loaded='true'] { opacity: 1; transition: opacity 150ms cubic-bezier(0.16, 1, 0.3, 1); }
+@media (prefers-reduced-motion: reduce) { .cl-photo img[data-loaded='true'] { transition: none; } }
+.cl-photo-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 8px; }
+@media (max-width: 719px), (pointer: coarse) { .cl-photo-controls .cl-btn { min-height: 44px; } }
 @media print {
   html[data-print-card] body > *:not(.cl-print-card) { display: none !important; }
   html[data-print-card] .cl-print-card {
@@ -1207,6 +1215,8 @@ textarea.cl-field {
   .cl-print-card h1 { font-size: 26px; margin: 0 0 6px; }
   .cl-print-card ol { padding-left: 18px; margin: 12px 0; }
   .cl-print-card .cl-print-method { white-space: pre-wrap; }
+  .cl-print-card .cl-photo, .cl-print-book .cl-photo { width: 60mm; max-width: 60mm; background: none; }
+  .cl-print-card .cl-photo img, .cl-print-book .cl-photo img { opacity: 1; }
 }
 
 /* The loose-lines line holds the height of its own button (30 px) from first paint, so the read landing does not

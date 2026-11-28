@@ -166,6 +166,8 @@ export interface CocktailRecipe {
     garnish: string | null;
     method: string | null;
     description: string | null;
+    /** The drink's photo, a 10-minute signed URL (r110 drinks-g3); null or absent when it has none. */
+    photoUrl?: string | null;
   };
   current: RecipeVersion | null;
   cost: RecipeCost | null;
@@ -322,6 +324,18 @@ interface DishRecipeAnswer extends Omit<CocktailRecipe, 'cocktail' | 'kind'> {
 }
 
 export const recipesApi = {
+  /** PUT a drink's photo (owner/manager); the gateway strips its metadata (r110 drinks-g3). */
+  async putPhoto(restaurantId: string, cocktailId: string, imageBase64: string): Promise<{ photoUrl: string | null }> {
+    const r = await apiClient.put<{ photoUrl: string | null }>(`/recipes/${restaurantId}/cocktails/${encodeURIComponent(cocktailId)}/photo`, { imageBase64 });
+    return r.data;
+  },
+
+  /** DELETE a drink's photo (owner/manager). */
+  async removePhoto(restaurantId: string, cocktailId: string): Promise<{ photoUrl: null }> {
+    const r = await apiClient.delete<{ photoUrl: null }>(`/recipes/${restaurantId}/cocktails/${encodeURIComponent(cocktailId)}/photo`);
+    return r.data;
+  },
+
   async get(restaurantId: string, owner: string | RecipeOwner): Promise<CocktailRecipe> {
     if (ownerOf(owner).kind === 'dish') {
       const r = await apiClient.get<DishRecipeAnswer>(ownerPath(restaurantId, owner));
@@ -479,6 +493,8 @@ export interface DrinkCard {
   versionDate: string | null;
   lines: Array<{ label: string; qty: number; unit: string | null; name: string | null }>;
   allergens: RowAllergens;
+  /** The drink's photo, a 10-minute signed URL (r110 drinks-g3); null or absent when it has none. */
+  photoUrl?: string | null;
 }
 
 /**
