@@ -3,7 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getInventory, apiGet, submitSpotCount, reduced } = vi.hoisted(() => ({
+const { getInventory, apiGet, submitSpotCount, reduced, auth } = vi.hoisted(() => ({
+  auth: { user: { restaurantId: 'r1' } as { restaurantId: string } | null },
   getInventory: vi.fn(),
   apiGet: vi.fn(),
   submitSpotCount: vi.fn(),
@@ -12,7 +13,9 @@ const { getInventory, apiGet, submitSpotCount, reduced } = vi.hoisted(() => ({
 let keyN = 0
 
 vi.mock('../../services/api/inventory', () => ({ getInventory }))
-vi.mock('../../services/api/client', () => ({ apiClient: { get: apiGet }, getActiveRestaurantId: () => 'r1' }))
+// No stored house id (a new phone): the house must come from the session.
+vi.mock('../../services/api/client', () => ({ apiClient: { get: apiGet }, getActiveRestaurantId: () => null }))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }))
 vi.mock('../../lib/spotCountOutbox', () => ({
   submitSpotCount,
   newClientCountId: () => `key-${++keyN}`,
@@ -62,6 +65,7 @@ const type = (v: string) => fireEvent.change(field(), { target: { value: v } })
 beforeEach(() => {
   vi.clearAllMocks()
   keyN = 0
+  auth.user = { restaurantId: 'r1' }
   reduced.on = false
   document.documentElement.dir = ''
   getInventory.mockResolvedValue(SHELF)
@@ -219,11 +223,45 @@ describe('/house/count walks the shelf', () => {
   })
 })
 
+describe('the house comes from the session', () => {
+  it('with no stored house id, reads that house, its shelves, and writes the count to it', async () => {
+    page()
+    await screen.findByTestId('house-count-card')
+    expect(getInventory).toHaveBeenCalledWith('r1')
+    expect(apiGet).toHaveBeenCalledWith('/storage-locations/r1')
+    type('4')
+    await press('Next')
+    expect(submitSpotCount).toHaveBeenCalledWith(expect.objectContaining({ restaurantId: 'r1' }))
+  })
+
+  it('waits for the session instead of reading with no house', async () => {
+    auth.user = null
+    page()
+    await new Promise((settle) => setTimeout(settle, 0))
+    expect(getInventory).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('Reading the goods on your shelf')
+  })
+
+  it('a house with no goods at all does not say every good is counted', async () => {
+    getInventory.mockResolvedValue([])
+    page()
+    expect(await screen.findByText(/no goods on your shelf to count yet/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/Every good/)
+  })
+
+  it('the row says it could not count the goods when the read failed, and reads the session house', async () => {
+    getInventory.mockRejectedValueOnce(new Error('503'))
+    render(<MemoryRouter><HouseCountRow /></MemoryRouter>)
+    expect(await screen.findByRole('link')).toHaveTextContent('We could not count your goods just now')
+    expect(getInventory).toHaveBeenCalledWith('r1')
+  })
+})
+
 describe('the /house row', () => {
   it('names the goods not counted yet and opens /house/count', async () => {
     render(<MemoryRouter><HouseCountRow /></MemoryRouter>)
     const link = await screen.findByRole('link')
-    expect(link).toHaveTextContent('Count what is on the shelf · 5 goods from your menu, not counted yet')
+    expect(link).toHaveTextContent('Count what is on the shelf · 5 goods, not counted yet')
     expect(link).toHaveAttribute('href', '/house/count')
   })
 
