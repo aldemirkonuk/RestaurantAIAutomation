@@ -1403,6 +1403,9 @@ export class AnalyticsController {
         {
           includeHidden: includeHidden === "true",
           withSales: salesGateFor(user).withSales,
+          // Margin per wine is the house's cost by another door: staff get
+          // neither the menu ranking nor the price advice (r108, ADR 0348).
+          withMargin: registerReadable("menu-engineering", readerSees(user)),
           // The person's own snoozes (ADR 0191 round 3) hide cards from them
           // alone; the digest calls this service with no viewer.
           viewerId: actorOf(user).userId,

@@ -243,6 +243,8 @@ export interface Recommendation {
  * No LLM — every recommendation is auditable back to a rule + a number.
  * (The consultant layer remains the optional LLM tier above this.)
  */
+const MARGIN_WITHHELD = "margin is not shown to this role";
+
 @Injectable()
 export class RecommendationsService {
   private readonly logger = new Logger(RecommendationsService.name);
@@ -291,6 +293,15 @@ export class RecommendationsService {
        * is false. The digest passes no flag, so its reads go out shut.
        */
       withSales?: boolean;
+      /**
+       * Whether the viewer may read margin: the menu-engineering ranking and
+       * the margin-to-target price advice carry each wine's margin beside its
+       * price, which is the house's cost by another door (r108, ADR 0348).
+       * False skips both reads, so the rules over them do not fire and the
+       * feed names them unread. Absent means the digest, whose reader is the
+       * manager, so it stays open.
+       */
+      withMargin?: boolean;
     } = {},
   ): Promise<{
     recommendations: Recommendation[];
@@ -334,14 +345,18 @@ export class RecommendationsService {
         withSales: opts.withSales === true,
       }),
       this.analyticsService.getInventoryScience(restaurantId),
-      this.advanced.getMenuEngineering(restaurantId),
+      opts.withMargin === false
+        ? Promise.reject(new Error(MARGIN_WITHHELD))
+        : this.advanced.getMenuEngineering(restaurantId),
       this.advanced.getSeasonality(restaurantId),
       this.advanced.getCashflow(restaurantId),
       this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
       this.goalsService.listGoals(restaurantId, "active", {
         withSales: opts.withSales === true,
       }),
-      this.marginAdvice
+      opts.withMargin === false
+        ? Promise.reject(new Error(MARGIN_WITHHELD))
+        : this.marginAdvice
         ? this.marginAdvice.adviseHouse(restaurantId)
         : Promise.reject(new Error("price advice is not wired into this build")),
       // A lock list that could not be read answers readable: false (L25); it

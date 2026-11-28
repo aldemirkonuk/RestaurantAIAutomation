@@ -48,6 +48,15 @@ async function pageReads(caller: Caller): Promise<{ reads: boolean; asked: boole
 const CALLERS: Caller[] = ["owner", "manager", "staff", null, undefined, "", NO_USER, "waiter", "OWNER", "Manager", "admin", " owner "];
 /** The roles `users.role` and the access rows can hold (roles.guard.ts), and a missing one. */
 const REAL: Caller[] = ["owner", "manager", "staff", null, undefined, "", NO_USER];
+/** The recommendations feed's third door: what it asks the service for, by caller. */
+async function feedAsksMargin(caller: Caller): Promise<boolean | undefined> {
+  const recommendationsService = { getRecommendations: jest.fn().mockResolvedValue({ recommendations: [] }) };
+  const c = Object.create(AnalyticsController.prototype) as AnalyticsController;
+  Object.assign(c, { recommendationsService });
+  await c.getRecommendations(HOUSE, undefined, caller === NO_USER ? undefined : ({ role: caller } as never));
+  return recommendationsService.getRecommendations.mock.calls[0][1].withMargin;
+}
+
 const label = (c: Caller) => (c === NO_USER ? "no user" : JSON.stringify(c) ?? "undefined");
 
 describe("the export door and the page agree on Margin against movement (r110 reports-8)", () => {
@@ -78,4 +87,11 @@ describe("the export door and the page agree on Margin against movement (r110 re
       expect(await pageReads(caller)).toEqual({ reads: false, asked: false });
     }
   });
+
+  it.each(CALLERS.map((c) => [label(c), c] as const))(
+    "[REVERT-FAILS] %s: the recommendations feed is told to read margin exactly when the page does",
+    async (_l, caller) => {
+      expect(await feedAsksMargin(caller)).toBe((await pageReads(caller)).reads);
+    },
+  );
 });
