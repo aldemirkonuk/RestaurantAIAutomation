@@ -30,6 +30,12 @@ describe('the 94 px hold is for the figure cards only (r103)', () => {
     expect(hold![1].trim()).not.toBe('.ivd-card');
   });
 
+  it('the floor sits at the bare class specificity, so a card that holds more (data-hold, data-settled) still wins (r110 walk)', () => {
+    // .ivd-cards[data-testid] > .ivd-card is 0,3,0 and beat .ivd-card[data-hold='tall'] (0,2,0): On order, Cost and
+    // Waste held 94 px instead of 139/153 and the grid moved 95 px when their sentence landed (CLS 0.0158 reduced).
+    expect(hold![1].trim()).toMatch(/^:where\(.*\) > \.ivd-card$/);
+  });
+
   it('it matches a card inside the figure grid', () => {
     document.body.innerHTML = '<div class="ivd-cards" data-testid="ivd-cards"><div class="ivd-card" id="fig"></div></div>';
     expect(document.getElementById('fig')!.matches(hold![1].trim())).toBe(true);

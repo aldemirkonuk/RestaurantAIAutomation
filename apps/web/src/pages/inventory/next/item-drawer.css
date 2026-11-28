@@ -41,8 +41,10 @@
 /* A figure card holds its answered height from the first paint, at every width (94 px: the two-column sheet and
    the one-column phone sheet alike), so a card that says "Reading…" and then fills in does not push the
    acts and "Used in" down (r97 M6; r98 walk: the 375 sheet shifted 0.02-0.045 without it). Only the figure grid
-   (ItemCards.tsx) is held: the static "Used in" recipe cards share .ivd-card and never say "Reading…" (r103). */
-.ivd-cards[data-testid='ivd-cards'] > .ivd-card {
+   (ItemCards.tsx) is held: the static "Used in" recipe cards share .ivd-card and never say "Reading…" (r103).
+   :where() holds the floor at the bare class's specificity: a card that holds more (data-hold='tall', 139/153 px) or
+   less (data-settled) must still win it; as 0,3,0 it beat both (r110 walk: On order, Cost, Waste grew 95 px, CLS 0.0158). */
+:where(.ivd-cards[data-testid='ivd-cards']) > .ivd-card {
   min-height: 94px;
 }
 .ivd-card {
