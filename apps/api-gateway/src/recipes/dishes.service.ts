@@ -12,7 +12,8 @@ import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BASE_UNIT_WORDS, BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { servesFromStock, type StockItem } from "./serves-from-stock";
 import { itemShareOfServe, type PricedLine } from "./item-share-of-serve";
-import { serveNutrition, type Allergen, type AllergenStatus } from "./recipe-nutrition";
+import { serveNutrition, type Allergen, type AllergenStatus, type MadeComponent } from "./recipe-nutrition";
+import { madeLineNutrition, toInput } from "./made-line-nutrition";
 import { CreateDishDto, SetYieldDto, UpdateDishDto } from "./dto/recipes.dto";
 import { DISH_NOT_THIS_HOUSE, MAX_LINE_QTY, RecipesService } from "./recipes.service";
 import { foldName } from "./name-fold";
@@ -338,8 +339,18 @@ export class DishesService {
     const items = new Map<string, any>();
     const lots = new Map<string, any>();
     const itemIds = [...new Set([...lines.values()].flat().map((l) => l.inventory_id).filter(Boolean))] as string[];
-    // The allergens are read beside the pricing, never after it.
+    // The allergens are read beside the pricing, never after it; a made line's
+    // through its component, by the sheet's own helper (r110 g2). A failed
+    // component read leaves only the recipes with a made line unread.
     const allergenRead = opts.allergens ? this.allergensOf(restaurantId, itemIds, sentence) : Promise.resolve(null);
+    const madeOfLines = [...new Set([...lines.values()].flat().map((l) => l.component_dish_id).filter(Boolean))] as string[];
+    const madeAllergenRead: Promise<Map<string, MadeComponent> | null> =
+      opts.allergens && madeOfLines.length
+        ? madeLineNutrition(client, restaurantId, madeOfLines, { figures: false }).catch((e) => {
+            this.logger.error(`dishes: ${owner} component allergen read failed: ${(e as Error).message}`);
+            return null;
+          })
+        : Promise.resolve(new Map());
     let priced = money;
     if (money) {
       let reads: Array<{ items: Map<string, any>; lots: Map<string, any> }> = [];
@@ -360,6 +371,7 @@ export class DishesService {
       }
     }
     const allergenRows = await allergenRead;
+    const madeAllergens = await madeAllergenRead;
     // A made line is priced through its component, by the same read the drawer uses,
     // so the list and the drawer name one cost for one drink.
     const madeIds = [...new Set([...lines.values()].flat().map((l) => l.component_dish_id).filter(Boolean))] as string[];
@@ -411,7 +423,7 @@ export class DishesService {
       }
       const figures: DishFigures = { versionId: p.versionId, yieldServes, lineCount: rows.length, cost };
       if (pricedLines) figures.pricedLines = pricedLines;
-      if (opts.allergens) figures.allergens = rowAllergens(rows, yieldServes, allergenRows);
+      if (opts.allergens) figures.allergens = rowAllergens(rows, yieldServes, allergenRows, madeAllergens);
       out.set(p.ownerId, figures);
     }
     return out;
@@ -1225,18 +1237,14 @@ export function rowAllergens(
   rows: any[],
   yieldServes: number,
   stated: Map<string, Array<{ allergen: string; status: string }>> | null,
+  made: Map<string, MadeComponent> | null = new Map(),
 ): RowAllergens {
   if (!stated) return { readable: false };
+  // A made line's allergens are its component's: unread components leave the row unread, never free.
+  if (!made && rows.some((l) => l.role === "made")) return { readable: false };
+  const none = new Map();
   const sum = serveNutrition(
-    rows.map((l) => ({
-      label: l.label ?? "",
-      role: l.role,
-      inventoryId: l.inventory_id ?? null,
-      qtyBase: Number(l.qty_base),
-      baseUnit: l.base_unit as BaseUnit,
-      figures: null,
-      allergens: (l.inventory_id && stated.get(l.inventory_id)) || [],
-    })),
+    rows.map((l) => toInput(l, none, none, stated, (id) => made?.get(id) ?? null)),
     yieldServes,
   );
   return { readable: true, status: sum.allergens, unstatedBy: sum.allergensUnstatedBy };

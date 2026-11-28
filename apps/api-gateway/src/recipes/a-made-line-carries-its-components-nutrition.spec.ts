@@ -3,8 +3,9 @@
  * says nuts; its energy is `qtyBase / yield` of the batch's.
  */
 import { ALLERGENS } from "./recipe-nutrition";
+import { DishesService } from "./dishes.service";
 import { RecipesService } from "./recipes.service";
-import { HOUSE_A, HOUSE_B, TART, V_TART_2, fakeDb, line, twoHouses, type Row } from "./dishes.testing";
+import { HOUSE_A, HOUSE_B, TART, V_TART_2, fakeDb, figuredDishes, line, twoHouses, type Row } from "./dishes.testing";
 
 const SUGAR = "f0000000-0000-4000-8000-0000000000a3";
 const ALMOND = "f0000000-0000-4000-8000-0000000000e1";
@@ -61,6 +62,10 @@ function house(): Record<string, Row[]> {
 }
 
 const sheet = async (rows: Record<string, Row[]>) => ((await new RecipesService(fakeDb(rows).db).getDishRecipe(HOUSE_A, TART, "owner")) as any).whatIsIn;
+const listRow = async (rows: Record<string, Row[]>) => {
+  const fake = fakeDb(rows);
+  return (await figuredDishes(new DishesService(fake.db, new RecipesService(fake.db)), HOUSE_A, "staff")).find((d) => d.id === TART)!.allergens as any;
+};
 const takes = (rows: Record<string, Row[]>, over: Row) => {
   for (const l of rows.recipe_lines) if (l.id === "t1") Object.assign(l, over);
   return rows;
@@ -114,8 +119,18 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
     expect(w.allergens.gluten).toBe("not_stated");
   });
 
+  it("the list's allergen column says exactly what the sheet says", async () => {
+    for (const rows of [house(), takes(house(), { component_dish_id: ORGEAT, label: "House orgeat" }), takes(house(), { component_dish_id: BATCH, label: "Sour batch", qty_base: 1000 })]) {
+      const w = await sheet(rows);
+      const row = await listRow(rows);
+      expect(row).toEqual({ readable: true, status: w.allergens, unstatedBy: w.allergensUnstatedBy });
+    }
+    expect((await listRow(takes(house(), { component_dish_id: ORGEAT, label: "House orgeat" }))).status.tree_nuts).toBe("contains");
+  });
+
   it("another house's allergen rows for the same good never count", async () => {
     expect((await sheet(noMilkSaid())).allergens.milk).toBe("not_stated");
+    expect((await listRow(noMilkSaid())).status.milk).toBe("not_stated");
   });
 
   it("another house's component is not counted and nothing reads free", async () => {
@@ -139,7 +154,7 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
     expect(w.allergensUnstatedBy).toEqual(["House syrup"]);
   });
 
-  it("a failed component read makes the sheet unread, never free", async () => {
+  it("a failed component read makes the sheet and the list row unread, never free", async () => {
     const failing = (rows: Record<string, Row[]>) => {
       const fake = fakeDb(rows);
       const client: any = fake.db.getClient();
@@ -159,5 +174,10 @@ describe("a made line carries its component's nutrition (r110 inventory g2)", ()
     const fake = failing(house());
     const w = ((await new RecipesService(fake.db).getDishRecipe(HOUSE_A, TART, "owner")) as any).whatIsIn;
     expect(w).toMatchObject({ readable: false });
+    const f2 = failing(house());
+    const list = await figuredDishes(new DishesService(f2.db, new RecipesService(f2.db)), HOUSE_A, "owner");
+    expect(list.find((d) => d.id === TART)!.allergens).toEqual({ readable: false });
+    // A recipe with no made line keeps its allergens.
+    expect(list.find((d) => d.id === SYRUP)!.allergens).toMatchObject({ readable: true });
   });
 });
