@@ -42,6 +42,7 @@ import {
 import RecipeSheet from './recipe/RecipeSheet';
 import { COPY_CANNOT_CARRY, COPY_RECIPE_FAILED, copyFields } from './recipe/copyDrink';
 import MenuDrinksOffer from './MenuDrinksOffer';
+import LooseLines from './recipe/LooseLines';
 import { readingRowCount } from './readingRows';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { ShareBasisCaption, ShareFigure, marginPerServe, pourCostShare } from './recipe/DrinkCards';
@@ -435,6 +436,8 @@ export default function CocktailRegister({
       {said ? <p className="cl-note" role="status" data-testid="cocktail-said">{said}</p> : null}
 
       {seesCost ? <MenuDrinksOffer /> : null}
+      {/* Every drink's lines with no shelf good, in one queue (r108 drinks-g9); owners and managers. */}
+      <LooseLines manages={manages} />
 
       {draft && manages ? (
         <div className="cl-panel" style={{ marginTop: 12 }} data-testid="cocktail-draft">
