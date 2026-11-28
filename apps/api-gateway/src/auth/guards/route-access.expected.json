@@ -239,6 +239,14 @@
     "owner",
     "manager"
   ],
+  "GET /communications/letters/signature (HouseLettersController.signature)": [
+    "owner",
+    "manager"
+  ],
+  "PUT /communications/letters/signature (HouseLettersController.saveSignature)": [
+    "owner",
+    "manager"
+  ],
   "GET /communications/letters/templates (HouseLettersController.templates)": "open",
   "POST /communications/letters/templates (HouseLettersController.upsertTemplate)": "open",
   "POST /communications/letters (HouseLettersController.queue)": "open",

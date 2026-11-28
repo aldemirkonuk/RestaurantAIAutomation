@@ -124,6 +124,25 @@ export class QueueLetterDto {
   fileIds?: string[];
 }
 
+/** The address a signature is for (r110 g3): one this house sends from. */
+export class SignatureQueryDto {
+  @ApiProperty()
+  @IsEmail()
+  address: string;
+}
+
+/** A sending address's signature (r110 g3). An empty body clears it. */
+export class SaveSignatureDto {
+  @ApiProperty()
+  @IsEmail()
+  address: string;
+
+  @ApiProperty({ description: "At most 600 characters. Inserted in the composer, part of the sealed body." })
+  @IsString()
+  @MaxLength(600)
+  body: string;
+}
+
 /** One file for a letter, as bytes (base64). No URL and no path field exists. */
 export class LetterFileUploadDto {
   @ApiProperty({ description: "The file's name as the person chose it; cut to a safe set before it reaches a header." })

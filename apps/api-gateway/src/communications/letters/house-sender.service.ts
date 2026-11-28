@@ -470,6 +470,29 @@ export class HouseSenderService {
   }
 
   /**
+   * Every address a letter of this house may leave from (r110 g3), lower
+   * case: the sender the house resolves to, and each live grant that may
+   * send. A read that fails throws: "not one of ours" is never a guess.
+   */
+  async sendsFrom(restaurantId: string, userId: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    const identity = await this.resolve(restaurantId, userId);
+    if (identity.sendable && identity.address) out.add(identity.address.trim().toLowerCase());
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("account_email, scopes, restaurant_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("provider", "google")
+      .is("revoked_at", null);
+    if (error) throw new Error(`The addresses this house sends from could not be read (${error.message}).`);
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      if (r.restaurant_id !== restaurantId || typeof r.account_email !== "string") continue;
+      if (Array.isArray(r.scopes) && (r.scopes as string[]).includes(GMAIL_SEND_SCOPE)) out.add(r.account_email.trim().toLowerCase());
+    }
+    return out;
+  }
+
+  /**
    * The grant a QUEUED letter was pinned to, re-read at send time (QA round
    * 26, #973). A letter leaves from the mailbox it was queued under or not at
    * all: this never falls back to the house's current rule, because the
