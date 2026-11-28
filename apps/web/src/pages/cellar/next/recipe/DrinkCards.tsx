@@ -36,6 +36,7 @@ import { formatHousePercent } from '../../../../lib/house-number';
 import { recipeWords, type RecipeWords } from './recipeWords';
 import { lineShares, type ShareInput } from './lineShare';
 import TryPrice from './TryPrice';
+import { alcoholLines } from './standardDrinks';
 
 interface Card {
   id: string;
@@ -45,6 +46,18 @@ interface Card {
   /** False when the figure is not known: the card reads as a gap, not a number. */
   known: boolean;
   warn?: boolean;
+  /**
+   * The pure-alcohol card's standard drinks and strength (r110 drinks-g1). Its
+   * room (2lh) is held from the card's first paint, empty while the house's
+   * country is read, so the figure arriving moves nothing.
+   */
+  std?: { std: string; strength: string };
+}
+
+/** The house's country and money code, as `/settings/currency` answers it; undefined while it is read. */
+export interface HouseKey {
+  country: string | null;
+  currency: string | null;
 }
 
 function count(n: number, one: string, many: string) {
@@ -258,7 +271,7 @@ function ingredientsCard(data: CocktailRecipe): Card | null {
   };
 }
 
-function nutritionCards(data: CocktailRecipe, words: RecipeWords): Card[] {
+function nutritionCards(data: CocktailRecipe, words: RecipeWords, house: HouseKey | undefined): Card[] {
   const w = data.whatIsIn;
   if (!data.current) return [];
   if (!w || !w.readable) {
@@ -294,6 +307,7 @@ function nutritionCards(data: CocktailRecipe, words: RecipeWords): Card[] {
       figure: figureAmount(alcohol, 'ml') ?? 'Not known',
       known: alcohol.value !== null,
       said: parts.length > 0 ? `${capital(parts.join('; '))}.` : 'No ingredient states its strength.',
+      std: alcoholLines(alcohol, data.current.lines, data.current.yieldServes, house ? house.country : undefined, house?.currency ?? null),
     });
   }
   return out;
@@ -334,6 +348,18 @@ function CardFace({ c }: { c: Card }) {
       <span className="cl-rcp-card-label">{c.label}</span>
       <span className="cl-rcp-card-fig cl-num">{c.figure}</span>
       <span className="cl-rcp-card-said">{c.said}</span>
+      {c.std ? (
+        <>
+          <span className="cl-rcp-card-std" data-testid="drink-card-std">
+            {c.std.std}
+          </span>
+          {c.std.strength ? (
+            <span className="cl-rcp-card-said" data-testid="drink-card-strength">
+              {c.std.strength}
+            </span>
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }
@@ -348,6 +374,7 @@ export default function DrinkCards({
   sayPct = readerPercent,
   tax = UNSET_TAX,
   nutritionId,
+  house,
 }: {
   data: CocktailRecipe;
   /** Null for a role that does not see money: then no cost or price card. */
@@ -376,6 +403,8 @@ export default function DrinkCards({
    * and pure-alcohol cards open it (r36 recipes audit, gap 9).
    */
   nutritionId?: string;
+  /** The house's country and money code, for standard drinks; undefined while read (the line's room is held). */
+  house?: HouseKey;
 }) {
   const isDish = data.kind === 'dish';
   const words = recipeWords(data.kind);
@@ -418,7 +447,7 @@ export default function DrinkCards({
     sayMoney ? pourCostCard(shownCost, data.cocktail.price, sayPct, tax) : null,
     sayMoney ? marginCard(shownCost, data.cocktail.price, sayMoney, words, tax) : null,
     ingredientsCard(data),
-    ...nutritionCards(data, words),
+    ...nutritionCards(data, words, house),
   ]
     .filter((c): c is Card => c !== null)
     .filter((c) => words.alcohol || c.id !== 'alcohol')

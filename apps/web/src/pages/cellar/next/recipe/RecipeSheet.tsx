@@ -83,6 +83,7 @@ import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft,
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
+import { useHouseKey } from './useHouseKey';
 import { useHousePercent } from './useHousePercent';
 import { useListTax } from './useListTax';
 import { useSayGrams } from './WeighBox';
@@ -463,6 +464,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const sayPct = useHousePercent();
+  const houseKey = useHouseKey();
   const listTax = useListTax();
   const sayGrams = useSayGrams();
   const save = useSaveRecipe(owner);
@@ -762,6 +764,7 @@ function Sheet({ owner, holdRoom }: { owner: RecipeOwner; holdRoom: boolean }) {
         unsaved={canEdit && dirty}
         draftCost={draftCost}
         nutritionId={`rcp-whatisin-${cocktailId}`}
+        house={houseKey}
       />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} id={`rcp-whatisin-${cocktailId}`} />
       <RecipeTaste

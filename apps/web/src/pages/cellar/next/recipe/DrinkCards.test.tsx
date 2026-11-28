@@ -80,7 +80,7 @@ describe('DrinkCards', () => {
     expect(screen.getByTestId('drink-card-ingredients').textContent).toBe('Ingredients32 from your shelf, 1 not counted.');
     expect(screen.getByTestId('drink-card-energy').textContent).toBe('Energy a serveat least 178.5 kcalUnknown for Angostura.');
     expect(screen.getByTestId('drink-card-alcohol').textContent).toBe(
-      "Pure alcohol a serveat least 20 ml15.8 g of pure alcohol, from each ingredient's stated strength; unknown for Angostura.",
+      "Pure alcohol a serveat least 20 ml15.8 g of pure alcohol, from each ingredient's stated strength; unknown for Angostura.Standard drinks not worked out: Angostura states no strength.",
     );
   });
 
@@ -547,5 +547,37 @@ describe('listTaxFromReadout', () => {
     expect(listTaxFromReadout(undefined, false)).toEqual({ basis: 'unread', failed: false });
     expect(listTaxFromReadout(undefined, true)).toEqual({ basis: 'unread', failed: true });
     expect(listTaxFromReadout({ basis: 'unset', readable: false }, false)).toEqual({ basis: 'unread', failed: true });
+  });
+});
+
+describe('the pure-alcohol card gives standard drinks and strength (r110 drinks-g1)', () => {
+  const neat = (alcohol: ReturnType<typeof fig>) =>
+    gAndT(
+      {
+        current: {
+          ...gAndT().current!,
+          lines: [line({ label: 'Gin', qtyBase: 300 }), line({ label: 'Campari', qtyBase: 300 }), line({ label: 'Vermouth', qtyBase: 300 })],
+        },
+      },
+      readable(alcohol),
+    );
+
+  it('holds the line from first paint, empty while the country is read, then fills it', () => {
+    const { rerender } = render(<DrinkCards data={neat(fig(24.3))} sayMoney={null} unsaved={false} />);
+    const held = screen.getByTestId('drink-card-std');
+    expect(held.textContent).toBe('');
+    expect(held.className).toBe('cl-rcp-card-std');
+    expect(screen.getByTestId('drink-card-strength').textContent).toMatch(/^27\s?% before ice and water$/);
+    rerender(<DrinkCards data={neat(fig(24.3))} sayMoney={null} unsaved={false} house={{ country: 'US', currency: 'USD' }} />);
+    expect(screen.getByTestId('drink-card-std')).toBe(held);
+    expect(held.textContent).toBe('1.4 US standard drinks (14 g each)');
+    const css = readFileSync(`${__dirname}/../cellar-next.css`, 'utf8').replace(/\s+/g, ' ');
+    expect(css).toContain('.cl-rcp-card-std { display: block; font-size: 11.5px; line-height: 1.4; min-height: 2.8em; min-height: 2lh;');
+  });
+
+  it('staff (no money) get it too, and a partial figure gives no number', () => {
+    render(<DrinkCards data={neat(fig(12, ['Campari'], true))} sayMoney={null} unsaved={false} house={{ country: 'US', currency: 'USD' }} />);
+    expect(screen.getByTestId('drink-card-std').textContent).toBe('Standard drinks not worked out: Campari states no strength.');
+    expect(screen.queryByTestId('drink-card-strength')).toBeNull();
   });
 });
