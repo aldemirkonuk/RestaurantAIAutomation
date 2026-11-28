@@ -24,6 +24,11 @@
  * Files (r28 gap 13): each letter lists the files it carried, and any reader
  * of the letter can open one (LetterFiles.tsx). When the files could not be
  * read with the page, it says so, never that the letters carried none.
+ *
+ * Notes (r110 mail-gap g5): the house's own notes sit between the letters in
+ * time order (MailThreadNotes.tsx). An owner or manager writes one; the writer
+ * deletes their own; staff read them. A note is never a letter: it is not in
+ * `letters`, so the composer, its preview and the seal never see it.
  */
 
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -62,6 +67,7 @@ import { QueuedPullBack } from './QueuedPullBack';
 import { mailKeys, useHouse, useMailThread, useMarkThreadSeen, useNoReplyMark } from './useMailData';
 import { hasModifier, inOverlay, isTypingTarget, nextWaiting, threadKey as threadKeyOf } from './mail-keys';
 import { RetryRead, useReadAgain } from './MailRetry';
+import { NoteItem, NoteWriter, noteFailWords, useAddNote, useDeleteNote, withNotes } from './MailThreadNotes';
 
 /**
  * A reply is written beside the thread, not over it (r109 mail-gap g3). The sheet tells the page its
@@ -466,6 +472,15 @@ export function MailThread({
     el?.focus({ preventScroll: true });
     setCleared({ key: threadKey, ids: new Set([...clearedIds, ...arrived.map((m) => m.id)]) });
   };
+  // The house's notes, oldest page first like the letters; a new one fades in.
+  const notes = pages
+    .slice()
+    .reverse()
+    .flatMap((p) => p.notes ?? []);
+  const enteringNotes = useEnteringKeys(notes.map((n) => n.id), threadKey, Boolean(head));
+  const addNote = useAddNote(threadKey, withKey);
+  const deleteNote = useDeleteNote(threadKey);
+  const items = withNotes(rows, (r) => letterAt(r.kind === 'stack' ? r.ms[0]! : r.m), notes);
   const settleId = canReply ? noReplyTarget(head, letters) : null;
   // Only the newest marked letter offers to take its mark back: an older
   // mark is behind it in the thread, and taking it back changes nothing.
@@ -592,9 +607,27 @@ export function MailThread({
             </p>
           )}
 
+          {pages.some((p) => p.notesRead === false) && (
+            <p role="status" data-testid="thread-notes-unread" style={{ ...QUIET, margin: 0 }}>
+              The house's notes on this thread could not be read just now. That does not mean there are none.
+            </p>
+          )}
+
           <ul className="grid gap-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {rows.map((r) =>
-              r.kind === 'open' ? (
+            {items.map((item) => {
+              if (item.kind === 'note') {
+                const n = item.n;
+                return (
+                  <NoteItem
+                    key={`note-${n.id}`}
+                    note={n}
+                    entering={enteringNotes.has(n.id)}
+                    onDelete={n.mine ? () => deleteNote.mutate(n.id) : undefined}
+                  />
+                );
+              }
+              const r = item.r;
+              return r.kind === 'open' ? (
                 <Letter
                   key={r.m.id}
                   m={r.m}
@@ -619,9 +652,14 @@ export function MailThread({
                     {r.ms.length} earlier letters
                   </button>
                 </li>
-              ),
-            )}
+              );
+            })}
           </ul>
+          {deleteNote.isError && (
+            <p role="alert" data-testid="mail-note-delete-failed" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
+              {noteFailWords(deleteNote.error, true)}
+            </p>
+          )}
 
           {/* The announcement is its own quiet region; the button below it is the act. */}
           <div
@@ -757,6 +795,18 @@ export function MailThread({
                 </button>
               )}
             </div>
+          )}
+
+          {canReply && head.person && (
+            <NoteWriter
+              pending={addNote.isPending}
+              onKeep={(body) => addNote.mutateAsync({ person: head.person!.key, body })}
+            />
+          )}
+          {addNote.isError && (
+            <p role="alert" data-testid="mail-note-failed" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
+              {noteFailWords(addNote.error, false)}
+            </p>
           )}
         </>
       )}
