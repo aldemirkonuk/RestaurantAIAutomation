@@ -23,6 +23,7 @@
 import type { RecipeLine, ServeFigure } from '../../../../services/api/recipes';
 import { ETHANOL_G_PER_ML, names } from './WhatIsInAServe';
 import { formatHouseNumber, formatHousePercent } from '../../../../lib/house-number';
+import { countryByName } from '../../../../lib/countries';
 
 /** Grams of ethanol in one standard drink, by ISO country code. */
 export const STD_G = { US: 14, GB: 8, AU: 10, NZ: 10, IE: 10, CA: 13.45 } as const;
@@ -38,8 +39,15 @@ const STD_WORDS: Record<StdCountry, [string, string]> = {
   CA: ['Canadian standard drink', 'Canadian standard drinks'],
 };
 
-const isStdCountry = (c: string | null | undefined): c is StdCountry =>
-  typeof c === 'string' && Object.prototype.hasOwnProperty.call(STD_G, c.toUpperCase());
+/**
+ * The house's country as one of the table's ISO keys, or null. The column holds
+ * what Google Places wrote ('United States', 'United Kingdom', 'Türkiye'), not a
+ * code, so the name goes through the one country table first (lib/countries.ts).
+ */
+const stdCountryOf = (c: string | null | undefined): StdCountry | null => {
+  const code = countryByName(c)?.code;
+  return code !== undefined && Object.prototype.hasOwnProperty.call(STD_G, code) ? (code as StdCountry) : null;
+};
 
 export type StandardDrinks =
   | { kind: 'not_worked_out'; missing: string[] }
@@ -54,8 +62,8 @@ export function standardDrinks(alcohol: ServeFigure, country: string | null | un
     return { kind: 'not_worked_out', missing: alcohol.missing };
   }
   const grams = alcohol.value * ETHANOL_G_PER_ML;
-  if (!isStdCountry(country)) return { kind: 'grams', grams };
-  const c = country.toUpperCase() as StdCountry;
+  const c = stdCountryOf(country);
+  if (c === null) return { kind: 'grams', grams };
   return { kind: 'drinks', drinks: round1(grams / STD_G[c]), grams, country: c };
 }
 

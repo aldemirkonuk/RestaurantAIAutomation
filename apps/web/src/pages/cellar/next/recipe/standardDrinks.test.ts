@@ -33,6 +33,20 @@ describe('standardDrinks (r110 drinks-g1)', () => {
     expect(alcoholLines(complete, negroni, 1, 'CA', 'CAD').std).toBe('1.4 Canadian standard drinks (13.45 g each)');
   });
 
+  it('reads the country the way Places stored it: by name, UK, or not at all', () => {
+    expect(standardDrinks(complete, 'United States')).toMatchObject({ kind: 'drinks', drinks: 1.4, country: 'US' });
+    expect(standardDrinks(complete, 'United Kingdom')).toMatchObject({ kind: 'drinks', drinks: 2.4, country: 'GB' });
+    expect(standardDrinks(complete, 'UK')).toMatchObject({ kind: 'drinks', country: 'GB' });
+    expect(standardDrinks(complete, 'Australia')).toMatchObject({ kind: 'drinks', country: 'AU' });
+    expect(standardDrinks(complete, 'Canada')).toMatchObject({ kind: 'drinks', country: 'CA' });
+    expect(standardDrinks(complete, 'Ireland')).toMatchObject({ kind: 'drinks', country: 'IE' });
+    expect(alcoholLines(complete, negroni, 1, 'United States', 'USD').std).toBe('1.4 US standard drinks (14 g each)');
+    // Türkiye is a country the table knows but the standard-drink table does not: grams only.
+    expect(standardDrinks(complete, 'Türkiye')).toMatchObject({ kind: 'grams' });
+    expect(alcoholLines(complete, negroni, 1, 'Türkiye', 'TRY').std).toBe('19,2 g; no standard drink for this country');
+    expect(standardDrinks(complete, 'Narnia')).toMatchObject({ kind: 'grams' });
+  });
+
   it('the table is the six countries and their own grams', () => {
     expect(STD_G).toEqual({ US: 14, GB: 8, AU: 10, NZ: 10, IE: 10, CA: 13.45 });
   });
