@@ -12,7 +12,8 @@ import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
 import { BaseUnit, BASE_UNIT_WORDS, CostItem, componentPerBase, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto, StateWeightsDto } from "./dto/recipes.dto";
-import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
+import { FIGURE_COLUMN, FIGURE_KEYS, ItemFigures, MadeComponent, ServeNutrition, serveNutrition } from "./recipe-nutrition";
+import { madeLineNutrition, toInput } from "./made-line-nutrition";
 import { shelfSearchPattern } from "./name-fold";
 
 export const NOT_THIS_HOUSE = "This drink is not on this house's list.";
@@ -35,20 +36,6 @@ export const WHAT_IS_IN_UNREAD =
 /** The same sentence for a dish: a plate, not a serve. */
 export const WHAT_IS_IN_UNREAD_DISH =
   "What is in a plate could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
-
-/** item_nutrition column -> figure key. */
-const FIGURE_COLUMN: Record<(typeof FIGURE_KEYS)[number], string> = {
-  energyKcal: "energy_kcal",
-  fatG: "fat_g",
-  saturatesG: "saturates_g",
-  carbohydrateG: "carbohydrate_g",
-  sugarsG: "sugars_g",
-  proteinG: "protein_g",
-  saltG: "salt_g",
-  // ABV is ml of pure alcohol per 100 ml (the column is per-volume only,
-  // item_nutrition_abv_is_per_volume), so it sums like any per-100 figure.
-  alcoholMl: "abv_pct",
-};
 
 /** A failed read of what is in a serve is said, and never hides the recipe (ADR 0067). */
 export type WhatIsIn = ({ readable: true } & ServeNutrition) | { readable: false; sentence: string };
@@ -683,18 +670,19 @@ export class RecipesService {
         allergensById.set(a.inventory_id, list);
       }
     }
+    // A made line counts through its component (r110 g2).
+    const madeIds = [...new Set(rows.map((l) => l.component_dish_id).filter(Boolean))] as string[];
+    let components = new Map<string, MadeComponent>();
+    if (madeIds.length) {
+      try {
+        components = await madeLineNutrition(this.db.getClient(), restaurantId, madeIds, { figures: true });
+      } catch (e) {
+        this.logger.error(`recipes: what-is-in component read failed: ${(e as Error).message}`);
+        return { readable: false, sentence: kind === "dish" ? WHAT_IS_IN_UNREAD_DISH : WHAT_IS_IN_UNREAD };
+      }
+    }
     const sum = serveNutrition(
-      rows.map((l) => ({
-        label: l.label,
-        role: l.role,
-        inventoryId: l.inventory_id ?? null,
-        qtyBase: Number(l.qty_base),
-        baseUnit: l.base_unit,
-        figures: (l.inventory_id && figuresById.get(l.inventory_id)) || null,
-        pieceGrams: (l.inventory_id && weightsById.get(l.inventory_id)?.pieceGrams) ?? null,
-        mlGrams: (l.inventory_id && weightsById.get(l.inventory_id)?.mlGrams) ?? null,
-        allergens: (l.inventory_id && allergensById.get(l.inventory_id)) || [],
-      })),
+      rows.map((l) => toInput(l, figuresById, weightsById, allergensById, (id) => components.get(id) ?? null)),
       yieldServes,
     );
     return { readable: true, ...sum };

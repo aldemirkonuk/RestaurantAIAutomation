@@ -26,7 +26,9 @@
  * - an allergen is free only when every line, untracked too, states it free;
  * - the lines that leave any allergen unstated are named (allergensUnstatedBy),
  *   so a sheet can say which ingredients stop "free of" being said, instead of
- *   saying nothing and reading as allergen-free.
+ *   saying nothing and reading as allergen-free;
+ * - a made line (r110 g2) counts `qtyBase / yield` of its component's batch,
+ *   in the batch's unit only; its allergens are the batch's, no yield needed.
  */
 import type { BaseUnit } from "./recipe-cost";
 
@@ -42,6 +44,20 @@ export const FIGURE_KEYS = [
 ] as const;
 export type FigureKey = (typeof FIGURE_KEYS)[number];
 
+/** item_nutrition column -> figure key. */
+export const FIGURE_COLUMN: Record<FigureKey, string> = {
+  energyKcal: "energy_kcal",
+  fatG: "fat_g",
+  saturatesG: "saturates_g",
+  carbohydrateG: "carbohydrate_g",
+  sugarsG: "sugars_g",
+  proteinG: "protein_g",
+  saltG: "salt_g",
+  // ABV is ml of pure alcohol per 100 ml (the column is per-volume only,
+  // item_nutrition_abv_is_per_volume), so it sums like any per-100 figure.
+  alcoholMl: "abv_pct",
+};
+
 /** EU 1169/2011 Annex II, as item-nutrition/nutrition-figures.ts. */
 export const ALLERGENS = ["gluten", "crustaceans", "eggs", "fish", "peanuts", "soy", "milk", "tree_nuts", "celery", "mustard", "sesame", "sulphites", "lupin", "molluscs"] as const;
 export type Allergen = (typeof ALLERGENS)[number];
@@ -53,9 +69,19 @@ export interface ItemFigures extends Record<FigureKey, number | null> {
   energyFromAbv: boolean;
 }
 
+/** A component a made line draws: one whole batch's sum (null: not read, a loop or too deep) and its yield. */
+export interface MadeComponent {
+  name: string;
+  batch: ServeNutrition | null;
+  yieldQtyBase: number | null;
+  yieldBaseUnit: BaseUnit | null;
+}
+
 export interface NutritionLineInput {
   label: string;
-  role: "stocked" | "untracked";
+  role: "stocked" | "untracked" | "made";
+  /** A made line's component; absent or null on any other line. */
+  component?: MadeComponent | null;
   inventoryId: string | null;
   qtyBase: number;
   baseUnit: BaseUnit;
@@ -87,6 +113,8 @@ export interface ServeNutrition {
   /** Lines counted in at least one figure, of all lines. */
   counted: number;
   of: number;
+  /** Made lines counted (figures or allergens) through their component, in recipe order. */
+  through: Array<{ label: string; componentName: string }>;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -119,12 +147,37 @@ function amountOf(line: NutritionLineInput): { amount: number } | { why: string 
   return { amount: qty / 1000 / mlG };
 }
 
+/** A made line's share of one batch, or why its figures cannot count (its allergens still do). */
+function madeShare(line: NutritionLineInput): { share: number } | { why: string } {
+  const c = line.component;
+  if (!c || !c.batch) return { why: "it is made in the house, and what it is made from is not read here" };
+  if (c.yieldQtyBase === null || !(Number(c.yieldQtyBase) > 0) || !c.yieldBaseUnit) {
+    return { why: `${c.name} has no yield set, so its figures are not counted; its allergens are` };
+  }
+  if (line.baseUnit !== c.yieldBaseUnit) {
+    return { why: `it is measured in another unit than ${c.name} is made in, so its figures are not counted; its allergens are` };
+  }
+  const qty = Number(line.qtyBase);
+  if (!Number.isFinite(qty) || qty <= 0) return { why: "the recipe does not say how much" };
+  return { share: qty / Number(c.yieldQtyBase) };
+}
+
+/** A made line's status for one allergen: its batch's, or not stated when the batch was not read. */
+function madeAllergen(l: NutritionLineInput, a: Allergen): AllergenStatus {
+  return l.component?.batch?.allergens[a] ?? "not_stated";
+}
+
 /** Linked to an item that states 0% alcohol (a strength is per 100 ml by the schema's CHECK). */
 function statesNoAlcohol(l: NutritionLineInput): boolean {
+  if (l.role === "made") {
+    const f = l.component?.batch?.figures.alcoholMl;
+    return f !== undefined && f.value === 0 && !f.atLeast;
+  }
   return l.role === "stocked" && Boolean(l.inventoryId) && l.figures?.basis === "100ml" && l.figures.alcoholMl === 0;
 }
 
 function leavesAllergenUnstated(l: NutritionLineInput): boolean {
+  if (l.role === "made") return ALLERGENS.some((a) => madeAllergen(l, a) === "not_stated");
   if (l.role === "untracked" || !l.inventoryId) return true;
   return ALLERGENS.some((a) => {
     const s = l.allergens.find((x) => x.allergen === a)?.status;
@@ -134,6 +187,7 @@ function leavesAllergenUnstated(l: NutritionLineInput): boolean {
 
 function allergenOf(lines: NutritionLineInput[], a: Allergen): AllergenStatus {
   const statuses = lines.map((l) => {
+    if (l.role === "made") return madeAllergen(l, a);
     if (l.role === "untracked" || !l.inventoryId) return "not_stated";
     const s = l.allergens.find((x) => x.allergen === a)?.status;
     return s === "contains" || s === "may_contain" || s === "free" ? s : "not_stated";
@@ -148,8 +202,17 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
   const serves = Number.isInteger(yieldServes) && yieldServes > 0 ? yieldServes : NaN;
   const notCounted: ServeNutrition["notCounted"] = [];
   const counted: Array<{ line: NutritionLineInput; amount: number }> = [];
+  const made: Array<{ line: NutritionLineInput; share: number }> = [];
   const leftLines: NutritionLineInput[] = [];
   for (const line of lines) {
+    if (line.role === "made") {
+      const m = madeShare(line);
+      if ("why" in m) {
+        notCounted.push({ label: line.label, why: m.why });
+        leftLines.push(line);
+      } else made.push({ line, share: m.share });
+      continue;
+    }
     const a = amountOf(line);
     if ("why" in a) {
       notCounted.push({ label: line.label, why: a.why });
@@ -177,6 +240,21 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
       total = (total ?? 0) + (amount / 100) * Number(per100);
       if (k === "energyKcal" && line.figures!.energyFromAbv) atLeast = true;
     }
+    for (const { line, share } of made) {
+      const c = line.component!;
+      const inBatch = c.batch!.figures[k];
+      if (inBatch.value === null) {
+        missing.push(line.label);
+        atLeast = true;
+        continue;
+      }
+      usedLines.add(line);
+      total = (total ?? 0) + share * inBatch.value;
+      if (inBatch.atLeast) {
+        atLeast = true;
+        missing.push(...inBatch.missing.map((m) => `${m} in ${c.name}`));
+      }
+    }
     const perServe = total === null ? null : total / serves;
     figures[k] = {
       value: perServe === null || !Number.isFinite(perServe) ? null : round2(perServe),
@@ -190,5 +268,8 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
     AllergenStatus
   >;
   const allergensUnstatedBy = [...new Set(lines.filter(leavesAllergenUnstated).map((l) => l.label))];
-  return { figures, notCounted, allergens, allergensUnstatedBy, counted: usedLines.size, of: lines.length };
+  const through = lines
+    .filter((l) => l.role === "made" && l.component && l.component.batch)
+    .map((l) => ({ label: l.label, componentName: l.component!.name }));
+  return { figures, notCounted, allergens, allergensUnstatedBy, counted: usedLines.size, of: lines.length, through };
 }
