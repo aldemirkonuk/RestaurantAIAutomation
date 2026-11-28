@@ -304,8 +304,8 @@ describe("CsvParserService.read: a kitchen sheet's Section and Dish (r110 menu-r
   it("'Section,Dish,Price' reads: Dish is the name, Section the category", () => {
     const { items, issues } = parser().read("Section,Dish,Price\r\nMezes,Haydari,120\r\nMains,Adana,380\r\n");
     expect(items.map((i) => [i.name, i.category])).toEqual([
-      ["Haydari", "Mezes"],
-      ["Adana", "Mains"],
+      ["Haydari", "food"],
+      ["Adana", "food"],
     ]);
     expect(issues.map((i) => i.reason)).not.toContain("no_name_column");
   });
@@ -313,7 +313,7 @@ describe("CsvParserService.read: a kitchen sheet's Section and Dish (r110 menu-r
   it("'Dish,Price' reads, and a Turkish 'Bölüm;Yemek' sheet too", () => {
     expect(parser().read("Dish,Price\r\nHaydari,120\r\n").items.map((i) => i.name)).toEqual(["Haydari"]);
     const tr = parser().read("Bölüm;Yemek;Kadeh Fiyatı\r\nMezeler;Haydari;120\r\n");
-    expect(tr.items[0]).toMatchObject({ name: "Haydari", category: "Mezeler", by_glass_price: 120 });
+    expect(tr.items[0]).toMatchObject({ name: "Haydari", category: "food", by_glass_price: 120 });
   });
 
   it("a named column no field takes is said, never dropped in silence; a blank header is no column", () => {
@@ -327,5 +327,41 @@ describe("CsvParserService.read: a kitchen sheet's Section and Dish (r110 menu-r
     const { items, issues } = parser().read(`${header}\r\nOpus One,Opus,2019,Napa,Cabernet,Reds,15,64\r\n`);
     expect(issues).toEqual([]);
     expect(items[0]).toMatchObject({ name: "Opus One", category: "Reds", by_glass_price: 15, bottle_price: 64 });
+  });
+
+  // r110 review R2: HINT_WORDS reads none of Çorbalar, Mezeler, Ana Yemekler, Tatlılar or Main, so a Yemek sheet
+  // was sent to the library as bottles and, once current, seeded into the house's inventory and price.
+  it("a Yemek / Dish sheet's lines are kitchen lines, whatever their section is called", () => {
+    const { items } = parser().read("Yemek,Bölüm,Fiyat\r\nMercimek çorbası,Çorbalar,180\r\nBaklava,Tatlılar,150\r\nAdana,Main,380\r\n");
+    expect(items.map((i) => [i.name, i.category, (i as any).kitchen_line])).toEqual([
+      ["Mercimek çorbası", "food", true],
+      ["Baklava", "food", true],
+      ["Adana", "food", true],
+    ]);
+  });
+
+  it("a section that already reads as kitchen is kept; a row with no section is food", () => {
+    const { items } = parser().read("Dish,Section,Bottle\r\nTiramisu,Desserts,9\r\nBread,,3\r\n");
+    expect(items.map((i) => [i.category, (i as any).kitchen_line])).toEqual([
+      ["Desserts", true],
+      ["food", true],
+    ]);
+  });
+
+  it("a Name sheet is not marked: its lines stay as the sheet says", () => {
+    const { items } = parser().read("Name,Section,Bottle\r\nOpus One,Reds,64\r\n");
+    expect(items[0].category).toBe("Reds");
+    expect(items[0]).not.toHaveProperty("kitchen_line");
+  });
+
+  it("an .xlsx Yemek sheet reads the same way", async () => {
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Menu");
+    ws.addRow(["Yemek", "Bölüm", "Şişe Fiyatı"]);
+    ws.addRow(["Mercimek çorbası", "Çorbalar", 180]);
+    const base64 = Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+    const items = await parser().parseExcel(base64);
+    expect(items[0]).toMatchObject({ name: "Mercimek çorbası", category: "food", kitchen_line: true, bottle_price: 180 });
   });
 });

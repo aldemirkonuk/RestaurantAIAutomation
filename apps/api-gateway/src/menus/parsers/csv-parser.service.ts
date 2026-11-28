@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { WineExtractItem } from "../wine-extract-item.interface";
 import { MenuPriceReason, readMenuPrice } from "./menu-price";
+import { isKitchenLine } from "../menu-line-view";
 
 // Aliases by field, against `headerKey`: "Şişe Fiyatı (TL)" is `sise_fiyati`.
 const ALIASES: Array<[keyof WineExtractItem, string]> = [
@@ -27,6 +28,12 @@ const HEADER_MAP = new Map(
     keys.split(" ").map((k) => [k, field] as const),
   ),
 );
+
+/** A name header that says the sheet is a kitchen's (r110 review R2): the lines under it are dishes, not bottles. */
+const DISH_NAME_KEYS = new Set(["dish", "dish_name", "yemek", "yemek_adi"]);
+
+/** A line read from a kitchen sheet says so; the import honours it before its own test. */
+type SheetItem = WineExtractItem & { kitchen_line?: boolean };
 
 const PRICE_FIELDS = new Set<keyof WineExtractItem>([
   "by_glass_price",
@@ -252,6 +259,7 @@ export class CsvParserService {
     const headerWidth = width(records[0].cells);
 
     const items: WineExtractItem[] = [];
+    const dishSheet = this.isDishSheet(records[0].cells);
     for (const record of records.slice(1)) {
       const shifted = width(record.cells) > headerWidth;
       const item = this.buildItem(
@@ -260,6 +268,7 @@ export class CsvParserService {
         record.row,
         issues,
         shifted,
+        dishSheet,
       );
       if (item && shifted)
         issues.push({
@@ -320,6 +329,7 @@ export class CsvParserService {
       };
 
     const items: WineExtractItem[] = [];
+    const dishSheet = this.isDishSheet(headers);
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // header row
       const cols: Cell[] = [];
@@ -337,7 +347,7 @@ export class CsvParserService {
             raw: v.error,
           });
       });
-      const item = this.buildItem(fieldMap, cols, rowNumber, issues);
+      const item = this.buildItem(fieldMap, cols, rowNumber, issues, false, dishSheet);
       if (item) {
         item.raw_text = cols.join(",");
         items.push(item);
@@ -345,6 +355,12 @@ export class CsvParserService {
     });
 
     return { items, issues };
+  }
+
+  /** Whether the column that gives the name is headed Dish or Yemek (the first name column is the one read). */
+  private isDishSheet(headers: string[]): boolean {
+    const at = headers.findIndex((h) => readHeader(h ?? "").field === "name");
+    return at >= 0 && DISH_NAME_KEYS.has(headerKey(headers[at] ?? ""));
   }
 
   private fieldMap(headers: string[]): Array<keyof WineExtractItem | null> {
@@ -401,8 +417,9 @@ export class CsvParserService {
     row: number,
     issues: CsvRowIssue[],
     skipPrices = false,
+    dishSheet = false,
   ): WineExtractItem | null {
-    const item: Partial<WineExtractItem> = {};
+    const item: Partial<SheetItem> = {};
     const found: CsvRowIssue[] = [];
 
     fieldMap.forEach((field, colIdx) => {
@@ -436,6 +453,13 @@ export class CsvParserService {
       return null;
     }
     issues.push(...found);
-    return item as WineExtractItem;
+    if (dishSheet) {
+      // A kitchen sheet's line is a kitchen line, whatever its section is called: "Çorbalar" and "Main" read as
+      // no hint, and a dish sent as a drink makes a library row and, once the menu is current, a bottle. menu_items
+      // keeps no kitchen flag, so the category says it too: the section when it reads as kitchen, else "food".
+      item.kitchen_line = true;
+      item.category = item.category && isKitchenLine(item.category, "") ? item.category : "food";
+    }
+    return item as SheetItem;
   }
 }
