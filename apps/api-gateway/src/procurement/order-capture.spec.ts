@@ -97,7 +97,11 @@ function makeDb(opts: {
             return { data: opts.insertedOrder ?? null, error: null };
           if (shape === "one")
             return { data: opts.orderRow ?? null, error: null };
-          return { data: opts.existingOpenOrders ?? [], error: null };
+          // The dedup lookup's status filter is honoured, so a row it excludes is not seen.
+          return {
+            data: (opts.existingOpenOrders ?? []).filter((r) => !notStatuses.includes(r.status)),
+            error: null,
+          };
         }
         if (table === "procurement_order_items" && op === "select")
           return {
@@ -108,6 +112,7 @@ function makeDb(opts: {
       };
 
       let lastSelect = "";
+      let notStatuses: string[] = [];
       const q: any = {
         select: (cols?: string) => {
           lastSelect = cols ?? "";
@@ -115,7 +120,10 @@ function makeDb(opts: {
         },
         eq: () => q,
         neq: () => q,
-        not: () => q,
+        not: (col: string, _op: string, val: string) => {
+          if (col === "status") notStatuses = String(val).replace(/[()]/g, "").split(",");
+          return q;
+        },
         in: () => q,
         is: () => q,
         gt: () => q,
@@ -625,5 +633,27 @@ describe("price_history finally has a writer", () => {
     // The write must have been ATTEMPTED — otherwise this passes against code
     // that has no price writer at all, which is the state it exists to rule out.
     expect(calls.priceHistoryInserts).toHaveLength(1);
+  });
+});
+
+describe("createOrder — a part delivery is never merged (r110 inventory fix)", () => {
+  const partDelivered = { id: "55555555-5555-4555-8555-555555555555", status: "PARTIALLY_RECEIVED", quantity: 6 };
+
+  it("a hold to the same vendor opens a new order and leaves the part delivery's quantity alone", async () => {
+    const { db, calls } = makeDb({ insertedOrder, inventory: inventoryRow, existingOpenOrders: [partDelivered] });
+    await service(db).createOrder("rest-1", USER, { ...caseOrder, quantity: 3 });
+    expect(calls.orderInserts).toHaveLength(1);
+    expect(calls.orderUpdates.some((u) => u.quantity === 3)).toBe(false);
+  });
+
+  it("an order still being negotiated is merged, as before", async () => {
+    const { db, calls } = makeDb({
+      insertedOrder,
+      inventory: inventoryRow,
+      existingOpenOrders: [{ id: "66666666-6666-4666-8666-666666666666", status: "PENDING", quantity: 6 }],
+      orderRow: insertedOrder,
+    });
+    await service(db).createOrder("rest-1", USER, { ...caseOrder, quantity: 3 });
+    expect(calls.orderUpdates.some((u) => u.quantity === 3)).toBe(true);
   });
 });
