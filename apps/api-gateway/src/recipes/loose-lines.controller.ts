@@ -20,12 +20,20 @@ export class LooseLinesController {
   @Roles("owner", "manager")
   @ApiOperation({
     summary:
-      "Every counted line of a drink's (default) or, with ?kind=dish, a dish's current recipe with no shelf good, grouped by name (owner/manager); writes nothing",
+      "Every counted line of a drink's (default) or, with ?kind=dish, a dish's current recipe with no shelf good, or with ?linkedTo= the drinks' lines of that good, grouped by name (owner/manager); writes nothing",
   })
-  looseLines(@Param("restaurantId", ParseUUIDPipe) restaurantId: string, @Query("kind") kind?: string) {
+  looseLines(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Query("kind") kind?: string,
+    /** Given, the lines that pour from this good instead (swap a good, r108 drinks-g10). Drinks only. */
+    @Query("linkedTo", new ParseUUIDPipe({ optional: true })) linkedTo?: string,
+  ) {
     // Absent is a drink, so every caller before r109 g4 reads what it always did.
-    if (kind === undefined || kind === "" || kind === "drink") return this.loose.looseLines(restaurantId);
-    if (kind === "dish") return this.loose.looseDishLines(restaurantId);
+    if (kind === undefined || kind === "" || kind === "drink") return this.loose.looseLines(restaurantId, linkedTo);
+    if (kind === "dish") {
+      if (linkedTo) throw new BadRequestException("linkedTo reads drinks only.");
+      return this.loose.looseDishLines(restaurantId);
+    }
     throw new BadRequestException("kind is drink or dish.");
   }
 }

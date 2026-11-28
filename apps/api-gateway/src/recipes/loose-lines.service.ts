@@ -1,6 +1,6 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { DishesService, ID_CHUNK, PAGE, inWaves } from "./dishes.service";
+import { DishesService, ID_CHUNK, ITEM_NOT_THIS_HOUSE, PAGE, inWaves } from "./dishes.service";
 import { foldName } from "./name-fold";
 
 export const LOOSE_LINES_UNREAD = "Your drinks' lines could not be read just now, so none is offered to link.";
@@ -68,8 +68,8 @@ export interface LooseDishGroup {
 export interface LooseGroup {
   key: string;
   label: string;
-  /** Each line: its drink and its index in that drink's `lines`. */
-  lines: Array<{ cocktailId: string; index: number }>;
+  /** Each line: its drink, its index in that drink's `lines`, and the base unit it is measured in (ml10, mg, each_milli). */
+  lines: Array<{ cocktailId: string; index: number; baseUnit: string }>;
   drinkCount: number;
   proposed: { id: string; name: string; kind: string | null; uom: string | null; bottleSizeMl: number | null } | null;
   /** How many live shelf goods have this name: 2 or more proposes none. */
@@ -81,7 +81,7 @@ type Owned = Omit<LooseDrink, "cocktailId"> & { ownerId: string };
 type Grouped = {
   key: string;
   label: string;
-  lines: Array<{ ownerId: string; index: number }>;
+  lines: Array<{ ownerId: string; index: number; baseUnit: string }>;
   ownerCount: number;
   shelf: LooseGroup["proposed"];
   sameName: number;
@@ -129,26 +129,84 @@ export class LooseLinesService {
     const out: T[] = [];
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await read(from, from + PAGE - 1);
-      if (error) {
-        this.logger.error(`loose lines: ${what} failed: ${error.message}`);
-        throw new ServiceUnavailableException(unread);
-      }
+      if (error) this.unread(what, error, unread);
       const rows = (data ?? []) as T[];
       out.push(...rows);
       if (rows.length < PAGE) return out;
     }
   }
 
-  async looseLines(restaurantId: string): Promise<{ lineCount: number; drinkCount: number; groups: LooseGroup[]; drinks: LooseDrink[] }> {
-    const r = await this.read(restaurantId, "drink");
+  private unread(what: string, error: { message: string }, unread = LOOSE_LINES_UNREAD): never {
+    this.logger.error(`loose lines: ${what} failed: ${error.message}`);
+    throw new ServiceUnavailableException(unread);
+  }
+
+  /** How many live dishes' CURRENT recipes are among these versions. */
+  private async dishesUsing(restaurantId: string, versionIds: string[]): Promise<number> {
+    const client = this.db.getClient();
+    const pointers = (
+      await inWaves(chunk(versionIds), (ids) =>
+        this.all<any>("dish pointer read", (from, to) =>
+          client
+            .from("recipe_current_dish")
+            .select("dish_id, version_id")
+            .eq("restaurant_id", restaurantId)
+            .in("version_id", ids)
+            .order("dish_id", { ascending: true })
+            .range(from, to),
+        ),
+      )
+    ).flat();
+    const dishIds = [...new Set(pointers.map((p) => p.dish_id as string))];
+    const live = (
+      await inWaves(chunk(dishIds), (ids) =>
+        this.all<any>("dish read", (from, to) =>
+          client
+            .from("dishes")
+            .select("id")
+            .eq("restaurant_id", restaurantId)
+            .is("deleted_at", null)
+            .in("id", ids)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      )
+    ).flat();
+    return live.length;
+  }
+
+  /**
+   * With `linkedTo` (r108 drinks-g10, "swap a good"), the same answer for the
+   * lines that pour from that good instead, plus how many dishes' current
+   * recipes use it too (they are counted, never changed here). Another
+   * house's good is a 404. Drinks only: the dish queue takes no `linkedTo`.
+   */
+  async looseLines(
+    restaurantId: string,
+    linkedTo?: string,
+  ): Promise<{ lineCount: number; drinkCount: number; dishCount: number; groups: LooseGroup[]; drinks: LooseDrink[] }> {
+    if (linkedTo) {
+      const item = await this.db
+        .getClient()
+        .from("restaurant_inventory")
+        .select("id")
+        .eq("id", linkedTo)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (item.error) this.unread("item read", item.error);
+      if (!item.data) throw new NotFoundException(ITEM_NOT_THIS_HOUSE);
+    }
+    const r = await this.read(restaurantId, "drink", linkedTo);
+    const dishCount = linkedTo && r.versionIds.length ? await this.dishesUsing(restaurantId, r.versionIds) : 0;
     const drinks = r.owners.map(({ ownerId, ...d }) => ({ cocktailId: ownerId, ...d }));
     return {
       lineCount: r.lineCount,
       drinkCount: r.ownerCount,
+      dishCount,
       groups: r.groups.map((g) => ({
         key: g.key,
         label: g.label,
-        lines: g.lines.map((l) => ({ cocktailId: l.ownerId, index: l.index })),
+        lines: g.lines.map((l) => ({ cocktailId: l.ownerId, index: l.index, baseUnit: l.baseUnit })),
         drinkCount: g.ownerCount,
         proposed: g.shelf,
         sameName: g.sameName,
@@ -181,23 +239,31 @@ export class LooseLinesService {
     };
   }
 
-  private async read(restaurantId: string, kind: LooseKind) {
+  private async read(restaurantId: string, kind: LooseKind, linkedTo?: string) {
     const o = OWNER[kind];
     const all = <T>(what: string, read: (from: number, to: number) => Read) => this.all<T>(what, read, o.unread);
     const client = this.db.getClient();
-    // 1. Every counted line with no good, in any version of this house.
+    // 1. Every counted line with no good (or, with `linkedTo`, with this good), in any version of this house.
     const loose = await all<any>("loose line read", (from, to) =>
-      client
-        .from("recipe_lines")
-        .select("id, version_id")
-        .eq("restaurant_id", restaurantId)
-        .eq("role", "stocked")
-        .is("inventory_id", null)
-        .order("id", { ascending: true })
-        .range(from, to),
+      linkedTo
+        ? client
+            .from("recipe_lines")
+            .select("id, version_id")
+            .eq("restaurant_id", restaurantId)
+            .eq("inventory_id", linkedTo)
+            .order("id", { ascending: true })
+            .range(from, to)
+        : client
+            .from("recipe_lines")
+            .select("id, version_id")
+            .eq("restaurant_id", restaurantId)
+            .eq("role", "stocked")
+            .is("inventory_id", null)
+            .order("id", { ascending: true })
+            .range(from, to),
     );
     const versionIds = [...new Set(loose.map((l) => l.version_id as string))];
-    const none = { lineCount: 0, ownerCount: 0, groups: [] as Grouped[], owners: [] as Owned[] };
+    const none = { lineCount: 0, ownerCount: 0, groups: [] as Grouped[], owners: [] as Owned[], versionIds };
     if (!versionIds.length) return none;
 
     // 2. Which of those versions is a drink's current one.
@@ -264,15 +330,16 @@ export class LooseLinesService {
     }
 
     const drinks: Owned[] = [];
-    const places: Array<{ ownerId: string; index: number; label: string; family: "g" | "ml" | "each" | null }> = [];
+    const places: Array<{ ownerId: string; index: number; label: string; baseUnit: string; family: "g" | "ml" | "each" | null }> = [];
+    const matched = (l: any) => (linkedTo ? l.inventory_id === linkedTo : l.role === "stocked" && !l.inventory_id);
     for (const p of pointers) {
       const c = live.get(p.ownerId);
       const v = versions.get(p.version_id);
       if (!c || !v || v[o.key] !== p.ownerId) continue;
       const rows = [...(linesOf.get(p.version_id) ?? [])].sort((a, b) => a.position - b.position);
       rows.forEach((l, index) => {
-        if (l.role === "stocked" && !l.inventory_id) {
-          places.push({ ownerId: p.ownerId, index, label: l.label, family: FAMILY[l.base_unit] ?? null });
+        if (matched(l)) {
+          places.push({ ownerId: p.ownerId, index, label: l.label, baseUnit: l.base_unit, family: FAMILY[l.base_unit] ?? null });
         }
       });
       drinks.push({
@@ -292,10 +359,10 @@ export class LooseLinesService {
 
     // 4. Group by folded name, in drink order, and propose the one good of that name.
     const groups = new Map<string, Grouped>();
-    for (const { ownerId, index, label, family } of places) {
+    for (const { ownerId, index, label, baseUnit, family } of places) {
       const key = foldName(label);
       const g = groups.get(key) ?? { key, label, lines: [], ownerCount: 0, shelf: null, sameName: 0, families: new Set() };
-      g.lines.push({ ownerId, index });
+      g.lines.push({ ownerId, index, baseUnit });
       g.families.add(family);
       groups.set(key, g);
     }
@@ -313,6 +380,7 @@ export class LooseLinesService {
       ownerCount: affected.size,
       groups: list,
       owners: drinks.filter((d) => affected.has(d.ownerId)),
+      versionIds,
     };
   }
 }
