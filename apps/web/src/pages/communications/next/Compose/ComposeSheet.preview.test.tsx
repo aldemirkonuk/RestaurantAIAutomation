@@ -188,20 +188,46 @@ describe('See it as it leaves', () => {
     expect(screen.queryByTestId('letter-queued')).toBeNull();
   });
 
-  it('an empty subject says "Add a subject to see it." and asks the gateway nothing (r110 mail-r110-7)', () => {
+  it('an empty subject turns it off and says why; the gateway is never asked (r110 mail-gap g6)', () => {
     open();
     fireEvent.click(screen.getByText('Fikri Tarım Gıda'));
     fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba,' } });
+    expect(screen.getByTestId('letter-see')).toBeDisabled();
+    expect(screen.getByTestId('letter-see-why')).toHaveTextContent(/^Add a subject to see it as it leaves$/);
+    expect(screen.getByTestId('letter-see')).toHaveAttribute('aria-describedby', 'letter-see-why');
     fireEvent.click(screen.getByTestId('letter-see'));
-    const failed = screen.getByTestId('letter-see-failed');
-    expect(failed).toHaveTextContent(/^Add a subject to see it\.$/);
-    expect(failed.textContent).not.toMatch(/longer than|characters/);
     expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it('empty words turn it off with their own reason, and a written letter clears it', () => {
+    open();
+    fireEvent.click(screen.getByText('Fikri Tarım Gıda'));
+    fireEvent.change(screen.getByLabelText('Subject'), { target: { value: 'Standing order' } });
+    expect(screen.getByTestId('letter-see')).toBeDisabled();
+    expect(screen.getByTestId('letter-see-why')).toHaveTextContent(/^Write the letter to see it as it leaves$/);
+    fireEvent.change(screen.getByLabelText('The letter'), { target: { value: 'Merhaba,' } });
+    expect(screen.getByTestId('letter-see')).toBeEnabled();
+    expect(screen.queryByTestId('letter-see-why')).toBeNull();
+  });
+
+  it.each([
+    [['subject must be longer than or equal to 1 characters'], /^Add a subject to see it as it leaves$/],
+    [['body should not be empty'], /^Write the letter to see it as it leaves$/],
+    [['to must be an email'], /^Choose who it is to, to see it as it leaves$/],
+    [['answers must be a UUID'], /^The letter is not ready to be shown yet\./],
+  ])('a 400 with validator text %j is said in the field\'s own sentence, never raw', async (message, said) => {
+    mockPost.mockRejectedValue({ response: { status: 400, data: { message } } });
+    open();
+    pickRecipient();
+    fireEvent.click(screen.getByTestId('letter-see'));
+    const failed = await screen.findByTestId('letter-see-failed');
+    expect(failed.textContent).toMatch(said);
+    expect(failed.textContent).not.toMatch(/must|should|characters|It could not be shown/);
   });
 
   it('a header the builder refuses is said in the sentence the send would give', async () => {
     mockPost.mockRejectedValue({
-      response: { data: { message: 'Refusing to write the From header: its value contains a line break or control character. Nothing was queued and nothing was sent.' } },
+      response: { status: 400, data: { message: 'Refusing to write the From header: its value contains a line break or control character. Nothing was queued and nothing was sent.' } },
     });
     open();
     pickRecipient();

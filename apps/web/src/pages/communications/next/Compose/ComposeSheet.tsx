@@ -63,6 +63,31 @@ import { SenderLine } from './SenderLine';
 
 const ICON = { size: 13, strokeWidth: 1.75 } as const;
 
+/** Why the preview is off: the first thing missing, said as what to do (r110 mail-gap g6). */
+function seeItWhy(subject: string, body: string): string | null {
+  if (!subject.trim()) return 'Add a subject to see it as it leaves';
+  if (!body.trim()) return 'Write the letter to see it as it leaves';
+  return null;
+}
+
+/**
+ * A 400 from the preview that is the gateway's class-validator text ("subject must be longer
+ * than or equal to 1 characters") becomes the sentence for that field. Anything else, the
+ * builder's own refusals included, is already prose and is shown as it came.
+ */
+function validatorSentence(e: unknown): string | null {
+  const r = (e as { response?: { status?: number; data?: { message?: unknown } } } | null)?.response;
+  if (r?.status !== 400) return null;
+  const raw = r.data?.message;
+  const lines = (Array.isArray(raw) ? raw : [raw]).filter((m): m is string => typeof m === 'string');
+  const mine = lines.filter((m) => Array.isArray(raw) || /^\w+ (must|should) /.test(m));
+  if (mine.length === 0) return null;
+  if (mine.some((m) => /^subject /.test(m))) return 'Add a subject to see it as it leaves';
+  if (mine.some((m) => /^body /.test(m))) return 'Write the letter to see it as it leaves';
+  if (mine.some((m) => /^to /.test(m))) return 'Choose who it is to, to see it as it leaves';
+  return 'The letter is not ready to be shown yet. Check who it is to, the subject and the words';
+}
+
 /** "See it as it leaves": what the gateway says the send would write (r109 mail-gap g6). */
 type AsItLeaves = {
   from: { name: string | null; address: string | null };
@@ -339,15 +364,14 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
   const currentLetterKey = useRef(letterKey);
   currentLetterKey.current = letterKey;
 
+  // Why "See it as it leaves" is off, in the house's words; null when it is on.
+  const seeWhy = letter ? seeItWhy(letter.subject, letter.body) : null;
+
   /** Ask the gateway for the header block and body the send would write. Queues nothing. */
   const seeIt = useCallback(async () => {
     if (!letter) return;
-    // An empty subject is the writer's to fill, and the gateway's validator sentence for it is
-    // not words for a person: say what to do and ask nothing (r109 walk, P2).
-    if (!letter.subject) {
-      setSee({ kind: 'failed', message: 'Add a subject to see it.', plain: true });
-      return;
-    }
+    // The button is off while the subject or the words are empty, so this is only a guard.
+    if (seeWhy) return;
     const askedFor = letterKey;
     setSee({ kind: 'loading' });
     try {
@@ -356,9 +380,10 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
       setSee({ kind: 'shown', letter: shown });
     } catch (e) {
       if (currentLetterKey.current !== askedFor) return;
-      setSee({ kind: 'failed', message: errText(e) });
+      const said = validatorSentence(e);
+      setSee(said ? { kind: 'failed', message: said, plain: true } : { kind: 'failed', message: errText(e) });
     }
-  }, [letter, letterKey]);
+  }, [letter, letterKey, seeWhy]);
 
   /**
    * Mint the seal over the letter (ADR 0175 D9, sealed 2026-09-21). On the seal
@@ -651,7 +676,8 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
             type="button"
             data-testid="letter-see"
             onClick={() => void seeIt()}
-            disabled={!letter || see.kind === 'loading'}
+            disabled={!letter || !!seeWhy || see.kind === 'loading'}
+            aria-describedby={seeWhy ? 'letter-see-why' : undefined}
             aria-expanded={see.kind === 'shown'}
             style={{
               justifySelf: 'start',
@@ -668,6 +694,11 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
           >
             {see.kind === 'loading' ? 'Reading it…' : 'See it as it leaves'}
           </button>
+          {seeWhy && (
+            <p id="letter-see-why" data-testid="letter-see-why" style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--ink-4, #665D50)' }}>
+              {seeWhy}
+            </p>
+          )}
           {see.kind === 'failed' && (
             <p role="alert" data-testid="letter-see-failed" style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: 'var(--alarm-deep, #8C3322)' }}>
               {see.plain ? see.message : `It could not be shown as it leaves: ${see.message}`}
