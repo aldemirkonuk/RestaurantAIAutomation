@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   ForbiddenException,
@@ -24,6 +25,7 @@ import type {
   MailPeoplePage,
   MailSeenAnswer,
   MailSummary,
+  MailThreadNote,
   MailThreadPage,
   MailThreadsPage,
 } from "./mail.types";
@@ -46,8 +48,10 @@ function houseOf(user: AuthUser | undefined): string {
  * GET /mail/* — the read model behind the /communications Mail tab (founder
  * /goal 2026-11-07). Its writes are the "needs no reply" mark on a letter
  * (r28 mail gap 4), which only an owner or manager may set (enforced in
- * MailService, for the reason below), and each reader's own "seen" mark on a
- * thread (r36 mail gap 6), which any member keeps for themselves.
+ * MailService, for the reason below), each reader's own "seen" mark on a
+ * thread (r36 mail gap 6), which any member keeps for themselves, and the
+ * house's notes on a thread (r110 mail-gap g5): owners and managers write,
+ * the writer alone deletes, every reader of the thread reads them.
  *
  * Signed-in only, and deliberately no role decorator anywhere in this file:
  * every member of the house may read its vendor mail (draft ADR 0357 answer 3, PR #747, staff
@@ -171,6 +175,37 @@ export class MailController {
       with: withKey,
       before,
     });
+  }
+
+  @Post("thread/notes")
+  @HttpCode(201)
+  @ApiOperation({
+    summary:
+      "Leave the house a note on a thread (r110 mail-gap g5): never sent, owners and managers only",
+  })
+  @ApiQuery({ name: "key", required: true, description: "The thread key; a query, as a mid: key can hold a slash" })
+  @ApiQuery({ name: "with", required: true, description: "The thread's person: vendor:<provider uuid>, team:<address> or guest:<address>" })
+  addNote(
+    @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
+    @Query("key") key?: string,
+    @Query("with") withKey?: string,
+    @Body() body?: { body?: unknown },
+  ): Promise<MailThreadNote> {
+    return this.mail.addNote(houseOf(user), role, user?.userId, {
+      key,
+      with: withKey,
+      body: body?.body,
+    });
+  }
+
+  @Delete("thread/notes/:id")
+  @ApiOperation({ summary: "Delete a note on a thread: the writer's own only" })
+  deleteNote(
+    @CurrentUser() user: AuthUser,
+    @Param("id") id: string,
+  ): Promise<{ id: string; deleted: true }> {
+    return this.mail.deleteNote(houseOf(user), user?.userId, id);
   }
 
   @Post("thread/seen")
