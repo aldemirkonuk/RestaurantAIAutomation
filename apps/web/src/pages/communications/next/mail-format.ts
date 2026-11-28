@@ -196,6 +196,32 @@ export function threadTitle(subject: string | null | undefined, personName: stri
   return n ? `A letter from ${n}, with no subject line` : 'A letter with no subject line';
 }
 
+/** A letter's first words for a title: at most 60 characters, cut at a word, with an ellipsis when cut. */
+export function firstWords(text: string | null | undefined, max = 60): string {
+  const t = (text ?? '').replace(/^\s*subject:[^\n]*\n/i, '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const room = t.slice(0, max - 1);
+  const at = room.lastIndexOf(' ');
+  const cut = at >= 20 ? room.slice(0, at) : room;
+  return `${cut.replace(/[\s,;:.\-–—]+$/, '')}…`;
+}
+
+/**
+ * The thread's own title (r110 mail-gap g6): the subject, or, when the first
+ * letter had none, that letter's first words with a quiet "no subject line"
+ * after them. With no words to take, it is the person-based title.
+ */
+export function threadHeading(
+  subject: string | null | undefined,
+  personName: string | null | undefined,
+  firstLetterText: string | null | undefined,
+): { title: string; quiet: string | null } {
+  if ((subject ?? '').trim()) return { title: subject as string, quiet: null };
+  const words = firstWords(firstLetterText);
+  if (words) return { title: words, quiet: 'no subject line' };
+  return { title: threadTitle(subject, personName), quiet: null };
+}
+
 export interface MailThreadRow {
   key: string;
   subject: string | null;
