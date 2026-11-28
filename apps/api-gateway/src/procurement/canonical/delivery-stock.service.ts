@@ -957,6 +957,99 @@ export class DeliveryStockService {
     return { ok: true, value: out };
   }
 
+  /**
+   * r110 (DD-r109-29): a credited PRICE claim lowers the cost of the lots its
+   * line settled, and the sales already made from them follow.
+   *
+   * Runs after a claim moves to `credited`. Only a `price_variance` claim moves
+   * a bottle's cost: a claim for bottles short, damaged or never sent pays back
+   * bottles that are not on the shelf, so what a bottle on the shelf cost is
+   * unchanged. Only the claimed line's item is posted (`only`), on each VERIFIED
+   * delivery the claim's paper is the invoice on, through verify's own
+   * derivation (`agreedPrices` now takes the credit off the line), so a later
+   * verify or correction keeps the credit instead of undoing it. The reason
+   * `credit <id> of document <doc>` makes a replay post the same arguments,
+   * and `finalise_delivery_cost` writes nothing for a lot already at that cost.
+   */
+  async recostAfterCredit(
+    restaurantId: string,
+    creditId: string,
+    userId: string | null,
+  ): Promise<StockResult<CorrectionRecost & { note?: string }>> {
+    const credit = await this.db
+      .getClient()
+      .from("procurement_credits")
+      .select("id, state, reason, document_id, document_line_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", creditId)
+      .maybeSingle();
+    if (credit.error)
+      return { ok: false, status: 500, error: `the claim ${creditId} could not be read to re-cost its lots: ${credit.error.message}. The claim stands; nothing was revalued.` };
+    if (!credit.data) return { ok: false, status: 404, error: "Claim not found" };
+    const c = credit.data as { state: string; reason: string; document_id: string | null; document_line_id: string | null };
+    const none = (note: string) => ({ ok: true as const, value: { costField: false, deliveries: [], note } });
+    if (c.state !== "credited") return none("the claim is not credited, so no cost moves");
+    if (c.reason !== "price_variance")
+      return none("a credit for bottles short, damaged or never sent pays back bottles that are not on the shelf, so what a bottle on the shelf cost does not change");
+    if (!c.document_id || !c.document_line_id) return none("the claim names no invoice line, so which lots it lowers is not known; nothing was revalued");
+    const line = await this.db
+      .getClient()
+      .from("procurement_document_lines")
+      .select("inventory_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", c.document_line_id)
+      .maybeSingle();
+    if (line.error)
+      return { ok: false, status: 500, error: `the claimed line could not be read: ${line.error.message}. The claim stands; nothing was revalued.` };
+    const item = (line.data as { inventory_id?: string | null } | null)?.inventory_id ?? null;
+    if (!item) return none("the claimed line names no item on the shelf, so no lot's cost moves");
+    const join = await this.db
+      .getClient()
+      .from("document_deliveries")
+      .select("delivery_id, role")
+      .eq("document_id", c.document_id)
+      .eq("role", "invoice");
+    if (join.error)
+      return { ok: false, status: 500, error: `the deliveries this claim's paper prices could not be read: ${join.error.message}. The claim stands; nothing was revalued.` };
+    const reason = `credit ${creditId} of document ${c.document_id}`;
+    const out: CorrectionRecost = { costField: true, deliveries: [] };
+    const only = new Set([item]);
+    for (const deliveryId of [...new Set(((join.data ?? []) as { delivery_id: string }[]).map((r) => r.delivery_id))]) {
+      const delivery = await this.deliveryFor(restaurantId, deliveryId);
+      if (!delivery.ok) return delivery;
+      if (delivery.value.state !== "VERIFIED") {
+        out.deliveries.push({ deliveryId, recosted: [], kept: [], salesRestated: 0, drawnBefore: 0, note: `delivery ${deliveryId} is not verified yet, so its lots are still provisional; verifying it costs the credited price` });
+        continue;
+      }
+      const booked = await this.bookedSoFar(deliveryId);
+      if (!booked.ok) return booked;
+      const costed = await this.finaliseAtVerified(restaurantId, deliveryId, userId, only, reason);
+      if (!costed.ok) return costed;
+      const kept = costed.value.stillProvisional.map((k) => ({
+        inventoryId: k.inventoryId,
+        reason: `${k.reason.replace(/\s*The lot stays provisional[^]*$/, "")} Its lots keep the cost they had; nothing was revalued.`,
+      }));
+      let salesRestated = 0;
+      let drawnBefore = 0;
+      for (const f of costed.value.finalised) {
+        drawnBefore += Math.max(0, (booked.value.get(f.inventoryId) ?? 0) - f.bottlesMatched);
+        if (!delivery.value.orderId) continue;
+        const restated = await this.db.getClient().rpc("restate_sale_cost", {
+          p_restaurant_id: restaurantId,
+          p_inventory_id: f.inventoryId,
+          p_source_order_id: delivery.value.orderId,
+          p_unit_cost: f.unitCost,
+          p_performed_by: userId,
+        });
+        if (restated.error)
+          return { ok: false, status: 503, error: `the lots of item ${f.inventoryId} carry the credited cost, but the sales already made from them were not restated: ${restated.error.message}. Recording the credit again, or verifying the delivery again, is safe.` };
+        salesRestated += Number((restated.data as { rows_restated?: number } | null)?.rows_restated ?? 0);
+      }
+      out.deliveries.push({ deliveryId, recosted: costed.value.finalised, kept, salesRestated, drawnBefore });
+    }
+    return { ok: true, value: out };
+  }
+
   /** Each paper's corrections, oldest first, read a page at a time (r109). A failed read is not "none" (ADR 0067). */
   private async correctionsOf(documentIds: string[]): Promise<StockResult<Map<string, CorrectionRowLite[]>>> {
     const out = new Map<string, CorrectionRowLite[]>();
