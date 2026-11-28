@@ -77,7 +77,7 @@ describe('the taste line holds its slot (M6)', () => {
     expect(t).not.toMatch(/\.tc-line--hold[^{]*\{[^}]*transition/);
     // At every width, the one-column phone sheet included (r98 walk finding 2): no media guard on the hold.
     const drawer = css('item-drawer.css');
-    expect(drawer).toMatch(/\n\.ivd-cards\[data-testid='ivd-cards'\] > \.ivd-card \{[^}]*min-height: 94px;/); // the figure cards only (r103)
+    expect(drawer).toMatch(/\n:where\(\.ivd-cards\[data-testid='ivd-cards'\]\) > \.ivd-card \{[^}]*min-height: 94px;/); // the figure cards only (r103)
     expect(drawer).not.toMatch(/@media \(min-width: 768px\) \{\s*\.ivd-card \{\s*min-height/);
   });
 });
