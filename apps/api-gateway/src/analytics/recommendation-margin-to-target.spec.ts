@@ -117,6 +117,17 @@ describe("the recommendations feed advises toward the house's target margin (ADR
     expect(out.priceAdviceReadable).toBe(true);
   });
 
+  it("[REVERT-FAILS] withMargin: false never reads the price advice: no margin_to_target card, no price beside a margin, and the feed says it was not read", async () => {
+    const svc = feed({ house: SET, inventory: [WINE], rollup: ROLLUP }) as any;
+    const adviseHouse = jest.spyOn(svc.marginAdvice, "adviseHouse");
+    const out = await svc.getRecommendations("r-1", { withMargin: false });
+    expect(adviseHouse).not.toHaveBeenCalled();
+    expect(out.recommendations.find((r: any) => r.ruleKey === "margin_to_target")).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("currentMarginPct");
+    expect(out.priceAdviceReadable).toBe(false);
+    expect(out.sourcesUnread).toEqual(expect.arrayContaining(["price advice", "menu engineering"]));
+  });
+
   it("says the cost gap out loud rather than implying those wines are fine", async () => {
     const out = await feed({ house: SET, inventory: [WINE, NO_COST_WINE], rollup: ROLLUP }).getRecommendations("r-1");
     const blind = out.recommendations.find((r) => r.ruleKey === "margin_advice_blind");
