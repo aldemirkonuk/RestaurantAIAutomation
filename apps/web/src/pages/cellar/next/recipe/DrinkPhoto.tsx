@@ -24,13 +24,23 @@ export const PHOTO_LONG_SIDE = 1600;
 export const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp';
 export const PHOTO_NOT_SAVED = 'The photo was not saved. Nothing was changed.';
 export const PHOTO_TOO_BIG = 'That photo is over 5 MB. Choose a smaller one.';
+export const PHOTO_TOO_LARGE_TO_OPEN = 'That photo is too large to open here. Choose a smaller one.';
+/** The gateway's cap, which applies to the re-encoded bytes (a few hundred KB for a phone photo), not the original. */
 const MAX_BYTES = 5 * 1024 * 1024;
+/** Only a guard on what the browser must decode: a 6 to 15 MB camera JPEG is re-encoded, not refused. */
+const MAX_DECODE_BYTES = 40 * 1024 * 1024;
+
+class PhotoTooBig extends Error {}
+
+/** The same picture whether its URL was signed a second ago or a minute ago: the signing token is not the image. */
+const photoKey = (url: string) => url.split('?')[0];
 
 /**
  * The held frame and its image. Never lazy, the spec book's included: the card and the book are drawn only for
  * paper (display: none on screen), and a lazy image there is never fetched, so it would print blank.
  */
 export function PhotoFrame({ url, alt, testId }: { url: string | null | undefined; alt: string; testId: string }) {
+  // Keyed on the stored object, not the signed URL: every read signs a new token, and a refetch must not blank a painted photo.
   const [loaded, setLoaded] = useState<string | null>(null);
   return (
     <div className="cl-photo" data-testid={testId}>
@@ -40,8 +50,8 @@ export function PhotoFrame({ url, alt, testId }: { url: string | null | undefine
           alt={alt}
           decoding="async"
           loading="eager"
-          data-loaded={loaded === url ? 'true' : 'false'}
-          onLoad={() => setLoaded(url)}
+          data-loaded={loaded === photoKey(url) ? 'true' : 'false'}
+          onLoad={() => setLoaded(photoKey(url))}
         />
       ) : null}
     </div>
@@ -60,7 +70,7 @@ export function whenPhotosReady(root: ParentNode | null, then: () => void, ms = 
   void Promise.race([all, new Promise<void>((res) => setTimeout(res, ms))]).then(then);
 }
 
-/** Longest side at most 1600 px, orientation applied, WebP (a browser without WebP output gives PNG; both are taken). */
+/** Longest side at most 1600 px, orientation applied, WebP; where the browser cannot write WebP (it hands back PNG) JPEG at 0.85. Throws PhotoTooBig over the gateway's 5 MB. */
 export async function reencodePhoto(file: Blob): Promise<string> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   const scale = Math.min(1, PHOTO_LONG_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -69,8 +79,10 @@ export async function reencodePhoto(file: Blob): Promise<string> {
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
-  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/webp', 0.85));
+  let blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/webp', 0.85));
+  if (blob && blob.type !== 'image/webp') blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
   if (!blob) throw new Error('not encoded');
+  if (blob.size > MAX_BYTES) throw new PhotoTooBig();
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -89,16 +101,16 @@ export function PhotoControls({ cocktailId, hasPhoto }: { cocktailId: string; ha
   const choose = async (file: File | undefined) => {
     if (!file || !activeRestaurantId) return;
     setSaid(null);
-    if (file.size > MAX_BYTES) {
-      setSaid(PHOTO_TOO_BIG);
+    if (file.size > MAX_DECODE_BYTES) {
+      setSaid(PHOTO_TOO_LARGE_TO_OPEN);
       return;
     }
     setBusy(true);
     try {
       await recipesApi.putPhoto(activeRestaurantId, cocktailId, await reencodePhoto(file));
       await done();
-    } catch {
-      setSaid(PHOTO_NOT_SAVED);
+    } catch (e) {
+      setSaid(e instanceof PhotoTooBig ? PHOTO_TOO_BIG : PHOTO_NOT_SAVED);
     } finally {
       setBusy(false);
     }

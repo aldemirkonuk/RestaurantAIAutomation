@@ -21,6 +21,7 @@ vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 vi.mock('../../../../services/api/taste', async (orig) => ({ ...(await orig<Record<string, unknown>>()), getTaste: vi.fn().mockResolvedValue({ state: 'absent' }), rollupTaste: vi.fn() }));
 
 import RecipeSheet from './RecipeSheet';
+import { PhotoFrame, PHOTO_TOO_BIG } from './DrinkPhoto';
 import { forgetDrafts } from './drafts';
 
 const negroni = (): CocktailRecipe => ({
@@ -135,5 +136,53 @@ describe('a drink photo on the sheet (r110 drinks-g3)', () => {
     decoded();
     await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
     expect(css()).toContain('.cl-print-card .cl-photo, .cl-print-book .cl-photo { width: 60mm; max-width: 60mm;');
+  });
+
+  /** A manager picks `file`; the canvas hands back what `blobs` says, in order. Returns the encodings asked for. */
+  async function pick(file: File, blobs: Blob[]) {
+    h.photo = null;
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 4032, height: 3024, close: () => undefined })));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({ drawImage: () => undefined }) as never);
+    const types: string[] = [];
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((cb: BlobCallback, type?: string) => {
+      types.push(String(type));
+      cb(blobs[Math.min(types.length - 1, blobs.length - 1)]);
+    });
+    h.put.mockImplementation(async () => ((h.photo = PHOTO), { data: { photoUrl: PHOTO } }));
+    mount();
+    fireEvent.click(await screen.findByTestId('photo-add'));
+    fireEvent.change(screen.getByTestId('photo-input'), { target: { files: [file] } });
+    return types;
+  }
+  const small = (type: string) => new Blob([new Uint8Array([1, 2, 3])], { type });
+
+  it('a 6 MB camera photo is re-encoded and sent: the 5 MB cap is on the re-encoded bytes', async () => {
+    const big = new File([new Uint8Array(6 * 1024 * 1024)], 'camera.jpg', { type: 'image/jpeg' });
+    await pick(big, [small('image/webp')]);
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('photo-said')).toBeNull();
+  });
+
+  it('where WebP is not written (the canvas gives PNG) it is encoded as JPEG instead', async () => {
+    const types = await pick(new File([new Uint8Array(10)], 'a.jpg', { type: 'image/jpeg' }), [small('image/png'), small('image/jpeg')]);
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(types).toEqual(['image/webp', 'image/jpeg']);
+  });
+
+  it('a re-encoding still over 5 MB is not sent, and says so', async () => {
+    await pick(new File([new Uint8Array(10)], 'a.jpg', { type: 'image/jpeg' }), [new Blob([new Uint8Array(5 * 1024 * 1024 + 1)], { type: 'image/webp' })]);
+    expect((await screen.findByTestId('photo-said')).textContent).toBe(PHOTO_TOO_BIG);
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('the painted photo stays painted when a refetch signs a new URL, and resets for a different photo', () => {
+    const { rerender } = render(<PhotoFrame url="https://signed/r/c/a.webp?t=1" alt="x" testId="f" />);
+    const img = () => screen.getByTestId('f').querySelector('img')!;
+    fireEvent.load(img());
+    expect(img().dataset.loaded).toBe('true');
+    rerender(<PhotoFrame url="https://signed/r/c/a.webp?t=2" alt="x" testId="f" />);
+    expect(img().dataset.loaded).toBe('true');
+    rerender(<PhotoFrame url="https://signed/r/c/b.webp?t=3" alt="x" testId="f" />);
+    expect(img().dataset.loaded).toBe('false');
   });
 });
