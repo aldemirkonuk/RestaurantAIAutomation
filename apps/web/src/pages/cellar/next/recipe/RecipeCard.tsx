@@ -138,8 +138,10 @@ export default function RecipeCard({
   const glass = v.glass ?? data.cocktail.glass;
   const garnish = v.garnish ?? data.cocktail.garnish;
   const method = v.method ?? data.cocktail.method;
-  const amount = (l: (typeof v.lines)[number]) => inMeasure(l.qtyEntered * n, l.unitCode, measure);
-  const converted = converts(v.lines.map((l) => ({ qty: l.qtyEntered * n, unit: l.unitCode })), measure);
+  // More than one serve (a multi-serve spec, or Make N) is read at the true US ounce, not the jigger's 30 ml.
+  const batch = n !== 1 || v.yieldServes > 1;
+  const amount = (l: (typeof v.lines)[number]) => inMeasure(l.qtyEntered * n, l.unitCode, measure, batch);
+  const converted = converts(v.lines.map((l) => ({ qty: l.qtyEntered * n, unit: l.unitCode })), measure, batch);
 
   return (
     <>

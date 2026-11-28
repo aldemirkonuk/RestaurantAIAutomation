@@ -215,6 +215,19 @@ describe('the spec book prints in the bar measures (r110 drinks-g2)', () => {
     expect(within(page).getByTestId('book-measure-foot').textContent).toMatch(/^Converted from the saved spec .*≈ means rounded\.$/);
   });
 
+  it('a multi-serve line is a batch: it is read at the true US ounce, not the jigger 30 ml', async () => {
+    mount();
+    fireEvent.click(screen.getByTestId('book-measures-oz'));
+    const punch = card('p1', 'Punch', null, { yieldServes: 4, lines: [{ label: 'rum', qty: 180, unit: 'ml', name: 'Rum' }] });
+    h.get.mockImplementation(async (url: string) => {
+      if (url === `/recipes/${RID}/drinks/cards`) return { data: { drinks: [punch] } };
+      return { data: { restaurantId: RID, code: 'USD', country: 'US', readable: true, reason: null, statedAt: null } };
+    });
+    fireEvent.click(screen.getByTestId('book-print-button'));
+    const page = await waitFor(() => screen.getByTestId('book-card'));
+    expect([...page.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['≈ 6⅛ oz Rum']);
+  });
+
   it('chips are 44 px on a phone or a coarse pointer', () => {
     const css = readFileSync(join(__dirname, '../cellar-next.css'), 'utf8').replace(/\s+/g, ' ');
     expect(css).toContain('@media (max-width: 719px), (pointer: coarse) { .cl-measure-chip { min-height: 44px;');

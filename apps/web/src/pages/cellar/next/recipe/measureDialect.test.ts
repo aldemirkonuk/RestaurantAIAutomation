@@ -11,6 +11,18 @@ describe('measureDialect (r110 drinks-g2)', () => {
     expect(inMeasure(3, 'cl', 'oz')).toBe('1 oz');
   });
 
+  it('reads a batch at the true US ounce, so the error does not grow with the quantity', () => {
+    // 45 ml x4 = 180 ml = 6.087 US fl oz: the nearest eighth is 6⅛, 1.1 ml off, so marked.
+    expect(inMeasure(180, 'ml', 'oz', true)).toBe('≈ 6⅛ oz');
+    // 60 ml x20 = 1.2 l = 40.58 US oz, not the jigger's 40.
+    expect(inMeasure(1200, 'ml', 'oz', true)).toBe('≈ 40⅝ oz');
+    expect(inMeasure(1000, 'ml', 'oz', true)).toBe('≈ 33⅞ oz');
+    expect(inMeasure(500, 'ml', 'oz', true)).toBe('≈ 16⅞ oz');
+    // One serve keeps the jigger's 30.
+    expect(inMeasure(45, 'ml', 'oz')).toBe('1½ oz');
+    expect(converts([{ qty: 180, unit: 'ml' }], 'oz', true)).toBe(true);
+  });
+
   it('marks an eighth that moved the figure by more than 0.25 ml', () => {
     expect(inMeasure(20, 'ml', 'oz')).toBe('≈ ⅝ oz');
     expect(inMeasure(25, 'ml', 'oz')).toBe('≈ ⅞ oz');

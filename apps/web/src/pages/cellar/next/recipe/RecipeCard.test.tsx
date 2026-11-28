@@ -393,8 +393,9 @@ describe('the card prints in the bar measures (r110 drinks-g2)', () => {
     // 50 ml is 1⅝ oz at the jigger ounce, 1.25 ml off: marked.
     expect(card()).toHaveTextContent('≈ 1⅝ oz Plymouth gin');
     expect(screen.getByTestId('recipe-card-measure-foot')).toHaveTextContent('≈ means rounded.');
+    // Make 3 is a batch: 150 ml is 5.07 US oz, read at the true ounce (not the jigger's 5).
     fireEvent.change(screen.getByLabelText('Make'), { target: { value: '3' } });
-    expect(screen.getByTestId('recipe-make-preview')).toHaveTextContent('Make 3: 5 oz Plymouth gin');
+    expect(screen.getByTestId('recipe-make-preview')).toHaveTextContent('Make 3: ≈ 5⅛ oz Plymouth gin');
     fireEvent.click(screen.getByTestId('recipe-measures-ml'));
     expect(card()).toHaveTextContent('150 ml Plymouth gin');
     expect(screen.queryByTestId('recipe-card-measure-foot')).toBeNull();

@@ -116,14 +116,14 @@ export default function RecipeBook() {
                     <ol>
                       {c.lines.map((l, i) => (
                         <li key={i}>
-                          <b>{inMeasure(l.qty, l.unit, measure)}</b> {l.name ?? l.label}
+                          <b>{inMeasure(l.qty, l.unit, measure, c.yieldServes > 1)}</b> {l.name ?? l.label}
                         </li>
                       ))}
                     </ol>
                     {c.method ? <p className="cl-print-method">{c.method}</p> : null}
                     {c.garnish ? <p>Garnish: {c.garnish}</p> : null}
                     <p>{allergenWords(c.allergens)}</p>
-                    {converts(c.lines, measure) ? <p data-testid="book-measure-foot">{MEASURE_FOOT}</p> : null}
+                    {converts(c.lines, measure, c.yieldServes > 1) ? <p data-testid="book-measure-foot">{MEASURE_FOOT}</p> : null}
                   </section>
                 )),
               )}

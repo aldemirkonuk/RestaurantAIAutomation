@@ -7,9 +7,13 @@
  * barspoon, tsp, tbsp, g, kg and each are kept as written: a dash is a dash
  * in every bar, and a weight is not a volume.
  *
- * To oz: the nearest eighth of an ounce, at the jigger's 30 ml to 1 oz (the
- * bar's own convention: 45 ml is the 1½ oz pour, 22.5 ml is ¾). "≈" marks a
- * figure the eighth moved by more than 0.25 ml (20 ml is "≈ ⅝ oz").
+ * To oz: the nearest eighth of an ounce. One serve is read at the jigger's
+ * 30 ml to 1 oz (the bar's own convention: 45 ml is the 1½ oz pour, 22.5 ml is
+ * ¾). A batch (Make N, a multi-serve book line) is read at the true US fluid
+ * ounce, 29.5735 ml, because the jigger's 1.4% would grow with the quantity
+ * (60 ml x20 at 30 ml is 40 oz, but 1.2 l is 40.58 US oz). "≈" marks a figure
+ * the eighth moved by more than 0.25 ml of one serve, scaled the same way
+ * (20 ml is "≈ ⅝ oz").
  * To ml: a written ounce is the US fluid ounce, 29.5735 ml (1½ oz is 44.4 ml),
  * cl and l by ten and a thousand, to one decimal with ".0" dropped.
  * The card's foot says both, so no figure is a silent conversion.
@@ -30,16 +34,16 @@ export const JIGGER_OZ_ML = 30;
 /** An eighth moved by more than this is marked "≈". */
 export const APPROX_ML = 0.25;
 
-export const MEASURE_FOOT = 'Converted from the saved spec (ml to oz at 30 ml a jigger ounce, a written oz at 29.57 ml); ≈ means rounded.';
+export const MEASURE_FOOT = 'Converted from the saved spec (one serve: ml to oz at 30 ml a jigger ounce; a batch and a written oz at 29.57 ml); ≈ means rounded.';
 
 const ML_OF: Record<string, number> = { ml: 1, cl: 10, l: 1000, oz: US_FL_OZ_ML };
 const EIGHTHS = ['', '⅛', '¼', '⅜', '½', '⅝', '¾', '⅞'];
 
-/** "1 oz", "¾ oz", "1½ oz", "≈ ⅝ oz" for a volume given in ml. */
-export function ozText(ml: number): string {
-  const exactOz = ml / JIGGER_OZ_ML;
+/** "1 oz", "¾ oz", "1½ oz", "≈ ⅝ oz" for a volume given in ml; `mlPerOz` is the jigger's 30 unless a batch is read at 29.5735. */
+export function ozText(ml: number, mlPerOz: number = JIGGER_OZ_ML): string {
+  const exactOz = ml / mlPerOz;
   const eighths = Math.max(1, Math.round(exactOz * 8));
-  const shownMl = (eighths / 8) * JIGGER_OZ_ML;
+  const shownMl = (eighths / 8) * mlPerOz;
   const whole = Math.floor(eighths / 8);
   const frac = EIGHTHS[eighths % 8];
   const said = `${whole > 0 ? whole : ''}${frac} oz`;
@@ -52,17 +56,19 @@ export const mlText = (ml: number) => `${String(Math.round(ml * 10) / 10)} ml`;
 /**
  * One line's amount in the chosen measure. As written is exactly the card's
  * own `amountWithUnit` (byte-identical to the print before this change); a unit
- * outside the ml family stays as written in every measure.
+ * outside the ml family stays as written in every measure. `batch` is true
+ * for a quantity that is more than one serve (Make N, a multi-serve line).
  */
-export function inMeasure(qty: number, unit: string | null | undefined, m: Measure): string {
+export function inMeasure(qty: number, unit: string | null | undefined, m: Measure, batch = false): string {
   const per = unit ? ML_OF[unit] : undefined;
   if (m === 'as_written' || per === undefined || !Number.isFinite(qty) || qty <= 0) return amountWithUnit(qty, unit as never);
   const ml = qty * per;
   if (m === 'ml') return mlText(ml);
   // An ounce written as an ounce stays the ounce written ("1.25 oz" reads 1¼ oz), not re-read through the jigger.
-  return ozText(unit === 'oz' ? qty * JIGGER_OZ_ML : ml);
+  if (unit === 'oz') return ozText(qty * US_FL_OZ_ML, US_FL_OZ_ML);
+  return ozText(ml, batch ? US_FL_OZ_ML : JIGGER_OZ_ML);
 }
 
 /** True when any line would read differently in `m`: the card says it was converted only then. */
-export const converts = (lines: Array<{ qty: number; unit: string | null | undefined }>, m: Measure) =>
-  m !== 'as_written' && lines.some((l) => inMeasure(l.qty, l.unit, m) !== inMeasure(l.qty, l.unit, 'as_written'));
+export const converts = (lines: Array<{ qty: number; unit: string | null | undefined }>, m: Measure, batch = false) =>
+  m !== 'as_written' && lines.some((l) => inMeasure(l.qty, l.unit, m, batch) !== inMeasure(l.qty, l.unit, 'as_written'));
