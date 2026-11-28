@@ -39,6 +39,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Info, Undo2 } from 'lucide-react';
 import { HoldToApprove, Sheet } from '@/components/mudavym';
 import { apiClient } from '../../../../services/api/client';
+import { aboveSignature, signatureBlock, swapSignature, wordsAbove } from '../MailSignature';
 import { ink } from '../../../../lib/mudavym/motion';
 import {
   MONO,
@@ -214,6 +215,11 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   }, [to, replyVendor, data.book]);
   const [subject, setSubject] = useState(prefill?.subject ?? '');
   const [body, setBody] = useState(prefill?.body ?? '');
+  // r110 g3: the signature block this sheet put in. null: it owns none (held words, a draft, edited).
+  const [sigBlock, setSigBlock] = useState<string | null>(() => (prefill?.body === undefined && !draftId ? '' : null));
+  const sigRef = useRef(sigBlock);
+  sigRef.current = sigBlock;
+  const sigApplied = useRef<string | null>(null);
   const [chosen, setChosen] = useState<InsightSentence[]>(prefill?.insights ?? []);
   const [templateId, setTemplateId] = useState<string>(prefill?.templateId ?? '');
   const [send, setSend] = useState<SendState>({ kind: 'idle' });
@@ -238,6 +244,20 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   // template option list downstream is a `useMemo` keyed on it.
   const templates = useMemo(() => data.templates ?? [], [data.templates]);
   const sender = data.sender;
+  // Put in once read; swapped on a change of address only while the block is as put in.
+  const signature = data.signature ?? null;
+  useEffect(() => {
+    if (!signature || sigBlock === null) return;
+    const key = `${signature.address}\n${signature.body ?? ''}`;
+    if (sigApplied.current === key) return;
+    sigApplied.current = key;
+    const swapped = swapSignature(body, sigBlock, signatureBlock(signature.body));
+    if (!swapped) return setSigBlock(null);
+    setBody(swapped.body);
+    setSigBlock(swapped.block);
+  }, [signature, sigBlock, body]);
+  // What the person wrote: a letter of the signature alone is not a letter.
+  const words = wordsAbove(body, sigBlock);
   const ceremony = data.senderFailed ? 'none' : (sender?.ceremony ?? 'none');
   // WHO (ADR 0175 D10, 2026-09-21): the composer is a vendor send, so only an
   // owner, a manager or a grantee may send from it. Said before the hold.
@@ -251,7 +271,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     mayAsk &&
     to !== null &&
     subject.trim().length > 0 &&
-    body.trim().length > 0 &&
+    words.trim().length > 0 &&
     send.kind !== 'queueing' &&
     send.kind !== 'asked';
   const canSend =
@@ -260,7 +280,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     maySend &&
     to !== null &&
     subject.trim().length > 0 &&
-    body.trim().length > 0 &&
+    words.trim().length > 0 &&
     send.kind !== 'queueing' &&
     // A draft that has been queued or discarded is not sent again from here.
     !(draftId && (send.kind === 'queued' || send.kind === 'cancelled' || discarded !== null));
@@ -286,14 +306,14 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
   // the held "Re:" stub then came back as "Write a letter"). Its vendor is
   // compared by id: the address is only chosen once the book is read.
   const changed = person
-    ? subject.trim() !== (prefill?.subject ?? '').trim() || body.trim() !== ''
+    ? subject.trim() !== (prefill?.subject ?? '').trim() || words.trim() !== ''
     : replyVendor
     ? (to !== null && to.providerId !== replyVendor) ||
       subject.trim() !== (prefill?.subject ?? '').trim() ||
-      body.trim() !== ''
+      words.trim() !== ''
     : (to !== null && to.email.toLowerCase() !== (base.to ?? '').toLowerCase()) ||
       subject.trim() !== base.subject.trim() ||
-      body.trim() !== base.body.trim();
+      words.trim() !== base.body.trim();
   const dirty = !gone && changed;
   const leave = () => {
     if (dirty) onHold?.({
@@ -314,7 +334,7 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
       if (!t) return;
       setTemplateId(t.id);
       if (t.subject) setSubject(t.subject);
-      setBody(t.body);
+      setBody((prev) => aboveSignature(prev, sigRef.current, () => t.body));
     },
     [],
   );
@@ -323,7 +343,9 @@ export function ComposeSheet({ open, onClose, onHold, onQueued, prefill, onDisca
     setChosen((prev) =>
       prev.some((p) => p.candidateKey === insight.candidateKey) ? prev : [...prev, insight],
     );
-    setBody((prev) => (prev.trim() ? `${prev.replace(/\s*$/, '')}\n\n${insight.sentence}` : insight.sentence));
+    setBody((prev) =>
+      aboveSignature(prev, sigRef.current, (w) => (w.trim() ? `${w.replace(/\s*$/, '')}\n\n${insight.sentence}` : insight.sentence)),
+    );
   }, []);
 
   const removeSentence = useCallback((candidateKey: string) => {

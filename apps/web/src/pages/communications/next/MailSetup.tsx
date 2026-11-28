@@ -32,6 +32,7 @@ import { SANS } from './cm-format';
 import { READ_TERMS, senderLine, setupFailWords, type MailStatus, type SenderLineInput } from './mail-format';
 import { MailArrival } from './MailArrival';
 import { MailMotionStyles } from './mail-motion';
+import { SignatureEditor } from './MailSignature';
 import { ACT, ALERT, LINK, NOT_YOURS, Part, QUIET, TEXT, TONE } from './MailSetupParts';
 import { useChooseSender, useMailSetup, type MailSenderChoice, type MailSetupView } from './useMailSetup';
 
@@ -359,6 +360,12 @@ export function MailSetup({
             conversationWords={conversationWords}
             sendOffered={offered.send}
           />
+          {/* r110 g3: the signature of the address letters leave from now. */}
+          {q.data.canChange && sender?.address && (sender.kind === 'house_mailbox' || sender.kind === 'mudavym_subdomain') && (
+            <Part title="Signature">
+              <SignatureEditor key={sender.address.toLowerCase()} address={sender.address} />
+            </Part>
+          )}
           <MailArrival view={q.data} now={now} />
         </>
       )}
