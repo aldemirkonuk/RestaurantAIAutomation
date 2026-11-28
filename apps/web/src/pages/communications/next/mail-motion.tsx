@@ -13,9 +13,10 @@ export const MAIL_MOTION_CSS = `
   .mail-fade-in { animation: mail-fade-in ${INK_MS}ms ease-out both }
   .mail-fade-out { animation: mail-fade-out ${INK_MS}ms ease-out both; pointer-events: none }
   .mail-arrive { animation: mail-fade-in ${SETTLE_MS}ms ease-out both, mail-ink-step ${INK_MS}ms ease-out both }
+  .mail-note-in { animation: mail-fade-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both }
   .mail-chip { transition: background-color ${INK_MS}ms ease-out, border-color ${INK_MS}ms ease-out, color ${INK_MS}ms ease-out }
   @media (prefers-reduced-motion: reduce) {
-    .mail-fade-in, .mail-fade-out, .mail-arrive { animation: none !important }
+    .mail-fade-in, .mail-fade-out, .mail-arrive, .mail-note-in { animation: none !important }
     .mail-chip { transition: none !important }
   }
 `;

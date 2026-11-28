@@ -38,6 +38,7 @@ Deliberate non-motions, and why each one stays still:
 
 - **Mail moves by opacity only** (`mail-motion.tsx`): arrival settles, rows fade in, chips fade out.
 - **A folded letter unfolds in place** (`MailThread.tsx`, r108 g9): an unfolded body takes `mail-fade-in` 160 ms, opacity only; no height or translate animation, no fold-back animation, and nothing at all under reduced motion. Folding, not scrolling, puts the newest letter near the top.
+- **A house note fades in** (`MailThreadNotes.tsx`, r110 mail-gap g5): a note that arrives after the thread was drawn takes `.mail-note-in`, the `mail-fade-in` keyframes (opacity 0 to 1) over 180 ms on `cubic-bezier(0.16, 1, 0.3, 1)`. Notes already on the page when it is drawn do not animate. A deleted note leaves at once with no exit motion, and nothing moves under reduced motion.
 - **"N new letters below" appears by opacity** (`MailThread.tsx`, r108 g11): `mail-fade-in` 160 ms; no slide, no exit fade, nothing under reduced motion. Its jump is one instant `scrollIntoView` (`behavior: 'auto'`), never smooth.
 
 `prefers-reduced-motion` is honoured everywhere: `.cmp-pick` drops its

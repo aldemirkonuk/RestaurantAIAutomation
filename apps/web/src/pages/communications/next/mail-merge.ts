@@ -89,6 +89,20 @@ export function mergeThreadsHead(
  * `before`. No overlap means a gap between them: null, and the caller reads
  * the thread again whole.
  */
+/**
+ * The notes of a merged head page (r110 g5): the fresh page's, plus the held
+ * ones older than the fresh page's oldest letter, which the fresh read no
+ * longer reaches but the held letters still sit between. A fresh page that is
+ * the whole thread holds every note itself.
+ */
+function heldNotes(first: MailThreadPage, fresh: MailThreadPage): MailThreadPage['notes'] {
+  if (!fresh.before || !fresh.messages?.length) return fresh.notes;
+  const o = fresh.messages[0]!;
+  const from = Date.parse((o.direction === 'inbound' ? o.receivedAt : o.sentAt) ?? o.createdAt);
+  const kept = (first.notes ?? []).filter((n) => Date.parse(n.createdAt) < from);
+  return [...kept, ...(fresh.notes ?? [])];
+}
+
 export function mergeThreadHead(
   cur: InfiniteData<MailThreadPage, string | null>,
   fresh: MailThreadPage,
@@ -103,7 +117,7 @@ export function mergeThreadHead(
   return {
     ...cur,
     pages: [
-      { ...fresh, messages: [...older, ...arrived], before: first.before },
+      { ...fresh, messages: [...older, ...arrived], before: first.before, notes: heldNotes(first, fresh) },
       ...cur.pages.slice(1),
     ],
   };
