@@ -59,8 +59,25 @@ export function MenuSourcePane({
     staleTime: 60_000,
     retry: false,
   });
-  if (!canManage) return null;
   const kind = mime === 'application/pdf' ? 'pdf' : mime?.startsWith('image/') ? 'image' : 'other';
+  // The frame is keyed by its address, so a jump to another page loads the file again. By then the signed
+  // link may have run out (it lasts `expiresInSeconds`, 300 at the gateway), and a dead link shows the
+  // storage's JSON error in the frame, not words (ADR 0020, r110 review R6). So a link nearing its end is
+  // asked for again first, and the frame moves to the new page only once it has the fresh one.
+  const [framePage, setFramePage] = useState(page);
+  useEffect(() => {
+    if (page === framePage) return;
+    let live = true;
+    const ttl = Math.max(0, (link.data?.expiresInSeconds ?? 300) - 60) * 1000;
+    if (kind === 'pdf' && link.data && Date.now() - link.dataUpdatedAt > ttl) {
+      void link.refetch().then(() => live && setFramePage(page));
+    } else setFramePage(page);
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, framePage, link.dataUpdatedAt]);
+  if (!canManage) return null;
   const region = (
         <div
           id="menu-source-view"
@@ -83,7 +100,7 @@ export function MenuSourcePane({
             <img src={link.data.url} alt="The kept menu, as it was read" style={{ display: 'block', width: '100%', maxHeight: SOURCE_PANE_HEIGHT * 2, objectFit: 'contain' }} />
           ) : kind === 'pdf' ? (
             // Keyed by its address: a fragment change alone does not move every PDF viewer.
-            <iframe key={atPage(link.data.url, page)} title="The kept menu, as it was read" src={atPage(link.data.url, page)} style={{ display: 'block', width: '100%', height: SOURCE_PANE_HEIGHT, border: 0 }} />
+            <iframe key={atPage(link.data.url, framePage)} title="The kept menu, as it was read" src={atPage(link.data.url, framePage)} style={{ display: 'block', width: '100%', height: SOURCE_PANE_HEIGHT, border: 0 }} />
           ) : (
             <p className="cl-said" style={{ padding: 14 }} data-testid="menu-source-unshown">
               This file is a sheet, and a sheet cannot be shown here. Open it from Menus kept below.
