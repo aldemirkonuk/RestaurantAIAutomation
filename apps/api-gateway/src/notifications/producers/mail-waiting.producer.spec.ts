@@ -114,6 +114,20 @@ describe("MailWaitingProducer", () => {
     expect(sent(notifications)[1].metadata.houseDate).toBe("2026-11-28");
   });
 
+  it("one thread key to two vendors is two waiting letters, each told once", async () => {
+    // A mid:/gm: key can be shared by one price request sent to two vendors; Mail's thread is
+    // (provider, key), so the dedupe is per person too.
+    const since = ago(NINE, 30 * H);
+    const V2KEY = `vendor:${V2}`;
+    const { notifications, producer } = build({
+      people: [fikri(since), fikri(since, { key: V2KEY, provider_id: V2, name: "Ege Süt" })],
+      threads: [thread("gm:k", since), thread("gm:k", since, true, { provider_id: V2 })],
+    });
+    const t = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NINE);
+    expect(t.alreadyClaimed).toBe(0);
+    expect(sent(notifications).map((p) => p.metadata.personKey).sort()).toEqual([`vendor:${V1}`, V2KEY].sort());
+  });
+
   it("nothing goes out 23:00-07:00 house time; everyone is deferred, then told at 07:00", async () => {
     const since = ago(NINE, 30 * H);
     const { notifications, producer } = build({ people: [fikri(since)], threads: [thread("t1", since)] });

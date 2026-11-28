@@ -133,7 +133,7 @@ export class MailWaitingProducer {
       await this.ledger.emit(
         { restaurantId, producer: PRODUCER, audience: heard, tally, now },
         {
-          dedupeKey: `mail-waiting:${restaurantId}:${w.threadKey}:${day}`,
+          dedupeKey: `mail-waiting:${restaurantId}:${w.personKey}:${w.threadKey}:${day}`,
           occurredAt: new Date(w.waitingSince),
           payload: {
             type: "mail_waiting",
