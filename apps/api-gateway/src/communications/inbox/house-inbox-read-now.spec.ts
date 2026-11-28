@@ -37,7 +37,7 @@ interface Cursor {
 }
 
 /** The database: one cursor row with state, everything else static. */
-function house(opts: { claimFails?: boolean; noCursor?: boolean; insertConflict?: boolean } = {}) {
+function house(opts: { claimFails?: boolean; noCursor?: boolean; insertConflict?: boolean; conflictCursorGone?: boolean } = {}) {
   const clock = { now: T0 };
   const cursor: Cursor = {
     connection_id: GRANT,
@@ -95,6 +95,11 @@ function house(opts: { claimFails?: boolean; noCursor?: boolean; insertConflict?
       if (table !== "house_inbox_cursors") return { data: statics[table] ?? [], error: null };
       if (inserting) {
         if (opts.insertConflict) {
+          // The other press's cursor is there to be re-read, unless this case says it is not.
+          if (!opts.conflictCursorGone) {
+            present = true;
+            cursor.last_internal_date = T0 - 5_000;
+          }
           return {
             data: null,
             error: { code: "23505", message: 'duplicate key value violates unique constraint "house_inbox_cursors_pkey"' },
@@ -324,11 +329,40 @@ describe("six presses on a first run: the losers are answered like a press insid
     const r = await service.readNow(HOUSE, clock.now);
     expect(r.outcome).toBe("too_soon");
     expect(r.retryAfterSeconds).toBe(READ_NOW_FLOOR_SECONDS);
-    expect(r.says).toBe(`The mailbox was read less than a minute ago. Check again in ${READ_NOW_FLOOR_SECONDS} s.`);
-    expect(r.outcomes[0].says).toMatch(/Someone checked this mailbox a moment ago/);
+    const starts = new Date(T0 - 5_000).toISOString();
+    expect(r.outcomes[0].outcome).toBe("seeded_by_another");
+    expect(r.outcomes[0].cursorAdvancedTo).toBe(T0 - 5_000);
+    expect(r.outcomes[0].says).toBe(`Someone in the house checked a moment ago; reading starts from ${starts}. Nothing is filed twice.`);
+    expect(r.says).toBe(`${r.outcomes[0].says} Check again in ${READ_NOW_FLOOR_SECONDS} s.`);
     expect(JSON.stringify(r)).not.toMatch(/could not be written/);
     expect(g.urls).toHaveLength(0);
     expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("when the other press's cursor cannot be re-read, it still says someone checked, without a time", async () => {
+    const { db, clock } = house({ noCursor: true, insertConflict: true, conflictCursorGone: true });
+    const { service } = serviceOver(db);
+    const g = gmail(["m1"]);
+    g.open();
+    service.fetchImpl = g.impl;
+    const r = await service.readNow(HOUSE, clock.now);
+    expect(r.outcomes[0].outcome).toBe("seeded_by_another");
+    expect(r.outcomes[0].cursorAdvancedTo).toBeNull();
+    expect(r.outcomes[0].says).toBe("Someone in the house checked a moment ago. Nothing is filed twice.");
+    expect(r.outcomes[0].says).not.toMatch(/reading starts from/);
+  });
+
+  it("the 5-minute run that loses the insert is told the same, with no wait to offer", async () => {
+    const { db, clock } = house({ noCursor: true, insertConflict: true });
+    const { service } = serviceOver(db);
+    const g = gmail(["m1"]);
+    g.open();
+    service.fetchImpl = g.impl;
+    const run = await service.readDue(clock.now);
+    expect(run.outcomes[0].outcome).toBe("seeded_by_another");
+    expect(run.outcomes[0].waitSeconds).toBeUndefined();
+    expect(run.outcomes[0].says).toMatch(/^Someone in the house checked a moment ago; reading starts from /);
+    expect(g.urls).toHaveLength(0);
   });
 
   it("the winner of the first-cursor insert still seeds and reads nothing older", async () => {
