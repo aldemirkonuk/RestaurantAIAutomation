@@ -70,7 +70,7 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
     db.tables.stock_counts = [];
     const { waste, countGap } = await svc.figures(H, I, "shown", NOW);
     expect(waste).toMatchObject({ readable: false, qty30d: null, given30d: null, value30d: null });
-    expect(countGap).toMatchObject({ readable: true, last: [], source: "Never counted." });
+    expect(countGap).toMatchObject({ readable: true, last: [], source: "Record a count to see the gap." });
   });
 
   it("no value when a wasted line has no cost and no average cost is known", async () => {

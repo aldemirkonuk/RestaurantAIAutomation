@@ -38,10 +38,13 @@ export default function CarryThis({
   restaurantId,
   onClose,
   onCarried,
+  onMany,
 }: {
   restaurantId: string | null;
   onClose: () => void;
   onCarried: (item: CarriedHouseItem) => void;
+  /** Opens Carry many, for a house with a list of goods rather than one. */
+  onMany?: () => void;
 }) {
   const [kind, setKind] = useState<CarryKind>('food');
   const [uom, setUom] = useState<CarryUom | null>(null);
@@ -93,6 +96,14 @@ export default function CarryThis({
       title="A good the library does not hold"
       footer={<span>Stock is not entered here: it arrives with a delivery or a count.</span>}
     >
+      {onMany ? (
+        <p className="iv-note" data-testid="ivc-many">
+          Have a list?{' '}
+          <button type="button" className="iv-linkish iv-focus" onClick={onMany}>
+            Carry many at once
+          </button>
+        </p>
+      ) : null}
       <form
         className="ivc-form"
         onSubmit={(e) => {

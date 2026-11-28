@@ -675,6 +675,32 @@ describe('The Tools row offers only what this session can do (INV-W18)', () => {
   });
 });
 
+describe('Count many (inventory r36 gap 6)', () => {
+  it('Tools counts the listed titles, each in its own unit', () => {
+    mock.data = data({
+      canManage: false,
+      rows: [row({ id: 'a', name: 'Barolo' }), row({ id: 'f', name: 'Flour', kind: 'food', type: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g' }],
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Count the listed titles' }));
+    expect(screen.getAllByText('Count the 2 listed titles').length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /^Barolo/ })).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: /^Flour/ }), { target: { value: '2.5' } });
+    expect(document.body.textContent).toContain('Reads as 2.5 kg.');
+  });
+
+  it('the selection bar counts only the selected titles', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' }), row({ id: 'b', name: 'Beta' })] });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Beta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Count selected' }));
+    expect(screen.getAllByText('Count the selected title').length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /^Beta/ })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: /^Alpha/ })).toBeNull();
+  });
+});
+
 describe('The Cellar map speaks the page\'s words (INV-W19)', () => {
   it('hands the map the table\'s tint rule and the chips\' words', async () => {
     mock.mapProps = null;
@@ -1347,6 +1373,34 @@ describe('INV-W38 — the view is the URL', () => {
     mock.data = data({ rows: two(), canManage: false });
     renderAt('/inventory');
     expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
+  // Inventory r40: a list of goods, one a line, from Tools or from Carry this.
+  it('offers Carry many to an owner or manager, from Tools and from Carry this, leaving out what is listed', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    fireEvent.click(screen.getByRole('button', { name: 'Carry many at once' }));
+    expect(screen.getAllByText('Goods the library does not hold').length).toBeGreaterThan(0);
+    const listed = two()[0].name as string;
+    fireEvent.change(screen.getByRole('textbox', { name: 'The list' }), { target: { value: `${listed}\nLemons` } });
+    expect(document.body.textContent).toContain('Already on the list; left out.');
+    expect(screen.getByRole('button', { name: 'Carry 1 good' })).toBeTruthy();
+  });
+
+  it('Carry this hands a list over to Carry many', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    fireEvent.click(screen.getByRole('button', { name: 'Carry a food or supply' }));
+    const link = screen.getByTestId('ivc-many').querySelector('button') as HTMLButtonElement;
+    fireEvent.click(link);
+    expect(screen.queryByTestId('ivc-many')).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'The list' })).toBeTruthy();
+  });
+
+  it('offers no Carry many to staff', () => {
+    mock.data = data({ rows: two(), canManage: false });
+    renderAt('/inventory');
+    expect(screen.queryByRole('button', { name: 'Carry many at once' })).toBeNull();
   });
 
   // Inventory r28, gap 6: a mapping decides what a sale takes off the shelf.
@@ -2034,6 +2088,28 @@ describe('a house of goods is not a cellar', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('All 2 of 2 goods are listed');
     expect(text).not.toMatch(/cellar|titles|every title/i);
     expect(screen.getByRole('table', { name: 'The book: every good on hand' })).toBeTruthy();
+  });
+
+  it('counts and selects "the listed goods" in a house of goods, and says titles with one drink', () => {
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    const view = renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Count the listed goods' }));
+    expect(screen.getAllByText('Count the 2 listed goods').length).toBeGreaterThan(0);
+    view.unmount();
+    mock.data = data({ rows: [flour(), sugar()], rawItems: goods });
+    renderPage();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Bread Flour' }));
+    expect(screen.getByRole('checkbox', { name: 'Select every listed good' })).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: /every listed title/ })).toBeNull();
+  });
+
+  it('a house with one drink keeps the drink words on those buttons (the goods words need no drink at all)', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Ankara Red' }), flour()], rawItems: [goods[0]] });
+    renderPage();
+    expect(screen.getByRole('button', { name: 'Count the listed titles' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Bread Flour' }));
+    expect(screen.getByRole('checkbox', { name: 'Select every listed title' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Count the listed goods' })).toBeNull();
   });
 
   it('says the no-match line in goods', () => {

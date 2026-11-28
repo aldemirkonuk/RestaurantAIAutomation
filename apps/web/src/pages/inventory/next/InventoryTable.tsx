@@ -422,7 +422,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                 <input
                   type="checkbox"
                   className="iv-focus"
-                  aria-label={allSelected ? 'Clear the selection' : 'Select every listed title'}
+                  aria-label={allSelected ? 'Clear the selection' : `Select every listed ${thing}`}
                   checked={allSelected}
                   ref={(el) => {
                     if (el) el.indeterminate = someSelected;
