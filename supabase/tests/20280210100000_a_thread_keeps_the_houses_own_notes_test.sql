@@ -94,8 +94,11 @@ SELECT pg_temp.refused($q$INSERT INTO public.mail_thread_notes (restaurant_id, p
   VALUES ('a0000000-0000-4000-8000-0000000000a1', 'vendor:b0000000-0000-4000-8000-0000000000b1', 'gm:t1', ' padded ', 'c0000000-0000-4000-8000-0000000000c1')$q$,
   'N5c an untrimmed note is refused');
 SELECT pg_temp.refused($q$INSERT INTO public.mail_thread_notes (restaurant_id, person_key, thread_key, body, written_by)
-  VALUES ('a0000000-0000-4000-8000-0000000000a1', 'Vendor:B0000000-0000-4000-8000-0000000000B1', 'gm:t1', 'x', 'c0000000-0000-4000-8000-0000000000c1')$q$,
-  'N5d a person key not in lower case is refused');
+  VALUES ('a0000000-0000-4000-8000-0000000000a1', 'vendor:B0000000-0000-4000-8000-0000000000B1', 'gm:t1', 'x', 'c0000000-0000-4000-8000-0000000000c1')$q$,
+  'N5d a vendor key not in lower case is refused');
+SELECT pg_temp.refused($q$INSERT INTO public.mail_thread_notes (restaurant_id, person_key, thread_key, body, written_by)
+  VALUES ('a0000000-0000-4000-8000-0000000000a1', 'team:Ayse@House.test', 'mid:x', 'x', 'c0000000-0000-4000-8000-0000000000c1')$q$,
+  'N5h a team key not in lower case is refused');
 SELECT pg_temp.refused($q$INSERT INTO public.mail_thread_notes (restaurant_id, person_key, thread_key, body, written_by)
   VALUES ('a0000000-0000-4000-8000-0000000000a1', 'b0000000-0000-4000-8000-0000000000b1', 'gm:t1', 'x', 'c0000000-0000-4000-8000-0000000000c1')$q$,
   'N5e a bare id is not a person key');
