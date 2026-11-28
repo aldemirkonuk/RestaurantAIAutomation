@@ -209,6 +209,9 @@ describe("GET/PUT /communications/letters/signature over HTTP", () => {
   });
 
   it("refuses 601 characters at the door (400)", async () => {
-    expect((await put("owner", { address: "me@house.test", body: "a".repeat(601) })).status).toBe(400);
+    const res = await put("owner", { address: "me@house.test", body: "a".repeat(601) });
+    expect(res.status).toBe(400);
+    // The DTO refuses it before the service is reached.
+    expect(JSON.stringify(await res.json())).toMatch(/shorter than or equal to 600/);
   });
 });
