@@ -27,6 +27,7 @@ import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { apiClient } from '../../../../services/api/client';
+import { readSignature, signatureKey, type SignatureRead } from '../MailSignature';
 
 export interface SenderIdentity {
   kind: 'house_mailbox' | 'mudavym_subdomain' | 'none' | 'unknown';
@@ -174,6 +175,18 @@ export function useComposeData(enabled = true) {
     enabled: enabled && Boolean(restaurantId),
   });
 
+  // r110 g3: the signature of the address this letter leaves from. Owner or
+  // manager only on the server, so it is not asked for anyone else.
+  const sigAddress = senderQ.data?.sendable ? (senderQ.data.address ?? '').toLowerCase() : '';
+  const standingBasis = senderQ.data?.sendOrAsk?.readable ? senderQ.data.sendOrAsk.basis : null;
+  const signatureQ = useQuery<SignatureRead>({
+    queryKey: signatureKey(restaurantId, sigAddress),
+    queryFn: () => readSignature(sigAddress),
+    enabled: enabled && Boolean(restaurantId && sigAddress) && (standingBasis === 'owner' || standingBasis === 'manager'),
+    staleTime: 60_000,
+    retry: false,
+  });
+
   const bookQ = useQuery<BookEntry[]>({
     queryKey: ['house-letter-book', restaurantId],
     queryFn: async () => {
@@ -261,6 +274,8 @@ export function useComposeData(enabled = true) {
     sender: senderQ.data ?? null,
     senderFailed: senderQ.isError,
     senderError: senderQ.isError ? errText(senderQ.error) : null,
+    /** The signature of the address letters leave from, once read; never another address's. */
+    signature: signatureQ.data && signatureQ.data.address.toLowerCase() === sigAddress ? signatureQ.data : null,
     book: bookQ.data ?? null,
     bookFailed: bookQ.isError,
     bookError: bookQ.isError ? errText(bookQ.error) : null,
