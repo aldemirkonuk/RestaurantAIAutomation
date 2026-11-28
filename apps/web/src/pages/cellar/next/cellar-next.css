@@ -390,6 +390,10 @@
    raise contrast, never lower it, wherever `.cl-note` already appears. */
 .cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+/* The registers' "how this was decided" line reads one line while the read is in flight and three
+   at a phone once it settles (19px -> 58px, walk p12), which pushed the cards below it 39px. Its
+   settled room is held at a phone: no motion (ADR 0112). */
+@media (max-width: 481px) { .cl-said-hold { min-height: 3lh; } }
 /* The menu offers hold their line before the menu read lands: one line, and two at a phone where the
    "no menu is current" sentence wraps. Not an inline height: that would beat this rule. */
 .cl-offer-room { min-height: 1lh; }
@@ -1175,11 +1179,18 @@ textarea.cl-field {
   .cl-spine-nav { min-height: 64px; align-content: flex-start; }
 }
 
-/* The two rule notes under the headline ("The Cellar" / which view opens) wrap to a long unread
-   sentence and settle two lines shorter once the registers read lands (walk p11: 69px to 52px at
-   375, 0.17 CLS with the nav). The settled room is held from first paint; the nav stays visibility:
-   hidden while the read is in flight so the provisional one-register set never shows. No transition,
-   and none under reduced motion (ADR 0112). */
-@media (max-width: 640px) {
-  .cl-notes-hold { min-height: 52px; }
-}
+/* The two rule notes under the headline ("The Cellar" / which view opens) are drawn once the
+   registers read settles, never while it is in flight (the provisional wording was 148px at 375
+   and the settled 114px, so the block shrank under the reader: walk p12, CLS 0.161). The hold is
+   the SETTLED height, measured at 375-481 px: 114, at 482-640 px: 79, at 641-1000 px (the sidebar
+   narrows the column; measured at 768): 114, at 1001 px and up: 79. A house whose text wraps
+   longer than that grows by the difference, one shorter leaves a gap, never a shift. No
+   transition, and none under reduced motion (ADR 0112). */
+/* margin-top 10px = the first note's own, so the two collapse and the hold's top does not move when the notes arrive. */
+.cl-notes-hold { margin-top: 10px; min-height: 79px; }
+/* The standing line under the headline reads one line while the registers read is in flight and
+   two lines at a phone once it settles (25px -> 50px, measured 375-481 px; the 641-1000 band
+   settles at 25px). Its settled room is held at a phone. No motion (ADR 0112). */
+@media (max-width: 481px) { .cl-standing-hold { min-height: 50px; } }
+@media (max-width: 481px) { .cl-notes-hold { min-height: 114px; } }
+@media (min-width: 641px) and (max-width: 1000px) { .cl-notes-hold { min-height: 114px; } }

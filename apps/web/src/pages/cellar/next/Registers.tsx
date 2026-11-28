@@ -272,7 +272,7 @@ export default function Registers({ data }: { data: CellarData }) {
 
         {/* The founder's one line: how this was decided, and where to change it. */}
         {data.registersLoading ? (
-          <p className="cl-said" role="status">
+          <p className="cl-said cl-said-hold" role="status">
             Working out which registers this house carries…
           </p>
         ) : unread ? (
@@ -284,7 +284,7 @@ export default function Registers({ data }: { data: CellarData }) {
             that answer — the rest are unread, not absent.
           </p>
         ) : (
-          <p className="cl-said" data-testid="registers-decided">
+          <p className="cl-said cl-said-hold" data-testid="registers-decided">
             {decidedLine(registers?.decidedBy ?? 'unknown')}
           </p>
         )}
@@ -366,7 +366,7 @@ export default function Registers({ data }: { data: CellarData }) {
             gateway used to drop before it reached the browser. It is a
             catalogue figure and is labelled as one: none of it is stock, and
             none of it moves which registers this house carries. */}
-        {data.libraryByKind && data.libraryByKind.size > 0 ? (
+        {!data.registersLoading && data.libraryByKind && data.libraryByKind.size > 0 ? (
           <p className="cl-note" data-testid="library-by-kind">
             This read of the wine library classifies its titles as{' '}
             {[...data.libraryByKind.entries()]

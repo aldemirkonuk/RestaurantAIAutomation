@@ -1862,8 +1862,21 @@ describe('what this house’s book is called', () => {
     );
   });
 
-  it('an unestablished house keeps the route’s own name and claims nothing', () => {
+  it('the two rule notes are not drawn while the registers read is in flight, and are once it settles', () => {
     mock.current = { ...base, registers: null, registersLoading: true };
+    const { unmount } = draw();
+    expect(screen.queryByTestId('cellar-naming-rule')).toBeNull();
+    expect(screen.queryByTestId('cellar-view-rule')).toBeNull();
+    expect(screen.queryByTestId('library-by-kind')).toBeNull();
+    unmount();
+    mock.current = { ...base, registers: carrying('wines'), registersLoading: false };
+    draw();
+    expect(screen.getByTestId('cellar-naming-rule')).toBeTruthy();
+    expect(screen.getByTestId('cellar-view-rule')).toBeTruthy();
+  });
+
+  it('an unestablished house keeps the route’s own name and claims nothing', () => {
+    mock.current = { ...base, registers: null, registersLoading: false };
     draw();
     expect(screen.getByTestId('cellar-headline')).toHaveTextContent('The Cellar');
     expect(screen.getByTestId('cellar-naming-rule')).toHaveTextContent(/has not been established/);

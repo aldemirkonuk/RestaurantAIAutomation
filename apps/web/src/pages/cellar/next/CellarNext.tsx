@@ -203,7 +203,7 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
                 {naming.name}
                 <span style={{ color: 'var(--seal)' }}>.</span>
               </h1>
-              <p className="cl-standing" style={{ fontSize: 15.5 }}>
+              <p className="cl-standing cl-standing-hold" style={{ fontSize: 15.5 }}>
                 {data.registersLoading
                   ? 'Working out what this house keeps…'
                   : data.registers && data.registers.decidedBy !== 'unknown'
@@ -213,6 +213,11 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
               {/* The rule, on the page. A name that changes with the house has
                   to say why it changed, or it reads as a bug. */}
               <div className="cl-notes-hold">
+              {/* Drawn once the registers read settles, never before: the provisional
+                  wording was 148px at 375 and the settled one 114px, so the notes
+                  shrank under the reader (walk p12). The hold keeps the settled room. */}
+              {data.registersLoading ? null : (
+              <>
               <p className="cl-note" data-testid="cellar-naming-rule">
                 {naming.because}
                 {' The address stays /cellar whatever this page is called.'}
@@ -224,6 +229,8 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
               <p className="cl-note" data-testid="cellar-view-rule">
                 {view.because}
               </p>
+              </>
+              )}
               </div>
               <hr className="cl-rule" style={{ margin: '16px 0 0' }} />
               <Registers data={data} />
