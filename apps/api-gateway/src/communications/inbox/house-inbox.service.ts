@@ -235,6 +235,8 @@ export interface GrantReadOutcome {
     | "house_revoked"
     | "busy"
     | "too_soon"
+    /** A first run that lost the first-cursor insert to another press: that read happened a moment ago. */
+    | "seeded_by_another"
     | "error";
   says: string;
   bookAddresses: number;
@@ -243,7 +245,7 @@ export interface GrantReadOutcome {
   discarded: number;
   mirrored: number;
   cursorAdvancedTo: number | null;
-  /** On `too_soon`: seconds until this grant takes a press again. */
+  /** On `too_soon` and `seeded_by_another`: seconds until this grant takes a press again (0 for the run). */
   waitSeconds?: number;
 }
 
@@ -400,23 +402,28 @@ export class HouseInboxService {
             : `Checked. ${mirrored} new ${mirrored === 1 ? "letter was" : "letters were"} filed.`,
       };
     }
-    const wait = Math.max(0, ...outcomes.map((o) => (o.outcome === "too_soon" ? (o.waitSeconds ?? 0) : 0)));
-    if (outcomes.some((o) => o.outcome === "too_soon")) {
+    // A first run another press seeded is a press inside the minute too, in its own words.
+    const another = outcomes.find((o) => o.outcome === "seeded_by_another");
+    const waits = (o: GrantReadOutcome) => o.outcome === "too_soon" || (o.outcome === "seeded_by_another" && (o.waitSeconds ?? 0) > 0);
+    const wait = Math.max(0, ...outcomes.map((o) => (waits(o) ? (o.waitSeconds ?? 0) : 0)));
+    if (outcomes.some(waits)) {
       return {
         outcome: "too_soon",
         retryAfterSeconds: Math.max(1, wait),
         mirrored: 0,
         outcomes,
-        says: `The mailbox was read less than a minute ago. Check again in ${Math.max(1, wait)} s.`,
+        says: another
+          ? `${another.says} Check again in ${Math.max(1, wait)} s.`
+          : `The mailbox was read less than a minute ago. Check again in ${Math.max(1, wait)} s.`,
       };
     }
-    if (outcomes.some((o) => o.outcome === "busy")) {
+    if (outcomes.some((o) => o.outcome === "busy" || o.outcome === "seeded_by_another")) {
       return {
         outcome: "busy",
         retryAfterSeconds: 0,
         mirrored: 0,
         outcomes,
-        says: "The mailbox is being read right now. Its letters will show when that read ends.",
+        says: another?.says ?? "The mailbox is being read right now. Its letters will show when that read ends.",
       };
     }
     // Switched off, an empty book, a revoked or failing grant: each says why.
@@ -663,13 +670,14 @@ export class HouseInboxService {
       // happen, a moment ago, so this press is answered like any press inside
       // the minute, not as a failure that read nothing.
       if (seed === "exists") {
-        return this.blank(row, floorSeconds > 0 ? "too_soon" : "busy", {
+        // Read the cursor the other press wrote, so the answer says where reading starts.
+        const from = await this.loadCursor(connectionId);
+        const startsFrom = from === null ? "" : `; reading starts from ${new Date(from).toISOString()}`;
+        return this.blank(row, "seeded_by_another", {
           bookAddresses: addresses.length,
+          cursorAdvancedTo: from,
           waitSeconds: floorSeconds > 0 ? floorSeconds : undefined,
-          says:
-            floorSeconds > 0
-              ? `Someone checked this mailbox a moment ago, so it was not read again. Check again in ${floorSeconds} s.`
-              : "Another read started this grant's cursor a moment ago, so this one left it alone. Nothing is filed twice.",
+          says: `Someone in the house checked a moment ago${startsFrom}. Nothing is filed twice.`,
         });
       }
       const seeded = seed === "seeded";
